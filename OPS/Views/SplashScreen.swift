@@ -17,7 +17,7 @@ struct SplashScreen: View {
     var body: some View {
         ZStack {
             // Background with gradient animation
-            Color(.black)
+            OPSStyle.Colors.background
             
             // Main content
             VStack {
@@ -39,11 +39,11 @@ struct SplashScreen: View {
                     VStack(spacing: 4) {
                         Text("OPS")
                             .font(OPSStyle.Typography.largeTitle)
-                            .foregroundColor(.white)
-                        
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+
                         Text("Built by trades, for trades.")
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.gray)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                     .opacity(textOpacity)
                 }

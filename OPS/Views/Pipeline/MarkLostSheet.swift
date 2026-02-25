@@ -39,7 +39,7 @@ struct MarkLostSheet: View {
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 100)
                     .padding(OPSStyle.Layout.spacing2)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                    .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)

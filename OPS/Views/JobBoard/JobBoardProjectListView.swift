@@ -333,7 +333,7 @@ struct JobBoardProjectListView: View {
     private var tutorialSwipeInstruction: some View {
         VStack(spacing: 12) {
             Image(systemName: "hand.draw.fill")
-                .font(.system(size: 32, weight: .medium))
+                .font(.system(size: OPSStyle.Layout.IconSize.xl, weight: .medium))
                 .foregroundColor(emphasisSwipeInstruction ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent)
                 .scaleEffect(emphasisSwipeInstruction ? 1.3 : 1.0)
 
@@ -515,7 +515,7 @@ struct FilterBadge: View {
 
             Button(action: onRemove) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
         }
@@ -625,7 +625,7 @@ struct CollapsibleSection<Content: View>: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
                 Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             .padding(.vertical, 8)
@@ -670,7 +670,7 @@ struct SectionButton: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                 Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.horizontal, 16)
@@ -721,7 +721,7 @@ struct ProjectListSheet: View {
                     HStack(spacing: 12) {
                         Image(systemName: OPSStyle.Icons.search)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
                         TextField("Search projects...", text: $searchText)
                             .font(OPSStyle.Typography.body)
@@ -732,7 +732,7 @@ struct ProjectListSheet: View {
                             Button(action: { searchText = "" }) {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    .font(.system(size: 16))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             }
                         }
                     }
@@ -746,7 +746,7 @@ struct ProjectListSheet: View {
                     if filteredProjects.isEmpty {
                         VStack(spacing: 16) {
                             Image(systemName: "folder")
-                                .font(.system(size: 48))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text(searchText.isEmpty ? "No projects" : "No matching projects")
                                 .font(OPSStyle.Typography.body)

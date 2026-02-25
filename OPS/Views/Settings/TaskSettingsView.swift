@@ -35,19 +35,19 @@ struct TaskSettingsView: View {
                 if isLoading {
                     Spacer()
                     ProgressView("Loading task types...")
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                     Spacer()
                 } else if taskTypes.isEmpty {
                     // Empty state
                     Spacer()
                     VStack(spacing: 20) {
                         Image(systemName: "square.grid.2x2")
-                            .font(.system(size: 60))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         
                         Text("No Task Types")
                             .font(OPSStyle.Typography.title)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                         
                         Text("Create task types to categorize work")
                             .font(OPSStyle.Typography.body)
@@ -56,7 +56,7 @@ struct TaskSettingsView: View {
                         Button(action: createDefaultTaskTypes) {
                             Text("CREATE DEFAULT TYPES")
                                 .font(OPSStyle.Typography.smallButton)
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .padding(.horizontal, 24)
                                 .padding(.vertical, 12)
                                 .background(OPSStyle.Colors.primaryAccent)
@@ -90,7 +90,7 @@ struct TaskSettingsView: View {
                     
                     Button(action: { showingAddSheet = true }) {
                         Image(systemName: OPSStyle.Icons.plusCircleFill)
-                            .font(.system(size: 24))
+                            .font(.system(size: OPSStyle.Layout.IconSize.lg))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                 }
@@ -223,14 +223,14 @@ struct TaskTypeRow: View {
                         .frame(width: 48, height: 48)
 
                     Image(systemName: taskType.icon ?? "hammer.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(.white)
+                        .font(.system(size: OPSStyle.Layout.IconSize.lg))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(taskType.display)
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
 
                     Text("\(taskType.tasks.count) tasks")
                         .font(OPSStyle.Typography.smallCaption)
@@ -253,7 +253,7 @@ struct TaskTypeRow: View {
                         )
                 } else {
                     Image(systemName: OPSStyle.Icons.chevronRight)
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }

@@ -50,22 +50,7 @@ struct ProjectMapAnnotation: View {
     
     // Helper function to get color for status indicator
     private func getStatusColor(_ status: Status) -> Color {
-        switch status {
-        case .rfq:
-            return Color(red: 0.95, green: 0.8, blue: 0.2)     // Brighter yellow
-        case .estimated:
-            return Color(red: 0.2, green: 0.6, blue: 0.9)      // Brighter blue
-        case .accepted:
-            return Color(red: 0.2, green: 0.8, blue: 0.4)      // Brighter green
-        case .inProgress:
-            return Color(red: 0.95, green: 0.5, blue: 0.2)     // Brighter orange
-        case .completed:
-            return Color(red: 0.3, green: 0.9, blue: 0.5)      // Brighter green
-        case .closed:
-            return Color(red: 0.6, green: 0.6, blue: 0.6)      // Brighter gray
-        default:
-            return Color(red: 0.6, green: 0.6, blue: 0.6)      // Default gray
-        }
+        return OPSStyle.Colors.statusColor(for: status)
     }
     
     // Size configuration

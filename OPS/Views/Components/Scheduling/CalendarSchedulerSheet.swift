@@ -187,7 +187,7 @@ struct CalendarSchedulerSheet: View {
 
             // Arrow
             Image(systemName: "arrow.right")
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(hasSelectedDates ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                 .padding(.horizontal, 12)
 
@@ -245,7 +245,7 @@ struct CalendarSchedulerSheet: View {
         HStack {
             Image(systemName: OPSStyle.Icons.crew)
                 .foregroundColor(showOnlyTeamEvents ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                .font(.system(size: 14))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("TEAM EVENTS")
@@ -284,7 +284,7 @@ struct CalendarSchedulerSheet: View {
         HStack {
             Image(systemName: OPSStyle.Icons.taskType)
                 .foregroundColor(showOnlyProjectTasks ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                .font(.system(size: 14))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("PROJECT TASKS")
@@ -324,7 +324,7 @@ struct CalendarSchedulerSheet: View {
             Button(action: previousMonth) {
                 Image(systemName: "chevron.left")
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
             }
 
             Spacer()
@@ -338,7 +338,7 @@ struct CalendarSchedulerSheet: View {
             Button(action: nextMonth) {
                 Image(systemName: "chevron.right")
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
             }
         }
     }
@@ -387,7 +387,7 @@ struct CalendarSchedulerSheet: View {
             } icon: {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundColor(OPSStyle.Colors.warningStatus)
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
             }
 
             Text("The following items overlap with your selected dates:")
@@ -464,7 +464,7 @@ struct CalendarSchedulerSheet: View {
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(.white)
+                            .background(OPSStyle.Colors.primaryText)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                 }
@@ -473,10 +473,10 @@ struct CalendarSchedulerSheet: View {
                 Button(action: handleConfirmSchedule) {
                     Text("CONFIRM DATES")
                         .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(hasSelectedDates ? .black : OPSStyle.Colors.tertiaryText)
+                        .foregroundColor(hasSelectedDates ? OPSStyle.Colors.invertedText : OPSStyle.Colors.tertiaryText)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(hasSelectedDates ? .white : OPSStyle.Colors.cardBackgroundDark)
+                        .background(hasSelectedDates ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

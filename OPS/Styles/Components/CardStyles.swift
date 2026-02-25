@@ -220,7 +220,7 @@ struct CardStyles_Previews: PreviewProvider {
                     OPSAccentCard {
                         VStack {
                             Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 24))
+                                .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                             
                             Text("Primary")
@@ -232,7 +232,7 @@ struct CardStyles_Previews: PreviewProvider {
                     OPSAccentCard(accentColor: OPSStyle.Colors.Statuses.success) {
                         VStack {
                             Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 24))
+                                .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                 .foregroundColor(OPSStyle.Colors.Statuses.success)
                             
                             Text("Success")
@@ -244,7 +244,7 @@ struct CardStyles_Previews: PreviewProvider {
                     OPSAccentCard(accentColor: OPSStyle.Colors.Statuses.error) {
                         VStack {
                             Image(systemName: "exclamationmark.circle.fill")
-                                .font(.system(size: 24))
+                                .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                 .foregroundColor(OPSStyle.Colors.Statuses.error)
                             
                             Text("Error")

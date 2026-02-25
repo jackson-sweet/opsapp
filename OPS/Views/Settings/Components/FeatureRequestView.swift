@@ -56,7 +56,7 @@ struct FeatureRequestView: View {
                                 
                                 TextField("E.g. Team Chat, Calendar Export", text: $featureTitle)
                                     .font(OPSStyle.Typography.body)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                                     .padding()
                                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -83,7 +83,7 @@ struct FeatureRequestView: View {
                                         
                                         TextEditor(text: $featureDescription)
                                             .font(OPSStyle.Typography.body)
-                                            .foregroundColor(.white)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
                                             .background(Color.clear)
                                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     }
@@ -124,7 +124,7 @@ struct FeatureRequestView: View {
                                     ? OPSStyle.Colors.primaryAccent.opacity(0.5)
                                     : OPSStyle.Colors.primaryAccent
                                 )
-                                .foregroundColor(.black)
+                                .foregroundColor(OPSStyle.Colors.invertedText)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                             .disabled(featureTitle.isEmpty || featureDescription.isEmpty || isSubmitting)

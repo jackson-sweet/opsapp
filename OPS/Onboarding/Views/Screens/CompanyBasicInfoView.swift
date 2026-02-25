@@ -134,11 +134,11 @@ struct CompanyNamePhaseView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("WHAT'S YOUR")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
 
                 Text("COMPANY NAME?")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.bottom, 12)
 
                 Text("Your crew will see this.")
@@ -183,11 +183,11 @@ struct CompanyLogoPhaseView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("ADD YOUR")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
 
                 Text("COMPANY LOGO")
                     .font(OPSStyle.Typography.largeTitle.weight(.bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.bottom, 12)
 
                 Text("Appears on projects. You can change this later.")

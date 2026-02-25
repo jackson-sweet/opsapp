@@ -346,7 +346,7 @@ struct InventoryFormSheet: View {
         }) {
             HStack(spacing: 4) {
                 Image(systemName: "plus")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                 Text(tag)
                     .font(OPSStyle.Typography.caption)
             }
@@ -543,46 +543,48 @@ struct InventoryFormSheet: View {
 
         // Look for existing tag with matching name (case-insensitive)
         if let existingTag = companyTags.first(where: { $0.name.lowercased() == trimmedName.lowercased() }) {
-            // Check if this tag has been synced to Bubble (Bubble IDs are long numeric strings)
-            let isBubbleId = existingTag.id.contains("x") || existingTag.id.count > 20
-
-            if isBubbleId && !existingTag.needsSync {
+            if !existingTag.needsSync {
                 print("[INVENTORY_FORM] 🏷️ Found existing synced tag: \(existingTag.name) (ID: \(existingTag.id))")
                 return existingTag
             } else {
-                // Tag exists locally but needs to be created in Bubble
-                print("[INVENTORY_FORM] 🏷️ Found local tag '\(existingTag.name)' - syncing to Bubble first...")
-                let dto = InventoryTagDTO(
-                    id: "",
-                    name: existingTag.name,
-                    warningThreshold: existingTag.warningThreshold,
-                    criticalThreshold: existingTag.criticalThreshold,
-                    company: companyId
-                )
-                let created = try await dataController.apiService.createTag(dto)
-                print("[INVENTORY_FORM] ✅ Tag synced with Bubble ID: \(created.id)")
-
-                // Update local tag with Bubble ID
-                await MainActor.run {
-                    existingTag.id = created.id
-                    existingTag.needsSync = false
-                    existingTag.lastSyncedAt = Date()
+                // Tag exists locally but needs remote sync — sync it now
+                print("[INVENTORY_FORM] 🏷️ Syncing local tag '\(existingTag.name)' to Supabase...")
+                if let repo = dataController.inventoryRepository {
+                    do {
+                        let dto = CreateInventoryTagDTO(
+                            companyId: companyId,
+                            name: trimmedName,
+                            warningThreshold: nil,
+                            criticalThreshold: nil
+                        )
+                        let created = try await repo.createTag(dto)
+                        await MainActor.run {
+                            existingTag.id = created.id
+                            existingTag.needsSync = false
+                            existingTag.lastSyncedAt = Date()
+                        }
+                        print("[INVENTORY_FORM] ✅ Tag synced with ID: \(created.id)")
+                    } catch {
+                        print("[INVENTORY_FORM] ❌ Failed to sync tag '\(trimmedName)': \(error)")
+                    }
                 }
                 return existingTag
             }
         }
 
-        // Create new tag in Bubble FIRST to get the real ID
-        print("[INVENTORY_FORM] 🏷️ Creating new tag in Bubble: \(trimmedName)")
-        let dto = InventoryTagDTO(
-            id: "", // Will be assigned by Bubble
+        // Create new tag in Supabase FIRST to get the real ID
+        print("[INVENTORY_FORM] 🏷️ Creating new tag: \(trimmedName)")
+        guard let repo = dataController.inventoryRepository else {
+            throw NSError(domain: "OPS", code: -1, userInfo: [NSLocalizedDescriptionKey: "No inventory repository available"])
+        }
+        let dto = CreateInventoryTagDTO(
+            companyId: companyId,
             name: trimmedName,
             warningThreshold: nil,
-            criticalThreshold: nil,
-            company: companyId
+            criticalThreshold: nil
         )
-        let created = try await dataController.apiService.createTag(dto)
-        print("[INVENTORY_FORM] ✅ Tag created with Bubble ID: \(created.id)")
+        let created = try await repo.createTag(dto)
+        print("[INVENTORY_FORM] ✅ Tag created with ID: \(created.id)")
 
         // Now create local tag with Bubble's ID
         let newTag = InventoryTag(
@@ -654,11 +656,25 @@ struct InventoryFormSheet: View {
                     // Apply tags FIRST (creates any new tags in Bubble and waits for IDs)
                     try await applyTagsToItem(existingItem, tagNames: parsedTags, companyId: companyId)
 
-                    // Now save with valid Bubble tag IDs
-                    let updates = InventoryItemDTO.dictionaryFrom(existingItem)
+                    // Now save with valid tag IDs
+                    guard let repo = dataController.inventoryRepository else {
+                        throw NSError(domain: "OPS", code: -1, userInfo: [NSLocalizedDescriptionKey: "No inventory repository available"])
+                    }
+                    let updates = UpdateInventoryItemDTO(
+                        name: existingItem.name,
+                        description: existingItem.itemDescription,
+                        quantity: existingItem.quantity,
+                        unitId: existingItem.unitId,
+                        sku: existingItem.sku,
+                        notes: existingItem.notes,
+                        warningThreshold: existingItem.warningThreshold,
+                        criticalThreshold: existingItem.criticalThreshold
+                    )
                     print("[INVENTORY_FORM] 📤 Saving item: \(existingItem.id)")
                     print("[INVENTORY_FORM] 📋 Tags: \(existingItem.tagIds)")
-                    try await dataController.apiService.updateInventoryItem(id: existingItem.id, updates: updates)
+                    _ = try await repo.updateItem(existingItem.id, fields: updates)
+                    // Sync tags via junction table
+                    try await repo.setItemTags(itemId: existingItem.id, tagIds: existingItem.tagIds)
                     await MainActor.run {
                         existingItem.needsSync = false
                         existingItem.lastSyncedAt = Date()
@@ -701,10 +717,26 @@ struct InventoryFormSheet: View {
                     // Apply tags FIRST (creates any new tags in Bubble and waits for IDs)
                     try await applyTagsToItem(newItem, tagNames: parsedTags, companyId: companyId)
 
-                    // Now create item with valid Bubble tag IDs
-                    let dto = InventoryItemDTO.from(newItem)
+                    // Now create item with valid tag IDs
+                    guard let repo = dataController.inventoryRepository else {
+                        throw NSError(domain: "OPS", code: -1, userInfo: [NSLocalizedDescriptionKey: "No inventory repository available"])
+                    }
+                    let createDTO = CreateInventoryItemDTO(
+                        companyId: companyId,
+                        name: newItem.name,
+                        description: newItem.itemDescription,
+                        quantity: newItem.quantity,
+                        unitId: newItem.unitId,
+                        sku: newItem.sku,
+                        notes: newItem.notes,
+                        imageUrl: nil,
+                        warningThreshold: newItem.warningThreshold,
+                        criticalThreshold: newItem.criticalThreshold
+                    )
                     print("[INVENTORY_FORM] 📤 Creating new item with tags: \(newItem.tagIds)")
-                    let createdDTO = try await dataController.apiService.createInventoryItem(dto)
+                    let createdDTO = try await repo.createItem(createDTO)
+                    // Sync tags via junction table
+                    try await repo.setItemTags(itemId: createdDTO.id, tagIds: newItem.tagIds)
 
                     await MainActor.run {
                         newItem.id = createdDTO.id
@@ -733,7 +765,10 @@ struct InventoryFormSheet: View {
 
         Task {
             do {
-                try await dataController.apiService.deleteInventoryItem(id: item.id)
+                guard let repo = dataController.inventoryRepository else {
+                    throw NSError(domain: "OPS", code: -1, userInfo: [NSLocalizedDescriptionKey: "No inventory repository available"])
+                }
+                try await repo.softDeleteItem(item.id)
                 await MainActor.run {
                     try? modelContext.save()
                     dismiss()

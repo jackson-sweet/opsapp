@@ -19,7 +19,7 @@ struct SettingsRow: View {
         HStack(spacing: 16) {
             // Icon
             Image(systemName: icon)
-                .font(.system(size: 24))
+                .font(.system(size: OPSStyle.Layout.IconSize.lg))
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(width: 30)
             
@@ -27,7 +27,7 @@ struct SettingsRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 
                 Text(subtitle)
                     .font(OPSStyle.Typography.caption)
@@ -40,7 +40,7 @@ struct SettingsRow: View {
             // Chevron
             if showChevron {
                 Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
         }

@@ -9,7 +9,7 @@ struct OPSButtonStyle {
         func makeBody(configuration: Configuration) -> some View {
             configuration.label
                 .textCase(.uppercase)
-                .foregroundColor(.black)
+                .foregroundColor(OPSStyle.Colors.invertedText)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
                 .background(
@@ -48,7 +48,7 @@ struct OPSButtonStyle {
         func makeBody(configuration: Configuration) -> some View {
             configuration.label
                 .textCase(.uppercase)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
                 .background(OPSStyle.Colors.Statuses.error.opacity(configuration.isPressed ? 0.8 : 1))

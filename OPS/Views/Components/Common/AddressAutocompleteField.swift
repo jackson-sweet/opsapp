@@ -68,7 +68,7 @@ struct AddressAutocompleteField: View {
                             .frame(width: 20, height: 20)
                     } else {
                         Image(systemName: "location.fill")
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                 }

@@ -445,7 +445,7 @@ struct PhasedPrimaryButton: View {
                         if let loadingText = loadingText {
                             Text(loadingText)
                                 .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(.black)
+                                .foregroundColor(OPSStyle.Colors.invertedText)
                         }
                     }
                     .opacity(containerVisible ? 1 : 0)
@@ -479,8 +479,8 @@ struct PhasedPrimaryButton: View {
 
                         // Arrow icon
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.black)
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.invertedText)
                             .opacity(iconVisible ? 1 : 0)
                             .offset(x: iconVisible ? 0 : -10)
                     }

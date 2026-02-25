@@ -146,7 +146,7 @@ struct OrganizationFullTeamView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         
                         TextField("Search team members", text: $searchText)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                             .autocapitalization(.none)
                             .disableAutocorrection(true)
                     }
@@ -164,7 +164,7 @@ struct OrganizationFullTeamView: View {
                                 // No team members at all
                                 // NOTE: person.3.sequence.fill does not have a semantic icon - using legacy
                                 Image(systemName: "person.3.sequence.fill")
-                                    .font(.system(size: 48))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.5))
                                 
                                 Text("No team members found")
@@ -173,7 +173,7 @@ struct OrganizationFullTeamView: View {
                             } else {
                                 // No search results
                                 Image(systemName: OPSStyle.Icons.search)
-                                    .font(.system(size: 48))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.5))
                                 
                                 Text("No team members matching '\(searchText)'")
@@ -186,7 +186,7 @@ struct OrganizationFullTeamView: View {
                                 .padding(.horizontal, 20)
                                 .padding(.vertical, 10)
                                 .background(OPSStyle.Colors.primaryAccent)
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             }
                             
@@ -238,7 +238,7 @@ struct TeamMemberCard: View {
             // Name
             Text(teamMember.fullName)
                 .font(OPSStyle.Typography.body)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .lineLimit(1)
                 .multilineTextAlignment(.center)
             

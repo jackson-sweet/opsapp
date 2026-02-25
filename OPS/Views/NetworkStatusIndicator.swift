@@ -23,7 +23,7 @@ struct NetworkStatusIndicator: View {
         HStack(spacing: 4) {
             // Connection icon
             Image(systemName: connectionIcon)
-                .font(.system(size: 12))
+                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                 .foregroundColor(connectionColor)
                 .opacity(isAnimating ? 0.5 : 1.0)
                 .animation(

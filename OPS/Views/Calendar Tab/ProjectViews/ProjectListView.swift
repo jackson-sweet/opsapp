@@ -99,7 +99,7 @@ struct ProjectListView: View {
                     // Total event count number (new + ongoing)
                     Text("\(viewModel.scheduledTasksForSelectedDate.count)")
                         .font(OPSStyle.Typography.cardTitle)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 .frame(width: 40, height: 40)
                 .segmentedEventBorder(

@@ -39,7 +39,7 @@ struct MapControlsView: View {
                             
                             // Use different icon based on navigation state
                             Image(systemName: coordinator.isNavigating ? "point.topleft.down.to.point.bottomright.filled.curvepath" : "map.fill")
-                                .font(.system(size: coordinator.isNavigating ? 18 : 20, weight: .medium))
+                                .font(.system(size: coordinator.isNavigating ? OPSStyle.Layout.IconSize.md : OPSStyle.Layout.IconSize.md, weight: .medium))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
                     }
@@ -61,7 +61,7 @@ struct MapControlsView: View {
                             .clipShape(Circle())
                         
                         Image(systemName: "location.fill")
-                            .font(.system(size: 20, weight: .medium))
+                            .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                             .foregroundColor(locationButtonColor)
                     }
                 }
@@ -83,7 +83,7 @@ struct MapControlsView: View {
                                     .clipShape(Circle())
                                 
                                 Image(systemName: coordinator.mapOrientationMode == "north" ? "location.north.line" : "location")
-                                    .font(.system(size: 20, weight: .medium))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                                     .foregroundColor(orientationButtonColor)
                             }
                         }

@@ -224,7 +224,7 @@ struct IndustryPhaseView: View {
             Button(action: onContinue) {
                 Text("CONTINUE")
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.black)
+                    .foregroundColor(OPSStyle.Colors.invertedText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(selectedIndustry != nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
@@ -306,7 +306,7 @@ struct SizePhaseView: View {
             Button(action: onContinue) {
                 Text("CONTINUE")
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.black)
+                    .foregroundColor(OPSStyle.Colors.invertedText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(selectedSize != nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
@@ -403,7 +403,7 @@ struct AgePhaseView: View {
                             .scaleEffect(0.8)
                         Text("Creating company...")
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.black)
+                            .foregroundColor(OPSStyle.Colors.invertedText)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
@@ -412,7 +412,7 @@ struct AgePhaseView: View {
                 } else {
                     Text("CONTINUE")
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.black)
+                        .foregroundColor(OPSStyle.Colors.invertedText)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                         .background(selectedAge != nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)

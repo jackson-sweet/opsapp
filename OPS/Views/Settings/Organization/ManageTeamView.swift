@@ -86,7 +86,7 @@ struct ManageTeamView: View {
                             if let error = errorMessage {
                                 HStack(spacing: 8) {
                                     Image(systemName: "exclamationmark.triangle.fill")
-                                        .font(.system(size: 14))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.errorStatus)
 
                                     Text(error)
@@ -106,7 +106,7 @@ struct ManageTeamView: View {
                                     HStack {
                                         HStack(spacing: 6) {
                                             Image(systemName: "person.3.fill")
-                                                .font(.system(size: 12))
+                                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                             Text("TEAM MEMBERS")
                                                 .font(OPSStyle.Typography.captionBold)
@@ -119,7 +119,7 @@ struct ManageTeamView: View {
                                             Button(action: { showSeatManagement = true }) {
                                                 HStack(spacing: 4) {
                                                     Image(systemName: "person.crop.rectangle.stack")
-                                                        .font(.system(size: 10))
+                                                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                                     Text("ASSIGN SEATS")
                                                         .font(OPSStyle.Typography.smallCaption)
                                                 }
@@ -155,7 +155,7 @@ struct ManageTeamView: View {
                                 Button(action: { showInviteSheet = true }) {
                                     HStack {
                                         Image(systemName: "person.badge.plus")
-                                            .font(.system(size: 14))
+                                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                             .foregroundColor(OPSStyle.Colors.primaryText)
 
                                         Text("ADD TEAM MEMBERS")
@@ -342,7 +342,7 @@ struct ManageTeamView: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
@@ -351,7 +351,7 @@ struct ManageTeamView: View {
 
                 // Chevron indicator for navigation
                 Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.vertical, 12)
@@ -529,7 +529,7 @@ struct TeamInviteSheet: View {
                                             }) {
                                                 Image(systemName: "minus.circle.fill")
                                                     .foregroundColor(OPSStyle.Colors.errorStatus)
-                                                    .font(.system(size: 18))
+                                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                                             }
                                         }
                                     }
@@ -613,7 +613,7 @@ struct TeamInviteSheet: View {
                         if let error = errorMessage {
                             HStack(spacing: 8) {
                                 Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
 
                                 Text(error)
@@ -819,7 +819,7 @@ struct EditTeamMemberSheet: View {
                         // Info text
                         HStack(spacing: 8) {
                             Image(systemName: "info.circle")
-                                .font(.system(size: 14))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                             Text("Admin status is managed separately through company settings.")
@@ -869,7 +869,7 @@ struct EditTeamMemberSheet: View {
         }) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: selectedRole == role ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(selectedRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
 
                 VStack(alignment: .leading, spacing: 4) {

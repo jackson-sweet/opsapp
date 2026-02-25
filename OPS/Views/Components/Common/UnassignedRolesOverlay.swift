@@ -75,7 +75,7 @@ struct UnassignedRolesOverlay: View {
                 if let error = errorMessage {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 12))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                         Text(error.uppercased())
                             .font(OPSStyle.Typography.smallCaption)
@@ -108,7 +108,7 @@ struct UnassignedRolesOverlay: View {
             Spacer()
 
             Image(systemName: "person.badge.plus")
-                .font(.system(size: 20))
+                .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(.horizontal, 24)
@@ -144,7 +144,7 @@ struct UnassignedRolesOverlay: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
 
                         Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                 } else {
@@ -154,7 +154,7 @@ struct UnassignedRolesOverlay: View {
                 }
 
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.vertical, 16)
@@ -223,7 +223,7 @@ struct UnassignedRolesOverlay: View {
             HStack(alignment: .top, spacing: 12) {
                 // Selection indicator
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 18))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -270,7 +270,7 @@ struct UnassignedRolesOverlay: View {
                     Text(isSaving ? "SAVING..." : "SAVE ROLES")
                         .font(OPSStyle.Typography.captionBold)
                 }
-                .foregroundColor(.black)
+                .foregroundColor(OPSStyle.Colors.invertedText)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(allRolesAssigned ? OPSStyle.Colors.primaryText : OPSStyle.Colors.pinDotNeutral)

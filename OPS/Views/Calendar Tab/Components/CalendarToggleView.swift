@@ -124,7 +124,7 @@ struct CalendarToggleView: View {
             }) {
                 Text(periodString)
                     .font(OPSStyle.Typography.bodyBold) // Match the font used in SegmentedControl
-                    .foregroundColor(.black)
+                    .foregroundColor(OPSStyle.Colors.invertedText)
                     .frame(width: 100) // Fixed width to accommodate "September" and week ranges
                     .padding(.vertical, 12) // Match the padding in SegmentedControl
                     .background(OPSStyle.Colors.primaryText)

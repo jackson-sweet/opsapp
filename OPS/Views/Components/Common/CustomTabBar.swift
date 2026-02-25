@@ -42,7 +42,7 @@ struct CustomTabBar: View {
                     Rectangle()
                         .fill(OPSStyle.Colors.primaryAccent)
                         .frame(width: iconWidth, height: 3)
-                        .cornerRadius(1.5)
+                        .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                         .offset(x: selectedIndicatorOffset)
                         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: selectedIndicatorOffset)
 
@@ -150,7 +150,7 @@ struct TabBarItem: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: tab.iconName)
-                    .font(.system(size: 28, weight: .medium))
+                    .font(.system(size: OPSStyle.Layout.tabBarIconSize, weight: .medium))
                     .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
                 
                 if let title = tab.title {

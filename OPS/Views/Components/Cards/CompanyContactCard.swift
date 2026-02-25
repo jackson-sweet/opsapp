@@ -54,7 +54,7 @@ struct CompanyContactCard: View {
                 if showTeamCount {
                     HStack(spacing: 4) {
                         Image(systemName: "person.2")
-                            .font(.system(size: 11))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Text("\(teamMemberCount) TEAM MEMBER\(teamMemberCount == 1 ? "" : "S")")
                             .font(OPSStyle.Typography.smallCaption)
@@ -80,7 +80,7 @@ struct CompanyContactCard: View {
     private func contactRow(icon: String, text: String, isEmpty: Bool = false) -> some View {
         HStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 11))
+                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                 .foregroundColor(isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.secondaryText)
             Text(text)
                 .font(OPSStyle.Typography.smallCaption)
@@ -131,7 +131,7 @@ struct CompanyContactCard: View {
                 .overlay(
                     Text(String(name.prefix(1)).uppercased())
                         .font(.custom("Mohave-Bold", size: logoSize * 0.4))
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 )
         } else {
             logoPlaceholder

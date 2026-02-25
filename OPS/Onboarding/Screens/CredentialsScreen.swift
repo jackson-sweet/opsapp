@@ -70,7 +70,7 @@ struct CredentialsScreen: View {
 
                         if !email.isEmpty {
                             Image(systemName: isEmailValid ? "checkmark" : "xmark")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                                 .foregroundColor(isEmailValid ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
                         }
                     }
@@ -112,14 +112,14 @@ struct CredentialsScreen: View {
                             showPassword.toggle()
                         } label: {
                             Image(systemName: showPassword ? "eye.slash" : "eye")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
 
                         // Validation indicator
                         if !password.isEmpty {
                             Image(systemName: isPasswordValid ? "checkmark" : "xmark")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                                 .foregroundColor(isPasswordValid ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
                         }
                     }
@@ -161,7 +161,7 @@ struct CredentialsScreen: View {
                             Spacer()
 
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         }
                         .padding(.horizontal, 20)
                     }
@@ -169,7 +169,7 @@ struct CredentialsScreen: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
                 .background(isFormValid ? Color.white : OPSStyle.Colors.primaryText.opacity(0.5))
-                .foregroundColor(.black)
+                .foregroundColor(OPSStyle.Colors.invertedText)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .disabled(!isFormValid || isSigningUp || isSocialSignIn)
                 .padding(.bottom, 8)

@@ -21,7 +21,7 @@ struct TeamRoleManagementView: View {
             HStack(spacing: 12) {
                 // NOTE: person.2.badge.gearshape does not have a semantic icon - using legacy
                 Image(systemName: "person.2.badge.gearshape")
-                    .font(.system(size: 20))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(width: 32)
 
@@ -38,7 +38,7 @@ struct TeamRoleManagementView: View {
                 Spacer()
 
                 Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(16)
@@ -99,7 +99,7 @@ struct TeamRoleManagementSheet: View {
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
                             TextField("Search team members", text: $searchText)
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
                         }
@@ -169,11 +169,11 @@ struct TeamRoleManagementSheet: View {
                                     }) {
                                         if isSaving {
                                             ProgressView()
-                                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
                                         } else {
                                             Text("Save \(roleChanges.count) Change\(roleChanges.count == 1 ? "" : "s")")
                                                 .font(OPSStyle.Typography.bodyBold)
-                                                .foregroundColor(.white)
+                                                .foregroundColor(OPSStyle.Colors.primaryText)
                                         }
                                     }
                                     .frame(maxWidth: .infinity)
@@ -230,7 +230,7 @@ struct TeamRoleManagementSheet: View {
     private var emptySearchView: some View {
         VStack(spacing: 16) {
             Image(systemName: OPSStyle.Icons.search)
-                .font(.system(size: 48))
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             Text("No team members matching '\(searchText)'")
@@ -343,7 +343,7 @@ struct TeamMemberRoleEditRow: View {
 
                     HStack(spacing: 6) {
                         Image(systemName: iconForRole(currentRole))
-                            .font(.system(size: 12))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(hasChanged ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
 
                         Text(currentRole.displayName)
@@ -362,7 +362,7 @@ struct TeamMemberRoleEditRow: View {
 
                 // Chevron
                 Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(12)
@@ -457,7 +457,7 @@ struct RolePickerSheet: View {
         }) {
             HStack(spacing: 16) {
                 Image(systemName: iconForRole(role))
-                    .font(.system(size: 24))
+                    .font(.system(size: OPSStyle.Layout.IconSize.lg))
                     .foregroundColor(currentRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
                     .frame(width: 40)
 
@@ -475,7 +475,7 @@ struct RolePickerSheet: View {
 
                 if currentRole == role {
                     Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
-                        .font(.system(size: 24))
+                        .font(.system(size: OPSStyle.Layout.IconSize.lg))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
             }

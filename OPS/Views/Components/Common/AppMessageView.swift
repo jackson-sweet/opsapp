@@ -63,7 +63,7 @@ struct AppMessageView: View {
                     // Header with icon inline
                     HStack(spacing: 10) {
                         Image(systemName: messageType.iconName)
-                            .font(.system(size: 14, weight: .regular))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(accentColor)
 
                         if let title = message.title, !title.isEmpty {

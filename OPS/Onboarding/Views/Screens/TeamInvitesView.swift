@@ -115,7 +115,7 @@ struct TeamInvitesView: View {
                             Button(action: addEmailField) {
                                 HStack {
                                     Image(systemName: "plus.circle.fill")
-                                        .font(.system(size: 24))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                                     Text("Add email")
@@ -168,7 +168,7 @@ struct TeamInvitesView: View {
                         
                         Text("Sending invitations...")
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)

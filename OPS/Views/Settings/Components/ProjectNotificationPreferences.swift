@@ -16,7 +16,7 @@ struct ProjectNotificationPreferences: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Project Notifications")
                 .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
             
             VStack(spacing: 12) {
                 NotificationToggleItem(
@@ -65,7 +65,7 @@ struct AdvanceNoticePreferences: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Advance Project Notices")
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                     
                     Text("Reminders before project start dates")
                         .font(OPSStyle.Typography.smallCaption)
@@ -130,7 +130,7 @@ struct AdvanceNoticePreferences: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(OPSStyle.Colors.cardBackground.opacity(0.6))
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 
                 Image(systemName: OPSStyle.Icons.chevronDown)
@@ -152,8 +152,8 @@ struct NotificationToggleItem: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
-                
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
                 Text(description)
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)

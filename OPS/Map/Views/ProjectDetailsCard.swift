@@ -40,7 +40,7 @@ struct ProjectDetailsCard: View {
                     coordinator.showingProjectDetails = false
                 }) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22))
+                        .font(.system(size: OPSStyle.Layout.IconSize.lg))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
                 .padding(.trailing, 16)
@@ -91,7 +91,7 @@ struct ProjectDetailsCard: View {
                 // Address
                 HStack(spacing: 8) {
                     Image(systemName: "mappin.circle.fill")
-                        .font(.system(size: 16))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
                     Text(project.address ?? "No address")
@@ -106,7 +106,7 @@ struct ProjectDetailsCard: View {
                     let distance = userLocation.distance(from: CLLocation(latitude: projectCoordinate.latitude, longitude: projectCoordinate.longitude))
                     HStack(spacing: 8) {
                         Image(systemName: "location.fill")
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
                         Text(formatDistance(distance))
@@ -122,16 +122,16 @@ struct ProjectDetailsCard: View {
                         HStack {
                             if isStarting {
                                 ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .black))
+                                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
                                     .scaleEffect(0.8)
                             } else {
                                 Image(systemName: "play.circle.fill")
-                                    .font(.system(size: 16))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             }
                             Text("START")
                                 .font(OPSStyle.Typography.button)
                         }
-                        .foregroundColor(.black)
+                        .foregroundColor(OPSStyle.Colors.invertedText)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
                         .background(OPSStyle.Colors.primaryText)
@@ -168,7 +168,7 @@ struct ProjectDetailsCard: View {
                     // View details button
                     HStack {
                         Image(systemName: "info.circle.fill")
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("DETAILS")
                             .font(OPSStyle.Typography.button)
                     }

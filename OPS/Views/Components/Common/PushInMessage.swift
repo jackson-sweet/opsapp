@@ -110,7 +110,7 @@ struct PushInMessage: View {
         HStack(spacing: 12) {
             // Status icon
             Image(systemName: type.icon)
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(type.color)
                 .frame(width: 32, height: 32)
 
@@ -136,7 +136,7 @@ struct PushInMessage: View {
                     dismissMessage()
                 }) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .frame(width: 24, height: 24)
                         .background(

@@ -96,7 +96,7 @@ struct ProfileCompanyScreen: View {
             .frame(maxWidth: .infinity)
             .frame(height: 56)
             .background(isFormValid ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.5))
-            .foregroundColor(.black)
+            .foregroundColor(OPSStyle.Colors.invertedText)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .disabled(!isFormValid)
         }
@@ -134,7 +134,7 @@ struct ProfileCompanyScreen: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Profile Photo")
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                     Text("Optional")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -235,7 +235,7 @@ struct ProfileCompanyScreen: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Company Logo")
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                     Text("Optional")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -260,12 +260,12 @@ struct ProfileCompanyScreen: View {
                 HStack {
                     Text(selectedIndustry?.displayName ?? "Select industry")
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(selectedIndustry != nil ? .white : OPSStyle.Colors.tertiaryText)
+                        .foregroundColor(selectedIndustry != nil ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
 
                     Spacer()
 
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
                 .padding()
@@ -298,7 +298,7 @@ struct ProfileCompanyScreen: View {
 
                 Text(manager.state.hasExistingCompany ? "Updating your company..." : "Creating your company...")
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
             }
 
             Spacer()
@@ -318,7 +318,7 @@ struct ProfileCompanyScreen: View {
             VStack(spacing: 32) {
                 // Success icon
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 64))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                     .foregroundColor(OPSStyle.Colors.successStatus)
 
                 // Company code display
@@ -352,7 +352,7 @@ struct ProfileCompanyScreen: View {
             .frame(maxWidth: .infinity)
             .frame(height: 56)
             .background(OPSStyle.Colors.primaryAccent)
-            .foregroundColor(.black)
+            .foregroundColor(OPSStyle.Colors.invertedText)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
     }

@@ -62,7 +62,7 @@ struct ExpandableNotesView: View {
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
                             .background(OPSStyle.Colors.primaryAccent)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                 }
@@ -85,7 +85,7 @@ struct ExpandableNotesView: View {
                             }
                         }) {
                             Image(systemName: "square.and.pencil")
-                                .font(.system(size: 16))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                     }
@@ -115,7 +115,7 @@ struct ExpandableNotesView: View {
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 6)
                                         .background(OPSStyle.Colors.primaryAccent)
-                                        .foregroundColor(.white)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
                                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 }
                             }
@@ -159,7 +159,7 @@ struct ExpandableNotesView: View {
                                         }
                                     }) {
                                         Image(systemName: "square.and.pencil")
-                                            .font(.system(size: 24))
+                                            .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     }
                                 }

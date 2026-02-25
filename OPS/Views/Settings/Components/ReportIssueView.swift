@@ -55,7 +55,7 @@ struct ReportIssueView: View {
                                 
                                 TextField("E.g. App crashes when uploading photos", text: $issueTitle)
                                     .font(OPSStyle.Typography.body)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                                     .padding()
                                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
                                     .cornerRadius(OPSStyle.Layout.largeCornerRadius)
@@ -80,7 +80,7 @@ struct ReportIssueView: View {
                                         
                                         TextEditor(text: $issueDescription)
                                             .font(OPSStyle.Typography.body)
-                                            .foregroundColor(.white)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
                                             .background(Color.clear)
                                             .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                                     }
@@ -122,7 +122,7 @@ struct ReportIssueView: View {
                                     ? OPSStyle.Colors.primaryAccent.opacity(0.5)
                                     : OPSStyle.Colors.primaryAccent
                                 )
-                                .foregroundColor(.black)
+                                .foregroundColor(OPSStyle.Colors.invertedText)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                             .disabled(issueTitle.isEmpty || issueDescription.isEmpty || isSubmitting)

@@ -28,7 +28,7 @@ struct NavigationBanner: View {
                         Text(distance)
                             .font(OPSStyle.Typography.subtitle)
                             .fontWeight(.bold)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                         
                         Spacer()
                         
@@ -41,7 +41,7 @@ struct NavigationBanner: View {
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
                                     .background(OPSStyle.Colors.errorStatus)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                             }
                         }
@@ -49,7 +49,7 @@ struct NavigationBanner: View {
                     
                     Text(instruction)
                         .font(OPSStyle.Typography.subtitle)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
                 }
             }
@@ -102,8 +102,8 @@ struct NavigationBanner: View {
         }
         
         return Image(systemName: imageName)
-            .font(.system(size: 24, weight: .bold))
-            .foregroundColor(.white)
+            .font(.system(size: OPSStyle.Layout.IconSize.lg))
+            .foregroundColor(OPSStyle.Colors.primaryText)
     }
 }
 

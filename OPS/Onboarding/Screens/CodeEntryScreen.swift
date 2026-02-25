@@ -183,7 +183,7 @@ struct PhasedHelpButton: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "questionmark.circle")
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text("Where is my code?")
                     .font(OPSStyle.Typography.caption)
             }

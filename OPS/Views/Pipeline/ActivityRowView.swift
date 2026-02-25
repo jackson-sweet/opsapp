@@ -28,7 +28,7 @@ struct ActivityRowView: View {
     var body: some View {
         HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
             Image(systemName: activity.type.icon)
-                .font(.system(size: 14))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(isSystemGenerated ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.secondaryText)
                 .frame(width: 20)
 

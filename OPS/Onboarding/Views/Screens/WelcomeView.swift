@@ -98,7 +98,7 @@ struct WelcomeView: View {
                     }) {
                         Text("GET STARTED")
                             .font(OPSStyle.Typography.button)
-                            .foregroundColor(.black)
+                            .foregroundColor(OPSStyle.Colors.invertedText)
                             .frame(maxWidth: .infinity)
                             .frame(height: OPSStyle.Layout.touchTargetStandard)
                             .background(OPSStyle.Colors.primaryText)
@@ -107,7 +107,7 @@ struct WelcomeView: View {
                                 HStack {
                                     Spacer()
                                     Image(systemName: "arrow.right")
-                                        .foregroundColor(.black)
+                                        .foregroundColor(OPSStyle.Colors.invertedText)
                                         .font(OPSStyle.Typography.caption.weight(.semibold))
                                         .padding(.trailing, 20)
                                 }
@@ -322,7 +322,7 @@ struct SignupAppleButton: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
                 } else {
                     Image(systemName: "apple.logo")
-                        .font(.system(size: 18, weight: .medium))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.primaryText)
 
                     Text("Continue with Apple")

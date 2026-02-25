@@ -167,7 +167,7 @@ struct SubClientEditSheet: View {
                         }) {
                             HStack(spacing: 8) {
                                 Image(systemName: OPSStyle.Icons.addContact)
-                                    .font(.system(size: 18))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 Text("Import from Contacts")
                                     .font(OPSStyle.Typography.button)
                             }
@@ -357,7 +357,7 @@ struct SubClientEditSheet: View {
                     if !viewModel.address.isEmpty {
                         HStack(spacing: 4) {
                             Image(systemName: "mappin.circle")
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text(viewModel.address.components(separatedBy: ",").first ?? viewModel.address)
                                 .font(OPSStyle.Typography.smallCaption)
@@ -367,7 +367,7 @@ struct SubClientEditSheet: View {
                     } else if !viewModel.title.isEmpty {
                         HStack(spacing: 4) {
                             Image(systemName: "briefcase")
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text(viewModel.title)
                                 .font(OPSStyle.Typography.smallCaption)

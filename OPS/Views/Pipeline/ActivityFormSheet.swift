@@ -33,7 +33,7 @@ struct ActivityFormSheet: View {
                                 } label: {
                                     HStack(spacing: 6) {
                                         Image(systemName: type.icon)
-                                            .font(.system(size: 14))
+                                            .font(OPSStyle.Typography.caption)
                                         Text(type.rawValue.uppercased().replacingOccurrences(of: "_", with: " "))
                                             .font(OPSStyle.Typography.smallCaption)
                                             .fontWeight(.medium)
@@ -48,7 +48,7 @@ struct ActivityFormSheet: View {
                                     .background(
                                         selectedType == type
                                         ? OPSStyle.Colors.primaryAccent.opacity(0.2)
-                                        : OPSStyle.Colors.cardBackgroundDark.opacity(0.6)
+                                        : OPSStyle.Colors.cardBackgroundDark
                                     )
                                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                     .overlay(
@@ -75,7 +75,7 @@ struct ActivityFormSheet: View {
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: 120)
                         .padding(OPSStyle.Layout.spacing2)
-                        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                        .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)

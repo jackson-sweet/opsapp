@@ -59,7 +59,7 @@ struct OptionalSectionPill: View {
             HStack(spacing: 6) {
                 if let icon = icon {
                     Image(systemName: icon)
-                        .font(.system(size: 12))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(textColor)
                         .opacity(textOpacity)
                         .animation(isHighlighted ? .easeInOut(duration: 1.2).repeatForever(autoreverses: true) : .default, value: isHighlighted)

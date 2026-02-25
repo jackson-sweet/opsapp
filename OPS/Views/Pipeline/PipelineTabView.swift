@@ -20,40 +20,16 @@ struct PipelineTabView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Segmented control header
-                HStack(spacing: 0) {
-                    ForEach(PipelineSection.allCases, id: \.self) { section in
-                        Button(action: { selectedSection = section }) {
-                            VStack(spacing: 4) {
-                                Text(section.rawValue)
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .fontWeight(selectedSection == section ? .semibold : .regular)
-                                    .foregroundColor(
-                                        selectedSection == section
-                                        ? OPSStyle.Colors.primaryText
-                                        : OPSStyle.Colors.tertiaryText
-                                    )
-                                Rectangle()
-                                    .frame(height: 2)
-                                    .foregroundColor(
-                                        selectedSection == section
-                                        ? OPSStyle.Colors.primaryAccent
-                                        : Color.clear
-                                    )
-                            }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: OPSStyle.Layout.touchTargetStandard)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-                .background(OPSStyle.Colors.background)
-                .overlay(
-                    Rectangle()
-                        .frame(height: 0.5)
-                        .foregroundColor(OPSStyle.Colors.separator),
-                    alignment: .bottom
-                )
+                AppHeader(headerType: .pipeline)
+
+                SegmentedControl(selection: $selectedSection, options: [
+                    (.pipeline, "PIPELINE"),
+                    (.estimates, "ESTIMATES"),
+                    (.invoices, "INVOICES"),
+                    (.accounting, "ACCOUNTING")
+                ])
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
 
                 // Content
                 Group {

@@ -259,7 +259,7 @@ struct TaskTypeSheet: View {
         VStack(spacing: 8) {
             HStack(spacing: 12) {
                 Image(systemName: taskTypeIcon)
-                    .font(.system(size: 28))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xl))
                     .foregroundColor(taskTypeColor)
                     .frame(width: 56, height: 56)
                     .background(
@@ -406,11 +406,10 @@ struct TaskTypeSheet: View {
 
         Task {
             do {
-                // TODO: Implement syncManager.createTaskType() — for now, save locally and trigger sync
                 let newTaskTypeId = UUID().uuidString
 
-                // Create locally with generated ID
-                await MainActor.run {
+                // Create locally first
+                let newTaskType = await MainActor.run {
                     let newTaskType = TaskType(
                         id: newTaskTypeId,
                         display: taskTypeName,
@@ -420,38 +419,44 @@ struct TaskTypeSheet: View {
                         icon: taskTypeIcon
                     )
                     newTaskType.needsSync = true
-
-                    print("[TASK_TYPE_SHEET] 💾 Saving to local database...")
                     modelContext.insert(newTaskType)
+                    try? modelContext.save()
+                    print("[TASK_TYPE_SHEET] 💾 Saved locally")
+                    return newTaskType
+                }
 
-                    do {
-                        try modelContext.save()
-                        print("[TASK_TYPE_SHEET] ✅ Local save successful")
-                        print("[TASK_TYPE_SHEET] 🎉 Task type created: \(newTaskTypeId)")
+                // Sync to Supabase
+                if let syncManager = dataController.syncManager {
+                    let dto = SupabaseTaskTypeDTO(
+                        id: newTaskTypeId,
+                        bubbleId: nil,
+                        companyId: companyId,
+                        display: taskTypeName,
+                        color: taskTypeColorHex,
+                        icon: taskTypeIcon,
+                        isDefault: false,
+                        displayOrder: nil,
+                        deletedAt: nil
+                    )
+                    let _ = try await syncManager.createTaskType(dto: dto)
+                    print("[TASK_TYPE_SHEET] ✅ Task type synced to Supabase")
+                    await MainActor.run {
+                        newTaskType.needsSync = false
+                        newTaskType.lastSyncedAt = Date()
+                        try? modelContext.save()
+                    }
+                }
 
-                        // Trigger background sync
-                        dataController.syncManager?.triggerBackgroundSync()
+                await MainActor.run {
+                    print("[TASK_TYPE_SHEET] 🎉 Task type created: \(newTaskTypeId)")
 
-                        // Success haptic feedback
-                        let generator = UINotificationFeedbackGenerator()
-                        generator.notificationOccurred(.success)
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
 
-                        onSave(newTaskType)
+                    onSave(newTaskType)
 
-                        // Brief delay for graceful dismissal
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            dismiss()
-                        }
-                    } catch {
-                        print("[TASK_TYPE_SHEET] ❌ Local save failed: \(error)")
-
-                        // Error haptic feedback
-                        let generator = UINotificationFeedbackGenerator()
-                        generator.notificationOccurred(.error)
-
-                        errorMessage = error.localizedDescription
-                        showingError = true
-                        isSaving = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        dismiss()
                     }
                 }
             } catch {
@@ -522,7 +527,7 @@ struct IconOption: View {
         Button(action: action) {
             ZStack {
                 Image(systemName: icon)
-                    .font(.system(size: 20))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(isSelected ? color : OPSStyle.Colors.secondaryText)
                     .opacity(isInUse && !isSelected ? 0.3 : 1.0)
                     .frame(width: 44, height: 44)
@@ -543,7 +548,7 @@ struct IconOption: View {
                         HStack {
                             Spacer()
                             Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 16))
+                                .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .background(
                                     Circle()
@@ -595,7 +600,7 @@ struct ColorOption: View {
                         HStack {
                             Spacer()
                             Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 14))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .background(
                                     Circle()

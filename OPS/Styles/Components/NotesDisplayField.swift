@@ -199,7 +199,7 @@ struct NotesDisplayField: View {
                             .padding(.horizontal, 16)
                             .padding(.vertical, 6)
                             .background(OPSStyle.Colors.primaryAccent)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                 }
@@ -247,7 +247,7 @@ struct NotesDisplayField: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                         .background(OPSStyle.Colors.primaryAccent)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
             }

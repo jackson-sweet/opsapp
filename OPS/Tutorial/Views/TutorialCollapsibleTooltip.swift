@@ -53,7 +53,7 @@ struct TutorialCollapsibleTooltip: View {
                 HStack(spacing: 12) {
                     // Tutorial icon - changes to alert icon in error state
                     Image(systemName: iconName)
-                        .font(.system(size: isExpanded ? 18 : 16))
+                        .font(.system(size: isExpanded ? OPSStyle.Layout.IconSize.md : OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(accentColor)
 
                     if isExpanded {
@@ -89,7 +89,7 @@ struct TutorialCollapsibleTooltip: View {
 
                         // Expand indicator
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                 }
@@ -226,7 +226,7 @@ struct TutorialCollapsibleTooltip_Previews: PreviewProvider {
                         .background(OPSStyle.Colors.primaryAccent)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.bottom, 40)
                 }
             }

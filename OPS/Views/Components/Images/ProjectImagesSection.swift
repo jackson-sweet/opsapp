@@ -47,8 +47,8 @@ struct ProjectImagesSection: View {
                 
                 Button(action: { selectedImageURL = nil }) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 30))
-                        .foregroundColor(.white)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xl))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(20)
                 }
             }
@@ -59,7 +59,7 @@ struct ProjectImagesSection: View {
     private var emptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Image(systemName: OPSStyle.Icons.photo)
-                .font(.system(size: 32))
+                .font(.system(size: OPSStyle.Layout.IconSize.xl))
                 .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
 
             Text("No photos added yet")
@@ -76,7 +76,7 @@ struct ProjectImagesSection: View {
     private var unsyncedImagesMessage: some View {
         HStack {
             Image(systemName: "icloud.slash")
-                .foregroundColor(.red)
+                .foregroundColor(OPSStyle.Colors.errorStatus)
             
             Text("Some images are not synced. They will be uploaded when network is available.")
                 .font(OPSStyle.Typography.caption)

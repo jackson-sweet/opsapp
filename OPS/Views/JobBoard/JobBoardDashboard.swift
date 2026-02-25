@@ -175,11 +175,11 @@ struct JobBoardDashboard: View {
                         Spacer()
                         HStack(spacing: 8) {
                             Image(systemName: "arrow.right.circle.fill")
-                                .font(.system(size: 20, weight: .bold))
+                                .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .bold))
                             Text("WRONG WAY! DRAG RIGHT TOWARDS ACCEPTED")
                                 .font(OPSStyle.Typography.captionBold)
                         }
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 14)
                         .background(
@@ -199,11 +199,11 @@ struct JobBoardDashboard: View {
                     VStack {
                         HStack(spacing: 8) {
                             Image(systemName: "hand.point.up.left.fill")
-                                .font(.system(size: 18, weight: .semibold))
+                                .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                             Text("STAY HERE TO COMPLETE THIS STEP")
                                 .font(OPSStyle.Typography.captionBold)
                         }
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 14)
                         .background(
@@ -274,7 +274,7 @@ struct JobBoardDashboard: View {
                     Spacer()
 
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                         .foregroundColor(color.opacity(isActive ? 1.0 : 0.6))
                         .padding(12)
 
@@ -325,7 +325,7 @@ struct JobBoardDashboard: View {
                     Spacer()
 
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                         .foregroundColor(color.opacity(isActive ? 1.0 : 0.6))
                         .padding(12)
 
@@ -405,7 +405,7 @@ struct JobBoardDashboard: View {
                 HStack(spacing: 8) {
                     ForEach(0..<3, id: \.self) { index in
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 32, weight: .bold))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xl, weight: .bold))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .opacity(index < illuminatedArrowCount ? 1.0 : 0.2)
                             .scaleEffect(index < illuminatedArrowCount ? 1.2 : 1.0)
@@ -419,7 +419,7 @@ struct JobBoardDashboard: View {
             } else {
                 // Before drag: show press and hold instruction
                 Image(systemName: "hand.tap.fill")
-                    .font(.system(size: 32, weight: .medium))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xl, weight: .medium))
                     .foregroundColor(emphasisPressHold ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent)
                     .offset(x: tutorialArrowOffset)
                     .scaleEffect(emphasisPressHold ? 1.3 : 1.0)
@@ -464,7 +464,7 @@ struct JobBoardDashboard: View {
 
                 HStack(spacing: 12) {
                     Image(systemName: "archivebox.fill")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.inactiveStatus.opacity(isActive ? 1.0 : 0.6))
 
                     Text("ARCHIVE")
@@ -897,7 +897,7 @@ struct StatusColumn: View {
     private var emptyState: some View {
         VStack(spacing: 8) {
             Image(systemName: "folder")
-                .font(.system(size: 28))
+                .font(.system(size: OPSStyle.Layout.IconSize.xl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             Text("No Projects")
@@ -1067,7 +1067,7 @@ struct DirectionalDragCard: View {
         HStack(spacing: 4) {
             if let startDate = project.startDate {
                 Image(systemName: OPSStyle.Icons.calendar)
-                    .font(.system(size: 10))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                 Text(DateHelper.fullDateString(from: startDate))
                     .font(OPSStyle.Typography.smallCaption)
             }
@@ -1080,7 +1080,7 @@ struct DirectionalDragCard: View {
             if !project.teamMembers.isEmpty {
                 HStack(spacing: 4) {
                     Image(systemName: OPSStyle.Icons.personTwo)
-                        .font(.system(size: 10))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     Text("\(project.teamMembers.count)")
                         .font(OPSStyle.Typography.smallCaption)
                 }
@@ -1090,7 +1090,7 @@ struct DirectionalDragCard: View {
             if !project.tasks.isEmpty {
                 HStack(spacing: 4) {
                     Image(systemName: OPSStyle.Icons.task)
-                        .font(.system(size: 10))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     Text("\(project.tasks.count)")
                         .font(OPSStyle.Typography.smallCaption)
                 }
@@ -1102,7 +1102,7 @@ struct DirectionalDragCard: View {
                 let days = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
                 HStack(spacing: 4) {
                     Image(systemName: OPSStyle.Icons.clock)
-                        .font(.system(size: 10))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     Text(days == 0 ? "SAME DAY" : "\(days)d")
                         .font(OPSStyle.Typography.smallCaption)
                 }
@@ -1196,7 +1196,7 @@ struct DraggingCardOverlay: View {
                         HStack(spacing: 4) {
                             if let startDate = project.startDate {
                                 Image(systemName: OPSStyle.Icons.calendar)
-                                    .font(.system(size: 10))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 Text(DateHelper.fullDateString(from: startDate))
                                     .font(OPSStyle.Typography.smallCaption)
                             }
@@ -1210,7 +1210,7 @@ struct DraggingCardOverlay: View {
                         if !project.teamMembers.isEmpty {
                             HStack(spacing: 4) {
                                 Image(systemName: OPSStyle.Icons.personTwo)
-                                    .font(.system(size: 10))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 Text("\(project.teamMembers.count)")
                                     .font(OPSStyle.Typography.smallCaption)
                             }
@@ -1220,7 +1220,7 @@ struct DraggingCardOverlay: View {
                         if !project.tasks.isEmpty {
                             HStack(spacing: 4) {
                                 Image(systemName: OPSStyle.Icons.task)
-                                    .font(.system(size: 10))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 Text("\(project.tasks.count)")
                                     .font(OPSStyle.Typography.smallCaption)
                             }
@@ -1232,7 +1232,7 @@ struct DraggingCardOverlay: View {
                             let days = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
                             HStack(spacing: 4) {
                                 Image(systemName: OPSStyle.Icons.clock)
-                                    .font(.system(size: 10))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 Text(days == 0 ? "SAME DAY" : "\(days)d")
                                     .font(OPSStyle.Typography.smallCaption)
                             }

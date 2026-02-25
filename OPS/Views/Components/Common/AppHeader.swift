@@ -14,6 +14,7 @@ struct AppHeader: View {
         case schedule
         case jobBoard
         case inventory
+        case pipeline
     }
     
     @EnvironmentObject private var dataController: DataController
@@ -39,6 +40,8 @@ struct AppHeader: View {
             return "JOB BOARD"
         case .inventory:
             return "INVENTORY"
+        case .pipeline:
+            return "PIPELINE"
         }
     }
     
@@ -161,7 +164,7 @@ struct AppHeader: View {
                                     if hasActiveFilters && filterCount > 0 {
                                         Text("\(filterCount)")
                                             .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(.white)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
                                             .padding(4)
                                             .background(OPSStyle.Colors.primaryAccent)
                                             .clipShape(Circle())
@@ -198,14 +201,14 @@ struct AppHeader: View {
                 }
                 
                 // User information if available
-                if headerType == .settings || headerType == .jobBoard || headerType == .inventory {
+                if headerType == .settings || headerType == .jobBoard || headerType == .inventory || headerType == .pipeline {
                     if let user = dataController.currentUser {
                         VStack(alignment: .trailing, spacing: 2) {
                             // Name and role
                             HStack(spacing: 8) {
                                 Text("\(user.firstName) \(user.lastName)")
                                     .font(OPSStyle.Typography.body)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                                 Text("|")
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)

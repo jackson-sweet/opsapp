@@ -192,7 +192,7 @@ struct ImportPreviewView: View {
             HStack(spacing: 12) {
                 // Selection indicator
                 Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                     .frame(width: 20)
 
@@ -218,14 +218,14 @@ struct ImportPreviewView: View {
                         // Issue indicator with color
                         if hasIssue {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 10))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
                         }
 
                         // Duplicate indicator with color
                         if isDupe {
                             Image(systemName: "doc.on.doc.fill")
-                                .font(.system(size: 10))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.errorStatus)
                         }
                     }
@@ -244,7 +244,7 @@ struct ImportPreviewView: View {
                 // Edit button
                 Button(action: { startEditing(item) }) {
                     Image(systemName: "pencil")
-                        .font(.system(size: 12))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .frame(width: 32, height: 32)
                 }
@@ -280,7 +280,7 @@ struct ImportPreviewView: View {
                 Button(action: { showingSelectionTools = true }) {
                     HStack(spacing: OPSStyle.Layout.spacing2) {
                         Image(systemName: "checklist")
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("SELECTION TOOLS")
                             .font(OPSStyle.Typography.captionBold)
                         Spacer()
@@ -288,7 +288,7 @@ struct ImportPreviewView: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Image(systemName: "chevron.up")
-                            .font(.system(size: 12))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -335,11 +335,11 @@ struct ImportPreviewView: View {
         Button(action: { removeFilter(filter) }) {
             HStack(spacing: 4) {
                 Image(systemName: filter.type == .keyword ? "magnifyingglass" : "tag")
-                    .font(.system(size: 10))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text(filter.displayText)
                     .font(OPSStyle.Typography.smallCaption)
                 Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
             }
             .foregroundColor(OPSStyle.Colors.primaryAccent)
             .padding(.horizontal, 10)
@@ -457,7 +457,7 @@ struct ImportPreviewView: View {
         Button(action: action) {
             HStack(spacing: OPSStyle.Layout.spacing3) {
                 Image(systemName: icon)
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(width: 24)
 
@@ -474,7 +474,7 @@ struct ImportPreviewView: View {
                 Spacer()
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -648,7 +648,7 @@ struct ImportPreviewView: View {
 
                                         Button(action: { removeEditTag(tag) }) {
                                             Image(systemName: "xmark")
-                                                .font(.system(size: 8, weight: .bold))
+                                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                         }
                                     }
@@ -669,7 +669,7 @@ struct ImportPreviewView: View {
                             TextField("Add tag", text: $editNewTag)
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
-                                .padding(10)
+                                .padding(OPSStyle.Layout.spacing2_5)
                                 .background(OPSStyle.Colors.cardBackgroundDark)
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                 .overlay(
@@ -680,7 +680,7 @@ struct ImportPreviewView: View {
 
                             Button(action: addEditTag) {
                                 Image(systemName: "plus")
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                                     .foregroundColor(editNewTag.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
                                     .frame(width: 36, height: 36)
                                     .background(OPSStyle.Colors.cardBackgroundDark)
@@ -799,7 +799,7 @@ struct ImportPreviewView: View {
                 renamingTag = tag
             }) {
                 Image(systemName: "pencil")
-                    .font(.system(size: 12))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(width: 32, height: 32)
                     .background(OPSStyle.Colors.cardBackgroundDark)
@@ -814,7 +814,7 @@ struct ImportPreviewView: View {
             // Delete
             Button(action: { deleteTagGlobally(tag) }) {
                 Image(systemName: "trash")
-                    .font(.system(size: 12))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.errorStatus.opacity(0.7))
                     .frame(width: 32, height: 32)
                     .background(OPSStyle.Colors.cardBackgroundDark)

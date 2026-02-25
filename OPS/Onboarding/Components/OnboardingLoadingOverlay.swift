@@ -20,12 +20,12 @@ struct OnboardingLoadingOverlay: View {
             // Loading card
             VStack(spacing: 20) {
                 ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
                     .scaleEffect(1.5)
 
                 Text(message)
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .multilineTextAlignment(.center)
             }
             .padding(32)
@@ -65,13 +65,13 @@ struct OnboardingLoadingOverlayWithProgress: View {
                 } else {
                     // Indeterminate spinner
                     ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
                         .scaleEffect(1.5)
                 }
 
                 Text(message)
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .multilineTextAlignment(.center)
 
                 if let progress = progress {
@@ -128,7 +128,7 @@ extension View {
 
         VStack {
             Text("Background Content")
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
         }
 
         OnboardingLoadingOverlay(message: "Creating your account...")
@@ -142,7 +142,7 @@ extension View {
 
         VStack {
             Text("Background Content")
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
         }
 
         OnboardingLoadingOverlayWithProgress(
@@ -155,7 +155,7 @@ extension View {
 #Preview("View Modifier") {
     VStack {
         Text("Content")
-            .foregroundColor(.white)
+            .foregroundColor(OPSStyle.Colors.primaryText)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(OPSStyle.Colors.background)

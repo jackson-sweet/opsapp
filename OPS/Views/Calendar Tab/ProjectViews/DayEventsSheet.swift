@@ -56,7 +56,7 @@ struct DayEventsSheet: View {
                     // Total event count number (new + ongoing)
                     Text("\(scheduledTasks.count)")
                         .font(OPSStyle.Typography.largeTitle)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 .frame(width: 60, height: 60)
                 .segmentedEventBorder(

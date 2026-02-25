@@ -184,7 +184,7 @@ struct CalendarEventCard: View {
                     // Completed badge
                     Text("COMPLETED")
                         .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
@@ -205,7 +205,7 @@ struct CalendarEventCard: View {
                     // Cancelled badge
                     Text("CANCELLED")
                         .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(

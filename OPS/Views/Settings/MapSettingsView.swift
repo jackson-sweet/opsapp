@@ -91,7 +91,7 @@ struct MapSettingsView: View {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text("Auto Re-center Time")
                                             .font(OPSStyle.Typography.body)
-                                            .foregroundColor(.white)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
 
                                         Text("Time before the map automatically re-centers")
                                             .font(OPSStyle.Typography.smallCaption)
@@ -116,7 +116,7 @@ struct MapSettingsView: View {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text("Auto Zoom Level")
                                             .font(OPSStyle.Typography.body)
-                                            .foregroundColor(.white)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
 
                                         Text("Default zoom level when showing projects")
                                             .font(OPSStyle.Typography.smallCaption)
@@ -147,7 +147,7 @@ struct MapSettingsView: View {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text("Map Type")
                                             .font(OPSStyle.Typography.body)
-                                            .foregroundColor(.white)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
 
                                         Text("Choose the map display style")
                                             .font(OPSStyle.Typography.smallCaption)
@@ -243,7 +243,7 @@ struct MapSettingsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(locationStatusText)
                     .font(OPSStyle.Typography.cardTitle)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 
                 Text(locationStatusDescription)
                     .font(OPSStyle.Typography.cardBody)

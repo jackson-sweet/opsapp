@@ -99,20 +99,20 @@ struct PersistentNavigationHeader: View {
             VStack {
                 // Turn icon
                 Image(systemName: turnIconName)
-                    .font(.system(size: 36, weight: .regular))
-                    .foregroundColor(.white)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xl, weight: .regular))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     //.frame(width: 50, height: 50)
                 // Distance
                 Text(formatDistance(inProgressManager.distanceToNextStep))
                     .font(OPSStyle.Typography.cardTitle)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
             }
             Spacer()
             // Instructions
             VStack(alignment: .trailing, spacing: 2) {
                 Text(currentInstruction)
                     .font(OPSStyle.Typography.cardTitle)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
                 
                 if let nextInstruction = nextInstruction {
@@ -209,11 +209,11 @@ struct PersistentNavigationHeader: View {
                 if let travelTime = inProgressManager.activeRoute?.expectedTravelTime {
                     Text(formatTime(travelTime))
                         .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText).opacity(0.8)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                 } else {
                     Text("--")
                         .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText).opacity(0.8)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
             
@@ -228,11 +228,11 @@ struct PersistentNavigationHeader: View {
                 if let distance = inProgressManager.activeRoute?.distance {
                     Text(formatDistanceKm(distance))
                         .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText).opacity(0.8)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                 } else {
                     Text("--")
                         .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText).opacity(0.8)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
             
@@ -247,11 +247,11 @@ struct PersistentNavigationHeader: View {
                 if let arrival = inProgressManager.estimatedArrival {
                     Text(arrival.components(separatedBy: " ").first ?? arrival)
                         .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText).opacity(0.8)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                 } else {
                     Text("--:--")
                         .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText).opacity(0.8)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
         }

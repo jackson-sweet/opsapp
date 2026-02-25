@@ -18,7 +18,7 @@ struct UserProfileCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(user.fullName)
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 
                 Text(user.email ?? "")
                     .font(OPSStyle.Typography.caption)

@@ -11,7 +11,7 @@ struct PipelinePlaceholderView: View {
     var body: some View {
         VStack(spacing: OPSStyle.Layout.spacing4) {
             Image(systemName: OPSStyle.Icons.pipelineChart)
-                .font(.system(size: 48))
+                .font(OPSStyle.Typography.largeTitle)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
 
             Text("PIPELINE")

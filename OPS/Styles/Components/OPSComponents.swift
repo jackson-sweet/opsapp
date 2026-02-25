@@ -76,7 +76,7 @@ public struct OPSPrimaryButton: View {
                     .font(OPSStyle.Typography.button)
                     .textCase(.uppercase)
             }
-            .foregroundColor(.black)
+            .foregroundColor(OPSStyle.Colors.invertedText)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .background(isDisabled ? OPSStyle.Colors.primaryAccent.opacity(0.5) : OPSStyle.Colors.primaryAccent)
@@ -135,7 +135,7 @@ public struct OPSDestructiveButton: View {
                     .font(OPSStyle.Typography.button)
                     .textCase(.uppercase)
             }
-            .foregroundColor(.white)
+            .foregroundColor(OPSStyle.Colors.primaryText)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .background(OPSStyle.Colors.errorStatus)

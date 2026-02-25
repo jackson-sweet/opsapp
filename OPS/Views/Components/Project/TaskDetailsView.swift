@@ -101,12 +101,12 @@ struct TaskDetailsView: View {
                         }
 
                         Image(systemName: OPSStyle.Icons.chevronRight)
-                            .font(.system(size: 10))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                         Text(task.taskType?.display ?? "Task")
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                             .lineLimit(1)
 
                         Spacer()
@@ -140,7 +140,7 @@ struct TaskDetailsView: View {
                             HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: OPSStyle.Icons.estimateDoc)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    .font(.system(size: 14))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 Text("[AUTO-GENERATED FROM ESTIMATE]")
                                     .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -359,18 +359,18 @@ struct TaskDetailsView: View {
                     // Contact indicators
                     HStack(spacing: 8) {
                         Image(systemName: OPSStyle.Icons.phoneFill)
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .opacity(project.effectiveClientPhone != nil ? 1.0 : 0.2)
 
                         Image(systemName: OPSStyle.Icons.envelopeFill)
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .opacity(project.effectiveClientEmail != nil ? 1.0 : 0.2)
                     }
 
                     Image(systemName: OPSStyle.Icons.chevronRight)
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
                 .padding(.vertical, 12)
@@ -429,7 +429,7 @@ struct TaskDetailsView: View {
                         // Chevron indicator for admin/office crew
                         if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
                             Image(systemName: OPSStyle.Icons.chevronRight)
-                                .font(.system(size: 14))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                     }
@@ -630,7 +630,7 @@ struct TaskDetailsView: View {
                     navigationPill(
                         caption: "PREVIOUS",
                         label: prevTask.taskType?.display ?? "Task",
-                        icon: "chevron.left",
+                        icon: OPSStyle.Icons.chevronLeft,
                         iconPosition: .leading,
                         task: prevTask
                     )
@@ -644,7 +644,7 @@ struct TaskDetailsView: View {
                     navigationPill(
                         caption: "NEXT",
                         label: nextTaskToShow.taskType?.display ?? "Task",
-                        icon: "chevron.right",
+                        icon: OPSStyle.Icons.chevronRight,
                         iconPosition: .trailing,
                         task: nextTaskToShow
                     )
@@ -708,7 +708,7 @@ struct TaskDetailsView: View {
             HStack(spacing: 8) {
                 if iconPosition == .leading {
                     Image(systemName: icon)
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
 
@@ -725,7 +725,7 @@ struct TaskDetailsView: View {
 
                 if iconPosition == .trailing {
                     Image(systemName: icon)
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
             }
@@ -746,8 +746,8 @@ struct TaskDetailsView: View {
     private func emptyNavigationPill(caption: String, iconPosition: IconPosition) -> some View {
         HStack(spacing: 8) {
             if iconPosition == .leading {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .medium))
+                Image(systemName: OPSStyle.Icons.chevronLeft)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
             }
 
@@ -762,8 +762,8 @@ struct TaskDetailsView: View {
             }
 
             if iconPosition == .trailing {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .medium))
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
             }
         }
@@ -787,8 +787,8 @@ struct TaskDetailsView: View {
             showingDeleteConfirmation = true
         }) {
             HStack(spacing: 8) {
-                Image(systemName: "trash")
-                    .font(.system(size: 14))
+                Image(systemName: OPSStyle.Icons.delete)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text("DELETE TASK")
                     .font(OPSStyle.Typography.captionBold)
             }
@@ -1054,13 +1054,13 @@ struct TaskDetailsView: View {
     private var availableStatuses: [TaskStatus] {
         // Only office crew and admins can cancel tasks
         guard let currentUser = dataController.currentUser else {
-            return [.booked, .inProgress, .completed]
+            return [.active, .completed]
         }
 
         if currentUser.role == .admin || currentUser.role == .officeCrew {
             return TaskStatus.allCases
         } else {
-            return [.booked, .inProgress, .completed]
+            return [.active, .completed]
         }
     }
     
@@ -1110,7 +1110,7 @@ struct TaskDetailsView: View {
         impactFeedback.impactOccurred()
 
         // Handle project status updates before task status update
-        if newStatus == .inProgress {
+        if newStatus == .active {
             if project.status == .completed {
                 project.status = .inProgress
                 project.needsSync = true
@@ -1147,11 +1147,8 @@ struct TaskDetailsView: View {
     
     private func statusIcon(for status: TaskStatus) -> String {
         switch status {
-        case .booked:
+        case .active:
             return OPSStyle.Icons.calendar
-        case .inProgress:
-            // NOTE: Missing icon in OPSStyle - "hammer.fill" (In-progress status icon)
-            return "hammer.fill"
         case .completed:
             return OPSStyle.Icons.checkmark
         case .cancelled:
@@ -1300,7 +1297,7 @@ struct TaskDetailsView: View {
 
                     Text("Notes saved")
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 .padding()
                 .background(OPSStyle.Colors.cardBackgroundDark)
@@ -1333,7 +1330,7 @@ private struct StatusChip: View {
         Button(action: onTap) {
             Text(status.displayName.uppercased())
                 .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(isSelected ? .white : status.color)
+                .foregroundColor(isSelected ? OPSStyle.Colors.invertedText : status.color)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(

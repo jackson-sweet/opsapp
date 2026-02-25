@@ -165,7 +165,7 @@ struct InvoicesListView: View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
             Image(systemName: OPSStyle.Icons.invoiceReceipt)
-                .font(.system(size: 48))
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             if viewModel.invoices.isEmpty {
                 Text("NO INVOICES YET")

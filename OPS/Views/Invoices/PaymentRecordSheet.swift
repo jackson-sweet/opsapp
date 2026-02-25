@@ -77,7 +77,7 @@ struct PaymentRecordSheet: View {
                                     if method == m {
                                         Image(systemName: "checkmark")
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                            .font(.system(size: 14))
+                                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     }
                                 }
                                 .frame(minHeight: OPSStyle.Layout.touchTargetStandard)

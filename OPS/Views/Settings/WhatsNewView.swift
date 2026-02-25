@@ -90,7 +90,7 @@ struct WhatsNewView: View {
                             NavigationLink(destination: FeatureRequestView()) {
                                 HStack {
                                     Image(systemName: OPSStyle.Icons.envelopeFill)
-                                        .font(.system(size: 18))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.md))
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     
                                     Text("Send Feature Request")
@@ -100,7 +100,7 @@ struct WhatsNewView: View {
                                     Spacer()
                                     
                                     Image(systemName: OPSStyle.Icons.chevronRight)
-                                        .font(.system(size: 14))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }
                                 .padding()
@@ -200,7 +200,7 @@ struct FeatureCategorySection: View {
                 HStack {
                     // Category icon
                     Image(systemName: category.icon)
-                        .font(.system(size: 20))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 30)
                     
@@ -221,7 +221,7 @@ struct FeatureCategorySection: View {
                     
                     // Expand/collapse chevron
                     Image(systemName: OPSStyle.Icons.chevronRight)
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 }
@@ -276,7 +276,7 @@ struct FeatureCard: View {
                     .frame(width: 36, height: 36)
                 
                 Image(systemName: feature.icon)
-                    .font(.system(size: 16))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
             
@@ -311,7 +311,7 @@ struct FeatureCard: View {
                     Button(action: onVote) {
                         HStack(spacing: 4) {
                             Image(systemName: hasVoted ? "hand.thumbsup.fill" : "hand.thumbsup")
-                                .font(.system(size: 14))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text("+1")
                                 .font(OPSStyle.Typography.caption)
                         }

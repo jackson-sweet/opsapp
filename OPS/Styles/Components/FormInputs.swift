@@ -29,7 +29,7 @@ struct FormField: View {
                 if isSecure {
                     SecureField(placeholder, text: $text)
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .keyboardType(keyboardType)
                         .padding()
                         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
@@ -41,7 +41,7 @@ struct FormField: View {
                 } else {
                     TextField(placeholder, text: $text)
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .keyboardType(keyboardType)
                         .padding()
                         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
@@ -54,7 +54,7 @@ struct FormField: View {
             } else {
                 Text(text.isEmpty ? "Not set" : text)
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(text.isEmpty ? OPSStyle.Colors.tertiaryText : .white)
+                    .foregroundColor(text.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
@@ -88,7 +88,7 @@ struct FormTextEditor: View {
                         
                         TextEditor(text: $text)
                             .font(OPSStyle.Typography.body)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                             .background(Color.clear)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
@@ -110,7 +110,7 @@ struct FormTextEditor: View {
             } else {
                 Text(text.isEmpty ? "Not set" : text)
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(text.isEmpty ? OPSStyle.Colors.tertiaryText : .white)
+                    .foregroundColor(text.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                     .padding()
                     .frame(maxWidth: .infinity, maxHeight: height, alignment: .topLeading)
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
@@ -132,15 +132,15 @@ struct FormToggle: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title.uppercased())
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(.white)
-                
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
                 Text(description)
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            
+
             Spacer()
-            
+
             Toggle("", isOn: Binding(
                 get: { isOn },
                 set: { newValue in
@@ -170,8 +170,8 @@ struct RadioOption: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title.uppercased())
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(.white)
-                    
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
                     Text(description)
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -218,7 +218,7 @@ struct SearchBar: View {
                 
                 TextField(placeholder, text: $searchText)
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .onReceive(NotificationCenter.default.publisher(for: UITextField.textDidChangeNotification)) { _ in
                         onSearch?()
                     }
@@ -253,7 +253,7 @@ struct EmptyStateView: View {
             HStack {
                 Spacer()
                 Image(systemName: icon)
-                    .font(.system(size: 48))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                     .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
                     .padding(.bottom, 8)
                 Spacer()

@@ -69,7 +69,7 @@ struct SettingsSearchSheet: View {
         HStack(spacing: 12) {
             // Magnifying glass icon
             Image(systemName: OPSStyle.Icons.search)
-                .font(.system(size: 18))
+                .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             // Search text field
@@ -86,7 +86,7 @@ struct SettingsSearchSheet: View {
                     searchText = ""
                 }) {
                     Image(systemName: OPSStyle.Icons.xmarkCircleFill)
-                        .font(.system(size: 18))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
@@ -106,7 +106,7 @@ struct SettingsSearchSheet: View {
     private var emptySearchState: some View {
         VStack(spacing: 16) {
             Image(systemName: OPSStyle.Icons.search)
-                .font(.system(size: 48))
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .padding(.top, 60)
 
@@ -128,7 +128,7 @@ struct SettingsSearchSheet: View {
     private var noResultsState: some View {
         VStack(spacing: 16) {
             Image(systemName: OPSStyle.Icons.search)
-                .font(.system(size: 48))
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .padding(.top, 60)
 
@@ -174,7 +174,7 @@ struct SettingsSearchSheet: View {
         HStack(spacing: 16) {
             // Category icon
             Image(systemName: item.categoryIcon)
-                .font(.system(size: 20))
+                .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(width: 24)
 
@@ -193,7 +193,7 @@ struct SettingsSearchSheet: View {
 
             // Chevron
             Image(systemName: OPSStyle.Icons.chevronRight)
-                .font(.system(size: 14))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(.vertical, 14)

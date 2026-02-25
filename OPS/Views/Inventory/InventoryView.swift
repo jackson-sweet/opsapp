@@ -333,7 +333,7 @@ struct InventoryView: View {
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: sortIcon)
-                    .font(.system(size: 12))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(sortIconColor)
             }
             .padding(.horizontal, 12)
@@ -382,7 +382,7 @@ struct InventoryView: View {
             HStack(spacing: 4) {
                 if showClearIcon {
                     Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                 }
                 Text(title)
                     .font(OPSStyle.Typography.captionBold)
@@ -494,11 +494,9 @@ struct InventoryView: View {
             isRefreshing = true
         }
 
-        do {
-            try await dataController.syncManager?.syncInventory()
-        } catch {
-            print("[INVENTORY] Refresh failed: \(error)")
-        }
+        // Inventory sync via Supabase not yet implemented on SyncManager
+        // Items are loaded from local SwiftData via @Query
+        print("[INVENTORY] Pull-to-refresh triggered (local data only)")
 
         await MainActor.run {
             isRefreshing = false
@@ -513,8 +511,10 @@ struct InventoryView: View {
 
         Task {
             do {
-                try await dataController.apiService.deleteInventoryItem(id: item.id)
+                guard let repo = dataController.inventoryRepository else { return }
+                try await repo.softDeleteItem(item.id)
                 await MainActor.run {
+                    item.needsSync = false
                     try? modelContext.save()
                 }
             } catch {
@@ -576,12 +576,10 @@ struct InventoryView: View {
 
     private func syncTagChanges(for items: [InventoryItem]) {
         Task {
+            guard let repo = dataController.inventoryRepository else { return }
             for item in items where item.needsSync {
                 do {
-                    let updates: [String: Any] = [
-                        BubbleFields.InventoryItem.tags: item.tagIds
-                    ]
-                    try await dataController.apiService.updateInventoryItem(id: item.id, updates: updates)
+                    try await repo.setItemTags(itemId: item.id, tagIds: item.tagIds)
                     await MainActor.run {
                         item.needsSync = false
                         item.lastSyncedAt = Date()
@@ -639,8 +637,9 @@ struct InventoryView: View {
         // Sync the tag rename to API
         Task {
             do {
-                let updates = InventoryTagDTO.dictionaryFrom(tag)
-                try await dataController.apiService.updateTag(id: tag.id, updates: updates)
+                guard let repo = dataController.inventoryRepository else { return }
+                let updates = UpdateInventoryTagDTO(name: trimmedNew)
+                _ = try await repo.updateTag(tag.id, fields: updates)
                 await MainActor.run {
                     tag.needsSync = false
                     tag.lastSyncedAt = Date()
@@ -660,6 +659,7 @@ struct InventoryView: View {
         for item in companyItems {
             if item.tags.contains(where: { $0.id == tag.id }) {
                 item.removeTag(tag)
+                item.needsSync = true
             }
         }
 
@@ -671,8 +671,9 @@ struct InventoryView: View {
 
         // Sync deletion to API
         Task {
+            guard let repo = dataController.inventoryRepository else { return }
             do {
-                try await dataController.apiService.deleteTag(id: tag.id)
+                try await repo.softDeleteTag(tag.id)
                 await MainActor.run {
                     tag.needsSync = false
                     try? modelContext.save()
@@ -681,11 +682,10 @@ struct InventoryView: View {
                 print("[INVENTORY] Failed to sync tag delete: \(error)")
             }
 
-            // Sync item updates
+            // Sync item tag updates
             for item in companyItems where item.needsSync {
                 do {
-                    let updates = InventoryItemDTO.dictionaryFrom(item)
-                    try await dataController.apiService.updateInventoryItem(id: item.id, updates: updates)
+                    try await repo.setItemTags(itemId: item.id, tagIds: item.tagIds)
                     await MainActor.run {
                         item.needsSync = false
                         item.lastSyncedAt = Date()
@@ -717,15 +717,14 @@ struct InventoryView: View {
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.success)
 
-        // Capture apiService for background task
-        let apiService = dataController.apiService
-
-        // Sync deletions to Bubble in background (fire and forget)
+        // Sync deletions to Supabase in background (fire and forget)
+        let repo = dataController.inventoryRepository
         Task.detached(priority: .background) {
+            guard let repo = repo else { return }
             print("[INVENTORY] 🗑️ Starting background deletion of \(itemIds.count) items")
             for itemId in itemIds {
                 do {
-                    try await apiService.deleteInventoryItem(id: itemId)
+                    try await repo.softDeleteItem(itemId)
                 } catch {
                     print("[INVENTORY] ❌ Background delete failed for \(itemId): \(error)")
                     // Item stays marked as deleted locally with needsSync = true
@@ -760,7 +759,7 @@ struct InventoryView: View {
                     Button(action: { showingSelectionTools = true }) {
                         HStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: "checklist")
-                                .font(.system(size: 14))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text("SELECTION TOOLS")
                                 .font(OPSStyle.Typography.captionBold)
                             Spacer()
@@ -768,7 +767,7 @@ struct InventoryView: View {
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Image(systemName: "chevron.up")
-                                .font(.system(size: 12))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -887,11 +886,11 @@ struct InventoryView: View {
         Button(action: { clearSelectionFilter() }) {
             HStack(spacing: 4) {
                 Image(systemName: filter.icon)
-                    .font(.system(size: 10))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text(filter.displayText)
                     .font(OPSStyle.Typography.smallCaption)
                 Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
             }
             .foregroundColor(OPSStyle.Colors.primaryAccent)
             .padding(.horizontal, 10)
@@ -952,7 +951,7 @@ struct InventoryView: View {
                         HStack(spacing: OPSStyle.Layout.spacing2) {
                             HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: "magnifyingglass")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
                                 TextField("Search name, SKU, description...", text: $selectionKeywordText)
@@ -969,7 +968,7 @@ struct InventoryView: View {
                                 if !selectionKeywordText.isEmpty {
                                     Button(action: { selectionKeywordText = "" }) {
                                         Image(systemName: "xmark.circle.fill")
-                                            .font(.system(size: 14))
+                                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     }
                                     .buttonStyle(PlainButtonStyle())
@@ -1083,7 +1082,7 @@ struct InventoryView: View {
         Button(action: action) {
             HStack(spacing: OPSStyle.Layout.spacing3) {
                 Image(systemName: icon)
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(width: 24)
 
@@ -1100,7 +1099,7 @@ struct InventoryView: View {
                 Spacer()
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)

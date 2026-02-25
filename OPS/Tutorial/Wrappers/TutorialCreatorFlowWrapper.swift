@@ -446,7 +446,7 @@ private struct TutorialTabBar: View {
             ForEach(0..<tabs.count, id: \.self) { index in
                 VStack(spacing: 4) {
                     Image(systemName: tabs[index].0)
-                        .font(.system(size: 22))
+                        .font(.system(size: OPSStyle.Layout.IconSize.lg))
                         .foregroundColor(index == selectedTab ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                 }
                 .frame(maxWidth: .infinity)

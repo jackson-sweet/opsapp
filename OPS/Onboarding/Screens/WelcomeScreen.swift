@@ -91,9 +91,9 @@ struct WelcomeScreen: View {
                             Spacer()
 
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         }
-                        .foregroundColor(.black)
+                        .foregroundColor(OPSStyle.Colors.invertedText)
                         .padding(.horizontal, 20)
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
@@ -112,7 +112,7 @@ struct WelcomeScreen: View {
                             Spacer()
 
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         }
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(.horizontal, 20)

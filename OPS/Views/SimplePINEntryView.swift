@@ -74,7 +74,7 @@ struct SimplePINEntryView: View {
                 } else if enteredPIN.isEmpty {
                     Text("ENTER YOUR PIN")
                         .font(OPSStyle.Typography.caption)
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
                 
                 Spacer()

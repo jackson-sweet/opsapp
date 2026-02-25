@@ -34,7 +34,7 @@ struct CompletionView: View {
                 // Welcome text
                 Text("WELCOME TO OPS.")
                     .font(OPSStyle.Typography.title)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .opacity(textOpacity)
                 
                 Spacer()

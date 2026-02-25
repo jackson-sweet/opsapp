@@ -36,16 +36,16 @@ struct UserProfileCard: View {
                         
                         Text(getInitials())
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                     }
                 }
-                
+
                 VStack(alignment: .leading, spacing: 6) {
                     // Name and role
                     HStack(spacing: 8) {
                         Text(user.fullName)
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                         
                         Text("| \(user.role.displayName)")
                             .font(OPSStyle.Typography.body)

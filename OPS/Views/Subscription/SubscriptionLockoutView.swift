@@ -93,7 +93,7 @@ struct SubscriptionLockoutView: View {
             Spacer()
             
             Image(systemName: "lock.fill")
-                .font(.system(size: 20))  // Smaller icon
+                .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(.horizontal, 24)
@@ -142,11 +142,11 @@ struct SubscriptionLockoutView: View {
                     }) {
                         HStack(spacing: 8) {
                             Image(systemName: "person.2.badge.gearshape")
-                                .font(.system(size: 14))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text("MANAGE TEAM SEATS")
-                                .font(OPSStyle.Typography.captionBold)  // Smaller, tactical font
+                                .font(OPSStyle.Typography.captionBold)
                         }
-                        .foregroundColor(.black)
+                        .foregroundColor(OPSStyle.Colors.invertedText)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)  // Slightly smaller padding
                         .background(OPSStyle.Colors.primaryText)  // White background for primary button
@@ -158,10 +158,10 @@ struct SubscriptionLockoutView: View {
                     if subscriptionManager.maxSeats > 0 {
                         HStack(spacing: 6) {
                             Image(systemName: OPSStyle.Icons.crew)
-                                .font(.system(size: 12))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text("\(subscriptionManager.seatedEmployees.count) OF \(subscriptionManager.maxSeats) SEATS USED")
-                                .font(OPSStyle.Typography.smallCaption)  // Smaller font
+                                .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
                     }
@@ -183,14 +183,14 @@ struct SubscriptionLockoutView: View {
                     }) {
                         HStack(spacing: 8) {
                             Image(systemName: "creditcard")
-                                .font(.system(size: 14))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text(primaryButtonText.uppercased())
-                                .font(OPSStyle.Typography.captionBold)  // Smaller, tactical font
+                                .font(OPSStyle.Typography.captionBold)
                         }
-                        .foregroundColor(.black)
+                        .foregroundColor(OPSStyle.Colors.invertedText)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)  // Slightly smaller padding
-                        .background(OPSStyle.Colors.primaryText)  // White background for primary button
+                        .padding(.vertical, 14)
+                        .background(OPSStyle.Colors.primaryText)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
 
@@ -213,7 +213,7 @@ struct SubscriptionLockoutView: View {
                                 )
                             } else {
                                 Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             }
                             Text(buttonText)
                                 .font(OPSStyle.Typography.captionBold)
@@ -297,14 +297,14 @@ struct SubscriptionLockoutView: View {
                             }) {
                                 HStack(spacing: 6) {
                                     Image(systemName: "phone.fill")
-                                        .font(.system(size: 12))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     Text("CALL")
-                                        .font(OPSStyle.Typography.captionBold)  // Smaller, tactical font
+                                        .font(OPSStyle.Typography.captionBold)
                                 }
-                                .foregroundColor(.black)
+                                .foregroundColor(OPSStyle.Colors.invertedText)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)  // Smaller padding
-                                .background(OPSStyle.Colors.primaryText)  // White background for primary button
+                                .padding(.vertical, 12)
+                                .background(OPSStyle.Colors.primaryText)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                         }
@@ -317,14 +317,14 @@ struct SubscriptionLockoutView: View {
                             }) {
                                 HStack(spacing: 6) {
                                     Image(systemName: "envelope.fill")
-                                        .font(.system(size: 12))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     Text("EMAIL")
-                                        .font(OPSStyle.Typography.captionBold)  // Smaller, tactical font
+                                        .font(OPSStyle.Typography.captionBold)
                                 }
-                                .foregroundColor(.black)
+                                .foregroundColor(OPSStyle.Colors.invertedText)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)  // Smaller padding
-                                .background(OPSStyle.Colors.primaryText)  // White background for primary button
+                                .padding(.vertical, 12)
+                                .background(OPSStyle.Colors.primaryText)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
                         }
@@ -352,7 +352,7 @@ struct SubscriptionLockoutView: View {
                         )
                     } else {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     }
                     Text(nonAdminRefreshButtonText)
                         .font(OPSStyle.Typography.captionBold)
@@ -521,7 +521,7 @@ struct SubscriptionLockoutView: View {
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         Text("BACK")
                             .font(OPSStyle.Typography.captionBold)
                     }
@@ -560,10 +560,10 @@ struct SubscriptionLockoutView: View {
             if let error = seatActionError {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                     Text(error.uppercased())
-                        .font(OPSStyle.Typography.smallCaption)  // Smaller font
+                        .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                 }
                 .padding(.horizontal, 24)
@@ -592,7 +592,7 @@ struct SubscriptionLockoutView: View {
                             }) {
                                 Text("ENTER OPS")
                                     .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(.black)
+                                    .foregroundColor(OPSStyle.Colors.invertedText)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 14)
                                     .background(OPSStyle.Colors.primaryText)
@@ -680,7 +680,7 @@ struct SubscriptionLockoutView: View {
             }) {
                 HStack(spacing: 4) {
                     Image(systemName: "person.fill.xmark")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     Text("REVOKE")
                         .font(OPSStyle.Typography.smallCaption)
                 }
@@ -743,7 +743,7 @@ struct SubscriptionLockoutView: View {
             }) {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.up.circle")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     Text("GRANT")
                         .font(OPSStyle.Typography.smallCaption)
                 }
@@ -850,7 +850,7 @@ struct SubscriptionLockoutView: View {
             }) {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.backward.square.fill")
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     Text("SIGN OUT")
                         .font(OPSStyle.Typography.captionBold)  // Smaller, tactical font
                 }

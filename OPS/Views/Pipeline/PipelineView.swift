@@ -30,18 +30,13 @@ struct PipelineView: View {
             VStack(spacing: 0) {
                 // Header metrics
                 HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("PIPELINE")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                        Text("\(currencyFormatter.string(from: NSNumber(value: viewModel.weightedPipelineValue)) ?? "$0") WEIGHTED · \(viewModel.activeDealsCount) DEALS")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
+                    Text("\(currencyFormatter.string(from: NSNumber(value: viewModel.weightedPipelineValue)) ?? "$0") WEIGHTED · \(viewModel.activeDealsCount) DEALS")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                     Spacer()
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.top, OPSStyle.Layout.spacing3)
+                .padding(.top, OPSStyle.Layout.spacing2)
                 .padding(.bottom, OPSStyle.Layout.spacing2)
 
                 // Stage strip
@@ -49,9 +44,6 @@ struct PipelineView: View {
                     stages: viewModel.stagesWithCounts,
                     selectedStage: $viewModel.selectedStage
                 )
-
-                Divider()
-                    .background(OPSStyle.Colors.separator)
 
                 // Cards list
                 if viewModel.isLoading && viewModel.opportunities.isEmpty {
@@ -127,7 +119,7 @@ struct PipelineView: View {
             Image(systemName: viewModel.opportunities.isEmpty
                   ? OPSStyle.Icons.pipelineChart
                   : OPSStyle.Icons.filter)
-                .font(.system(size: 44))
+                .font(OPSStyle.Typography.largeTitle)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text(viewModel.opportunities.isEmpty ? "NO LEADS YET" : "NO DEALS IN THIS STAGE")
                 .font(OPSStyle.Typography.subtitle)
@@ -153,8 +145,8 @@ struct PipelineView: View {
             showNewOpportunitySheet = true
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 24, weight: .medium))
-                .foregroundColor(.white)
+                .font(OPSStyle.Typography.heading)
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)
                 .background(OPSStyle.Colors.primaryAccent)
                 .clipShape(Circle())

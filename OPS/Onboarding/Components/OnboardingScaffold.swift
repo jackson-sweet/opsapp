@@ -67,7 +67,7 @@ struct OnboardingScaffold<Content: View, Footer: View>: View {
                     } label: {
                         Image(systemName: OPSStyle.Icons.back)
                             .font(.title2.weight(.semibold))
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
@@ -82,7 +82,7 @@ struct OnboardingScaffold<Content: View, Footer: View>: View {
             // Title
             Text(title)
                 .font(OPSStyle.Typography.title)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
 
             // Subtitle (optional)
             if let subtitle = subtitle {
@@ -154,7 +154,7 @@ extension OnboardingScaffold where Footer == EmptyView {
         // Content
         VStack(spacing: 16) {
             Text("Content goes here")
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
 
             ForEach(0..<5) { i in
                 RoundedRectangle(cornerRadius: 8)
@@ -162,7 +162,7 @@ extension OnboardingScaffold where Footer == EmptyView {
                     .frame(height: 56)
                     .overlay(
                         Text("Field \(i + 1)")
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                     )
             }
         }
@@ -175,7 +175,7 @@ extension OnboardingScaffold where Footer == EmptyView {
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
                 .background(OPSStyle.Colors.primaryAccent)
-                .foregroundColor(.black)
+                .foregroundColor(OPSStyle.Colors.invertedText)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
     }
@@ -189,11 +189,11 @@ extension OnboardingScaffold where Footer == EmptyView {
     ) {
         VStack {
             Image(systemName: "briefcase.fill")
-                .font(.system(size: 80))
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
 
             Text("Get started with OPS")
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
         }
     } footer: {
         VStack(spacing: 12) {
@@ -205,7 +205,7 @@ extension OnboardingScaffold where Footer == EmptyView {
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
                     .background(OPSStyle.Colors.primaryAccent)
-                    .foregroundColor(.black)
+                    .foregroundColor(OPSStyle.Colors.invertedText)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
 
@@ -217,7 +217,7 @@ extension OnboardingScaffold where Footer == EmptyView {
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
                     .background(Color.clear)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)

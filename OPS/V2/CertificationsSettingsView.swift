@@ -66,7 +66,7 @@ struct CertificationsSettingsView: View {
                             dismiss()
                         }) {
                             Image(systemName: "arrow.left")
-                                .font(.system(size: 20))
+                                .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                         
@@ -136,7 +136,7 @@ struct CertificationsSettingsView: View {
                     showAddCertification = true
                 }) {
                     Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 20))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
             }
@@ -146,7 +146,7 @@ struct CertificationsSettingsView: View {
                 // Empty state
                 VStack {
                     Image(systemName: "certificate")
-                        .font(.system(size: 36))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                         .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
                         .padding(.bottom, 8)
                     
@@ -189,7 +189,7 @@ struct CertificationsSettingsView: View {
                     showAddTraining = true
                 }) {
                     Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 20))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
             }
@@ -199,7 +199,7 @@ struct CertificationsSettingsView: View {
                 // Empty state
                 VStack {
                     Image(systemName: "book.fill")
-                        .font(.system(size: 36))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                         .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
                         .padding(.bottom, 8)
                     
@@ -240,7 +240,7 @@ struct CertificationsSettingsView: View {
                 // Status badge
                 Text(cert.status.rawValue)
                     .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(cert.statusColor)
@@ -291,7 +291,7 @@ struct CertificationsSettingsView: View {
                 }) {
                     HStack {
                         Image(systemName: "doc.fill")
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         
                         Text("View Certificate")
                             .font(OPSStyle.Typography.captionBold)
@@ -354,7 +354,7 @@ struct CertificationsSettingsView: View {
                 }) {
                     HStack {
                         Image(systemName: "doc.fill")
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         
                         Text("View Certificate")
                             .font(OPSStyle.Typography.captionBold)

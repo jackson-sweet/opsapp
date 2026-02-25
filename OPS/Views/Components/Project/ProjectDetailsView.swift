@@ -34,9 +34,9 @@ enum DetailsSection: String, CaseIterable, Hashable, Codable {
 
     var icon: String {
         switch self {
-        case .client: return "person.circle"
+        case .client: return OPSStyle.Icons.client
         case .schedule: return OPSStyle.Icons.calendar
-        case .notes: return "note.text"
+        case .notes: return OPSStyle.Icons.notes
         case .tasks: return OPSStyle.Icons.task
         case .photos: return OPSStyle.Icons.photo
         case .team: return OPSStyle.Icons.personTwo
@@ -289,8 +289,8 @@ struct ProjectDetailsView: View {
                             CalendarSchedulerSheet(
                                 isPresented: $showingTaskScheduler,
                                 itemType: .task(task),
-                                currentStartDate: task.calendarEvent?.startDate,
-                                currentEndDate: task.calendarEvent?.endDate,
+                                currentStartDate: task.startDate,
+                                currentEndDate: task.endDate,
                                 onScheduleUpdate: handleTaskScheduleUpdate
                             )
                             .environmentObject(dataController)
@@ -348,7 +348,7 @@ struct ProjectDetailsView: View {
                     .overlay(
                         VStack(spacing: 8) {
                             Image(systemName: "map")
-                                .font(.system(size: 40))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text("No location set")
                                 .font(OPSStyle.Typography.caption)
@@ -383,7 +383,7 @@ struct ProjectDetailsView: View {
     private func addressBadge(address: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "mappin.circle.fill")
-                .font(.system(size: 12))
+                .font(.system(size: OPSStyle.Layout.IconSize.xs))
             Text(formatHeaderAddress(address))
                 .font(OPSStyle.Typography.caption)
                 .lineLimit(1)
@@ -505,7 +505,7 @@ struct ProjectDetailsView: View {
                 if isEditingTitle {
                     TextField("Project Title", text: $editedTitle)
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .textFieldStyle(PlainTextFieldStyle())
                         .submitLabel(.done)
                         .onSubmit {
@@ -514,7 +514,7 @@ struct ProjectDetailsView: View {
                 } else {
                     Text(project.title.uppercased())
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
                 }
 
@@ -529,7 +529,7 @@ struct ProjectDetailsView: View {
                     // Calendar icon + date range
                     HStack(spacing: 4) {
                         Image(systemName: OPSStyle.Icons.calendar)
-                            .font(.system(size: 11))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                         if let startDate = project.computedStartDate {
@@ -552,7 +552,7 @@ struct ProjectDetailsView: View {
                     // Team icon + count
                     HStack(spacing: 4) {
                         Image(systemName: OPSStyle.Icons.personTwo)
-                            .font(.system(size: 11))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Text("\(project.teamMembers.count)")
                             .font(OPSStyle.Typography.smallCaption)
@@ -562,7 +562,7 @@ struct ProjectDetailsView: View {
                     // Task icon + count
                     HStack(spacing: 4) {
                         Image(systemName: OPSStyle.Icons.task)
-                            .font(.system(size: 11))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Text("\(project.tasks.count)")
                             .font(OPSStyle.Typography.smallCaption)
@@ -666,12 +666,11 @@ struct ProjectDetailsView: View {
                         // Calendar icon + date range
                         HStack(spacing: 4) {
                             Image(systemName: OPSStyle.Icons.calendar)
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                            if let event = task.calendarEvent,
-                               let start = event.startDate {
-                                if let end = event.endDate, !Calendar.current.isDate(start, inSameDayAs: end) {
+                            if let start = task.startDate {
+                                if let end = task.endDate, !Calendar.current.isDate(start, inSameDayAs: end) {
                                     Text("\(DateHelper.simpleDateString(from: start)) - \(DateHelper.simpleDateString(from: end))")
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -690,7 +689,7 @@ struct ProjectDetailsView: View {
                         // Team icon + count
                         HStack(spacing: 4) {
                             Image(systemName: OPSStyle.Icons.personTwo)
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text("\(taskTeamMemberIds.count)")
                                 .font(OPSStyle.Typography.smallCaption)
@@ -749,7 +748,7 @@ struct ProjectDetailsView: View {
                         }) {
                             HStack(spacing: 6) {
                                 Image(systemName: isCompleted ? "arrow.uturn.backward" : "checkmark")
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                                 Text(isCompleted ? "REOPEN \(taskName)" : "COMPLETE \(taskName)")
                                     .font(OPSStyle.Typography.captionBold)
                             }
@@ -770,7 +769,7 @@ struct ProjectDetailsView: View {
                             showingTaskActionMenu = true
                         }) {
                             Image(systemName: "ellipsis")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .frame(width: 60, height: 36)
                                 .overlay(
@@ -923,7 +922,7 @@ struct ProjectDetailsView: View {
             }) {
                 HStack {
                     Image(systemName: OPSStyle.Icons.photo)
-                        .font(.system(size: 12))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Text("PHOTOS")
                         .font(OPSStyle.Typography.captionBold)
@@ -935,7 +934,7 @@ struct ProjectDetailsView: View {
                     Spacer()
 
                     Image(systemName: isPhotosExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 12))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }
@@ -948,7 +947,7 @@ struct ProjectDetailsView: View {
                 Button(action: { showingImagePicker = true }) {
                     HStack {
                         Image(systemName: "plus")
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("ADD PHOTOS")
                         Spacer()
                     }
@@ -971,7 +970,7 @@ struct ProjectDetailsView: View {
                                 .stroke(style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [6, 4]))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
                             Image(systemName: "plus")
-                                .font(.system(size: 24))
+                                .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                         .aspectRatio(1, contentMode: .fit)
@@ -995,7 +994,7 @@ struct ProjectDetailsView: View {
                                     .stroke(style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [6, 4]))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
                                 Image(systemName: "plus")
-                                    .font(.system(size: 20))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
                             .frame(width: 80, height: 80)
@@ -1025,8 +1024,8 @@ struct ProjectDetailsView: View {
                 }
             }) {
                 HStack {
-                    Image(systemName: "note.text")
-                        .font(.system(size: 12))
+                    Image(systemName: OPSStyle.Icons.notes)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Text("NOTES")
                         .font(OPSStyle.Typography.captionBold)
@@ -1038,7 +1037,7 @@ struct ProjectDetailsView: View {
                     Spacer()
 
                     Image(systemName: isNotesExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 12))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }
@@ -1067,7 +1066,7 @@ struct ProjectDetailsView: View {
                     }) {
                         HStack {
                             Image(systemName: "plus")
-                                .font(.system(size: 14))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text("ADD NOTES")
                             Spacer()
                         }
@@ -1201,7 +1200,7 @@ struct ProjectDetailsView: View {
                         }) {
                             HStack {
                                 Image(systemName: "plus")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 Text("ADD NOTES")
                                 Spacer()
                             }
@@ -1223,8 +1222,8 @@ struct ProjectDetailsView: View {
                                 isEditingProjectNotes = true
                             }
                         }) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 14))
+                            Image(systemName: OPSStyle.Icons.pencil)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -1313,7 +1312,7 @@ struct ProjectDetailsView: View {
                         }) {
                             HStack {
                                 Image(systemName: "plus")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 Text("ADD NOTES")
                                 Spacer()
                             }
@@ -1336,8 +1335,8 @@ struct ProjectDetailsView: View {
                                 editingTaskNotesText = taskNotes
                             }
                         }) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 14))
+                            Image(systemName: OPSStyle.Icons.pencil)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -1364,7 +1363,7 @@ struct ProjectDetailsView: View {
             // Section header with count in brackets
             HStack {
                 Image(systemName: OPSStyle.Icons.task)
-                    .font(.system(size: 12))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Text("TASKS")
                     .font(OPSStyle.Typography.captionBold)
@@ -1409,7 +1408,7 @@ struct ProjectDetailsView: View {
 
                             HStack {
                                 Image(systemName: "plus")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 Text("ADD TASK")
                                     .font(OPSStyle.Typography.captionBold)
@@ -1493,13 +1492,12 @@ struct ProjectDetailsView: View {
                     // Info row: Date range + Team count + Team avatars (right aligned)
                     HStack(spacing: 4) {
                         // Date range
-                        if let event = task.calendarEvent,
-                           let start = event.startDate {
+                        if let start = task.startDate {
                             Image(systemName: OPSStyle.Icons.calendar)
-                                .font(.system(size: 10))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                            if let end = event.endDate, !Calendar.current.isDate(start, inSameDayAs: end) {
+                            if let end = task.endDate, !Calendar.current.isDate(start, inSameDayAs: end) {
                                 Text("\(DateHelper.simpleDateString(from: start)) - \(DateHelper.simpleDateString(from: end))")
                                     .font(OPSStyle.Typography.smallCaption)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -1513,7 +1511,7 @@ struct ProjectDetailsView: View {
                         // Team icon + count
                         HStack(spacing: 4) {
                             Image(systemName: OPSStyle.Icons.personTwo)
-                                .font(.system(size: 10))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text("\(taskTeamMemberIds.count)")
                                 .font(OPSStyle.Typography.smallCaption)
@@ -1554,8 +1552,8 @@ struct ProjectDetailsView: View {
                 .padding(.vertical, 12)
 
                 // Chevron
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12))
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .padding(.trailing, 16)
             }
@@ -1624,8 +1622,8 @@ struct ProjectDetailsView: View {
         VStack(alignment: .leading, spacing: 12) {
             // Section header
             HStack {
-                Image(systemName: "person.circle")
-                    .font(.system(size: 12))
+                Image(systemName: OPSStyle.Icons.client)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Text("CLIENT")
                     .font(OPSStyle.Typography.captionBold)
@@ -1652,7 +1650,7 @@ struct ProjectDetailsView: View {
                             .frame(width: 32, height: 32)
                             .overlay(
                                 Image(systemName: "building.2")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             )
                     }
@@ -1675,18 +1673,18 @@ struct ProjectDetailsView: View {
                     HStack(spacing: 12) {
                         // Phone icon
                         Image(systemName: "phone.fill")
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(hasPhone ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
 
                         // Email icon
                         Image(systemName: "envelope.fill")
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(hasEmail ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                     }
 
                     // Chevron
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12))
+                    Image(systemName: OPSStyle.Icons.chevronRight)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
                 .contentShape(Rectangle())
@@ -1701,7 +1699,7 @@ struct ProjectDetailsView: View {
             // Section header with count in brackets
             HStack {
                 Image(systemName: OPSStyle.Icons.personTwo)
-                    .font(.system(size: 12))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Text("TEAM")
                     .font(OPSStyle.Typography.captionBold)
@@ -1720,7 +1718,7 @@ struct ProjectDetailsView: View {
                 }) {
                     HStack {
                         Image(systemName: "plus")
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("ADD TEAM")
                         Spacer()
                     }
@@ -1747,8 +1745,8 @@ struct ProjectDetailsView: View {
 
                                 Spacer()
 
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 12))
+                                Image(systemName: OPSStyle.Icons.chevronRight)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             .contentShape(Rectangle())
@@ -1766,7 +1764,7 @@ struct ProjectDetailsView: View {
             // Section header
             HStack {
                 Image(systemName: OPSStyle.Icons.calendar)
-                    .font(.system(size: 12))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Text("SCHEDULE")
                     .font(OPSStyle.Typography.captionBold)
@@ -1820,7 +1818,7 @@ struct ProjectDetailsView: View {
             // Section header
             HStack {
                 Image(systemName: "doc.text")
-                    .font(.system(size: 12))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Text("PROJECT DETAILS")
                     .font(OPSStyle.Typography.captionBold)
@@ -1886,7 +1884,7 @@ struct ProjectDetailsView: View {
                             }) {
                                 HStack {
                                     Image(systemName: "plus")
-                                        .font(.system(size: 14))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     Text("ADD DETAILS")
                                     Spacer()
                                 }
@@ -1903,8 +1901,8 @@ struct ProjectDetailsView: View {
                                 editingProjectDetailsText = project.projectDescription ?? ""
                                 isEditingProjectDetails = true
                             }) {
-                                Image(systemName: "pencil")
-                                    .font(.system(size: 14))
+                                Image(systemName: OPSStyle.Icons.pencil)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
                             .buttonStyle(PlainButtonStyle())
@@ -1938,7 +1936,7 @@ struct ProjectDetailsView: View {
                 }) {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle")
-                            .font(.system(size: 12))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         Text("COMPLETE PROJECT")
                             .font(OPSStyle.Typography.captionBold)
                     }
@@ -1960,8 +1958,8 @@ struct ProjectDetailsView: View {
                     showingDeleteAlert = true
                 }) {
                     HStack(spacing: 6) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 12))
+                        Image(systemName: OPSStyle.Icons.delete)
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         Text("DELETE PROJECT")
                             .font(OPSStyle.Typography.captionBold)
                     }
@@ -2391,7 +2389,7 @@ struct ProjectDetailsView: View {
     private var clientExpandableSection: some View {
         ExpandableSection(
             title: "CLIENT",
-            icon: "person.circle",
+            icon: OPSStyle.Icons.client,
             isExpanded: $isClientExpanded,
             onDelete: nil,
             collapsible: true
@@ -2415,7 +2413,7 @@ struct ProjectDetailsView: View {
             #endif
         }) {
             Image(systemName: isPinned(section) ? "pin.fill" : "pin")
-                .font(.system(size: 12))
+                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                 .foregroundColor(isPinned(section) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                 .padding(8)
         }
@@ -2443,18 +2441,18 @@ struct ProjectDetailsView: View {
 
                 HStack(spacing: 8) {
                     Image(systemName: OPSStyle.Icons.phoneFill)
-                        .font(.system(size: 16))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .opacity(project.effectiveClientPhone != nil ? 1.0 : 0.3)
 
                     Image(systemName: OPSStyle.Icons.envelopeFill)
-                        .font(.system(size: 16))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .opacity(project.effectiveClientEmail != nil ? 1.0 : 0.3)
                 }
 
                 Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: 12))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
         }
@@ -2490,8 +2488,8 @@ struct ProjectDetailsView: View {
                         showingAddTaskSheet = true
                     }) {
                         HStack(spacing: 4) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 14))
+                            Image(systemName: OPSStyle.Icons.add)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text("Add Task")
                                 .font(OPSStyle.Typography.caption)
                         }
@@ -2542,7 +2540,7 @@ struct ProjectDetailsView: View {
     private var notesExpandableSection: some View {
         ExpandableSection(
             title: "TEAM NOTES",
-            icon: "note.text",
+            icon: OPSStyle.Icons.notes,
             isExpanded: $isProjectNotesExpanded,
             onDelete: nil,
             collapsible: true
@@ -2586,8 +2584,8 @@ struct ProjectDetailsView: View {
                         showingAddTaskSheet = true
                     }) {
                         HStack {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 16))
+                            Image(systemName: OPSStyle.Icons.add)
+                                .font(.system(size: OPSStyle.Layout.IconSize.md))
                             Text("Add Task")
                                 .font(OPSStyle.Typography.captionBold)
                             Spacer()
@@ -2675,8 +2673,8 @@ struct ProjectDetailsView: View {
                         showingAddTaskSheet = true
                     }) {
                         HStack(spacing: 4) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 14))
+                            Image(systemName: OPSStyle.Icons.add)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text("Add Task")
                                 .font(OPSStyle.Typography.caption)
                         }
@@ -2712,7 +2710,7 @@ struct ProjectDetailsView: View {
                                 Spacer()
 
                                 Image(systemName: OPSStyle.Icons.chevronRight)
-                                    .font(.system(size: 12))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
                         }
@@ -2880,7 +2878,7 @@ struct ProjectDetailsView: View {
             HStack(alignment: .top, spacing: 12) {
                 Text(project.title)
                     .font(OPSStyle.Typography.title)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
 
                 // Show task count if project has tasks
                 if !project.tasks.isEmpty {
@@ -2907,11 +2905,11 @@ struct ProjectDetailsView: View {
 
                 Text(project.effectiveClientName)
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
             }
         }
     }
-    
+
     // Location map
     private var locationSection: some View {
         SectionCard(
@@ -2943,7 +2941,7 @@ struct ProjectDetailsView: View {
                             }
                         }) {
                             Image(systemName: OPSStyle.Icons.pencil)
-                                .font(.system(size: 12))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                     }
@@ -3048,7 +3046,7 @@ struct ProjectDetailsView: View {
                     // Read-only text
                     Text(project.address ?? "No address")
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 }
             }
@@ -3079,7 +3077,7 @@ struct ProjectDetailsView: View {
                     HStack {
                         // NOTE: Missing icon in OPSStyle - "arrow.triangle.turn.up.right.diamond.fill" (directions)
                         Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
                         Text("Directions")
                             .font(OPSStyle.Typography.smallCaption)
@@ -3176,18 +3174,18 @@ struct ProjectDetailsView: View {
                     // Contact indicators
                     HStack(spacing: 8) {
                         Image(systemName: OPSStyle.Icons.phoneFill)
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .opacity(project.effectiveClientPhone != nil ? 1.0 : 0.3)
 
                         Image(systemName: OPSStyle.Icons.envelopeFill)
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .opacity(project.effectiveClientEmail != nil ? 1.0 : 0.3)
                     }
 
                     Image(systemName: OPSStyle.Icons.chevronRight)
-                        .font(.system(size: 12))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
                 .padding(.vertical, 12)
@@ -3223,8 +3221,8 @@ struct ProjectDetailsView: View {
                             showingAddTaskSheet = true
                         }) {
                             HStack(spacing: 4) {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: 14))
+                                Image(systemName: OPSStyle.Icons.add)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 Text("Add Task")
                                     .font(OPSStyle.Typography.caption)
                             }
@@ -3374,8 +3372,8 @@ struct ProjectDetailsView: View {
                             showingAddTaskSheet = true
                         }) {
                             HStack(spacing: 4) {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: 14))
+                                Image(systemName: OPSStyle.Icons.add)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 Text("Add Task")
                                     .font(OPSStyle.Typography.caption)
                             }
@@ -3419,7 +3417,7 @@ struct ProjectDetailsView: View {
                                     Spacer()
 
                                     Image(systemName: OPSStyle.Icons.chevronRight)
-                                        .font(.system(size: 12))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }
                                 .padding(.vertical, 8)
@@ -3449,7 +3447,7 @@ struct ProjectDetailsView: View {
                                     Spacer()
 
                                     Image(systemName: isTeamExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
-                                        .font(.system(size: 12))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 }
                                 .padding(.top, 8)
@@ -3485,7 +3483,7 @@ struct ProjectDetailsView: View {
                         Spacer()
 
                         Image(systemName: isNotesExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                 }
@@ -3532,12 +3530,12 @@ struct ProjectDetailsView: View {
                         // Always show contact indicators with availability status
                         HStack(spacing: 6) {
                             Image(systemName: OPSStyle.Icons.phoneFill)
-                                .font(.system(size: 18))
+                                .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .opacity(project.effectiveClientPhone != nil ? 1.0 : 0.2)
 
                             Image(systemName: OPSStyle.Icons.envelopeFill)
-                                .font(.system(size: 18))
+                                .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .opacity(project.effectiveClientEmail != nil ? 1.0 : 0.2)
                         }
@@ -3636,7 +3634,7 @@ struct ProjectDetailsView: View {
                         Spacer()
 
                         Image(systemName: isNotesExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                     .contentShape(Rectangle())
@@ -3695,7 +3693,7 @@ struct ProjectDetailsView: View {
 
             if showChevron {
                 Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
         }
@@ -3797,7 +3795,7 @@ struct ProjectDetailsView: View {
                     // Plus icon centered
                     VStack(spacing: 8) {
                         Image(systemName: "plus")
-                            .font(.system(size: 28, weight: .medium))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xl, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                         Text("ADD PHOTO")
@@ -3842,7 +3840,7 @@ struct ProjectDetailsView: View {
                 // NOTE: Missing icon in OPSStyle - "photo.stack" (photo count indicator)
                 Image(systemName: "photo.stack")
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
                 Text("\(photos.count) \(photos.count == 1 ? "photo" : "photos")")
                     .font(OPSStyle.Typography.smallCaption)
@@ -3871,7 +3869,7 @@ struct ProjectDetailsView: View {
                 // Plus icon centered
                 VStack(spacing: 8) {
                     Image(systemName: "plus")
-                        .font(.system(size: 28, weight: .medium))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xl, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                     Text("ADD")
@@ -3935,7 +3933,7 @@ struct ProjectDetailsView: View {
             HStack {
                 Image(systemName: OPSStyle.Icons.complete)
                     .foregroundColor(OPSStyle.Colors.successStatus)
-                    .font(.system(size: 16))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                 
                 Text("Notes saved")
                     .font(OPSStyle.Typography.bodyBold)
@@ -3992,8 +3990,8 @@ struct ProjectDetailsView: View {
                             selectedTask = sortedTasks[currentIndex - 1]
                         }
                     }) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .semibold))
+                        Image(systemName: OPSStyle.Icons.chevronLeft)
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(currentIndex > 0 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
                             .frame(width: 32, height: 32)
                     }
@@ -4008,8 +4006,8 @@ struct ProjectDetailsView: View {
                             selectedTask = sortedTasks[currentIndex + 1]
                         }
                     }) {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .semibold))
+                        Image(systemName: OPSStyle.Icons.chevronRight)
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(currentIndex < sortedTasks.count - 1 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
                             .frame(width: 32, height: 32)
                     }
@@ -4039,9 +4037,8 @@ struct ProjectDetailsView: View {
                         .frame(width: 20)
 
                     if let task = selectedTask,
-                       let calendarEvent = task.calendarEvent,
-                       let start = calendarEvent.startDate {
-                        Text(formatTaskDateRange(start, calendarEvent.endDate))
+                       let start = task.startDate {
+                        Text(formatTaskDateRange(start, task.endDate))
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     } else {
@@ -4054,7 +4051,7 @@ struct ProjectDetailsView: View {
 
                     if canEditProjectSettings() {
                         Image(systemName: OPSStyle.Icons.chevronRight)
-                            .font(.system(size: 12))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                 }
@@ -4133,7 +4130,7 @@ struct ProjectDetailsView: View {
                 }) {
                     HStack(spacing: 8) {
                         Image(systemName: task.status == .completed ? "arrow.uturn.backward" : "checkmark")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
 
                         Text(task.status == .completed ? "REOPEN TASK" : "COMPLETE TASK")
                             .font(OPSStyle.Typography.bodyBold)
@@ -4164,7 +4161,7 @@ struct ProjectDetailsView: View {
                     taskNavigationPill(
                         caption: "PREVIOUS",
                         label: prevTask.taskType?.display ?? "Task",
-                        icon: "chevron.left",
+                        icon: OPSStyle.Icons.chevronLeft,
                         iconPosition: .leading,
                         task: prevTask
                     )
@@ -4178,7 +4175,7 @@ struct ProjectDetailsView: View {
                     taskNavigationPill(
                         caption: "NEXT",
                         label: nextTask.taskType?.display ?? "Task",
-                        icon: "chevron.right",
+                        icon: OPSStyle.Icons.chevronRight,
                         iconPosition: .trailing,
                         task: nextTask
                     )
@@ -4213,7 +4210,7 @@ struct ProjectDetailsView: View {
             HStack(spacing: 8) {
                 if iconPosition == .leading {
                     Image(systemName: icon)
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
 
@@ -4230,7 +4227,7 @@ struct ProjectDetailsView: View {
 
                 if iconPosition == .trailing {
                     Image(systemName: icon)
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
             }
@@ -4251,8 +4248,8 @@ struct ProjectDetailsView: View {
     private func emptyTaskNavigationPill(caption: String, iconPosition: TaskNavIconPosition) -> some View {
         HStack(spacing: 8) {
             if iconPosition == .leading {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .medium))
+                Image(systemName: OPSStyle.Icons.chevronLeft)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
             }
 
@@ -4267,8 +4264,8 @@ struct ProjectDetailsView: View {
             }
 
             if iconPosition == .trailing {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .medium))
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
             }
         }
@@ -4373,7 +4370,7 @@ struct ProjectDetailsView: View {
                 .font(OPSStyle.Typography.bodyBold)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .foregroundColor(showCompletedFlash ? .white : OPSStyle.Colors.primaryAccent)
+                .foregroundColor(showCompletedFlash ? OPSStyle.Colors.primaryText : OPSStyle.Colors.primaryAccent)
                 .background(showCompletedFlash ? completedColor : Color.clear)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -4465,7 +4462,7 @@ struct ProjectDetailsView: View {
         }) {
             HStack(spacing: 8) {
                 Image(systemName: "xmark.circle")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
 
                 Text("CANCEL TASK")
                     .font(OPSStyle.Typography.bodyBold)
@@ -5025,94 +5022,12 @@ struct ProjectDetailsView: View {
 
         print("🔄 Task handleScheduleUpdate called - New dates: \(startDate) to \(endDate)")
 
-        // Update or create the calendar event for the task
-        if let calendarEvent = task.calendarEvent {
-            calendarEvent.startDate = startDate
-            calendarEvent.endDate = endDate
-            let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
-            calendarEvent.duration = daysDiff + 1
-            calendarEvent.needsSync = true
-        } else {
-            let newEvent = CalendarEvent.fromTask(task, startDate: startDate, endDate: endDate)
-            task.calendarEvent = newEvent
-            dataController.modelContext?.insert(newEvent)
-        }
-
+        // Update the task's own date fields (merged from CalendarEvent)
+        task.updateDates(startDate: startDate, endDate: endDate)
         task.needsSync = true
         try? dataController.modelContext?.save()
 
-        // Notify calendar views to refresh
-        dataController.calendarEventsDidChange.toggle()
-
-        // Sync to server
-        if let calendarEvent = task.calendarEvent {
-            Task {
-                await syncTaskCalendarEventToServer(calendarEvent)
-            }
-        }
-    }
-
-    private func syncTaskCalendarEventToServer(_ calendarEvent: CalendarEvent) async {
-        guard let task = selectedTask else { return }
-
-        print("🔄 Syncing task calendar event to server: \(calendarEvent.id)")
-
-        do {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime]
-
-            let isNewEvent = calendarEvent.lastSyncedAt == nil
-
-            if isNewEvent {
-                print("📅 Creating new calendar event on server for task")
-
-                let company = dataController.getCompany(id: task.companyId)
-                let projectColor = company?.defaultProjectColor ?? "#9CA3AF"
-                let taskTypeName = task.taskType?.display ?? "Task"
-                let taskTitle = "\(taskTypeName) - \(project.title)"
-
-                let eventDTO = CalendarEventDTO(
-                    id: calendarEvent.id,
-                    color: task.taskColor,
-                    companyId: task.companyId,
-                    projectId: task.projectId,
-                    taskId: task.id,
-                    duration: Double(calendarEvent.duration),
-                    endDate: calendarEvent.endDate.map { formatter.string(from: $0) } ?? "",
-                    startDate: calendarEvent.startDate.map { formatter.string(from: $0) } ?? "",
-                    teamMembers: task.getTeamMemberIds(),
-                    title: taskTitle,
-                    createdDate: nil,
-                    modifiedDate: nil,
-                    deletedAt: nil
-                )
-
-                let createdEvent = try await dataController.apiService.createAndLinkCalendarEvent(eventDTO)
-                print("✅ Task calendar event created on server with ID: \(createdEvent.id)")
-            } else {
-                print("📅 Updating existing calendar event on server")
-
-                let startDateString = calendarEvent.startDate.map { formatter.string(from: $0) } ?? ""
-                let endDateString = calendarEvent.endDate.map { formatter.string(from: $0) } ?? ""
-
-                let updates: [String: Any] = [
-                    BubbleFields.CalendarEvent.startDate: startDateString,
-                    BubbleFields.CalendarEvent.endDate: endDateString,
-                    BubbleFields.CalendarEvent.duration: calendarEvent.duration
-                ]
-
-                try await dataController.apiService.updateCalendarEvent(id: calendarEvent.id, updates: updates)
-                print("✅ Task calendar event updated on server")
-            }
-
-            await MainActor.run {
-                calendarEvent.needsSync = false
-                calendarEvent.lastSyncedAt = Date()
-                try? dataController.modelContext?.save()
-            }
-        } catch {
-            print("⚠️ Failed to sync task calendar event to server: \(error)")
-        }
+        // Task dates updated directly - SwiftData will notify observers
     }
 
     private func saveTaskTeamChanges() {
@@ -5126,23 +5041,17 @@ struct ProjectDetailsView: View {
             task.setTeamMemberIds(Array(newIds))
             task.needsSync = true
 
-            // Update calendar event if exists
-            if let calendarEvent = task.calendarEvent {
-                calendarEvent.setTeamMemberIds(Array(newIds))
-                calendarEvent.needsSync = true
-            }
-
             try? dataController.modelContext?.save()
 
             // Show update message
             showTaskTeamUpdateMessage = true
 
-            // Sync to API
+            // Sync to Supabase
             Task {
                 do {
-                    try await dataController.apiService.updateTaskTeamMembers(
-                        id: task.id,
-                        teamMemberIds: Array(newIds)
+                    try await dataController.syncManager.updateTaskTeamMembers(
+                        taskId: task.id,
+                        memberIds: Array(newIds)
                     )
                     print("✅ Task team members synced successfully")
                 } catch {
@@ -5318,7 +5227,7 @@ struct AddressEditorSheet: View {
                 VStack(spacing: 4) {
                     // NOTE: Missing icon in OPSStyle - "scope" (address editor crosshair)
                     Image(systemName: "scope")
-                        .font(.system(size: 32))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xl))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                     Circle()
@@ -5514,18 +5423,18 @@ struct FullScreenPhotoViewer: View {
                 HStack {
                     Button(action: onDismiss) {
                         Image(systemName: OPSStyle.Icons.xmark)
-                            .font(.system(size: 22, weight: .semibold))
-                            .foregroundColor(.white)
+                            .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                             .padding(12)
                             .background(OPSStyle.Colors.background)
                             .clipShape(Circle())
                     }
-                    
+
                     Spacer()
-                    
+
                     Text("\(currentIndex + 1) of \(photos.count)")
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(8)
                         .background(OPSStyle.Colors.background)
                         .cornerRadius(OPSStyle.Layout.largeCornerRadius)
@@ -5566,17 +5475,17 @@ struct ZoomablePhotoView: View {
                         .scaleEffect(1.5)
 
                     Text("Loading image...")
-                        .foregroundColor(.gray)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                         .padding(.top, 10)
                 }
             } else {
                 VStack {
                     Image(systemName: OPSStyle.Icons.exclamationmarkTriangle)
-                        .font(.system(size: 40))
-                        .foregroundColor(.gray)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xxl))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
 
                     Text("Failed to load image")
-                        .foregroundColor(.gray)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                         .padding(.top, 10)
                 }
             }

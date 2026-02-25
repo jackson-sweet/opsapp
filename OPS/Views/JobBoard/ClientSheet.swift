@@ -188,7 +188,7 @@ struct ClientSheet: View {
                                     if showEmailError {
                                         Text("Invalid email format")
                                             .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(.red)
+                                            .foregroundColor(OPSStyle.Colors.errorStatus)
                                     }
                                 }
 
@@ -222,7 +222,7 @@ struct ClientSheet: View {
                                     if showPhoneError {
                                         Text("Invalid phone format")
                                             .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(.red)
+                                            .foregroundColor(OPSStyle.Colors.errorStatus)
                                     }
                                 }
 
@@ -309,7 +309,7 @@ struct ClientSheet: View {
                         Button(action: { showingContactPicker = true }) {
                             HStack {
                                 Image(systemName: "person.crop.circle")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryText)
 
                                 Text("IMPORT FROM CONTACTS")
@@ -439,7 +439,7 @@ struct ClientSheet: View {
                             .frame(width: 80, height: 80)
                             .overlay(
                                 Image(systemName: "building.2")
-                                    .font(.system(size: 32))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xl))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             )
                             .overlay(Circle().stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick))
@@ -459,7 +459,7 @@ struct ClientSheet: View {
                     }) {
                         Text("Remove photo")
                             .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(.red.opacity(0.8))
+                            .foregroundColor(OPSStyle.Colors.errorStatus)
                     }
                 }
             }
@@ -624,17 +624,42 @@ struct ClientSheet: View {
             tempClient.profileImageURL = imageURL
         }
 
-        // TODO: Implement syncManager.createClient() — for now, save locally and trigger sync
-        print("[CLIENT_CREATE] Saving client locally, marked for sync...")
+        // Save to data controller first
         tempClient.needsSync = true
-
-        // Save to data controller
         await MainActor.run {
             dataController.saveClient(tempClient)
         }
 
-        // Trigger background sync so the client is pushed to Supabase
-        dataController.syncManager?.triggerBackgroundSync()
+        // Sync to Supabase
+        if let syncManager = dataController.syncManager {
+            do {
+                let dto = SupabaseClientDTO(
+                    id: tempClient.id,
+                    bubbleId: nil,
+                    companyId: companyId,
+                    name: tempClient.name,
+                    email: tempClient.email,
+                    phoneNumber: tempClient.phoneNumber,
+                    address: tempClient.address,
+                    latitude: nil,
+                    longitude: nil,
+                    notes: tempClient.notes,
+                    profileImageUrl: tempClient.profileImageURL,
+                    deletedAt: nil
+                )
+                let _ = try await syncManager.createClient(dto: dto)
+                print("[CLIENT_CREATE] ✅ Client synced to Supabase: \(tempClient.id)")
+                await MainActor.run {
+                    tempClient.needsSync = false
+                    tempClient.lastSyncedAt = Date()
+                }
+            } catch {
+                print("[CLIENT_CREATE] ⚠️ Failed to sync client, saved locally: \(error)")
+                dataController.syncManager?.triggerBackgroundSync()
+            }
+        } else {
+            print("[CLIENT_CREATE] Saving client locally, marked for sync...")
+        }
 
         return tempClient
     }
@@ -706,7 +731,7 @@ struct ClientSheet: View {
                     // Address
                     HStack(spacing: 4) {
                         Image(systemName: "mappin.circle")
-                            .font(.system(size: 11))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Text(address.isEmpty ? "NO ADDRESS" : address.components(separatedBy: ",").first ?? address)
                             .font(OPSStyle.Typography.smallCaption)
@@ -734,7 +759,7 @@ struct ClientSheet: View {
                             .overlay(
                                 Text(String(name.prefix(1)).uppercased())
                                     .font(.custom("Mohave-Bold", size: 22))
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                             )
                     } else {
                         // Placeholder
@@ -743,7 +768,7 @@ struct ClientSheet: View {
                             .frame(width: 56, height: 56)
                             .overlay(
                                 Image(systemName: "building.2")
-                                    .font(.system(size: 22))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             )
                             .overlay(Circle().stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick))
@@ -771,7 +796,7 @@ struct DuplicateWarning: View {
         HStack {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundColor(.orange)
-                .font(.system(size: 16))
+                .font(.system(size: OPSStyle.Layout.IconSize.md))
             
             VStack(alignment: .leading, spacing: 2) {
                 Text("Possible duplicate")

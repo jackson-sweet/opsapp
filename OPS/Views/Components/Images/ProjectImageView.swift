@@ -47,8 +47,8 @@ struct ProjectImageView: View {
                             
                             // Unsynced indicator
                             Image(systemName: "cloud.slash.fill")
-                                .font(.system(size: 16))
-                                .foregroundColor(.white)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .padding(4)
                                 .background(OPSStyle.Colors.errorStatus)
                                 .clipShape(Circle())
@@ -65,7 +65,7 @@ struct ProjectImageView: View {
             } else if loadFailed {
                 // Failed state
                 Image(systemName: "exclamationmark.triangle")
-                    .font(.system(size: 24))
+                    .font(.system(size: OPSStyle.Layout.IconSize.lg))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
         }

@@ -42,7 +42,7 @@ struct ImagePickerView: View {
                 .frame(maxWidth: .infinity)
                 .padding()
                 .background(OPSStyle.Colors.primaryAccent)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                 .padding(.horizontal)
             }
@@ -56,7 +56,7 @@ struct ImagePickerView: View {
                     .frame(maxWidth: .infinity)
                     .padding()
                     .background(selectedImage != nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inactiveStatus)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                     .padding(.horizontal)
             }

@@ -136,7 +136,7 @@ struct ProjectMarkerPopup: View {
                     }
                 }
             }
-            .padding(14)
+            .padding(OPSStyle.Layout.spacing3)
             .frame(width: 240)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)

@@ -135,7 +135,7 @@ struct ContactDetailView: View {
                                         // Empty state
                                         VStack(spacing: 12) {
                                             Image(systemName: OPSStyle.Icons.subClient)
-                                                .font(.system(size: 32))
+                                                .font(.system(size: OPSStyle.Layout.IconSize.xl))
                                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                                             Text("No sub-contacts yet")
@@ -470,7 +470,7 @@ struct ContactDetailView: View {
             }) {
                 Image(systemName: "chevron.left")
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
             }
             .frame(width: 44, height: 44)
             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
@@ -481,7 +481,7 @@ struct ContactDetailView: View {
             // Title
             Text(isClient ? "CLIENT" : "TEAM MEMBER")
                 .font(OPSStyle.Typography.title)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
             
             Spacer()
 
@@ -526,7 +526,7 @@ struct ContactDetailView: View {
                     if let address = self.address, !address.isEmpty {
                         HStack(spacing: 4) {
                             Image(systemName: "mappin.circle")
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text(address.components(separatedBy: ",").first ?? address)
                                 .font(OPSStyle.Typography.smallCaption)
@@ -536,7 +536,7 @@ struct ContactDetailView: View {
                     } else {
                         HStack(spacing: 4) {
                             Image(systemName: "person.badge.shield.checkmark")
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text(role)
                                 .font(OPSStyle.Typography.smallCaption)
@@ -686,7 +686,7 @@ struct ContactDetailView: View {
                         }) {
                             HStack(spacing: 12) {
                                 Image(systemName: OPSStyle.Icons.envelope)
-                                    .font(.system(size: 16))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     .frame(width: 24)
 
@@ -698,7 +698,7 @@ struct ContactDetailView: View {
                                 Spacer()
 
                                 Image(systemName: OPSStyle.Icons.envelopeFill)
-                                    .font(.system(size: 16))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
                             .padding(.vertical, 12)
@@ -714,7 +714,7 @@ struct ContactDetailView: View {
                     } else {
                         HStack(spacing: 12) {
                             Image(systemName: OPSStyle.Icons.envelope)
-                                .font(.system(size: 16))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .frame(width: 24)
 
@@ -745,7 +745,7 @@ struct ContactDetailView: View {
                     if let phone = self.phone, !phone.isEmpty {
                         HStack(spacing: 12) {
                             Image(systemName: OPSStyle.Icons.phone)
-                                .font(.system(size: 16))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 .frame(width: 24)
 
@@ -764,7 +764,7 @@ struct ContactDetailView: View {
                                 }
                             }) {
                                 Image(systemName: OPSStyle.Icons.phoneFill)
-                                    .font(.system(size: 16))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
 
@@ -776,7 +776,7 @@ struct ContactDetailView: View {
                                 }
                             }) {
                                 Image(systemName: "message.fill")
-                                    .font(.system(size: 16))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
                         }
@@ -791,7 +791,7 @@ struct ContactDetailView: View {
                     } else {
                         HStack(spacing: 12) {
                             Image(systemName: OPSStyle.Icons.phone)
-                                .font(.system(size: 16))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .frame(width: 24)
 
@@ -830,7 +830,7 @@ struct ContactDetailView: View {
                             }) {
                                 HStack(spacing: 12) {
                                     Image(systemName: OPSStyle.Icons.address)
-                                        .font(.system(size: 16))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                         .frame(width: 24)
 
@@ -843,7 +843,7 @@ struct ContactDetailView: View {
                                     Spacer()
 
                                     Image(systemName: "map.fill")
-                                        .font(.system(size: 16))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 }
                                 .padding(.vertical, 12)
@@ -859,7 +859,7 @@ struct ContactDetailView: View {
                         } else {
                             HStack(spacing: 12) {
                                 Image(systemName: "location.slash")
-                                    .font(.system(size: 16))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     .frame(width: 24)
 
@@ -1017,7 +1017,7 @@ struct ContactDetailView: View {
 
                                 // Chevron
                                 Image(systemName: "chevron.right")
-                                    .font(.system(size: 12))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             .padding(.vertical, 12)
@@ -1060,7 +1060,7 @@ struct ContactDetailView: View {
                 }) {
                     VStack(spacing: 12) {
                         Image(systemName: OPSStyle.Icons.addProject)
-                            .font(.system(size: 40))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xl))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
                         VStack(spacing: 4) {
@@ -1081,7 +1081,7 @@ struct ContactDetailView: View {
                 // Empty state for non-clients or field crew (just text, no action)
                 VStack(spacing: 12) {
                     Image(systemName: "folder")
-                        .font(.system(size: 40))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xl))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                     Text("No projects")

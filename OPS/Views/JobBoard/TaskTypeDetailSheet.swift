@@ -124,7 +124,7 @@ struct TaskTypeDetailSheet: View {
                                 }) {
                                     HStack {
                                         Image(systemName: OPSStyle.Icons.pencil)
-                                            .font(.system(size: 16))
+                                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         Text("EDIT TASK TYPE")
                                             .font(OPSStyle.Typography.bodyBold)
                                     }
@@ -140,7 +140,7 @@ struct TaskTypeDetailSheet: View {
                                 }) {
                                     HStack {
                                         Image(systemName: OPSStyle.Icons.trash)
-                                            .font(.system(size: 16))
+                                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         Text("DELETE TASK TYPE")
                                             .font(OPSStyle.Typography.bodyBold)
                                     }
@@ -195,7 +195,7 @@ struct TaskTypeDetailSheet: View {
 
                             if let icon = taskType.icon {
                                 Image(systemName: icon)
-                                    .font(.system(size: 16))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
                             }
 
@@ -244,7 +244,7 @@ struct TaskTypeDetailSheet: View {
 
                                         if let icon = taskType.icon {
                                             Image(systemName: icon)
-                                                .font(.system(size: 14))
+                                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                                 .foregroundColor(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
                                         }
                                     }
@@ -317,23 +317,31 @@ struct TaskTypeDetailSheet: View {
                         }
                     }
 
-                    // TODO: Implement syncManager.deleteTaskType() — for now, delete locally and trigger sync
-                    print("[TASK_TYPE_DELETE] Deleting task type locally: \(taskType.id)")
+                    // Delete task type via Supabase sync
+                    print("[TASK_TYPE_DELETE] Deleting task type: \(taskType.id)")
+                    let taskTypeId = taskType.id
 
-                    // Delete task type locally
-                    await MainActor.run {
-                        modelContext.delete(taskType)
+                    if let syncManager = dataController.syncManager {
                         do {
-                            try modelContext.save()
-                            print("[TASK_TYPE_DELETE] ✅ Task type deleted locally")
-                            NotificationCenter.default.post(name: NSNotification.Name("TaskTypeDeleted"), object: nil)
+                            try await syncManager.deleteTaskType(taskTypeId: taskTypeId)
+                            print("[TASK_TYPE_DELETE] ✅ Task type deleted and synced")
                         } catch {
-                            print("[TASK_TYPE_DELETE] ❌ Error saving after local delete: \(error)")
+                            print("[TASK_TYPE_DELETE] ⚠️ Failed to sync delete, deleting locally: \(error)")
+                            await MainActor.run {
+                                modelContext.delete(taskType)
+                                try? modelContext.save()
+                            }
+                        }
+                    } else {
+                        await MainActor.run {
+                            modelContext.delete(taskType)
+                            try? modelContext.save()
                         }
                     }
 
-                    // Trigger background sync
-                    dataController.syncManager?.triggerBackgroundSync()
+                    await MainActor.run {
+                        NotificationCenter.default.post(name: NSNotification.Name("TaskTypeDeleted"), object: nil)
+                    }
                 },
                 onDeletionStarted: {
                     // Dismiss immediately (like the original implementation)

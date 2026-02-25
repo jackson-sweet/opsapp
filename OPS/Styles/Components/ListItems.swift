@@ -99,15 +99,15 @@ struct UserListItem: View {
                         
                         Text(getInitials(user: user))
                             .font(OPSStyle.Typography.caption)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                     }
                 }
-                
+
                 // Name and role
                 VStack(alignment: .leading, spacing: 4) {
                     Text(user.fullName)
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                     
                     Text(user.role.displayName)
                         .font(OPSStyle.Typography.smallCaption)
@@ -155,7 +155,7 @@ struct ProjectListItem: View {
                 HStack {
                     Text(project.title)
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                     
                     Spacer()
                     
@@ -192,7 +192,7 @@ struct ProjectListItem: View {
                                 .font(OPSStyle.Typography.captionBold)
                             
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 12))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         }
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .padding(.top, 4)

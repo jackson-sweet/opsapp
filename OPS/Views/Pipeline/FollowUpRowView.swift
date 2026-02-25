@@ -24,7 +24,7 @@ struct FollowUpRowView: View {
     var body: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             Image(systemName: followUp.type.icon)
-                .font(.system(size: 14))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(followUp.isOverdue ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.secondaryText)
                 .frame(width: 20)
 

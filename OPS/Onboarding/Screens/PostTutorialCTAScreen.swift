@@ -127,8 +127,8 @@ struct PostTutorialCTAScreen: View {
                             Spacer()
 
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.black)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                                .foregroundColor(OPSStyle.Colors.invertedText)
                                 .opacity(showButtonIcon ? 1 : 0)
                                 .offset(x: showButtonIcon ? 0 : -10)
                         }

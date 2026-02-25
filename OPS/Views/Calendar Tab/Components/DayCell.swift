@@ -45,7 +45,7 @@ struct DayCell: View {
                                 
                                 Text("\(projectCount)")
                                     .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                             }
                             .padding(.top, 4)
                             .padding(.trailing, 4)

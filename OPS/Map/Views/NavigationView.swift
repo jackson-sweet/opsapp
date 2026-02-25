@@ -61,7 +61,7 @@ struct MapNavigationView: View {
             HStack(spacing: 16) {
                 // Direction icon
                 Image(systemName: directionIcon)
-                    .font(.system(size: 32, weight: .bold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xl, weight: .bold))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(width: 50, height: 50)
                     .background(
@@ -96,7 +96,7 @@ struct MapNavigationView: View {
                 // Show all directions button
                 Button(action: { showDirectionsList = true }) {
                     Image(systemName: "list.bullet")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: 44, height: 44)
                         .background(
@@ -170,7 +170,7 @@ struct MapNavigationView: View {
                 Button(action: { showFullDirections = true }) {
                     HStack {
                         Image(systemName: "list.bullet")
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("DIRECTIONS")
                             .font(OPSStyle.Typography.button)
                     }
@@ -189,7 +189,7 @@ struct MapNavigationView: View {
                 }) {
                     HStack {
                         Image(systemName: "stop.circle.fill")
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("END")
                             .font(OPSStyle.Typography.button)
                     }

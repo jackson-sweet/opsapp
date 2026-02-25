@@ -16,7 +16,7 @@ struct NavigationLoadingBanner: View {
             HStack(spacing: 12) {
                 // Loading spinner
                 ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
                     .scaleEffect(0.8)
                     .frame(width: 30, height: 30)
                 
@@ -25,7 +25,7 @@ struct NavigationLoadingBanner: View {
                     Text("Calculating route...")
                         .font(OPSStyle.Typography.subtitle)
                         .fontWeight(.bold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                     
                     Text("Finding the best path to your destination")
                         .font(OPSStyle.Typography.caption)
@@ -49,7 +49,7 @@ struct NavigationLoadingBanner: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(OPSStyle.Colors.errorStatus)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
             }

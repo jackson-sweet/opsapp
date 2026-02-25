@@ -173,7 +173,7 @@ struct LocationPermissionPhase: View {
                     
                     // Location pin
                     Image(systemName: "location")
-                        .font(.system(size: 40, weight: .regular))
+                        .font(OPSStyle.Typography.displayLarge)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .frame(height: 200)
@@ -291,7 +291,7 @@ struct NotificationPermissionPhase: View {
                 ZStack {
                     // Notification bell
                     Image(systemName: "bell")
-                        .font(.system(size: 40, weight: .regular))
+                        .font(OPSStyle.Typography.displayLarge)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                     
                     // Notification badge
@@ -301,7 +301,7 @@ struct NotificationPermissionPhase: View {
                         .overlay(
                             Text("1")
                                 .font(OPSStyle.Typography.caption)
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                         )
                         .offset(x: 25, y: -25)
                 }

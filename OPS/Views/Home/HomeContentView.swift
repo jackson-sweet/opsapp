@@ -186,7 +186,7 @@ struct HomeContentView: View {
     private var gradientOverlay: some View {
         VStack(spacing: 0) {
             // Top gradient overlay
-            Color(.black)
+            OPSStyle.Colors.background
                 .frame(height: 80)
 
             OPSStyle.Layout.Gradients.headerFade
@@ -455,13 +455,13 @@ struct HomeContentView: View {
                     VStack(spacing: 16) {
                         // Icon
                         Image(systemName: "location.slash.fill")
-                            .font(.system(size: 48))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                         
                         // Title
                         Text("LOCATION SERVICES DISABLED")
                             .font(OPSStyle.Typography.title)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                             .multilineTextAlignment(.center)
                         
                         // Message
@@ -479,12 +479,12 @@ struct HomeContentView: View {
                         }) {
                             HStack {
                                 Image(systemName: "gear")
-                                    .font(.system(size: 18))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 
                                 Text("OPEN SETTINGS")
                                     .font(OPSStyle.Typography.button)
                             }
-                            .foregroundColor(.black)
+                            .foregroundColor(OPSStyle.Colors.invertedText)
                             .padding(.horizontal, 24)
                             .padding(.vertical, 12)
                             .background(OPSStyle.Colors.primaryAccent)
@@ -503,7 +503,7 @@ struct HomeContentView: View {
                                 .opacity(0.3)
                         }
                     )
-                    .cornerRadius(OPSStyle.Layout.cornerRadius * 2)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .padding(.horizontal, 40)
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))

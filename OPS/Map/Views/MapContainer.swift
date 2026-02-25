@@ -217,12 +217,12 @@ struct LocationPermissionOverlay: View {
             
             VStack(spacing: 24) {
                 Image(systemName: "location.slash.fill")
-                    .font(.system(size: 60))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                     .foregroundColor(OPSStyle.Colors.errorStatus)
-                
+
                 Text("LOCATION ACCESS REQUIRED")
                     .font(OPSStyle.Typography.title)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 
                 Text("Enable location services to see your position on the map and navigate to projects.")
                     .font(OPSStyle.Typography.body)
@@ -240,7 +240,7 @@ struct LocationPermissionOverlay: View {
                         Text("OPEN SETTINGS")
                     }
                     .font(OPSStyle.Typography.button)
-                    .foregroundColor(.black)
+                    .foregroundColor(OPSStyle.Colors.invertedText)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)
                     .background(OPSStyle.Colors.primaryAccent)
@@ -266,12 +266,12 @@ struct ArrivalMessageOverlay: View {
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "checkmark.circle")
-                .font(.system(size: 60))
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
-            
+
             Text("ARRIVED AT DESTINATION")
                 .font(OPSStyle.Typography.title)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
             
             Text("Navigation ended")
                 .font(OPSStyle.Typography.body)

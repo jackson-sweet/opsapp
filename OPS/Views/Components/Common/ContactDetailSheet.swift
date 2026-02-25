@@ -36,8 +36,8 @@ struct ContactDetailSheet: View {
                         .frame(width: 80, height: 80)
                     
                     Image(systemName: isClient ? "building.2" : "person.fill")
-                        .font(.system(size: 36))
-                        .foregroundColor(.white)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xxl))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 
                 // Name and role
@@ -161,7 +161,7 @@ struct ContactActionRow: View {
                         .frame(width: 44, height: 44)
                     
                     Image(systemName: icon)
-                        .font(.system(size: 18))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 
@@ -178,7 +178,7 @@ struct ContactActionRow: View {
                 Spacer()
                 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.vertical, 12)

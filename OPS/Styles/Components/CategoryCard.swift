@@ -82,7 +82,7 @@ struct OrganizationProfileCard: View {
                     // Company name
                     Text(company.name)
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                     
                     // Email if available
                     if let email = company.email, !email.isEmpty {

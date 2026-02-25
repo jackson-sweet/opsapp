@@ -59,7 +59,7 @@ struct TaskListView: View {
                 }) {
                     VStack(spacing: 12) {
                         Image(systemName: OPSStyle.Icons.task)
-                            .font(.system(size: 36))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
                         Text("NO TASKS - CREATE ONE")

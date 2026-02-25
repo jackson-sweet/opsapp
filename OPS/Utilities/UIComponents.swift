@@ -157,7 +157,7 @@ struct LoadingView: View {
 
                 if !message.isEmpty {
                     Text(message)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(.top, 12)
                 }
             }

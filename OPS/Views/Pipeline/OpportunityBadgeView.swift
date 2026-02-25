@@ -18,7 +18,7 @@ struct OpportunityBadgeView: View {
                 NavigationLink(value: opp) {
                     HStack(spacing: OPSStyle.Layout.spacing2) {
                         Image(systemName: OPSStyle.Icons.opportunity)
-                            .font(.system(size: 14))
+                            .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("LINKED OPPORTUNITY")
@@ -32,7 +32,7 @@ struct OpportunityBadgeView: View {
                         }
                         Spacer()
                         Image(systemName: OPSStyle.Icons.forward)
-                            .font(.system(size: 12))
+                            .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                     .padding(OPSStyle.Layout.spacing2)

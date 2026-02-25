@@ -41,7 +41,7 @@ struct SchedulingTypeExplanationView: View {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: OPSStyle.Icons.calendar)
-                                    .font(.system(size: 24))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                                 Text("PROJECT-BASED SCHEDULING")
@@ -99,7 +99,7 @@ struct SchedulingTypeExplanationView: View {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: OPSStyle.Icons.checklist)
-                                    .font(.system(size: 24))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                                 Text("TASK-BASED SCHEDULING")
@@ -157,7 +157,7 @@ struct SchedulingTypeExplanationView: View {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: "lightbulb.fill")
-                                    .font(.system(size: 20))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                                 Text("CHOOSING YOUR APPROACH")

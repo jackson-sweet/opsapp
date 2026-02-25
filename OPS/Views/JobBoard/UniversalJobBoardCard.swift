@@ -285,7 +285,7 @@ struct UniversalJobBoardCard: View {
                 if showingWrongSwipeHint {
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                         Text("SWIPE RIGHT")
                             .font(OPSStyle.Typography.captionBold)
                     }
@@ -325,7 +325,7 @@ struct UniversalJobBoardCard: View {
                 metadataRow
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
-            .padding(14)
+            .padding(OPSStyle.Layout.spacing3)
         }
         .background(
             ZStack {
@@ -583,7 +583,7 @@ struct UniversalJobBoardCard: View {
                 metadataRow
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
-            .padding(14)
+            .padding(OPSStyle.Layout.spacing3)
         }
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -754,7 +754,7 @@ struct UniversalJobBoardCard: View {
                 ForEach(Array(metadataItems.enumerated()), id: \.offset) { index, item in
                     HStack(spacing: 4) {
                         Image(systemName: item.icon)
-                            .font(.system(size: 11))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                         if index == 0 {

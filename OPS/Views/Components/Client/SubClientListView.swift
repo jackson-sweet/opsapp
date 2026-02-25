@@ -59,7 +59,7 @@ struct SubClientListView: View {
                 // Empty state
                 VStack(spacing: 12) {
                     Image(systemName: OPSStyle.Icons.subClient)
-                        .font(.system(size: 32))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xl))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                     Text("No sub-contacts yet")
@@ -277,7 +277,7 @@ struct SubClientRow: View {
                             Button(action: onEmail) {
                                 Image(systemName: OPSStyle.Icons.envelopeFill)
                                     .font(OPSStyle.Typography.body)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                                     .frame(width: 44, height: 44)
                                     .background(Color.clear)
                                     .overlay(
@@ -347,7 +347,7 @@ struct SubClientRow: View {
                                 Button(action: onCall) {
                                     Image(systemName: OPSStyle.Icons.phoneFill)
                                         .font(OPSStyle.Typography.body)
-                                        .foregroundColor(.white)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
                                         .frame(width: 44, height: 44)
                                         .background(Color.clear)
                                         .overlay(
@@ -360,7 +360,7 @@ struct SubClientRow: View {
                                 Button(action: onMessage) {
                                     Image(systemName: "message.fill")
                                         .font(OPSStyle.Typography.body)
-                                        .foregroundColor(.white)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
                                         .frame(width: 44, height: 44)
                                         .background(Color.clear)
                                         .overlay(
@@ -436,7 +436,7 @@ struct SubClientRow: View {
                             }) {
                                 Image(systemName: "map.fill")
                                     .font(OPSStyle.Typography.body)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                                     .frame(width: 44, height: 44)
                                     .background(Color.clear)
                                     .overlay(

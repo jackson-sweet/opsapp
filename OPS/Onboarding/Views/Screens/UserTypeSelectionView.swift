@@ -135,7 +135,7 @@ struct UserTypeOption: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(isSelected ? (isLightTheme ? .white : .black) : primaryTextColor)
+                        .foregroundColor(isSelected ? (isLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.invertedText) : primaryTextColor)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     
                     Text(description)
@@ -149,8 +149,8 @@ struct UserTypeOption: View {
                 
                 // Selection indicator
                 Image(systemName: "rectangle.portrait.and.arrow.forward")
-                    .font(.system(size: 24))
-                    .foregroundColor(isSelected ? (isLightTheme ? .white : .black) : primaryTextColor)
+                    .font(.system(size: OPSStyle.Layout.IconSize.lg))
+                    .foregroundColor(isSelected ? (isLightTheme ? OPSStyle.Colors.Light.background : OPSStyle.Colors.invertedText) : primaryTextColor)
             }
             .padding(OPSStyle.Layout.spacing3)
             .background(

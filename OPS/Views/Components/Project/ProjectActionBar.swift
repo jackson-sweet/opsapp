@@ -56,7 +56,7 @@ struct ProjectActionBar: View {
                     }) {
                         VStack(spacing: 8) {
                             Image(systemName: action.iconName(isRouting: inProgressManager.isRouting))
-                                .font(.system(size: 24))
+                                .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                             Text(action.label(isRouting: inProgressManager.isRouting).uppercased())
@@ -145,7 +145,7 @@ struct ProjectActionBar: View {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                             Text("Processing image...")
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .padding(.top, 10)
                         }
                     }
@@ -505,10 +505,10 @@ struct ReceiptScannerView: View {
                     Image(systemName: "dollarsign.circle")
                         .font(.system(size: 80))
                         .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
-                    
+
                     Text("COMING SOON")
                         .font(OPSStyle.Typography.title)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(.top, 24)
                     
                     Text("Expense tracking will be available in the next update")
@@ -558,13 +558,13 @@ private struct ReceiptFeatureItem: View {
     var body: some View {
         HStack(spacing: 16) {
             Image(systemName: icon)
-                .font(.system(size: 18))
+                .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .frame(width: 24, height: 24)
-            
+
             Text(title)
                 .font(OPSStyle.Typography.body)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
             
             Spacer()
         }

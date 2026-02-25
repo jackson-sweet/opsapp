@@ -95,7 +95,7 @@ struct ProfileJoinScreen: View {
             .frame(maxWidth: .infinity)
             .frame(height: 56)
             .background(isFormValid ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.5))
-            .foregroundColor(.black)
+            .foregroundColor(OPSStyle.Colors.invertedText)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .disabled(!isFormValid)
         }
@@ -133,7 +133,7 @@ struct ProfileJoinScreen: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Profile Photo")
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                     Text("Optional")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -205,7 +205,7 @@ struct ProfileJoinScreen: View {
                     .frame(width: 48, height: 48)
 
                 Image(systemName: "building.2.fill")
-                    .font(.system(size: 20))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
 
@@ -217,11 +217,11 @@ struct ProfileJoinScreen: View {
                 if let companyName = getCompanyName() {
                     Text(companyName)
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 } else {
                     Text("Your Company")
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
             }
 
@@ -252,7 +252,7 @@ struct ProfileJoinScreen: View {
 
                 Text("Joining...")
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
             }
 
             Spacer()

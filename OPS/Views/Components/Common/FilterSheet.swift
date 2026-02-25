@@ -150,7 +150,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
 
                         if selectedSort.wrappedValue == option {
                             Image(systemName: OPSStyle.Icons.checkmark)
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                     }
@@ -191,7 +191,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
                     if sortOptions != nil, let selectedSort = selectedSort, let getSortDisplay = getSortDisplay {
                         HStack {
                             Image(systemName: "arrow.up.arrow.down")
-                                .font(.system(size: 12))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                             Text(getSortDisplay(selectedSort))
@@ -233,7 +233,7 @@ struct FilterSheet<SortOption: Hashable & CaseIterable>: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
                 Text(title)
@@ -309,7 +309,7 @@ struct FilterSectionConfig: Identifiable {
                 return AnyView(
                     HStack {
                         Image(systemName: icon)
-                            .font(.system(size: 12))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                         Text("\(selection.wrappedValue.count) \(title.lowercased())\(selection.wrappedValue.count == 1 ? "" : "s") selected")
@@ -358,7 +358,7 @@ struct FilterSectionConfig: Identifiable {
                 return AnyView(
                     HStack {
                         Image(systemName: icon)
-                            .font(.system(size: 12))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                         Text("\(selection.wrappedValue.count) \(title.lowercased())\(selection.wrappedValue.count == 1 ? "" : "s") selected")
@@ -407,7 +407,7 @@ struct FilterSectionConfig: Identifiable {
                 return AnyView(
                     HStack {
                         Image(systemName: icon)
-                            .font(.system(size: 12))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                         Text("\(selection.wrappedValue.count) \(title.lowercased())\(selection.wrappedValue.count == 1 ? "" : "s") selected")
@@ -476,7 +476,7 @@ private struct MultiSelectFilterSection<T: Hashable>: View {
                         // Icon (if provided)
                         if let getIcon = getIcon, let getIconColor = getIconColor {
                             Image(systemName: getIcon(option))
-                                .font(.system(size: 16))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(getIconColor(option))
                                 .frame(width: 20)
                         }
@@ -500,7 +500,7 @@ private struct MultiSelectFilterSection<T: Hashable>: View {
 
                         if selection.contains(option) {
                             Image(systemName: OPSStyle.Icons.checkmark)
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                     }
@@ -563,7 +563,7 @@ private struct IdBasedMultiSelectSection<T: Identifiable>: View {
                         // Icon (if provided)
                         if let getIcon = getIcon, let getIconColor = getIconColor {
                             Image(systemName: getIcon(option))
-                                .font(.system(size: 16))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(getIconColor(option))
                                 .frame(width: 20)
                         }
@@ -587,7 +587,7 @@ private struct IdBasedMultiSelectSection<T: Identifiable>: View {
 
                         if selection.contains(getId(option)) {
                             Image(systemName: OPSStyle.Icons.checkmark)
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
                     }
@@ -693,7 +693,7 @@ private struct SearchableMultiSelectSection<T: Hashable & Identifiable>: View {
                 // Search field
                 HStack(spacing: 8) {
                     Image(systemName: OPSStyle.Icons.search)
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                     TextField(searchPlaceholder, text: $searchText)
@@ -707,7 +707,7 @@ private struct SearchableMultiSelectSection<T: Hashable & Identifiable>: View {
                             searchText = ""
                         }) {
                             Image(systemName: OPSStyle.Icons.xmarkCircleFill)
-                                .font(.system(size: 14))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
                     }
@@ -751,7 +751,7 @@ private struct SearchableMultiSelectSection<T: Hashable & Identifiable>: View {
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                             Image(systemName: OPSStyle.Icons.chevronDown)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                             Spacer()
                         }
@@ -795,7 +795,7 @@ private struct FilterSectionContainer<Content: View>: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
                 Text(title)
@@ -845,11 +845,11 @@ private struct FilterRow: View {
 
             if isSelected && !isSpecial {
                 Image(systemName: OPSStyle.Icons.checkmark)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             } else if isSpecial && isSelected {
                 Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
-                    .font(.system(size: 16))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
         }

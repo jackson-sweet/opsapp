@@ -250,7 +250,7 @@ struct SettingsRowCard: View {
         HStack(spacing: 16) {
             // Icon
             Image(systemName: iconName)
-                .font(.system(size: 24, weight: .light))
+                .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .light))
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(width: 30)
             
@@ -258,7 +258,7 @@ struct SettingsRowCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title.uppercased())
                     .font(OPSStyle.Typography.cardTitle)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 
                 Text(description)
                     .font(OPSStyle.Typography.cardBody)
@@ -270,7 +270,7 @@ struct SettingsRowCard: View {
             
             // Chevron
             Image(systemName: OPSStyle.Icons.chevronRight)
-                .font(.system(size: 14))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
         .padding(24)
@@ -292,7 +292,7 @@ struct AppInfoCard: View {
                 
                 Text("OPS APP")
                     .font(OPSStyle.Typography.cardTitle)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
             }
             
             Spacer()

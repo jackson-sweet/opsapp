@@ -212,7 +212,7 @@ struct ProjectCardView: View {
                             Text("COMPLETED")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .fontWeight(.bold)
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 3)
                                 .background(OPSStyle.Colors.statusColor(for: .completed))

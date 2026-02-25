@@ -187,7 +187,7 @@ struct TaskStatusSelectionRow: View {
 
                 if isSelected && !isDisabled {
                     Image(systemName: OPSStyle.Icons.checkmark)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
 
@@ -326,7 +326,7 @@ struct TaskTeamChangeSheet: View {
             ForEach(Array(task.teamMembers.enumerated()), id: \.element.id) { index, member in
                 HStack(spacing: 12) {
                     Image(systemName: OPSStyle.Icons.crew)
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 20)
 
@@ -457,7 +457,7 @@ struct TaskTeamMemberOption: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: isSelected ? OPSStyle.Icons.checkmarkSquareFill : OPSStyle.Icons.square)
-                    .font(.system(size: 20))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
 
                 VStack(alignment: .leading, spacing: 2) {

@@ -47,7 +47,7 @@ struct ColumnMappingView: View {
     private var infoBanner: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             Image(systemName: "info.circle")
-                .font(.system(size: 12))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             Text("Map each column to an inventory field. Name is required.")
@@ -124,7 +124,7 @@ struct ColumnMappingView: View {
                     Spacer()
 
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 10))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
                 .padding(.horizontal, 12)

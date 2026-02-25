@@ -135,7 +135,7 @@ struct ProjectMapView: View {
                                 
                                 Image(systemName: "location.fill")
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                    .font(.system(size: 20, weight: .bold))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                             }
                         }
                         .padding(.trailing, 16)

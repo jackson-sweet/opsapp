@@ -28,7 +28,7 @@ struct InvoiceCard: View {
                 HStack {
                     Label("PAYMENT", systemImage: "dollarsign.circle.fill")
                         .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(.black)
+                        .foregroundColor(OPSStyle.Colors.invertedText)
                         .padding(.leading, OPSStyle.Layout.spacing3)
                     Spacer()
                 }
@@ -44,7 +44,7 @@ struct InvoiceCard: View {
                     Spacer()
                     Label("VOID", systemImage: "xmark.circle.fill")
                         .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(.trailing, OPSStyle.Layout.spacing3)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

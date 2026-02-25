@@ -122,7 +122,7 @@ struct CompanyCodeDisplayView: View {
                                     }) {
                                         HStack(spacing: 4) {
                                             Image(systemName: showCopyFeedback ? "checkmark" : "doc.on.doc")
-                                                .font(.system(size: 12))
+                                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                             Text(showCopyFeedback ? "COPIED!" : "COPY")
                                                 .font(OPSStyle.Typography.smallCaption)
                                         }

@@ -134,7 +134,7 @@ struct SecuritySettingsView: View {
             VStack(spacing: 24) {
                 Text("Reset Password")
                     .font(OPSStyle.Typography.title)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.top, 24)
                 
                 if !passwordResetSuccess {
@@ -153,7 +153,7 @@ struct SecuritySettingsView: View {
                             
                             TextField("Enter email address", text: $resetEmail)
                                 .font(OPSStyle.Typography.body)
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .keyboardType(.default)  // Changed to default to allow entering the phrase
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
@@ -184,7 +184,7 @@ struct SecuritySettingsView: View {
                                         Button(action: activateDeveloperMode) {
                                             HStack {
                                                 Image(systemName: "hammer.circle.fill")
-                                                    .font(.system(size: 20))
+                                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                                                 Text("Enter Developer Mode")
                                                     .font(OPSStyle.Typography.body)
                                             }
@@ -222,7 +222,7 @@ struct SecuritySettingsView: View {
                             }) {
                                 Text("Cancel")
                                     .font(OPSStyle.Typography.button)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 16)
                                     .background(OPSStyle.Colors.cardBackgroundDark)
@@ -242,7 +242,7 @@ struct SecuritySettingsView: View {
                                 } else {
                                     Text("Send Reset Link")
                                         .font(OPSStyle.Typography.button)
-                                        .foregroundColor(.black)
+                                        .foregroundColor(OPSStyle.Colors.invertedText)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 16)
                                         .background(OPSStyle.Colors.primaryAccent)
@@ -258,13 +258,13 @@ struct SecuritySettingsView: View {
                     // Success message
                     VStack(spacing: 16) {
                         Image(systemName: developerModeActivated ? "hammer.circle.fill" : OPSStyle.Icons.checkmarkCircleFill)
-                            .font(.system(size: 60))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(developerModeActivated ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.successStatus)
                             .padding(.bottom, 8)
                         
                         Text(developerModeActivated ? "Developer Mode Activated!" : "Reset Link Sent!")
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                         
                         Text(developerModeActivated ? "You now have access to debug features." : "Check your email for instructions on how to reset your password.")
                             .font(OPSStyle.Typography.body)
@@ -279,7 +279,7 @@ struct SecuritySettingsView: View {
                         }) {
                             Text("Done")
                                 .font(OPSStyle.Typography.button)
-                                .foregroundColor(.black)
+                                .foregroundColor(OPSStyle.Colors.invertedText)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
                                 .background(OPSStyle.Colors.primaryAccent)
@@ -379,7 +379,7 @@ struct PINSetupSheet: View {
                         // Enter new PIN
                         Text("ENTER NEW 4-DIGIT PIN")
                             .font(OPSStyle.Typography.title)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                         
                         SecureField("", text: $enteredPIN)
                             .keyboardType(.numberPad)
@@ -406,7 +406,7 @@ struct PINSetupSheet: View {
                         // Confirm PIN
                         Text("CONFIRM PIN")
                             .font(OPSStyle.Typography.title)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                         
                         SecureField("", text: $confirmedPIN)
                             .keyboardType(.numberPad)

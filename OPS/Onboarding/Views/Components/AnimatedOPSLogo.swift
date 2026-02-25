@@ -34,7 +34,7 @@ struct AnimatedOPSLogo: View {
                 HStack(spacing: 16) {
                     Text("WELCOME TO OPS")
                         .font(OPSStyle.Typography.title)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                     
                     Image(systemName: "arrow.right")
                         .font(OPSStyle.Typography.title)

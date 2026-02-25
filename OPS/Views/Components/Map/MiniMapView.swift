@@ -34,7 +34,7 @@ struct MiniMapView: View {
                         Annotation("Project Location", coordinate: coordinate) {
                             // Use SF Symbols marker - clean version without background, with white color
                             Image(systemName: "pin")
-                                .font(.system(size: 28, weight: .semibold))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xl))
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }
                     }
@@ -50,7 +50,7 @@ struct MiniMapView: View {
                         .overlay(
                             VStack(spacing: 8) {
                                 Image(systemName: "map.slash")
-                                    .font(.system(size: 32))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xl))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 
                                 Text("NO ADDRESS")
@@ -72,8 +72,8 @@ struct MiniMapView: View {
                     HStack {
                         Spacer()
                         Image(systemName: "arrow.up.forward.app.fill")
-                            .font(.system(size: 20))
-                            .foregroundColor(.white)
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                             .padding(8)
                             .background(OPSStyle.Colors.primaryAccent)
                             .clipShape(Circle())

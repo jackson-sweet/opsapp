@@ -27,7 +27,7 @@ struct SettingsHeader: View {
             }) {
                 Image(systemName: "chevron.left")
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
             }
             .frame(width: 44, height: 44)
             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
@@ -36,7 +36,7 @@ struct SettingsHeader: View {
             // Title with consistent styling - left aligned
             Text(title.uppercased())
                 .font(OPSStyle.Typography.title)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 12)
             

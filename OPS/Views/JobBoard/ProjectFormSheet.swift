@@ -524,7 +524,7 @@ struct ProjectFormSheet: View {
                             Button(action: { showingCopyFromProject = true }) {
                                 HStack {
                                     Image(systemName: "doc.on.doc")
-                                        .font(.system(size: 14))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.primaryText)
 
                                     Text("COPY FROM PROJECT")
@@ -820,7 +820,7 @@ struct ProjectFormSheet: View {
                     Spacer()
 
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 12))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
                 .padding(.vertical, 12)
@@ -1137,7 +1137,7 @@ struct ProjectFormSheet: View {
                 }) {
                     HStack {
                         Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 20))
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
                         Text(localTasks.isEmpty ? "Add Task" : "Add Another Task")
                             .font(OPSStyle.Typography.body)
                     }
@@ -1214,8 +1214,8 @@ struct ProjectFormSheet: View {
                                 .overlay(alignment: .topTrailing) {
                                     Button(action: { removeImage(at: index) }) {
                                         Image(systemName: "xmark")
-                                            .font(.system(size: 12, weight: .bold))
-                                            .foregroundColor(.white)
+                                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .bold))
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
                                             .frame(width: 24, height: 24)
                                             .background(
                                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1226,14 +1226,14 @@ struct ProjectFormSheet: View {
                                                     .stroke(OPSStyle.Colors.pinDotNeutral, lineWidth: OPSStyle.Layout.Border.standard)
                                             )
                                     }
-                                    .padding(6)
+                                    .padding(OPSStyle.Layout.spacing2)
                                 }
                         }
 
                         Button(action: { showingImagePicker = true }) {
                             VStack {
                                 Image(systemName: "plus")
-                                    .font(.system(size: 24))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
                             .frame(width: 100, height: 100)
@@ -1251,7 +1251,7 @@ struct ProjectFormSheet: View {
                 Button(action: { showingImagePicker = true }) {
                     HStack {
                         Image(systemName: "camera.fill")
-                            .font(.system(size: 20))
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
                         Text("Add Photos")
                             .font(OPSStyle.Typography.body)
                     }
@@ -1321,7 +1321,7 @@ struct ProjectFormSheet: View {
                         // Address
                         HStack(spacing: 4) {
                             Image(systemName: "mappin.circle")
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text(address.isEmpty ? "NO ADDRESS" : address.components(separatedBy: ",").first ?? address)
                                 .font(OPSStyle.Typography.smallCaption)
@@ -1332,7 +1332,7 @@ struct ProjectFormSheet: View {
                         // Calendar icon + date
                         HStack(spacing: 4) {
                             Image(systemName: OPSStyle.Icons.calendar)
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                             // Show earliest task date or dash if no tasks have dates
@@ -1350,7 +1350,7 @@ struct ProjectFormSheet: View {
                         // Team icon + unique count across all tasks
                         HStack(spacing: 4) {
                             Image(systemName: OPSStyle.Icons.personTwo)
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                             let uniqueTeamMemberIds = Set(localTasks.flatMap { $0.teamMemberIds })
@@ -1362,7 +1362,7 @@ struct ProjectFormSheet: View {
                         Spacer()
                     }
                 }
-                .padding(14)
+                .padding(OPSStyle.Layout.spacing3)
             }
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -1660,12 +1660,44 @@ struct ProjectFormSheet: View {
         var savedOffline = false
 
         do {
-            // TODO: Implement syncManager.createProject() — for now, project is saved locally and marked for sync
-            print("[PROJECT_CREATE] Project saved locally with ID: \(project.id), marked for sync")
-            project.needsSync = true
+            // Sync project to Supabase
+            let isoFormatter = ISO8601DateFormatter()
+            let dto = SupabaseProjectDTO(
+                id: project.id,
+                bubbleId: nil,
+                companyId: companyId,
+                clientId: client.id,
+                opportunityId: nil,
+                title: project.title,
+                status: project.status.rawValue,
+                address: project.address,
+                latitude: nil,
+                longitude: nil,
+                startDate: project.startDate.map { isoFormatter.string(from: $0) },
+                endDate: project.endDate.map { isoFormatter.string(from: $0) },
+                duration: nil,
+                notes: project.notes,
+                description: project.projectDescription,
+                allDay: project.allDay,
+                teamMemberIds: Array(allTeamMemberIds),
+                projectImages: nil,
+                deletedAt: nil
+            )
 
-            await MainActor.run {
-                try? modelContext.save()
+            if let syncManager = dataController.syncManager {
+                let _ = try await syncManager.createProject(dto: dto)
+                print("[PROJECT_CREATE] ✅ Project synced to Supabase: \(project.id)")
+                await MainActor.run {
+                    project.needsSync = false
+                    project.lastSyncedAt = Date()
+                    try? modelContext.save()
+                }
+            } else {
+                print("[PROJECT_CREATE] Project saved locally with ID: \(project.id), marked for sync")
+                project.needsSync = true
+                await MainActor.run {
+                    try? modelContext.save()
+                }
             }
 
             // Create tasks with local project ID

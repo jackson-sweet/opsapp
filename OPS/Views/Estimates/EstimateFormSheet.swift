@@ -310,7 +310,7 @@ struct EstimateFormSheet: View {
             Button(action: { withAnimation(OPSStyle.Animation.fast) { isExpanded.wrappedValue.toggle() } }) {
                 HStack {
                     Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 12))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Text(title)
                         .font(OPSStyle.Typography.captionBold)

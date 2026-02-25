@@ -189,7 +189,7 @@ struct StatusOption: View {
 
                 if isSelected && !isDisabled {
                     Image(systemName: OPSStyle.Icons.checkmark)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
 
@@ -236,7 +236,7 @@ struct SchedulingModeConversionSheet: View {
                 VStack(spacing: OPSStyle.Layout.spacing4) {
                     // Icon
                     Image(systemName: "checklist")  // Always task-based now
-                        .font(.system(size: 48))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                     // Title
@@ -479,7 +479,7 @@ struct TaskPickerForTeamChange: View {
                                             Spacer()
 
                                             Image(systemName: "chevron.right")
-                                                .font(.system(size: 14))
+                                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                         }
                                         .padding(.horizontal, 16)
@@ -508,7 +508,7 @@ struct TaskPickerForTeamChange: View {
                         }) {
                             HStack {
                                 Image(systemName: OPSStyle.Icons.add)
-                                    .font(.system(size: 18))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 Text("CREATE NEW TASK")
                                     .font(OPSStyle.Typography.bodyBold)
                             }
@@ -625,7 +625,7 @@ struct ProjectTeamChangeView: View {
             ForEach(Array(project.teamMembers.enumerated()), id: \.element.id) { index, member in
                 HStack(spacing: 12) {
                     Image(systemName: OPSStyle.Icons.crew)
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 20)
 
@@ -759,7 +759,7 @@ struct TeamMemberOption: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: isSelected ? OPSStyle.Icons.checkmarkSquareFill : OPSStyle.Icons.square)
-                    .font(.system(size: 20))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -881,7 +881,7 @@ struct TaskTeamChangeView: View {
                 ForEach(Array(task.teamMembers.enumerated()), id: \.element.id) { index, member in
                 HStack(spacing: 12) {
                     Image(systemName: OPSStyle.Icons.crew)
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 20)
 
@@ -1045,7 +1045,7 @@ struct FeaturePoint: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 16))
+                .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .frame(width: 20)
 

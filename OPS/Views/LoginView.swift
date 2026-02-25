@@ -108,7 +108,7 @@ struct LoginView: View {
                         }) {
                             Text("GET SIGNED UP")
                                 .font(OPSStyle.Typography.button)
-                                .foregroundColor(.black)
+                                .foregroundColor(OPSStyle.Colors.invertedText)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: OPSStyle.Layout.touchTargetStandard)
                                 .background(OPSStyle.Colors.primaryText)
@@ -117,7 +117,7 @@ struct LoginView: View {
                                     HStack {
                                         Spacer()
                                         Image(systemName: "arrow.right")
-                                            .foregroundColor(.black)
+                                            .foregroundColor(OPSStyle.Colors.invertedText)
                                             .font(OPSStyle.Typography.caption.weight(.semibold))
                                             .padding(.trailing, 20)
                                     }
@@ -244,7 +244,7 @@ struct LoginView: View {
                                 
                                 Text(isLoggingIn ? "Signing in..." : "Continue")
                                     .font(OPSStyle.Typography.button)
-                                    .foregroundColor(.black)
+                                    .foregroundColor(OPSStyle.Colors.invertedText)
                             }
                             .frame(maxWidth: .infinity)
                             .frame(height: OPSStyle.Layout.touchTargetStandard)
@@ -255,7 +255,7 @@ struct LoginView: View {
                                 HStack {
                                     Spacer()
                                     Image(systemName: "arrow.right")
-                                        .foregroundColor(.black)
+                                        .foregroundColor(OPSStyle.Colors.invertedText)
                                         .font(OPSStyle.Typography.caption.weight(.semibold))
                                         .padding(.trailing, 20)
                                 } : nil
@@ -630,7 +630,7 @@ struct AppleSignInButton: View {
             HStack(spacing: 12) {
                 // Apple logo
                 Image(systemName: "apple.logo")
-                    .font(.system(size: 20, weight: .medium))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
                 Text("Continue with Apple")
@@ -679,7 +679,7 @@ struct LoginSuccessView: View {
                         
                         // Inner checkmark
                         Image(systemName: "checkmark")
-                            .font(.system(size: 24, weight: .semibold))
+                            .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .scaleEffect(showCheckmark ? 1 : 0)
                             .rotationEffect(.degrees(showCheckmark ? 0 : -30))
@@ -710,7 +710,7 @@ struct LoginSuccessView: View {
                     // User identifier (minimal info)
                     HStack(spacing: 6) {
                         Image(systemName: "person.fill")
-                            .font(.system(size: 10))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         
                         Text("WELCOME BACK")

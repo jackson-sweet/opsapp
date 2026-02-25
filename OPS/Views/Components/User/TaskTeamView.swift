@@ -88,7 +88,7 @@ struct TaskTeamView: View {
             Spacer()
 
             Image(systemName: OPSStyle.Icons.chevronRight)
-                .font(.system(size: 14))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
         .contentShape(Rectangle())

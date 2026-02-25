@@ -449,7 +449,7 @@ struct SettingsView: View {
         Button(action: { showingSearchSheet = true }) {
             HStack(spacing: 12) {
                 Image(systemName: OPSStyle.Icons.search)
-                    .font(.system(size: 16))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
                 Text("Search settings...")
@@ -507,7 +507,7 @@ struct SettingsView: View {
                 Spacer()
 
                 Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.vertical, 14)
@@ -541,7 +541,7 @@ struct SettingsView: View {
                     .overlay(
                         Text("\(user.firstName.prefix(1))\(user.lastName.prefix(1))")
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                     )
             }
         } else {
@@ -551,7 +551,7 @@ struct SettingsView: View {
                 .overlay(
                     Text("U")
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 )
         }
     }
@@ -584,7 +584,7 @@ struct SettingsView: View {
         Button(action: action) {
             HStack(spacing: 14) {
                 Image(systemName: icon)
-                    .font(.system(size: 18))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(width: 28, alignment: .center)
 
@@ -595,7 +595,7 @@ struct SettingsView: View {
                 Spacer()
 
                 Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.vertical, 14)

@@ -223,7 +223,7 @@ struct LabeledPillButtonGroup<T: Hashable>: View {
         var body: some View {
             VStack(alignment: .leading, spacing: 24) {
                 Text("Selected: \(selection?.rawValue ?? "none")")
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
 
                 LabeledPillButtonGroup(
                     label: "COMPANY SIZE",
@@ -247,7 +247,7 @@ struct LabeledPillButtonGroup<T: Hashable>: View {
         var body: some View {
             VStack(alignment: .leading, spacing: 24) {
                 Text("Selected: \(selection?.rawValue ?? "none")")
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
 
                 LabeledPillButtonGroup(
                     label: "COMPANY AGE",
@@ -278,7 +278,7 @@ struct LabeledPillButtonGroup<T: Hashable>: View {
         var body: some View {
             VStack(alignment: .leading, spacing: 24) {
                 Text("Selected: \(selection ?? "none")")
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
 
                 PillButtonGroup(
                     options: options,

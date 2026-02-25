@@ -312,8 +312,8 @@ struct TutorialLauncherView: View {
                             Spacer()
 
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.black)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                                .foregroundColor(OPSStyle.Colors.invertedText)
                                 .opacity(showButtonIcon ? 1 : 0)
                                 .offset(x: showButtonIcon ? 0 : -10)
                         }
@@ -450,7 +450,7 @@ struct TutorialLauncherView: View {
     private func errorView(error: String) -> some View {
         VStack(spacing: 24) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 48))
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.errorStatus)
 
             Text("COULDN'T LOAD TUTORIAL")
@@ -468,7 +468,7 @@ struct TutorialLauncherView: View {
             } label: {
                 Text("SKIP FOR NOW")
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.black)
+                    .foregroundColor(OPSStyle.Colors.invertedText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
                     .background(OPSStyle.Colors.primaryText)
@@ -597,21 +597,11 @@ struct TutorialLauncherView: View {
 
     // MARK: - Tutorial Logging
 
-    /// Sends a tutorial log to Bubble for analytics
+    /// Tutorial analytics logging (placeholder for Supabase migration)
     private func sendTutorialLog(skipped: Bool) async {
         let completed = stateManager.currentPhase == .completed
         let duration = Int(stateManager.completionTime ?? stateManager.elapsedTime)
-
-        await dataController.apiService.createTutorialLog(
-            appVersion: AppConfiguration.AppInfo.version,
-            isLoggedIn: !isPreSignup,
-            flowType: flowType.rawValue,
-            stepsCompleted: stateManager.stepsCompletedString,
-            lastCompletedStep: stateManager.lastCompletedStepDescriptor,
-            completed: completed,
-            skipped: skipped,
-            durationSeconds: duration
-        )
+        print("[TUTORIAL_LOG] completed=\(completed), skipped=\(skipped), duration=\(duration)s")
     }
 
     // MARK: - Completion Handling

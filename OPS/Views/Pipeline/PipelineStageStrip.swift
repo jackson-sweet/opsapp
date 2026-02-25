@@ -49,7 +49,7 @@ struct PipelineStageStrip: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.4))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .animation(OPSStyle.Animation.fast, value: selectedStage)
     }
 }

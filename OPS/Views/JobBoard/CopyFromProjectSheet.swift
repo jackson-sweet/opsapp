@@ -122,7 +122,7 @@ struct CopyFromProjectSheet: View {
                     HStack(spacing: 8) {
                         Image(systemName: OPSStyle.Icons.alert)
                             .foregroundColor(OPSStyle.Colors.warningStatus)
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
                         Text("Some fields will be overwritten")
                             .font(OPSStyle.Typography.caption)
@@ -214,7 +214,7 @@ struct CopyFromProjectSheet: View {
                     if let address = project.address, !address.isEmpty {
                         HStack(alignment: .bottom, spacing: 4) {
                             Image(systemName: OPSStyle.Icons.location)
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                             Text(formatAddressStreetOnly(address))
@@ -227,7 +227,7 @@ struct CopyFromProjectSheet: View {
                     if let startDate = project.startDate {
                         HStack(alignment: .bottom, spacing: 4) {
                             Image(systemName: OPSStyle.Icons.calendar)
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                             Text(DateHelper.simpleDateString(from: startDate))
@@ -240,7 +240,7 @@ struct CopyFromProjectSheet: View {
                     if !project.teamMembers.isEmpty {
                         HStack(alignment: .bottom, spacing: 4) {
                             Image(systemName: OPSStyle.Icons.personTwo)
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                             Text("\(project.teamMembers.count)")
@@ -253,7 +253,7 @@ struct CopyFromProjectSheet: View {
                     // Task count
                     HStack(alignment: .bottom, spacing: 4) {
                         Image(systemName: OPSStyle.Icons.task)
-                            .font(.system(size: 11))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(project.tasks.isEmpty ? OPSStyle.Colors.tertiaryText.opacity(0.5) : OPSStyle.Colors.tertiaryText)
 
                         Text("\(project.tasks.count) TASK\(project.tasks.count == 1 ? "" : "S")")
@@ -265,7 +265,7 @@ struct CopyFromProjectSheet: View {
                     Spacer()
                 }
             }
-            .padding(14)
+            .padding(OPSStyle.Layout.spacing3)
         }
         .frame(height: 80)
         .background(OPSStyle.Colors.cardBackgroundDark)
@@ -363,7 +363,7 @@ struct CopyFromProjectSheet: View {
             HStack {
                 Image(systemName: selectedFields.contains(field.id) ? OPSStyle.Icons.checkmarkSquareFill : OPSStyle.Icons.square)
                     .foregroundColor(selectedFields.contains(field.id) ? OPSStyle.Colors.primaryAccent : (field.hasData ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.tertiaryText.opacity(0.3)))
-                    .font(.system(size: 20))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(field.label)
@@ -384,7 +384,7 @@ struct CopyFromProjectSheet: View {
                 if populatedFields.contains(field.id) && field.hasData {
                     Image(systemName: OPSStyle.Icons.alert)
                         .foregroundColor(OPSStyle.Colors.warningStatus)
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 }
             }
             .padding()

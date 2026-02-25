@@ -26,7 +26,7 @@ struct SettingsHeader: View {
             }) {
                 Image(systemName: OPSStyle.Icons.chevronLeft)
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
             }
             .frame(width: 44, height: 44)
             .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
@@ -37,7 +37,7 @@ struct SettingsHeader: View {
             // Title with consistent styling
             Text(title.uppercased())
                 .font(OPSStyle.Typography.title)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
             
             Spacer()
             
@@ -95,11 +95,11 @@ private struct LegacySettingsTabSelector: View {
                     if selectedTab == tab {
                         ZStack{
                             Rectangle()
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             Text(tab.rawValue)
                                 .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(.black)
+                                .foregroundColor(OPSStyle.Colors.invertedText)
                                 
                         }
                         .frame(maxWidth: .infinity)
@@ -108,7 +108,7 @@ private struct LegacySettingsTabSelector: View {
                     } else {
                         Text(tab.rawValue)
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 4)
                     }
@@ -183,8 +183,8 @@ struct SettingsToggle: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(.white)
-                
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
                 Text(description)
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -297,7 +297,7 @@ struct SettingsField: View {
                 if isSecure {
                     SecureField(placeholder, text: $text)
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding()
                         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -308,7 +308,7 @@ struct SettingsField: View {
                 } else {
                     TextField(placeholder, text: $text)
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .autocorrectionDisabled(true)
                         .padding()
                         .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
@@ -321,7 +321,7 @@ struct SettingsField: View {
             } else {
                 Text(text.isEmpty ? "Not set" : text)
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(text.isEmpty ? OPSStyle.Colors.tertiaryText : .white)
+                    .foregroundColor(text.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
@@ -345,8 +345,8 @@ struct SecurityPINOption: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(.white)
-                    
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
                     Text(description)
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)

@@ -36,12 +36,16 @@ struct OpportunityFormSheet: View {
                     sectionHeader("CONTACT")
                     VStack(spacing: 0) {
                         formField("Name", text: $contactName, placeholder: "Contact name")
-                        Divider().background(OPSStyle.Colors.cardBorder)
+                        Rectangle()
+                            .frame(height: 0.5)
+                            .foregroundColor(OPSStyle.Colors.cardBorder)
                         formField("Phone", text: $contactPhone, placeholder: "Optional", keyboardType: .phonePad)
-                        Divider().background(OPSStyle.Colors.cardBorder)
+                        Rectangle()
+                            .frame(height: 0.5)
+                            .foregroundColor(OPSStyle.Colors.cardBorder)
                         formField("Email", text: $contactEmail, placeholder: "Optional", keyboardType: .emailAddress)
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                    .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -53,12 +57,16 @@ struct OpportunityFormSheet: View {
                     sectionHeader("DEAL DETAILS")
                     VStack(spacing: 0) {
                         formField("Job Description", text: $jobDescription, placeholder: "Optional")
-                        Divider().background(OPSStyle.Colors.cardBorder)
+                        Rectangle()
+                            .frame(height: 0.5)
+                            .foregroundColor(OPSStyle.Colors.cardBorder)
                         formField("Estimated Value", text: $estimatedValue, placeholder: "$0", keyboardType: .decimalPad)
-                        Divider().background(OPSStyle.Colors.cardBorder)
+                        Rectangle()
+                            .frame(height: 0.5)
+                            .foregroundColor(OPSStyle.Colors.cardBorder)
                         sourcePickerRow
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                    .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -148,7 +156,7 @@ struct OpportunityFormSheet: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(source.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 12))
+                        .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }

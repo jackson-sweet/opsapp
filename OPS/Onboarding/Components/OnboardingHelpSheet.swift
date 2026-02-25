@@ -44,7 +44,7 @@ struct OnboardingHelpSheet: View {
                 // Title
                 Text(title)
                     .font(OPSStyle.Typography.title)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
 
                 // Description
                 Text(description)
@@ -88,7 +88,7 @@ struct OnboardingHelpSheet: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
                         .background(OPSStyle.Colors.primaryAccent)
-                        .foregroundColor(.black)
+                        .foregroundColor(OPSStyle.Colors.invertedText)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
             }
@@ -130,7 +130,7 @@ struct OnboardingHelpButton: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: OPSStyle.Icons.info)
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 Text("Need help?")
                     .font(OPSStyle.Typography.caption)
             }

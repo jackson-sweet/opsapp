@@ -98,7 +98,7 @@ struct CompanyDetailsScreen: View {
                                 Spacer()
 
                                 Image(systemName: "chevron.down")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             .padding(.vertical, 14)

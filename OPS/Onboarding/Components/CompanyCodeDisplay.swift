@@ -67,7 +67,7 @@ struct CompanyCodeDisplay: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: copied ? "checkmark" : OPSStyle.Icons.copy)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                 Text(copied ? "Copied!" : "Copy Code")
                     .font(OPSStyle.Typography.button)
             }
@@ -193,7 +193,7 @@ struct CompanyCodeSection: View {
                 CompanyCodeInput(code: $code)
 
                 Text("Entered: \(code)")
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
             }
             .padding(40)
             .background(OPSStyle.Colors.background)

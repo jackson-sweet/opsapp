@@ -23,7 +23,7 @@ struct OpportunityCard: View {
             HStack {
                 Label("ADVANCE", systemImage: OPSStyle.Icons.stageAdvance)
                     .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(.black)
+                    .foregroundColor(OPSStyle.Colors.invertedText)
                     .padding(.leading, OPSStyle.Layout.spacing3)
                 Spacer()
             }
@@ -37,7 +37,7 @@ struct OpportunityCard: View {
                 Spacer()
                 Label("LOST", systemImage: OPSStyle.Icons.dealLost)
                     .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.trailing, OPSStyle.Layout.spacing3)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -74,7 +74,7 @@ struct OpportunityCard: View {
                 HStack {
                     if opportunity.isStale {
                         Image(systemName: OPSStyle.Icons.stale)
-                            .font(.system(size: 14))
+                            .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                     }
                     Text(opportunity.contactName.uppercased())
@@ -105,7 +105,7 @@ struct OpportunityCard: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+            .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -121,12 +121,13 @@ struct OpportunityCard: View {
             .font(OPSStyle.Typography.smallCaption)
             .fontWeight(.medium)
             .foregroundColor(color)
-            .padding(.horizontal, OPSStyle.Layout.spacing2 + 2)
-            .padding(.vertical, OPSStyle.Layout.spacing1 + 2)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .background(color.opacity(0.15))
             .overlay(
-                Capsule().stroke(color, lineWidth: OPSStyle.Layout.Border.standard)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                    .stroke(color, lineWidth: OPSStyle.Layout.Border.standard)
             )
-            .clipShape(Capsule())
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius))
     }
 }

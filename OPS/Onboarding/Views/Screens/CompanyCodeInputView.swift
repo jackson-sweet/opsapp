@@ -88,7 +88,7 @@ struct CompanyCodeInputView: View {
                     // Welcome phase after successful join
                     VStack(spacing: 16) {
                         Image(systemName: "checkmark.circle")
-                            .font(.system(size: 60))
+                            .font(OPSStyle.Typography.displayXL)
                             .foregroundColor(OPSStyle.Colors.successStatus)
 
                         Text("WELCOME TO")

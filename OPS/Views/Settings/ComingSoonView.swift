@@ -39,13 +39,13 @@ struct ComingSoonView: View {
                         Spacer(minLength: 40)
                         
                         Image(systemName: featureIcon)
-                            .font(.system(size: 60, weight: .light))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xxl, weight: .light))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                         
                         VStack(spacing: 16) {
                             Text("COMING SOON")
                                 .font(OPSStyle.Typography.title)
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                             
                             Text("This feature will be available in the future.")
                                 .font(OPSStyle.Typography.body)
@@ -86,7 +86,7 @@ struct ComingSoonView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Next Update")
                                         .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(.white)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
                                     
                                     Text("Expected in the coming weeks")
                                         .font(OPSStyle.Typography.body)
@@ -120,7 +120,7 @@ struct ComingSoonView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(feature.title)
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 
                 Text(feature.description)
                     .font(OPSStyle.Typography.body)

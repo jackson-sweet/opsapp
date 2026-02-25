@@ -58,8 +58,8 @@ struct ProjectPhotosGrid: View {
                                                 OPSStyle.Colors.modalOverlay
 
                                                 Image(systemName: "trash")
-                                                    .font(.system(size: 30))
-                                                    .foregroundColor(.white)
+                                                    .font(.system(size: OPSStyle.Layout.IconSize.xl))
+                                                    .foregroundColor(OPSStyle.Colors.primaryText)
                                             }
                                         }
                                     )
@@ -102,7 +102,7 @@ struct ProjectPhotosGrid: View {
                             Text("Add Photo")
                                 .font(.headline)
                         }
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(height: 56)
                         .frame(maxWidth: .infinity)
                         .background(OPSStyle.Colors.primaryAccent)
@@ -121,7 +121,7 @@ struct ProjectPhotosGrid: View {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                             Text("Processing image...")
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .padding(.top, 10)
                         }
                     }
@@ -193,16 +193,16 @@ struct ProjectPhotosGrid: View {
             Spacer()
             
             Image(systemName: OPSStyle.Icons.photos)
-                .font(.system(size: 64))
-                .foregroundColor(.gray)
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
+                .foregroundColor(OPSStyle.Colors.secondaryText)
 
             Text("No Photos")
                 .font(.title2)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
 
             Text("Add photos to document this project")
                 .font(OPSStyle.Typography.body)
-                .foregroundColor(.gray)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
 
@@ -214,7 +214,7 @@ struct ProjectPhotosGrid: View {
                     Text("Add Photo")
                         .font(.headline)
                 }
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(height: 56)
                 .frame(width: 220)
                 .background(OPSStyle.Colors.primaryAccent)
@@ -256,8 +256,8 @@ struct PhotoThumbnail: View {
                             
                             // Unsynced indicator
                             Image(systemName: "icloud.slash")
-                                .font(.system(size: 12))
-                                .foregroundColor(.white)
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .padding(2)
                                 .background(OPSStyle.Colors.errorStatus)
                                 .clipShape(Circle())
@@ -271,8 +271,8 @@ struct PhotoThumbnail: View {
                 ProgressView()
             } else {
                 Image(systemName: "photo")
-                    .font(.system(size: 20))
-                    .foregroundColor(.gray)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
         }
         .onAppear(perform: loadImage)
@@ -420,8 +420,8 @@ struct BasicPhotoViewer: View {
             // Close button
             Button(action: onDismiss) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 30))
-                    .foregroundColor(.white)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xl))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(20)
             }, alignment: .topTrailing
         )
@@ -471,7 +471,7 @@ struct SinglePhotoView: View {
                     .scaleEffect(1.5)
             } else {
                 Text("Failed to load image")
-                    .foregroundColor(.gray)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
         }
         .onAppear(perform: loadImage)

@@ -52,10 +52,17 @@ enum OPSStyle {
         static let tertiaryText = Color("TextTertiary") // Darker gray (#666666)
 
         // Status colors
-        static let successStatus = Color("StatusSuccess") // Green (#34C759)
-        static let warningStatus = Color("StatusWarning") // Yellow/Orange
-        static let errorStatus = Color("StatusError") // Red (#FF3B30)
+        static let successStatus = Color("StatusSuccess") // Muted olive-green (#A5B368)
+        static let warningStatus = Color("StatusWarning") // Amber gold (#C4A868)
+        static let errorStatus = Color("StatusError") // Deep red (#93321A)
         static let inactiveStatus = Color("StatusInactive") // Gray (#8E8E93)
+
+        // Accounting & Financial colors
+        static let accountingRevenue = Color("AccountingRevenue") // Amber gold (#C4A868)
+        static let accountingProfit = Color("AccountingProfit") // Muted green (#9DB582)
+        static let accountingCost = Color("AccountingCost") // Muted rose (#B58289)
+        static let accountingReceivables = Color("AccountingReceivables") // Warm amber (#D4A574)
+        static let accountingOverdue = Color("AccountingOverdue") // Deep red (#93321A)
 
         // UI state colors
         static let placeholderText = Color(red: 0.6, green: 0.6, blue: 0.6)  // #999999 (medium gray)
@@ -212,7 +219,11 @@ enum OPSStyle {
             static let md: CGFloat = 20.0   // Standard icons
             static let lg: CGFloat = 24.0   // Section header icons
             static let xl: CGFloat = 32.0   // Action icons, prominent UI
+            static let xxl: CGFloat = 48.0  // Large decorative icons (location overlay, etc.)
         }
+
+        // Tab bar icon size
+        static let tabBarIconSize: CGFloat = 28.0
 
         // Border widths
         enum Border {

@@ -250,7 +250,7 @@ struct ProjectSelectionSheet: View {
                 // Address
                 HStack(spacing: 6) {
                     Image(systemName: "mappin.circle.fill")
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                     
                     Text(project.address ?? "No address")
@@ -270,7 +270,7 @@ struct ProjectSelectionSheet: View {
                     // Show current project indicator
                     HStack {
                         Image(systemName: "location.circle.fill")
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("Current Project")
                             .font(OPSStyle.Typography.body)
                         Spacer()
@@ -284,12 +284,12 @@ struct ProjectSelectionSheet: View {
                     Button(action: onNavigate) {
                         HStack {
                             Image(systemName: "location.fill")
-                                .font(.system(size: 16))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text("Navigate to Project")
                                 .font(OPSStyle.Typography.bodyBold)
                             Spacer()
                         }
-                        .foregroundColor(.black)
+                        .foregroundColor(OPSStyle.Colors.invertedText)
                         .padding()
                         .background(OPSStyle.Colors.primaryAccent)
                         .cornerRadius(OPSStyle.Layout.buttonRadius)

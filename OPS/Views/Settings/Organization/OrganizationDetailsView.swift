@@ -190,7 +190,7 @@ struct OrganizationDetailsView: View {
                         if let error = errorMessage {
                             HStack(spacing: 8) {
                                 Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
 
                                 Text(error)
@@ -266,7 +266,7 @@ struct OrganizationDetailsView: View {
                     showingCompanyCodeInfo = true
                 }) {
                     Image(systemName: "info.circle")
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .popover(isPresented: $showingCompanyCodeInfo, arrowEdge: .top) {
@@ -312,7 +312,7 @@ struct OrganizationDetailsView: View {
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "doc.on.doc")
-                                .font(.system(size: 12))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             Text("COPY")
                                 .font(OPSStyle.Typography.smallCaption)
                         }
@@ -397,7 +397,7 @@ struct OrganizationDetailsView: View {
                     }) {
                         Text("Remove logo")
                             .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(.red.opacity(0.8))
+                            .foregroundColor(OPSStyle.Colors.errorStatus)
                     }
                 }
             }
@@ -412,7 +412,7 @@ struct OrganizationDetailsView: View {
             .frame(width: 72, height: 72)
             .overlay(
                 Image(systemName: "building.2")
-                    .font(.system(size: 28))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xl))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             )
             .overlay(
@@ -521,7 +521,7 @@ struct OrganizationDetailsView: View {
                     Text(isSaving ? "SAVING..." : "SAVE CHANGES")
                         .font(OPSStyle.Typography.captionBold)
                 }
-                .foregroundColor(.black)
+                .foregroundColor(OPSStyle.Colors.invertedText)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(OPSStyle.Colors.primaryText)

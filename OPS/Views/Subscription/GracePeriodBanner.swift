@@ -22,13 +22,13 @@ struct GracePeriodBanner: View {
                 HStack(spacing: 12) {
                     // Warning icon - smaller, more subtle
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.black.opacity(0.9))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.invertedText)
                     
                     // Message - uppercase tactical style
                     Text(bannerMessage.uppercased())
                         .font(OPSStyle.Typography.captionBold)  // Bold tactical font
-                        .foregroundColor(.black)
+                        .foregroundColor(OPSStyle.Colors.invertedText)
                         .lineLimit(1)
                     
                     Spacer()
@@ -40,7 +40,7 @@ struct GracePeriodBanner: View {
                         }) {
                             Text(actionButtonText.uppercased())
                                 .font(OPSStyle.Typography.smallCaption)  // Smaller tactical font
-                                .foregroundColor(.black)
+                                .foregroundColor(OPSStyle.Colors.invertedText)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 4)
                                 .overlay(

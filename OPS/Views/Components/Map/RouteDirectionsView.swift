@@ -49,7 +49,7 @@ struct RouteDirectionsView: View {
                     
                     Text(estimatedArrival ?? "Calculating...")
                         .font(OPSStyle.Typography.subtitle)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 
                 Spacer()
@@ -61,7 +61,7 @@ struct RouteDirectionsView: View {
                     
                     Text(distance ?? "Calculating...")
                         .font(OPSStyle.Typography.subtitle)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
             }
             .padding()
@@ -72,13 +72,13 @@ struct RouteDirectionsView: View {
             if let firstDirection = directions.first {
                 HStack {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundColor(.white)
+                        .font(.system(size: OPSStyle.Layout.IconSize.lg))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: 40)
-                    
+
                     Text(firstDirection)
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                     
                     Spacer()
                 }
@@ -94,12 +94,12 @@ struct RouteDirectionsView: View {
                             HStack(alignment: .top) {
                                 Text("\(index + 1).")
                                     .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                                     .frame(width: 25, alignment: .leading)
-                                
+
                                 Text(directions[index])
                                     .font(OPSStyle.Typography.body)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                                     .fixedSize(horizontal: false, vertical: true) // Allow text to wrap
                             }
                             .padding(.horizontal)
@@ -131,7 +131,7 @@ struct RouteDirectionsView: View {
                 }
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
             }
             
@@ -151,7 +151,7 @@ struct RouteDirectionsView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(OPSStyle.Colors.cardBackground)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 
                 // Stop navigation button
@@ -169,7 +169,7 @@ struct RouteDirectionsView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(Color(OPSStyle.Colors.errorStatus))
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 }
             }
         }

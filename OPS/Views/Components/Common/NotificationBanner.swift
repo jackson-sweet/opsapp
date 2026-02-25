@@ -64,7 +64,7 @@ struct NotificationBanner: View {
             // Banner content
             HStack(spacing: 10) {
                 Image(systemName: type.iconName)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(type.iconColor)
                 
                 Text(message)

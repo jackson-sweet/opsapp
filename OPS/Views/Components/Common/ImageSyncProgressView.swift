@@ -18,14 +18,14 @@ struct ImageSyncProgressView: View {
                 HStack(spacing: 12) {
                     // Icon
                     Image(systemName: syncManager.hasError ? "exclamationmark.cloud.fill" : "icloud.and.arrow.up.fill")
-                        .font(.system(size: 16))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(syncManager.hasError ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryAccent)
                     
                     // Progress info
                     VStack(alignment: .leading, spacing: 4) {
                         Text(syncManager.statusText)
                             .font(OPSStyle.Typography.caption)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                         
                         // Progress bar
                         GeometryReader { geometry in
@@ -88,7 +88,7 @@ struct ImageSyncProgressView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(upload.projectName)
                                         .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(.white)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
                                     
                                     Text("\(upload.imageCount) images")
                                         .font(OPSStyle.Typography.smallCaption)

@@ -198,7 +198,7 @@ struct PreferenceKeysDemo: View {
 
             VStack(spacing: 40) {
                 Text("Target View Below")
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
 
                 // Target element
                 Button("Tutorial Target") {

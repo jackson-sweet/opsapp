@@ -81,7 +81,7 @@ struct CompanyAvatar: View {
                     .overlay(
                         Text(initials)
                             .font(.custom("Mohave-Bold", size: fontSize))
-                            .foregroundColor(.black)
+                            .foregroundColor(OPSStyle.Colors.invertedText)
                             .offset(x: 0, y: fontSize/15)
                     )
             }

@@ -119,8 +119,8 @@ struct ProductsListView: View {
                 showFormSheet = true
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(.white)
+                    .font(.system(size: OPSStyle.Layout.IconSize.lg))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)
                     .background(OPSStyle.Colors.primaryAccent)
                     .clipShape(Circle())
@@ -198,7 +198,7 @@ struct ProductsListView: View {
                         showDeactivateConfirm = true
                     } label: {
                         Image(systemName: "trash")
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                 }
@@ -256,7 +256,7 @@ struct ProductsListView: View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
             Image(systemName: OPSStyle.Icons.productTag)
-                .font(.system(size: 48))
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text(products.isEmpty ? "NO PRODUCTS YET" : "NO MATCHES")
                 .font(OPSStyle.Typography.subtitle)

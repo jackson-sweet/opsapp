@@ -67,7 +67,7 @@ struct ManageSubscriptionView: View {
                             if let error = errorMessage {
                                 HStack(spacing: 8) {
                                     Image(systemName: "exclamationmark.triangle.fill")
-                                        .font(.system(size: 14))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                         .foregroundColor(OPSStyle.Colors.errorStatus)
 
                                     Text(error)
@@ -278,7 +278,7 @@ struct ManageSubscriptionView: View {
     private func warningBanner(icon: String, message: String, color: Color) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 14))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(color)
 
             Text(message.uppercased())
@@ -347,7 +347,7 @@ struct ManageSubscriptionView: View {
             if isAtLimit {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.warningStatus)
 
                     Text("SEAT LIMIT REACHED")
@@ -396,7 +396,7 @@ struct ManageSubscriptionView: View {
     private func actionRow(icon: String, title: String, subtitle: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 18))
+                .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .frame(width: 24)
 
@@ -413,7 +413,7 @@ struct ManageSubscriptionView: View {
             Spacer()
 
             Image(systemName: OPSStyle.Icons.chevronRight)
-                .font(.system(size: 14))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(16)
@@ -447,7 +447,7 @@ struct ManageSubscriptionView: View {
                     // Error state - show cached data with error indicator
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 12))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                         Text("Using cached data")
                             .font(OPSStyle.Typography.smallCaption)
@@ -533,7 +533,7 @@ struct ManageSubscriptionView: View {
         if cancelAtPeriodEnd {
             HStack(spacing: 4) {
                 Image(systemName: "exclamationmark.circle.fill")
-                    .font(.system(size: 12))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
 
                 Text("Cancels at period end")
@@ -553,7 +553,7 @@ struct ManageSubscriptionView: View {
 
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 12))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.successStatus)
 
                     Text("Active")
@@ -600,7 +600,7 @@ struct ManageSubscriptionView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "info.circle.fill")
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                 Text("No active subscription")
@@ -634,7 +634,7 @@ struct ManageSubscriptionView: View {
 
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 12))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.successStatus)
 
                         Text("Active")
@@ -655,7 +655,7 @@ struct ManageSubscriptionView: View {
             }) {
                 HStack(spacing: 8) {
                     Image(systemName: "xmark.circle")
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
                     Text("CANCEL SUBSCRIPTION")
                         .font(OPSStyle.Typography.captionBold)
@@ -682,7 +682,7 @@ struct ManageSubscriptionView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 8) {
                                 Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 20))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
 
                                 Text("CANCEL SUBSCRIPTION")
@@ -751,7 +751,7 @@ struct ManageSubscriptionView: View {
                                     Text(isCancelling ? "CANCELLING..." : "CONFIRM CANCELLATION")
                                         .font(OPSStyle.Typography.captionBold)
                                 }
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                                 .background(OPSStyle.Colors.errorStatus)

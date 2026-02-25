@@ -129,7 +129,7 @@ struct TutorialCompletionView: View {
         } label: {
             Text(isPreSignup ? "CREATE YOUR ACCOUNT" : "ENTER OPS")
                 .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(.black)
+                .foregroundColor(OPSStyle.Colors.invertedText)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
                 .background(OPSStyle.Colors.primaryText)
@@ -235,7 +235,7 @@ struct StandaloneCompletionView: View {
                     } label: {
                         Text("ENTER OPS")
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.black)
+                            .foregroundColor(OPSStyle.Colors.invertedText)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 18)
                             .background(OPSStyle.Colors.primaryText)

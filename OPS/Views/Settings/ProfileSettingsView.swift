@@ -103,7 +103,7 @@ struct ProfileSettingsView: View {
                                         if let address = user.homeAddress, !address.isEmpty {
                                             HStack(spacing: 4) {
                                                 Image(systemName: "mappin.circle")
-                                                    .font(.system(size: 11))
+                                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                                                 Text(address.components(separatedBy: ",").first ?? address)
                                                     .font(OPSStyle.Typography.smallCaption)
@@ -113,7 +113,7 @@ struct ProfileSettingsView: View {
                                         } else {
                                             HStack(spacing: 4) {
                                                 Image(systemName: "person.badge.shield.checkmark")
-                                                    .font(.system(size: 11))
+                                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                                                 Text(user.role.displayName)
                                                     .font(OPSStyle.Typography.smallCaption)
@@ -296,7 +296,7 @@ struct ProfileSettingsView: View {
             VStack(spacing: 24) {
                 Text("Reset Password")
                     .font(OPSStyle.Typography.title)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.top, 24)
                 
                 if !passwordResetSuccess {
@@ -315,7 +315,7 @@ struct ProfileSettingsView: View {
                             
                             TextField("", text: $resetEmail)
                                 .font(OPSStyle.Typography.body)
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .keyboardType(.emailAddress)
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
@@ -347,13 +347,13 @@ struct ProfileSettingsView: View {
                             }) {
                                 Text("Cancel")
                                     .font(OPSStyle.Typography.button)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 16)
                                     .background(OPSStyle.Colors.cardBackgroundDark)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
-                            
+
                             Button(action: {
                                 requestPasswordReset()
                             }) {
@@ -367,7 +367,7 @@ struct ProfileSettingsView: View {
                                 } else {
                                     Text("Send Reset Link")
                                         .font(OPSStyle.Typography.button)
-                                        .foregroundColor(.black)
+                                        .foregroundColor(OPSStyle.Colors.invertedText)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 16)
                                         .background(OPSStyle.Colors.primaryAccent)
@@ -389,7 +389,7 @@ struct ProfileSettingsView: View {
                         
                         Text("Reset Link Sent!")
                             .font(OPSStyle.Typography.title)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                         
                         Text("We've sent a password reset link to your email. Please check your inbox and follow the instructions to reset your password.")
                             .font(OPSStyle.Typography.body)
@@ -405,7 +405,7 @@ struct ProfileSettingsView: View {
                         }) {
                             Text("Close")
                                 .font(OPSStyle.Typography.button)
-                                .foregroundColor(.black)
+                                .foregroundColor(OPSStyle.Colors.invertedText)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
                                 .background(OPSStyle.Colors.primaryAccent)
@@ -436,7 +436,7 @@ struct ProfileSettingsView: View {
                         deleteError = nil
                     }) {
                         Image(systemName: OPSStyle.Icons.xmark)
-                            .font(.system(size: 20))
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .frame(width: 44, height: 44)
                     }
@@ -446,14 +446,14 @@ struct ProfileSettingsView: View {
                 
                 // Icon
                 Image(systemName: OPSStyle.Icons.exclamationmarkTriangle)
-                    .font(.system(size: 60))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                     .foregroundColor(OPSStyle.Colors.errorStatus)
                     .padding(.top, 10)
                 VStack(spacing: 4){
                     // Title
                     Text("DELETE ACCOUNT")
                         .font(OPSStyle.Typography.title)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                     
                     // Warning message
                     VStack(spacing: 16) {
@@ -480,7 +480,7 @@ struct ProfileSettingsView: View {
                         
                         TextField("", text: $deleteConfirmationText)
                             .font(OPSStyle.Typography.body)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                             .autocapitalization(.none)
                             .disableAutocorrection(true)
                             .padding()
@@ -524,7 +524,7 @@ struct ProfileSettingsView: View {
                         } else {
                             Text("Delete My Account")
                                 .font(OPSStyle.Typography.button)
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
                                 .background(OPSStyle.Colors.errorStatus)
@@ -541,7 +541,7 @@ struct ProfileSettingsView: View {
                     }) {
                         Text("Cancel")
                             .font(OPSStyle.Typography.button)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
                             .background(OPSStyle.Colors.cardBackgroundDark)

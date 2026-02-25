@@ -162,7 +162,7 @@ struct FloatingActionMenu: View {
                                 }
                             }) {
                                 Image(systemName: "plus")
-                                    .font(.system(size: 30))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xl))
                                     .foregroundColor(isFABDisabledInTutorial ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.buttonText)
                                     .rotationEffect(.degrees(showCreateMenu ? 225 : 0))
                                     .frame(width: 64, height: 64)

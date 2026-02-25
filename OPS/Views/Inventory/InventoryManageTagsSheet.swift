@@ -174,7 +174,7 @@ struct InventoryManageTagsSheet: View {
     private var searchField: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             TextField("Search tags", text: $searchText)
@@ -184,7 +184,7 @@ struct InventoryManageTagsSheet: View {
             if !searchText.isEmpty {
                 Button(action: { searchText = "" }) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -267,7 +267,7 @@ struct InventoryManageTagsSheet: View {
     private func actionButton(icon: String, isDestructive: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 14))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(isDestructive ? OPSStyle.Colors.errorStatus.opacity(0.7) : OPSStyle.Colors.secondaryText)
                 .frame(width: 40, height: 40)
                 .background(OPSStyle.Colors.background)

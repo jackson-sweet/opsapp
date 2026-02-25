@@ -15,9 +15,9 @@ struct SnapshotListView: View {
     @EnvironmentObject private var dataController: DataController
 
     @State private var isLoading = true
-    @State private var snapshots: [InventorySnapshotDTO] = []
+    @State private var snapshots: [InventorySnapshotReadDTO] = []
     @State private var errorMessage: String? = nil
-    @State private var selectedSnapshot: InventorySnapshotDTO? = nil
+    @State private var selectedSnapshot: InventorySnapshotReadDTO? = nil
 
     private var companyId: String {
         dataController.currentUser?.companyId ?? ""
@@ -66,7 +66,7 @@ struct SnapshotListView: View {
     private var emptyStateView: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Image(systemName: "camera.metering.unknown")
-                .font(.system(size: 48))
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             Text("No Snapshots")
@@ -116,7 +116,7 @@ struct SnapshotListView: View {
         }
     }
 
-    private func snapshotRow(_ snapshot: InventorySnapshotDTO) -> some View {
+    private func snapshotRow(_ snapshot: InventorySnapshotReadDTO) -> some View {
         Button(action: {
             selectedSnapshot = snapshot
         }) {
@@ -124,21 +124,21 @@ struct SnapshotListView: View {
                 // Icon
                 Image(systemName: "camera.fill")
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(snapshot.isAutomatic == true ? OPSStyle.Colors.secondaryText : OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(snapshot.isAutomatic ? OPSStyle.Colors.secondaryText : OPSStyle.Colors.primaryAccent)
                     .frame(width: 32)
 
                 // Info
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                    Text(formatSnapshotDate(snapshot.createdDate ?? snapshot.createdAt))
+                    Text(formatSnapshotDate(snapshot.createdAt))
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
 
                     HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Text("\(snapshot.itemCount ?? 0) items")
+                        Text("\(snapshot.itemCount) items")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                        Text(snapshot.isAutomatic == true ? "Automatic" : "Manual")
+                        Text(snapshot.isAutomatic ? "Automatic" : "Manual")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                             .padding(.horizontal, 6)
@@ -173,7 +173,14 @@ struct SnapshotListView: View {
 
         Task {
             do {
-                let fetched = try await dataController.apiService.fetchCompanySnapshots(companyId: companyId)
+                guard let repo = dataController.inventoryRepository else {
+                    await MainActor.run {
+                        errorMessage = "Unable to load: No company ID"
+                        isLoading = false
+                    }
+                    return
+                }
+                let fetched = try await repo.fetchSnapshots()
                 await MainActor.run {
                     snapshots = fetched
                     isLoading = false
@@ -205,10 +212,10 @@ struct SnapshotDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
 
-    let snapshot: InventorySnapshotDTO
+    let snapshot: InventorySnapshotReadDTO
 
     @State private var isLoading = true
-    @State private var items: [InventorySnapshotItemDTO] = []
+    @State private var items: [InventorySnapshotItemReadDTO] = []
     @State private var errorMessage: String? = nil
 
     var body: some View {
@@ -268,9 +275,9 @@ struct SnapshotDetailView: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3)
 
             VStack(spacing: OPSStyle.Layout.spacing2) {
-                infoRow(label: "Date", value: formatSnapshotDate(snapshot.createdDate ?? snapshot.createdAt))
-                infoRow(label: "Type", value: snapshot.isAutomatic == true ? "Automatic" : "Manual")
-                infoRow(label: "Items", value: "\(snapshot.itemCount ?? 0)")
+                infoRow(label: "Date", value: formatSnapshotDate(snapshot.createdAt))
+                infoRow(label: "Type", value: snapshot.isAutomatic ? "Automatic" : "Manual")
+                infoRow(label: "Items", value: "\(snapshot.itemCount)")
 
                 if let notes = snapshot.notes, !notes.isEmpty {
                     infoRow(label: "Notes", value: notes)
@@ -330,11 +337,11 @@ struct SnapshotDetailView: View {
         }
     }
 
-    private func itemRow(_ item: InventorySnapshotItemDTO) -> some View {
+    private func itemRow(_ item: InventorySnapshotItemReadDTO) -> some View {
         HStack(spacing: OPSStyle.Layout.spacing3) {
             // Quantity
             VStack(spacing: 2) {
-                Text(formatQuantity(item.quantity ?? 0))
+                Text(formatQuantity(item.quantity))
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -354,7 +361,7 @@ struct SnapshotDetailView: View {
 
             // Name
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.name ?? "Unnamed")
+                Text(item.name)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
@@ -377,7 +384,14 @@ struct SnapshotDetailView: View {
 
         Task {
             do {
-                let fetched = try await dataController.apiService.fetchSnapshotItems(snapshotId: snapshot.id)
+                guard let repo = dataController.inventoryRepository else {
+                    await MainActor.run {
+                        errorMessage = "Unable to load: No company ID"
+                        isLoading = false
+                    }
+                    return
+                }
+                let fetched = try await repo.fetchSnapshotItems(snapshotId: snapshot.id)
                 await MainActor.run {
                     items = fetched
                     isLoading = false
@@ -410,9 +424,6 @@ struct SnapshotDetailView: View {
         }
     }
 }
-
-// Make InventorySnapshotDTO Identifiable for sheet binding
-extension InventorySnapshotDTO: Identifiable {}
 
 #Preview {
     SnapshotListView()

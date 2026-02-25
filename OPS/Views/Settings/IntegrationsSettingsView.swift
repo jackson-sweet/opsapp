@@ -51,7 +51,7 @@ struct IntegrationsSettingsView: View {
                         // Info note
                         HStack(alignment: .top, spacing: 12) {
                             Image(systemName: OPSStyle.Icons.info)
-                                .font(.system(size: 16))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                             Text("Connecting an accounting platform will automatically sync your invoices and payments. You can disconnect at any time.")
@@ -86,7 +86,7 @@ struct IntegrationsSettingsView: View {
         VStack(spacing: 16) {
             HStack(spacing: 14) {
                 Image(systemName: iconName)
-                    .font(.system(size: 24))
+                    .font(.system(size: OPSStyle.Layout.IconSize.lg))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(width: 40, height: 40)
                     .background(OPSStyle.Colors.primaryAccent.opacity(0.15))
@@ -106,7 +106,7 @@ struct IntegrationsSettingsView: View {
                 if isConnected {
                     HStack(spacing: 4) {
                         Image(systemName: OPSStyle.Icons.complete)
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         Text("CONNECTED")
                             .font(OPSStyle.Typography.smallCaption)
                     }
@@ -146,7 +146,7 @@ struct IntegrationsSettingsView: View {
                 Spacer()
 
                 Image(systemName: "link.badge.plus")
-                    .font(.system(size: 48))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                 Text("\(provider.uppercased()) OAUTH")

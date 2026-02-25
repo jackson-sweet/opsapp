@@ -44,7 +44,7 @@ struct EstimateCard: View {
                 HStack {
                     Label(swipeRightLabel, systemImage: swipeRightIcon)
                         .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(.black)
+                        .foregroundColor(OPSStyle.Colors.invertedText)
                         .padding(.leading, OPSStyle.Layout.spacing3)
                     Spacer()
                 }
@@ -59,7 +59,7 @@ struct EstimateCard: View {
                 Spacer()
                 Label("VOID", systemImage: "xmark.circle.fill")
                     .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.trailing, OPSStyle.Layout.spacing3)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

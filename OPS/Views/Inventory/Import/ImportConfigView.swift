@@ -234,7 +234,7 @@ struct ImportConfigView: View {
             HStack(spacing: OPSStyle.Layout.spacing3) {
                 // Selection indicator
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 18))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
 
                 // Text
@@ -266,7 +266,7 @@ struct ImportConfigView: View {
                 Image(systemName: "arrow.right")
             }
             .font(OPSStyle.Typography.captionBold)
-            .foregroundColor(.black)
+            .foregroundColor(OPSStyle.Colors.invertedText)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .background(OPSStyle.Colors.primaryText)

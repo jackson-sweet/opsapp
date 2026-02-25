@@ -41,7 +41,7 @@ struct TeamRoleAssignmentSheet: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     HStack(spacing: 8) {
                                         Image(systemName: OPSStyle.Icons.alert)
-                                            .font(.system(size: 20))
+                                            .font(.system(size: OPSStyle.Layout.IconSize.md))
                                             .foregroundColor(OPSStyle.Colors.warningStatus)
 
                                         Text("New Team Members")
@@ -91,11 +91,11 @@ struct TeamRoleAssignmentSheet: View {
                             }) {
                                 if isSaving {
                                     ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
                                 } else {
                                     Text("Save Roles")
                                         .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(.white)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
                                 }
                             }
                             .frame(maxWidth: .infinity)
@@ -143,7 +143,7 @@ struct TeamRoleAssignmentSheet: View {
         VStack(spacing: 16) {
             // NOTE: person.3.sequence.fill does not have a semantic icon - using legacy
             Image(systemName: "person.3.sequence.fill")
-                .font(.system(size: 48))
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             Text("No unassigned members found")
@@ -288,7 +288,7 @@ struct TeamMemberRoleRow: View {
         }) {
             VStack(spacing: 6) {
                 Image(systemName: iconForRole(role))
-                    .font(.system(size: 20))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(selectedRole == role ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
 
                 Text(role.displayName)

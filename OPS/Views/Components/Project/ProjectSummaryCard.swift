@@ -73,8 +73,8 @@ struct ProjectSummaryCard: View {
                 ))) {
                     Annotation("", coordinate: coordinate) {
                         Image(systemName: "mappin.and.ellipse")
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundColor(.white)
+                            .font(.system(size: OPSStyle.Layout.IconSize.xl))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                     }
                 }
                 .mapStyle(.standard(elevation: .flat))
@@ -85,7 +85,7 @@ struct ProjectSummaryCard: View {
                     .overlay(
                         HStack(spacing: 8) {
                             Image(systemName: "map.slash")
-                                .font(.system(size: 16))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                             Text("NO LOCATION")
@@ -119,7 +119,7 @@ struct ProjectSummaryCard: View {
             // Address with map pin icon
             HStack(spacing: 4) {
                 Image(systemName: "mappin.circle")
-                    .font(.system(size: 11))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                 Text(shortAddress.uppercased())
@@ -133,7 +133,7 @@ struct ProjectSummaryCard: View {
             // Distance in minutes
             HStack(spacing: 4) {
                 Image(systemName: "car.fill")
-                    .font(.system(size: 11))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                 if let travelTime = estimatedTravelTime {

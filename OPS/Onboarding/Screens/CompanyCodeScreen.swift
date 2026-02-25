@@ -91,7 +91,7 @@ struct CompanyCodeScreen: View {
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "person.2")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
 
                             Text("INVITE CREW")
                                 .font(OPSStyle.Typography.bodyBold)
@@ -365,7 +365,7 @@ struct InviteTeamSheet: View {
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: showCopiedFeedback ? "checkmark" : "doc.on.doc")
-                                .font(.system(size: 12))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
 
                             Text(showCopiedFeedback ? "COPIED" : "COPY")
                                 .font(OPSStyle.Typography.caption)
@@ -390,7 +390,7 @@ struct InviteTeamSheet: View {
                     Link(destination: smsURL) {
                         HStack {
                             Image(systemName: "message")
-                                .font(.system(size: 14))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
                             Text("TEXT IT")
                                 .font(OPSStyle.Typography.bodyBold)
@@ -398,7 +398,7 @@ struct InviteTeamSheet: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
                         .background(OPSStyle.Colors.primaryText)
-                        .foregroundColor(.black)
+                        .foregroundColor(OPSStyle.Colors.invertedText)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
                 }
@@ -429,8 +429,8 @@ struct InviteTeamSheet: View {
                                         if inviteEmails[index].isEmpty {
                                             Text("team.member@example.com")
                                                 .font(OPSStyle.Typography.body)
-                                                .foregroundStyle(Color(red: 0.6, green: 0.6, blue: 0.6))
-                                                .tint(Color(red: 0.6, green: 0.6, blue: 0.6))
+                                                .foregroundStyle(OPSStyle.Colors.placeholderText)
+                                                .tint(OPSStyle.Colors.placeholderText)
                                                 .padding(.horizontal, 16)
                                         }
                                         TextField("", text: $inviteEmails[index])
@@ -462,7 +462,7 @@ struct InviteTeamSheet: View {
                                         }
                                     } label: {
                                         Image(systemName: "xmark")
-                                            .font(.system(size: 12, weight: .medium))
+                                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                             .frame(width: 28, height: 28)
                                     }
@@ -478,7 +478,7 @@ struct InviteTeamSheet: View {
                                 } label: {
                                     HStack(spacing: 6) {
                                         Image(systemName: "plus.circle.fill")
-                                            .font(.system(size: 16))
+                                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
                                         Text("Add email")
                                             .font(OPSStyle.Typography.body)
@@ -505,11 +505,11 @@ struct InviteTeamSheet: View {
                     } label: {
                         if isSendingInvites {
                             ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: showEmailInvite ? .black : OPSStyle.Colors.primaryText))
+                                .progressViewStyle(CircularProgressViewStyle(tint: showEmailInvite ? OPSStyle.Colors.invertedText : OPSStyle.Colors.primaryText))
                         } else {
                             HStack {
                                 Image(systemName: showEmailInvite ? "paperplane" : "envelope")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
                                 Text(showEmailInvite ? "SEND INVITES" : "EMAIL IT")
                                     .font(OPSStyle.Typography.bodyBold)

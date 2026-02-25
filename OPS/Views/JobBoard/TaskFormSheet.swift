@@ -550,7 +550,7 @@ struct TaskFormSheet: View {
                         // Calendar icon + date (always show)
                         HStack(spacing: 4) {
                             Image(systemName: OPSStyle.Icons.calendar)
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                             if let startDate = startDate {
@@ -568,7 +568,7 @@ struct TaskFormSheet: View {
                         // Team icon + count (always show)
                         HStack(spacing: 4) {
                             Image(systemName: OPSStyle.Icons.personTwo)
-                                .font(.system(size: 11))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                             Text("\(selectedTeamMemberIds.count)")
@@ -580,7 +580,7 @@ struct TaskFormSheet: View {
                         Spacer()
                     }
                 }
-                .padding(14)
+                .padding(OPSStyle.Layout.spacing3)
             }
 
             // Top right overlay - status badge and unscheduled badge
@@ -814,7 +814,7 @@ struct TaskFormSheet: View {
                         Spacer()
 
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                     .padding(.vertical, 12)
@@ -860,7 +860,7 @@ struct TaskFormSheet: View {
                     Spacer()
 
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
                 .padding(.vertical, 12)
@@ -915,7 +915,7 @@ struct TaskFormSheet: View {
                 Spacer()
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             .padding(.vertical, 12)
@@ -978,7 +978,7 @@ struct TaskFormSheet: View {
                         Spacer()
 
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                     .padding(.vertical, 12)
@@ -1376,7 +1376,7 @@ struct TeamMemberPickerSheet: View {
                                     // Checkbox
                                     Image(systemName: selectedTeamMemberIds.contains(member.id) ? "checkmark.circle.fill" : "circle")
                                         .foregroundColor(selectedTeamMemberIds.contains(member.id) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                                        .font(.system(size: 20))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.md))
 
                                     // Avatar
                                     UserAvatar(teamMember: member, size: 40)

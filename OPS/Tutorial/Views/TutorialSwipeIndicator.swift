@@ -97,8 +97,8 @@ struct TutorialSwipeIndicator: View {
 
     private var arrowImage: some View {
         Image(systemName: arrowIcon)
-            .font(.system(size: 16, weight: .medium))
-            .foregroundColor(.white.opacity(0.6))
+            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
+            .foregroundColor(OPSStyle.Colors.secondaryText)
     }
 
     private var shimmerGradient: some View {
@@ -207,8 +207,8 @@ struct SimpleSwipeIndicator: View {
         HStack(spacing: 4) {
             ForEach(0..<3, id: \.self) { index in
                 Image(systemName: arrowIcon)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white.opacity(0.3 + Double(index) * 0.25))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
+                    .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.3 + Double(index) * 0.25))
             }
         }
         .offset(animationOffset)
@@ -288,7 +288,7 @@ struct TutorialSwipeIndicator_Previews: PreviewProvider {
                     .frame(width: 200, height: 80)
                     .overlay(
                         Text("Swipe Me")
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                     )
 
                 // Simple indicators for each direction

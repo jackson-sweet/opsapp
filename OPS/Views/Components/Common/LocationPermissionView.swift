@@ -22,7 +22,7 @@ struct LocationPermissionView: View {
             VStack(spacing: 24) {
                 // Icon
                 Image(systemName: "location.fill")
-                    .font(.system(size: 60))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .padding()
                 
@@ -87,7 +87,7 @@ struct LocationPermissionView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding()
                                 .background(OPSStyle.Colors.primaryAccent)
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .cornerRadius(OPSStyle.Layout.buttonRadius)
                         }
                         
@@ -111,7 +111,7 @@ struct LocationPermissionView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding()
                                 .background(OPSStyle.Colors.primaryAccent)
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .cornerRadius(OPSStyle.Layout.buttonRadius)
                         }
                         
@@ -144,7 +144,7 @@ struct PermissionBulletPoint: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 18))
+                .font(.system(size: OPSStyle.Layout.IconSize.md))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .frame(width: 24)
             

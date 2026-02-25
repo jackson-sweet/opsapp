@@ -243,7 +243,7 @@ struct BillingInfoView: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                 }
@@ -323,7 +323,7 @@ struct BillingInfoView: View {
 
                     HStack(spacing: 12) {
                         Image(systemName: isSeated ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .font(.system(size: 20))
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(isSeated ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
 
                         VStack(alignment: .leading, spacing: 2) {
@@ -371,11 +371,11 @@ struct BillingInfoView: View {
                                             } label: {
                                                 HStack(spacing: 6) {
                                                     Image(systemName: "phone.fill")
-                                                        .font(.system(size: 12))
+                                                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                                     Text("CALL")
                                                         .font(OPSStyle.Typography.captionBold)
                                                 }
-                                                .foregroundColor(.black)
+                                                .foregroundColor(OPSStyle.Colors.invertedText)
                                                 .frame(maxWidth: .infinity)
                                                 .padding(.vertical, 12)
                                                 .background(OPSStyle.Colors.primaryText)
@@ -391,11 +391,11 @@ struct BillingInfoView: View {
                                             } label: {
                                                 HStack(spacing: 6) {
                                                     Image(systemName: "envelope.fill")
-                                                        .font(.system(size: 12))
+                                                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                                     Text("EMAIL")
                                                         .font(OPSStyle.Typography.captionBold)
                                                 }
-                                                .foregroundColor(.black)
+                                                .foregroundColor(OPSStyle.Colors.invertedText)
                                                 .frame(maxWidth: .infinity)
                                                 .padding(.vertical, 12)
                                                 .background(OPSStyle.Colors.primaryText)

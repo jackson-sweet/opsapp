@@ -26,7 +26,7 @@ struct StorageOptionSlider: View {
             // Current selection display
             HStack {
                 Image(systemName: selectedStorageIndex == 0 ? "icloud" : "internaldrive")
-                    .font(.system(size: 24))
+                    .font(.system(size: OPSStyle.Layout.IconSize.lg))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 
                 VStack(alignment: .leading, spacing: 4) {

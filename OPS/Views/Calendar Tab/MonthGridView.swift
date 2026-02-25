@@ -689,7 +689,7 @@ struct MonthDayCell: View {
 
                     Text(DateHelper.dayString(from: date))
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.black)
+                        .foregroundColor(OPSStyle.Colors.invertedText)
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.top, 4)
@@ -1044,7 +1044,7 @@ struct DayDetailsSheet: View {
                 if scheduledTasks.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: OPSStyle.Icons.calendar)
-                            .font(.system(size: 48))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                         Text("No events on this day")
@@ -1164,7 +1164,7 @@ struct EventDetailCard: View {
 
                     HStack(spacing: 4) {
                         Image(systemName: OPSStyle.Icons.calendar)
-                            .font(.system(size: 12))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         Text(dateRangeText)
                             .font(OPSStyle.Typography.smallCaption)
                     }
@@ -1174,7 +1174,7 @@ struct EventDetailCard: View {
                 Spacer()
 
                 Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
         }

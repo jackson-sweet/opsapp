@@ -151,7 +151,7 @@ struct ProjectTeamView: View {
             Spacer()
             VStack(spacing: 8) {
                 Image(systemName: OPSStyle.Icons.crew)
-                    .font(.system(size: 32))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xl))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                 Text(activeProject.getTeamMemberIds().isEmpty ?
@@ -244,14 +244,14 @@ struct ProjectTeamView: View {
             toggleMemberSelection(memberId: memberId)
         }) {
             Image(systemName: selectedMemberIds.contains(memberId) ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.circle)
-                .font(.system(size: 24))
+                .font(.system(size: OPSStyle.Layout.IconSize.lg))
                 .foregroundColor(selectedMemberIds.contains(memberId) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
         }
     }
 
     private var chevronIndicator: some View {
         Image(systemName: OPSStyle.Icons.chevronRight)
-            .font(.system(size: 14))
+            .font(.system(size: OPSStyle.Layout.IconSize.sm))
             .foregroundColor(OPSStyle.Colors.secondaryText)
     }
 
@@ -280,7 +280,7 @@ struct ProjectTeamView: View {
                 .overlay(
                     Text(member.initials)
                         .font(OPSStyle.Typography.bodyEmphasis)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 )
 
             VStack(alignment: .leading, spacing: 2) {
@@ -299,7 +299,7 @@ struct ProjectTeamView: View {
                 toggleMemberSelection(memberId: member.id)
             }) {
                 Image(systemName: selectedMemberIds.contains(member.id) ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.plusCircle)
-                    .font(.system(size: 24))
+                    .font(.system(size: OPSStyle.Layout.IconSize.lg))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
         }
@@ -438,7 +438,7 @@ struct FullTeamListView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("\(member.firstName) \(member.lastName)")
                                         .font(OPSStyle.Typography.body.weight(.medium))
-                                        .foregroundColor(.white)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
                                     
                                     Text(member.role.displayName)
                                         .font(OPSStyle.Typography.caption)
@@ -480,14 +480,14 @@ struct FullTeamListView: View {
                 ToolbarItem(placement: .principal) {
                     Text("PROJECT TEAM")
                         .font(OPSStyle.Typography.title)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         dismiss()
                     }
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 }
             }
             .sheet(item: $selectedTeamMember) { member in

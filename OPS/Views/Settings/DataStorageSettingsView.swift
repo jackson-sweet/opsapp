@@ -67,7 +67,7 @@ struct DataStorageSettingsView: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Historical Data Range")
                                         .font(OPSStyle.Typography.body)
-                                        .foregroundColor(.white)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
 
                                     Text("Sync projects and tasks from the past \(historicalDataMonths) months")
                                         .font(OPSStyle.Typography.smallCaption)
@@ -119,7 +119,7 @@ struct DataStorageSettingsView: View {
                                         Spacer()
                                         Text(formatMonthsRange(historicalDataMonths))
                                             .font(OPSStyle.Typography.smallBody)
-                                            .foregroundColor(.white)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
                                     }
 
                                     if historicalDataMonths == -1 {
@@ -160,7 +160,7 @@ struct DataStorageSettingsView: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Storage Usage")
                                         .font(OPSStyle.Typography.body)
-                                        .foregroundColor(.white)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
                                     
                                     // Storage bar
                                     GeometryReader { geometry in
@@ -224,7 +224,7 @@ struct DataStorageSettingsView: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Storage Limit")
                                         .font(OPSStyle.Typography.body)
-                                        .foregroundColor(.white)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
                                     
                                     VStack(spacing: 8) {
                                         // Storage options: 0, 250, 500, 1000, 2500, 5000, unlimited (-1)
@@ -293,7 +293,7 @@ struct DataStorageSettingsView: View {
                                         Spacer()
                                         Text(formatStorageSize(maxStorageSize))
                                             .font(OPSStyle.Typography.smallBody)
-                                            .foregroundColor(.white)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
                                             .frame(width: 80)
                                     }
                                     

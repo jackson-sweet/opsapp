@@ -167,7 +167,7 @@ struct BulkTagsSheet: View {
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: "plus")
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
                     TextField("New tag name", text: $newTagText)
@@ -182,7 +182,7 @@ struct BulkTagsSheet: View {
                     if !newTagText.isEmpty {
                         Button(action: { newTagText = "" }) {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 14))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -314,25 +314,28 @@ struct BulkTagsSheet: View {
                 }
             }
 
-            // Create new tags in Bubble FIRST (before applying to items)
-            for (newTag, tagName) in newTagsToCreate {
-                do {
-                    let dto = InventoryTagDTO(
-                        id: newTag.id,
-                        name: tagName,
-                        warningThreshold: nil,
-                        criticalThreshold: nil,
-                        company: companyId
-                    )
-                    let created = try await dataController.apiService.createTag(dto)
-                    await MainActor.run {
-                        newTag.id = created.id
-                        newTag.needsSync = false
-                        newTag.lastSyncedAt = Date()
-                        print("[BULK_TAGS] ✅ Tag '\(tagName)' created with Bubble ID: \(created.id)")
+            // Sync new tags to Supabase
+            if let repo = dataController.inventoryRepository {
+                for (newTag, tagName) in newTagsToCreate {
+                    do {
+                        let dto = CreateInventoryTagDTO(
+                            companyId: newTag.companyId,
+                            name: tagName,
+                            warningThreshold: nil,
+                            criticalThreshold: nil
+                        )
+                        let created = try await repo.createTag(dto)
+                        await MainActor.run {
+                            newTag.id = created.id
+                            newTag.needsSync = false
+                            newTag.lastSyncedAt = Date()
+                        }
+                    } catch {
+                        print("[BULK_TAGS] ❌ Failed to sync tag '\(tagName)': \(error)")
+                        await MainActor.run {
+                            newTag.needsSync = true
+                        }
                     }
-                } catch {
-                    print("[BULK_TAGS] ❌ Failed to create tag '\(tagName)': \(error)")
                 }
             }
 
@@ -362,18 +365,18 @@ struct BulkTagsSheet: View {
                 try? modelContext.save()
             }
 
-            // Now sync items to Bubble with correct tag IDs
-            for item in items {
-                do {
-                    let updates = InventoryItemDTO.dictionaryFrom(item)
-                    print("[BULK_TAGS] Syncing item '\(item.name)' with tags: \(item.tagIds)")
-                    try await dataController.apiService.updateInventoryItem(id: item.id, updates: updates)
-                    await MainActor.run {
-                        item.needsSync = false
-                        item.lastSyncedAt = Date()
+            // Sync item tag changes to Supabase
+            if let repo = dataController.inventoryRepository {
+                for item in items where item.needsSync {
+                    do {
+                        try await repo.setItemTags(itemId: item.id, tagIds: item.tagIds)
+                        await MainActor.run {
+                            item.needsSync = false
+                            item.lastSyncedAt = Date()
+                        }
+                    } catch {
+                        print("[BULK_TAGS] ❌ Failed to sync tags for \(item.name): \(error)")
                     }
-                } catch {
-                    print("[BULK_TAGS] Failed to sync item '\(item.name)': \(error)")
                 }
             }
 

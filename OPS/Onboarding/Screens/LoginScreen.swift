@@ -28,7 +28,7 @@ struct LoginScreen: View {
                     manager.goToScreen(.welcome)
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: 44, height: 44)
                 }
@@ -131,7 +131,7 @@ struct LoginScreen: View {
                             Spacer()
 
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                         }
                         .padding(.horizontal, 20)
                     }
@@ -139,7 +139,7 @@ struct LoginScreen: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
                 .background(canLogin ? Color.white : OPSStyle.Colors.primaryText.opacity(0.5))
-                .foregroundColor(.black)
+                .foregroundColor(OPSStyle.Colors.invertedText)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .disabled(!canLogin || isLoading)
                 .padding(.bottom, 8)
@@ -191,7 +191,7 @@ struct LoginScreen: View {
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "apple.logo")
-                                .font(.system(size: 20))
+                                .font(.system(size: OPSStyle.Layout.IconSize.md))
 
                             Text("Continue With Apple")
                                 .font(OPSStyle.Typography.bodyBold)

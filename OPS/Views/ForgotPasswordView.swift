@@ -30,16 +30,16 @@ struct ForgotPasswordView: View {
                 HStack {
                     Text("RESET PASSWORD")
                         .font(OPSStyle.Typography.title)
-                        .foregroundColor(.white)
-                    
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
                     Spacer()
-                    
+
                     Button(action: {
                         isPresented = false
                     }) {
                         Image(systemName: "xmark")
                             .font(OPSStyle.Typography.body)
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                 }
                 .padding(.horizontal, 24)
@@ -51,7 +51,7 @@ struct ForgotPasswordView: View {
                     VStack(alignment: .leading, spacing: 20) {
                         Text("Enter your email address to receive password reset instructions.")
                             .font(OPSStyle.Typography.body)
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                             .padding(.horizontal, 24)
                         
                         // Email input field
@@ -61,7 +61,7 @@ struct ForgotPasswordView: View {
                                 .keyboardType(.emailAddress)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled(true)
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                                 .textFieldStyle(PlainTextFieldStyle())
                             
                             Rectangle()
@@ -99,7 +99,7 @@ struct ForgotPasswordView: View {
                             } else {
                                 Text("SEND RESET EMAIL")
                                     .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -119,17 +119,17 @@ struct ForgotPasswordView: View {
                     // Success message
                     VStack(spacing: 24) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 60))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(OPSStyle.Colors.successStatus)
                         
                         VStack(spacing: 12) {
                             Text("Reset Email Sent")
                                 .font(OPSStyle.Typography.title)
-                                .foregroundColor(.white)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                             
                             Text("If an account exists with this email address, you will receive password reset instructions shortly.")
                                 .font(OPSStyle.Typography.body)
-                                .foregroundColor(.white.opacity(0.8))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 24)
                         }
@@ -142,7 +142,7 @@ struct ForgotPasswordView: View {
                     }) {
                         Text("CLOSE")
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
                             .background(

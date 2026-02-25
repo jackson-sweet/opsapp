@@ -189,10 +189,10 @@ struct NotificationSettingsView: View {
             
             // Status Text
             VStack(alignment: .leading, spacing: 4) {
-                Text(notificationManager.isNotificationsEnabled ? 
+                Text(notificationManager.isNotificationsEnabled ?
                      "NOTIFICATIONS ENABLED" : "NOTIFICATIONS DISABLED")
                     .font(OPSStyle.Typography.cardTitle)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 
                 Text(notificationManager.isNotificationsEnabled ?
                      "Stay updated on projects" : "Enable to receive updates")
@@ -369,7 +369,7 @@ struct NotificationSettingsView: View {
             } label: {
                 HStack {
                     Image(systemName: "bell.badge")
-                        .font(.system(size: 18))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
 
                     Text("SEND TEST NOTIFICATION")
                         .font(OPSStyle.Typography.button)
@@ -432,9 +432,9 @@ struct NotificationSettingsView: View {
                                 HStack {
                                     Text(formatHour(quietHoursStart))
                                         .font(OPSStyle.Typography.body)
-                                        .foregroundColor(.white)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
                                     Image(systemName: "chevron.down")
-                                        .font(.system(size: 10))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }
                                 .padding(.horizontal, 12)
@@ -466,9 +466,9 @@ struct NotificationSettingsView: View {
                                 HStack {
                                     Text(formatHour(quietHoursEnd))
                                         .font(OPSStyle.Typography.body)
-                                        .foregroundColor(.white)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
                                     Image(systemName: "chevron.down")
-                                        .font(.system(size: 10))
+                                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }
                                 .padding(.horizontal, 12)
@@ -499,7 +499,7 @@ struct NotificationSettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Mute All Notifications")
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
 
                     Text("Silence all notifications temporarily")
                         .font(OPSStyle.Typography.caption)
@@ -545,7 +545,7 @@ struct NotificationSettingsView: View {
                                     .padding(.horizontal, 12)
                                     .background(muteHours == hours ?
                                                 OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
-                                    .foregroundColor(muteHours == hours ? .black : .white)
+                                    .foregroundColor(muteHours == hours ? OPSStyle.Colors.invertedText : OPSStyle.Colors.primaryText)
                                     .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                             }
                         }
@@ -556,7 +556,7 @@ struct NotificationSettingsView: View {
                         let endDate = Date(timeIntervalSince1970: muteUntil)
                         HStack {
                             Image(systemName: "bell.slash.fill")
-                                .font(.system(size: 14))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
 
                             Text("Muted until \(endDate.formatted(date: .omitted, time: .shortened))")
@@ -668,7 +668,7 @@ struct DaySelector: View {
                     } else {
                         Text("\(value)")
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                         
                         Text("DAYS")
                             .font(OPSStyle.Typography.caption)
@@ -676,7 +676,7 @@ struct DaySelector: View {
                     }
                     
                     Image(systemName: OPSStyle.Icons.chevronDown)
-                        .font(.system(size: 10))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
                 .padding(.horizontal, 16)

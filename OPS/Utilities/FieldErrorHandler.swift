@@ -78,11 +78,11 @@ enum FieldErrorHandler {
             HStack(spacing: 12) {
                 // Icon based on error type
                 Image(systemName: isNetworkError ? "wifi.slash" : "exclamationmark.triangle")
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
 
                 Text(message)
                     .font(.subheadline)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
 
                 Spacer()
             }

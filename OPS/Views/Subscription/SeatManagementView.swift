@@ -107,17 +107,17 @@ struct SeatManagementView: View {
             }) {
                 HStack {
                     Image(systemName: "info.circle")
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.warningStatus)
-                    
+
                     Text("HOW SEAT MANAGEMENT WORKS")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
-                    
+
                     Spacer()
-                    
+
                     Image(systemName: showInfo ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
                 .padding(.horizontal)
@@ -173,12 +173,12 @@ struct SeatManagementView: View {
         }) {
             HStack(spacing: 6) {
                 Image(systemName: "plus.circle")
-                    .font(.system(size: 14))
-                
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+
                 Text("GET MORE SEATS")
                     .font(OPSStyle.Typography.captionBold)
             }
-            .foregroundColor(.black)
+            .foregroundColor(OPSStyle.Colors.invertedText)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
             .background(OPSStyle.Colors.primaryText)
@@ -228,9 +228,9 @@ struct SeatManagementView: View {
             if availableSeats <= 0 {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.warningStatus)
-                    
+
                     Text("SEAT LIMIT REACHED")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -285,9 +285,9 @@ struct SeatManagementView: View {
             // Warning message - no background
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
-                
+
                 Text("Seat limit reached. Upgrade to add more team members.")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -300,7 +300,7 @@ struct SeatManagementView: View {
             }) {
                 Text("UPGRADE PLAN")
                     .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(.black)
+                    .foregroundColor(OPSStyle.Colors.invertedText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
                     .background(OPSStyle.Colors.primaryText)
@@ -517,7 +517,7 @@ struct TeamMemberRow: View {
             // Seat toggle - smaller and simpler
             Button(action: onToggle) {
                 Image(systemName: isSeated ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 18))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(
                         isCurrentUser ? OPSStyle.Colors.tertiaryText.opacity(0.3) :
                         isSeated ? OPSStyle.Colors.primaryText :

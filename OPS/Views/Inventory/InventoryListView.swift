@@ -265,7 +265,7 @@ struct InventoryItemCard: View {
     private func metadataItem(icon: String, text: String, isEmpty: Bool = false) -> some View {
         HStack(spacing: 4 * scale) {
             Image(systemName: icon)
-                .font(.system(size: 11 * scale))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm * scale))
                 .foregroundColor(isEmpty ? OPSStyle.Colors.tertiaryText.opacity(0.5) : OPSStyle.Colors.tertiaryText)
             Text(text)
                 .font(smallCaptionFont)
@@ -304,7 +304,7 @@ struct InventoryTagBadge: View {
             if showRemoveButton {
                 Button(action: { onRemove?() }) {
                     Image(systemName: "xmark")
-                        .font(.system(size: size == .button ? 10 : 8, weight: .bold))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -333,7 +333,7 @@ struct InventoryTagActionBadge: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Image(systemName: isAdd ? "plus" : "minus")
-                    .font(.system(size: size == .button ? 12 : 10, weight: .bold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                 Text(tag.uppercased())
                     .font(size.font)
                 if let subtitle = subtitle {
@@ -371,7 +371,7 @@ struct InventoryPendingTagBadge: View {
                 Text(tag.uppercased())
                     .font(size.font)
                 Image(systemName: "xmark")
-                    .font(.system(size: size == .button ? 10 : 8, weight: .bold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
             }
             .foregroundColor(OPSStyle.Inventory.TagBadge.textColor)
             .padding(.horizontal, size.paddingHorizontal)

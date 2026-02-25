@@ -134,7 +134,7 @@ struct OpportunityDetailView: View {
 
                 if opportunity.isStale {
                     Image(systemName: OPSStyle.Icons.stale)
-                        .font(.system(size: 14))
+                        .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.warningStatus)
                 }
             }
@@ -150,18 +150,23 @@ struct OpportunityDetailView: View {
             .font(OPSStyle.Typography.smallCaption)
             .fontWeight(.medium)
             .foregroundColor(color)
-            .padding(.horizontal, OPSStyle.Layout.spacing2 + 2)
-            .padding(.vertical, OPSStyle.Layout.spacing1 + 2)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .background(color.opacity(0.15))
-            .overlay(Capsule().stroke(color, lineWidth: OPSStyle.Layout.Border.standard))
-            .clipShape(Capsule())
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                    .stroke(color, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius))
     }
 
     // MARK: - Quick Actions
 
     private var quickActions: some View {
         VStack(spacing: 0) {
-            Divider().background(OPSStyle.Colors.separator)
+            Rectangle()
+                .frame(height: 0.5)
+                .foregroundColor(OPSStyle.Colors.separator)
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 if let phone = opportunity.contactPhone, !phone.isEmpty {
@@ -202,37 +207,13 @@ struct OpportunityDetailView: View {
     // MARK: - Tab Selector
 
     private var tabSelector: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                ForEach(DetailTab.allCases, id: \.self) { tab in
-                    Button(action: { selectedTab = tab }) {
-                        VStack(spacing: 4) {
-                            Text(tab.rawValue)
-                                .font(OPSStyle.Typography.smallCaption)
-                                .fontWeight(selectedTab == tab ? .semibold : .regular)
-                                .foregroundColor(
-                                    selectedTab == tab
-                                    ? OPSStyle.Colors.primaryText
-                                    : OPSStyle.Colors.tertiaryText
-                                )
-                            Rectangle()
-                                .frame(height: 2)
-                                .foregroundColor(
-                                    selectedTab == tab
-                                    ? OPSStyle.Colors.primaryAccent
-                                    : Color.clear
-                                )
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: OPSStyle.Layout.touchTargetStandard)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-            }
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.4))
-
-            Divider().background(OPSStyle.Colors.separator)
-        }
+        SegmentedControl(selection: $selectedTab, options: [
+            (.activity, "ACTIVITY"),
+            (.estimates, "ESTIMATES"),
+            (.invoices, "INVOICES")
+        ])
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
     // MARK: - Tab Content
@@ -271,7 +252,9 @@ struct OpportunityDetailView: View {
                     ForEach(Array(detailVM.activities.prefix(5).enumerated()), id: \.element.id) { index, activity in
                         ActivityRowView(activity: activity)
                         if index < min(4, detailVM.activities.count - 1) {
-                            Divider().background(OPSStyle.Colors.cardBorder)
+                            Rectangle()
+                                .frame(height: 0.5)
+                                .foregroundColor(OPSStyle.Colors.cardBorder)
                         }
                     }
 
@@ -286,7 +269,7 @@ struct OpportunityDetailView: View {
                     }
                 }
                 .padding(OPSStyle.Layout.spacing3)
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -314,11 +297,13 @@ struct OpportunityDetailView: View {
                 ForEach(detailVM.followUps) { fu in
                     FollowUpRowView(followUp: fu)
                     if fu.id != detailVM.followUps.last?.id {
-                        Divider().background(OPSStyle.Colors.cardBorder)
+                        Rectangle()
+                            .frame(height: 0.5)
+                            .foregroundColor(OPSStyle.Colors.cardBorder)
                     }
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+            .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -332,7 +317,7 @@ struct OpportunityDetailView: View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
             Image(systemName: icon)
-                .font(.system(size: 40))
+                .font(OPSStyle.Typography.heading)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text(title)
                 .font(OPSStyle.Typography.subtitle)
@@ -352,8 +337,8 @@ struct OpportunityDetailView: View {
             showActivitySheet = true
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 24, weight: .medium))
-                .foregroundColor(.white)
+                .font(OPSStyle.Typography.heading)
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)
                 .background(OPSStyle.Colors.primaryAccent)
                 .clipShape(Circle())

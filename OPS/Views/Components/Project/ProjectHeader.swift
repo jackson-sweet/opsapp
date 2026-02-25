@@ -50,7 +50,7 @@ struct ProjectHeader: View {
                                 .padding(4)
                             
                             Image(systemName: "xmark")
-                                .font(.system(size: 18))
+                                .font(.system(size: OPSStyle.Layout.IconSize.md))
                                 .foregroundColor(OPSStyle.Colors.cardBackground)
                                 .padding(4)
                             

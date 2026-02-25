@@ -40,7 +40,7 @@ struct ProjectReassignmentRow: View {
                 Button(action: onToggleDelete) {
                     HStack {
                         Image(systemName: OPSStyle.Icons.close)
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
 
                         Text("Don't Delete Project")
@@ -75,7 +75,7 @@ struct ProjectReassignmentRow: View {
 
                     Button(action: onToggleDelete) {
                         Image(systemName: OPSStyle.Icons.delete)
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .frame(width: 44, height: 44)
                             .background(OPSStyle.Colors.cardBackgroundDark)
@@ -145,7 +145,7 @@ struct TaskReassignmentRow: View {
                 Button(action: onToggleDelete) {
                     HStack {
                         Image(systemName: OPSStyle.Icons.close)
-                            .font(.system(size: 14))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
 
                         Text("Don't Delete Task")
@@ -185,7 +185,7 @@ struct TaskReassignmentRow: View {
 
                                     if let icon = taskType.icon {
                                         Image(systemName: icon)
-                                            .font(.system(size: 14))
+                                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                             .foregroundColor(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
                                     }
                                 }
@@ -195,7 +195,7 @@ struct TaskReassignmentRow: View {
 
                     Button(action: onToggleDelete) {
                         Image(systemName: OPSStyle.Icons.delete)
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                             .frame(width: 44, height: 44)
                             .background(OPSStyle.Colors.cardBackgroundDark)

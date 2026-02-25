@@ -206,7 +206,7 @@ struct FloatingActionItem: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 
                 Image(systemName: icon)
-                    .font(.system(size: 20, weight: .medium))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(width: 48, height: 48)
                     .background(.clear)
@@ -375,12 +375,12 @@ struct StatCard: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Image(systemName: icon)
-                    .font(.system(size: 16))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(color)
-                
+
                 Spacer()
             }
-            
+
             Text(value)
                 .font(OPSStyle.Typography.largeTitle)
                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -415,7 +415,7 @@ struct JobBoardClientsPreview: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
 
@@ -461,7 +461,7 @@ struct JobBoardProjectsPreview: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
             
@@ -702,7 +702,7 @@ struct JobBoardTasksView: View {
         }) {
             HStack(spacing: 8) {
                 Image(systemName: hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                    .font(.system(size: 20))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                 Text("FILTER & SORT")
@@ -725,7 +725,7 @@ struct JobBoardTasksView: View {
                 }
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.horizontal, 16)
@@ -820,7 +820,7 @@ struct JobBoardEmptyState: View {
     var body: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Image(systemName: icon)
-                .font(.system(size: 48))
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             Text(title)
@@ -858,7 +858,7 @@ struct ClientRowView: View {
             Spacer()
             
             Image(systemName: "chevron.right")
-                .font(.system(size: 14))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(OPSStyle.Layout.spacing3)
@@ -889,7 +889,7 @@ struct ProjectRowView: View {
             Spacer()
             
             Image(systemName: "chevron.right")
-                .font(.system(size: 14))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .padding(OPSStyle.Layout.spacing3)
@@ -906,7 +906,7 @@ struct TaskTypeRowView: View {
         Button(action: onTap) {
             HStack {
                 Image(systemName: taskType.icon ?? "checklist")
-                    .font(.system(size: 16))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -922,7 +922,7 @@ struct TaskTypeRowView: View {
                 Spacer()
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(OPSStyle.Layout.spacing3)
@@ -1026,18 +1026,18 @@ struct CreateMenuItem: View {
         Button(action: action) {
             HStack(spacing: OPSStyle.Layout.spacing3) {
                 Image(systemName: icon)
-                    .font(.system(size: 20))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                     .frame(width: 28)
-                
+
                 Text(title)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                
+
                 Spacer()
-                
+
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(OPSStyle.Layout.spacing3)
@@ -1063,7 +1063,7 @@ struct TaskFilterBadge: View {
 
             Button(action: onRemove) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
         }
@@ -1112,7 +1112,7 @@ struct TaskListSheet: View {
                     HStack(spacing: 12) {
                         Image(systemName: OPSStyle.Icons.search)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .font(.system(size: 16))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
 
                         TextField("Search tasks...", text: $searchText)
                             .font(OPSStyle.Typography.body)
@@ -1123,7 +1123,7 @@ struct TaskListSheet: View {
                             Button(action: { searchText = "" }) {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    .font(.system(size: 16))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             }
                         }
                     }
@@ -1137,7 +1137,7 @@ struct TaskListSheet: View {
                     if filteredTasks.isEmpty {
                         VStack(spacing: 16) {
                             Image(systemName: OPSStyle.Icons.task)
-                                .font(.system(size: 48))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                             Text(searchText.isEmpty ? "No tasks" : "No matching tasks")
                                 .font(OPSStyle.Typography.body)

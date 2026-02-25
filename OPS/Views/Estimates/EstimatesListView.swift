@@ -175,7 +175,7 @@ struct EstimatesListView: View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Spacer()
             Image(systemName: OPSStyle.Icons.estimateDoc)
-                .font(.system(size: 44))
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text(viewModel.estimates.isEmpty ? "NO ESTIMATES YET" : "NO ESTIMATES MATCH FILTER")
                 .font(OPSStyle.Typography.subtitle)
@@ -201,8 +201,8 @@ struct EstimatesListView: View {
             showNewEstimateSheet = true
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 24, weight: .medium))
-                .foregroundColor(.white)
+                .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .medium))
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)
                 .background(OPSStyle.Colors.primaryAccent)
                 .clipShape(Circle())

@@ -63,7 +63,7 @@ struct SocialAuthButton: View {
                 .frame(width: 24, height: 24)
         case .apple:
             Image(systemName: "apple.logo")
-                .font(.system(size: 18, weight: .medium))
+                .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
     }
@@ -160,7 +160,7 @@ struct SocialAuthButtonStack: View {
 #Preview("Button Stack") {
     VStack(spacing: 40) {
         Text("With Divider")
-            .foregroundColor(.white)
+            .foregroundColor(OPSStyle.Colors.primaryText)
 
         SocialAuthButtonStack(
             isLoading: false,
@@ -170,7 +170,7 @@ struct SocialAuthButtonStack: View {
         )
 
         Text("Without Divider")
-            .foregroundColor(.white)
+            .foregroundColor(OPSStyle.Colors.primaryText)
 
         SocialAuthButtonStack(
             isLoading: false,

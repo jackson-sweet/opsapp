@@ -156,7 +156,7 @@ struct SpreadsheetImportSheet: View {
                 Rectangle()
                     .fill(index <= stepIndex ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder)
                     .frame(height: 3)
-                    .cornerRadius(1.5)
+                    .cornerRadius(OPSStyle.Layout.smallCornerRadius)
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -169,7 +169,7 @@ struct SpreadsheetImportSheet: View {
             Spacer()
 
             Image(systemName: "doc.text")
-                .font(.system(size: 48, weight: .thin))
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl, weight: .thin))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             VStack(spacing: OPSStyle.Layout.spacing2) {
@@ -185,11 +185,11 @@ struct SpreadsheetImportSheet: View {
             Button(action: { isShowingFilePicker = true }) {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: "folder")
-                        .font(.system(size: 14))
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     Text("SELECT FILE")
                 }
                 .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(.black)
+                .foregroundColor(OPSStyle.Colors.invertedText)
                 .padding(.horizontal, OPSStyle.Layout.spacing4)
                 .padding(.vertical, 14)
                 .background(OPSStyle.Colors.primaryText)
@@ -286,7 +286,7 @@ struct SpreadsheetImportSheet: View {
 
             if let result = importResult {
                 Image(systemName: result.errors == 0 ? "checkmark" : "exclamationmark.triangle")
-                    .font(.system(size: 36, weight: .thin))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xl, weight: .thin))
                     .foregroundColor(result.errors == 0 ? OPSStyle.Colors.successStatus : OPSStyle.Colors.warningStatus)
 
                 VStack(spacing: OPSStyle.Layout.spacing2) {
@@ -338,7 +338,7 @@ struct SpreadsheetImportSheet: View {
             Button(action: { dismiss() }) {
                 Text("DONE")
                     .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(.black)
+                    .foregroundColor(OPSStyle.Colors.invertedText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(OPSStyle.Colors.primaryText)
@@ -500,8 +500,8 @@ struct SpreadsheetImportSheet: View {
 
     private func performImport() async {
         var created = 0
-        var errors = 0
-        var errorMessages: [String] = []
+        let errors = 0
+        let errorMessages: [String] = []
 
         let itemsToImport = parsedItems.filter { selectedItemIds.contains($0.id) }
         let skipped = parsedItems.count - itemsToImport.count
@@ -511,94 +511,118 @@ struct SpreadsheetImportSheet: View {
                 currentImportIndex = index + 1
             }
 
-            do {
-                // Find unit ID if unit name provided
-                var unitId: String? = nil
-                if let unitName = item.unitName {
-                    // Query for matching unit
-                    let descriptor = FetchDescriptor<InventoryUnit>(
-                        predicate: #Predicate<InventoryUnit> { unit in
-                            unit.companyId == companyId && unit.deletedAt == nil
-                        }
-                    )
-                    if let units = try? modelContext.fetch(descriptor) {
-                        unitId = units.first(where: {
-                            $0.display.lowercased() == unitName.lowercased()
-                        })?.id
+            // Find unit ID if unit name provided
+            var unitId: String? = nil
+            if let unitName = item.unitName {
+                // Query for matching unit
+                let descriptor = FetchDescriptor<InventoryUnit>(
+                    predicate: #Predicate<InventoryUnit> { unit in
+                        unit.companyId == companyId && unit.deletedAt == nil
                     }
-                }
-
-                let newItem = InventoryItem(
-                    id: UUID().uuidString,
-                    name: item.name,
-                    quantity: item.quantity,
-                    companyId: companyId,
-                    unitId: unitId,
-                    itemDescription: item.description,
-                    sku: item.sku,
-                    notes: item.notes
                 )
+                if let units = try? modelContext.fetch(descriptor) {
+                    unitId = units.first(where: {
+                        $0.display.lowercased() == unitName.lowercased()
+                    })?.id
+                }
+            }
 
-                modelContext.insert(newItem)
+            let newItem = InventoryItem(
+                id: UUID().uuidString,
+                name: item.name,
+                quantity: item.quantity,
+                companyId: companyId,
+                unitId: unitId,
+                itemDescription: item.description,
+                sku: item.sku,
+                notes: item.notes
+            )
 
-                // Apply tags from spreadsheet
-                for tagName in item.tags {
-                    let trimmedTagName = tagName.trimmingCharacters(in: .whitespaces)
-                    guard !trimmedTagName.isEmpty else { continue }
+            modelContext.insert(newItem)
 
-                    // Look for existing tag (case-insensitive)
-                    if let existingTag = companyTags.first(where: {
-                        $0.name.lowercased() == trimmedTagName.lowercased()
-                    }) {
-                        newItem.addTag(existingTag)
-                    } else {
-                        // Create new tag
-                        let newTag = InventoryTag(
-                            id: UUID().uuidString,
-                            name: trimmedTagName,
-                            companyId: companyId
-                        )
-                        newTag.needsSync = true
-                        modelContext.insert(newTag)
-                        newItem.addTag(newTag)
+            // Apply tags from spreadsheet
+            for tagName in item.tags {
+                let trimmedTagName = tagName.trimmingCharacters(in: .whitespaces)
+                guard !trimmedTagName.isEmpty else { continue }
 
-                        // Create tag in Bubble asynchronously
-                        Task {
-                            do {
-                                let tagDTO = InventoryTagDTO(
-                                    id: newTag.id,
-                                    name: trimmedTagName,
-                                    warningThreshold: nil,
-                                    criticalThreshold: nil,
-                                    company: companyId
-                                )
-                                let createdTag = try await dataController.apiService.createTag(tagDTO)
-                                await MainActor.run {
-                                    newTag.id = createdTag.id
-                                    newTag.needsSync = false
-                                    newTag.lastSyncedAt = Date()
-                                }
-                            } catch {
-                                print("[IMPORT] Failed to create tag '\(trimmedTagName)': \(error)")
-                            }
+                // Look for existing tag (case-insensitive)
+                if let existingTag = companyTags.first(where: {
+                    $0.name.lowercased() == trimmedTagName.lowercased()
+                }) {
+                    newItem.addTag(existingTag)
+                } else {
+                    // Create new tag
+                    let newTag = InventoryTag(
+                        id: UUID().uuidString,
+                        name: trimmedTagName,
+                        companyId: companyId
+                    )
+                    newTag.needsSync = true
+                    modelContext.insert(newTag)
+                    newItem.addTag(newTag)
+
+                    // Sync new tag to Supabase
+                    if let repo = dataController.inventoryRepository {
+                        do {
+                            let tagDTO = CreateInventoryTagDTO(
+                                companyId: companyId,
+                                name: trimmedTagName,
+                                warningThreshold: nil,
+                                criticalThreshold: nil
+                            )
+                            let createdTag = try await repo.createTag(tagDTO)
+                            newTag.id = createdTag.id
+                            newTag.needsSync = false
+                            newTag.lastSyncedAt = Date()
+                        } catch {
+                            print("[IMPORT] ❌ Failed to sync tag '\(trimmedTagName)': \(error)")
                         }
                     }
                 }
-
-                // Create via API
-                let dto = InventoryItemDTO.from(newItem)
-                let createdDTO = try await dataController.apiService.createInventoryItem(dto)
-
-                await MainActor.run {
-                    newItem.id = createdDTO.id
-                    newItem.lastSyncedAt = Date()
-                }
-
-                created += 1
-            } catch {
-                errors += 1
-                errorMessages.append("Row \(item.rowIndex): \(error.localizedDescription)")
             }
+
+            // Sync item to Supabase
+            if let repo = dataController.inventoryRepository {
+                do {
+                    let itemDTO = CreateInventoryItemDTO(
+                        companyId: companyId,
+                        name: newItem.name,
+                        description: newItem.itemDescription,
+                        quantity: newItem.quantity,
+                        unitId: newItem.unitId,
+                        sku: newItem.sku,
+                        notes: newItem.notes,
+                        imageUrl: nil,
+                        warningThreshold: nil,
+                        criticalThreshold: nil
+                    )
+                    let createdItem = try await repo.createItem(itemDTO)
+                    await MainActor.run {
+                        newItem.id = createdItem.id
+                        newItem.needsSync = false
+                        newItem.lastSyncedAt = Date()
+                    }
+
+                    // Sync tags junction if item has tags
+                    let tagIds = newItem.tags.filter { $0.deletedAt == nil }.map { $0.id }
+                    if !tagIds.isEmpty {
+                        try await repo.setItemTags(itemId: createdItem.id, tagIds: tagIds)
+                    }
+
+                    print("[IMPORT] ✅ Item '\(newItem.name)' synced with ID: \(createdItem.id)")
+                } catch {
+                    print("[IMPORT] ❌ Failed to sync item '\(newItem.name)': \(error)")
+                    await MainActor.run {
+                        newItem.needsSync = true
+                    }
+                }
+            } else {
+                await MainActor.run {
+                    newItem.needsSync = true
+                }
+            }
+
+            created += 1
         }
 
         await MainActor.run {

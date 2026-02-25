@@ -94,7 +94,7 @@ struct UserTypeSelectionContent: View {
                         config.backAction?()
                     } label: {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 20, weight: .semibold))
+                            .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 44, height: 44)
                     }
@@ -160,7 +160,7 @@ struct UserTypeSelectionContent: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: choice.icon)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
 
                         Text(choice.rawValue)
                             .font(OPSStyle.Typography.smallCaption)
@@ -292,8 +292,8 @@ struct UserTypeSelectionContent: View {
 
                     // Arrow icon
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.black)
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.invertedText)
                         .opacity(showButtonArrow ? 1 : 0)
                         .offset(x: showButtonArrow ? 0 : -10)
                 }

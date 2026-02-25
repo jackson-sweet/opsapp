@@ -19,13 +19,13 @@ struct OnboardingTextFieldStyle: ViewModifier {
             .textContentType(.oneTimeCode) // Prevents autofill suggestions
             .padding(.vertical, 12)
             .padding(.horizontal, 2)
-            .foregroundColor(.white)
+            .foregroundColor(OPSStyle.Colors.primaryText)
             .overlay(
                 VStack {
                     Spacer()
                     Rectangle()
                         .frame(height: 1)
-                        .foregroundColor(Color.gray.opacity(0.5))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             )
     }
@@ -355,7 +355,7 @@ struct OnboardingNavigationButtons: View {
             if step != .welcome && step != .completion {
                 VStack(spacing: 4) {
                     Text(String(describing: step))
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .font(OPSStyle.Typography.caption)
                     
                     OnboardingProgressIndicator(currentStep: step)

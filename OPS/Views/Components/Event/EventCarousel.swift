@@ -260,7 +260,7 @@ struct EventCardView: View {
                     // Completed badge
                     Text("COMPLETED")
                         .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
@@ -282,7 +282,7 @@ struct EventCardView: View {
                     // Cancelled badge
                     Text("CANCELLED")
                         .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
@@ -351,11 +351,11 @@ struct EventCardView: View {
         VStack(spacing: 8) {
             Text("START TASK")  // All events are task events now
                 .font(OPSStyle.Typography.button)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
 
             Image(systemName: "play.fill")
-                .font(.system(size: 24))
-                .foregroundColor(.white)
+                .font(.system(size: OPSStyle.Layout.IconSize.lg))
+                .foregroundColor(OPSStyle.Colors.primaryText)
         }
         .frame(width: 362, height: 100)
         .background(OPSStyle.Colors.primaryAccent.opacity(0.95))

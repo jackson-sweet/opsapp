@@ -20,13 +20,13 @@ struct NotificationTimeWindow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
-                
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
                 Text(description)
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            
+
             HStack(spacing: 8) {
                 // Start time picker
                 HStack {
@@ -42,7 +42,7 @@ struct NotificationTimeWindow: View {
                     }
                     .pickerStyle(MenuPickerStyle())
                     .labelsHidden()
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
                     .padding(.horizontal, 12)
@@ -64,7 +64,7 @@ struct NotificationTimeWindow: View {
                     }
                     .pickerStyle(MenuPickerStyle())
                     .labelsHidden()
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
                     .padding(.horizontal, 12)
@@ -128,7 +128,7 @@ struct NotificationPrioritySelector: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Notification Priority")
                 .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
             
             VStack(spacing: 12) {
                 ForEach(NotificationPriority.allCases) { priority in
@@ -146,14 +146,14 @@ struct NotificationPrioritySelector: View {
                                     .frame(width: 36, height: 36)
                                 
                                 Image(systemName: priority.icon)
-                                    .font(.system(size: 16))
-                                    .foregroundColor(selectedPriority == priority ? .white : OPSStyle.Colors.secondaryText)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                    .foregroundColor(selectedPriority == priority ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                             }
                             
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(priority.rawValue)
                                     .font(selectedPriority == priority ? OPSStyle.Typography.bodyEmphasis : OPSStyle.Typography.body)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                                 
                                 Text(priority.description)
                                     .font(OPSStyle.Typography.caption)
@@ -166,7 +166,7 @@ struct NotificationPrioritySelector: View {
                             // Selection indicator
                             if selectedPriority == priority {
                                 Image(systemName: OPSStyle.Icons.checkmark)
-                                    .font(.system(size: 16, weight: .bold))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
                                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
                         }
@@ -197,7 +197,7 @@ struct TemporaryMuteControl: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Temporary Mute")
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                     
                     Text("Silence notifications for a specific period")
                         .font(OPSStyle.Typography.caption)
@@ -243,7 +243,7 @@ struct TemporaryMuteControl: View {
                                         .padding(.horizontal, 12)
                                         .background(muteHours == hours ? 
                                                     OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
-                                        .foregroundColor(muteHours == hours ? .black : .white)
+                                        .foregroundColor(muteHours == hours ? OPSStyle.Colors.invertedText : OPSStyle.Colors.primaryText)
                                         .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                                 }
                             }
@@ -254,7 +254,7 @@ struct TemporaryMuteControl: View {
                     if let endTime = muteEndTime {
                         HStack {
                             Image(systemName: "bell.slash.fill")
-                                .font(.system(size: 14))
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                             
                             Text("Notifications will resume at \(formatTime(endTime))")

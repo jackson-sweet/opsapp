@@ -86,7 +86,7 @@ struct CompanyTeamMemberRow: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "envelope")
-                                .font(.system(size: 10))
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             Text(email)
                                 .font(OPSStyle.Typography.caption)
                         }
@@ -103,7 +103,7 @@ struct CompanyTeamMemberRow: View {
                     callPhone(phone)
                 } label: {
                     Image(systemName: "phone.circle.fill")
-                        .font(.system(size: 24))
+                        .font(.system(size: OPSStyle.Layout.IconSize.lg))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
                 .padding(8)

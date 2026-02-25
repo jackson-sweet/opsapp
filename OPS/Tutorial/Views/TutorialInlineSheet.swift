@@ -170,7 +170,7 @@ struct TutorialInlineSheet_Previews: PreviewProvider {
 
                 VStack {
                     Text("Main Content")
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
 
                     Button("Show Sheet") {
                         showSheet = true
@@ -185,7 +185,7 @@ struct TutorialInlineSheet_Previews: PreviewProvider {
                     VStack {
                         Text("Sheet Content")
                             .font(OPSStyle.Typography.title)
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
 
                         Spacer()
 

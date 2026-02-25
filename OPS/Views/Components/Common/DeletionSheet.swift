@@ -216,7 +216,7 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
                                 canDelete
                                     ? OPSStyle.Colors.errorStatus
                                     : OPSStyle.Colors.tertiaryText,
-                                lineWidth: OPSStyle.Layout.Border.standard.5
+                                lineWidth: OPSStyle.Layout.Border.standard
                             )
                     )
                     .cornerRadius(OPSStyle.Layout.cornerRadius)

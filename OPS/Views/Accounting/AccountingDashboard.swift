@@ -42,7 +42,7 @@ struct AccountingDashboard: View {
             VStack(spacing: OPSStyle.Layout.spacing3) {
                 Spacer()
                 Image(systemName: OPSStyle.Icons.alert)
-                    .font(.system(size: 32))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xl))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
                 Text("COULD NOT LOAD DATA")
                     .font(OPSStyle.Typography.bodyBold)

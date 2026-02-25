@@ -58,7 +58,7 @@ struct ProductPickerSheet: View {
                     VStack(spacing: OPSStyle.Layout.spacing3) {
                         Spacer()
                         Image(systemName: OPSStyle.Icons.productTag)
-                            .font(.system(size: 40))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Text(products.isEmpty ? "NO PRODUCTS IN CATALOG" : "NO MATCHES")
                             .font(OPSStyle.Typography.subtitle)
@@ -117,7 +117,7 @@ struct ProductPickerSheet: View {
             Spacer()
             Image(systemName: "plus.circle.fill")
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
-                .font(.system(size: 20))
+                .font(.system(size: OPSStyle.Layout.IconSize.md))
         }
         .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
     }

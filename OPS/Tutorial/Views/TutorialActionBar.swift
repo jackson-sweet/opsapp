@@ -53,10 +53,10 @@ struct TutorialActionBar: View {
                         .font(.custom("Mohave-Medium", size: 14))
                     if !isContinueDisabled {
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
                     }
                 }
-                .foregroundColor(isContinueDisabled ? Color.white.opacity(0.25) : .black)
+                .foregroundColor(isContinueDisabled ? OPSStyle.Colors.primaryText.opacity(0.25) : OPSStyle.Colors.invertedText)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .background(isContinueDisabled ? OPSStyle.Colors.cardBorder : Color.white)

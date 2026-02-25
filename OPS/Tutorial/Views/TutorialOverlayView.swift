@@ -151,7 +151,7 @@ struct TutorialOverlayView_Previews: PreviewProvider {
             // Background content
             VStack {
                 Text("Background Content")
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
 
                 Button("Target Button") {
                     // Action

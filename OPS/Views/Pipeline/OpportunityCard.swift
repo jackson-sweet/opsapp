@@ -2,7 +2,7 @@
 //  OpportunityCard.swift
 //  OPS
 //
-//  Deal card for the Pipeline Kanban — supports swipe-to-advance and swipe-to-lost.
+//  Deal card for the Pipeline — left color stripe, swipe-to-advance and swipe-to-lost.
 //
 
 import SwiftUI
@@ -68,43 +68,64 @@ struct OpportunityCard: View {
         }
     }
 
+    // MARK: - Card Content
+
     private var cardContent: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                HStack {
-                    if opportunity.isStale {
-                        Image(systemName: OPSStyle.Icons.stale)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.warningStatus)
-                    }
-                    Text(opportunity.contactName.uppercased())
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .lineLimit(1)
-                    Spacer()
-                    if let value = opportunity.estimatedValue {
-                        Text(value, format: .currency(code: "USD").precision(.fractionLength(0)))
+            HStack(spacing: 0) {
+                // Left color stripe
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(OPSStyle.Colors.pipelineStageColor(for: opportunity.stage))
+                    .frame(width: 3)
+
+                // Content
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    // Row 1: Contact name + value
+                    HStack {
+                        if opportunity.isStale {
+                            Image(systemName: OPSStyle.Icons.stale)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.warningStatus)
+                        }
+                        Text(opportunity.contactName.uppercased())
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
+                            .lineLimit(1)
+                        Spacer()
+                        if let value = opportunity.estimatedValue {
+                            Text(value, format: .currency(code: "USD").precision(.fractionLength(0)))
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                    }
+
+                    // Row 2: Job description
+                    if let desc = opportunity.jobDescription {
+                        Text(desc)
+                            .font(OPSStyle.Typography.smallBody)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
+                    }
+
+                    // Row 3: Stage dot + name, days counter
+                    HStack {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
+                            Circle()
+                                .fill(OPSStyle.Colors.pipelineStageColor(for: opportunity.stage))
+                                .frame(width: 6, height: 6)
+                            Text(opportunity.stage.displayName)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                        Spacer()
+                        Text("day \(opportunity.daysInStage)")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                 }
-
-                if let desc = opportunity.jobDescription {
-                    Text(desc)
-                        .font(OPSStyle.Typography.smallBody)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .lineLimit(1)
-                }
-
-                HStack {
-                    stageBadge
-                    Spacer()
-                    Text("[\(opportunity.daysInStage == 1 ? "day 1" : "day \(opportunity.daysInStage)")]")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
+                .padding(.vertical, OPSStyle.Layout.spacing3)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
             }
-            .padding(OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
@@ -113,21 +134,5 @@ struct OpportunityCard: View {
             )
         }
         .buttonStyle(PlainButtonStyle())
-    }
-
-    private var stageBadge: some View {
-        let color = OPSStyle.Colors.pipelineStageColor(for: opportunity.stage)
-        return Text(opportunity.stage.displayName)
-            .font(OPSStyle.Typography.smallCaption)
-            .fontWeight(.medium)
-            .foregroundColor(color)
-            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
-            .background(color.opacity(0.15))
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
-                    .stroke(color, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius))
     }
 }

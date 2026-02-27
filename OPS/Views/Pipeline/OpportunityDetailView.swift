@@ -2,7 +2,7 @@
 //  OpportunityDetailView.swift
 //  OPS
 //
-//  Full detail view for a pipeline opportunity — activity timeline, follow-ups, and tabbed content.
+//  Full detail view for a pipeline opportunity — details, activity, and follow-ups tabs.
 //
 
 import SwiftUI
@@ -14,35 +14,38 @@ struct OpportunityDetailView: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selectedTab: DetailTab = .activity
+    @State private var selectedTab: DetailTab = .details
     @State private var showActivitySheet = false
     @State private var showLostSheet = false
     @State private var showEditSheet = false
     @State private var showOverflowMenu = false
 
     enum DetailTab: String, CaseIterable {
+        case details   = "DETAILS"
         case activity  = "ACTIVITY"
-        case estimates = "ESTIMATES"
-        case invoices  = "INVOICES"
+        case followUps = "FOLLOW-UPS"
     }
 
-    var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            OPSStyle.Colors.background.ignoresSafeArea()
+    private let currencyFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        f.maximumFractionDigits = 0
+        return f
+    }()
 
+    var body: some View {
+        VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     headerSection
-                    quickActions
+                    advanceAction
                     tabSelector
                     tabContent
                 }
-                .padding(.bottom, 80)
             }
-
-            // FAB
-            detailFAB
         }
+        .background(OPSStyle.Colors.background.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -126,9 +129,17 @@ struct OpportunityDetailView: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
 
-                stageBadge
+                // Monochromatic stage indicator
+                HStack(spacing: OPSStyle.Layout.spacing1) {
+                    Circle()
+                        .fill(OPSStyle.Colors.pipelineStageColor(for: opportunity.stage))
+                        .frame(width: 6, height: 6)
+                    Text(opportunity.stage.displayName)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
 
-                Text("[\(opportunity.daysInStage == 1 ? "day 1" : "day \(opportunity.daysInStage)")]")
+                Text("day \(opportunity.daysInStage)")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -144,63 +155,27 @@ struct OpportunityDetailView: View {
         .padding(.bottom, OPSStyle.Layout.spacing2)
     }
 
-    private var stageBadge: some View {
-        let color = OPSStyle.Colors.pipelineStageColor(for: opportunity.stage)
-        return Text(opportunity.stage.displayName)
-            .font(OPSStyle.Typography.smallCaption)
-            .fontWeight(.medium)
-            .foregroundColor(color)
-            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
-            .background(color.opacity(0.15))
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
-                    .stroke(color, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius))
-    }
+    // MARK: - Advance Action
 
-    // MARK: - Quick Actions
+    private var advanceAction: some View {
+        Group {
+            if !opportunity.stage.isTerminal, let nextStage = opportunity.stage.next {
+                VStack(spacing: 0) {
+                    Rectangle()
+                        .frame(height: 0.5)
+                        .foregroundColor(OPSStyle.Colors.separator)
 
-    private var quickActions: some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(OPSStyle.Colors.separator)
-
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                if let phone = opportunity.contactPhone, !phone.isEmpty {
-                    Button {
-                        if let url = URL(string: "tel:\(phone)") { UIApplication.shared.open(url) }
-                    } label: {
-                        Label("CALL", systemImage: "phone.fill")
-                            .font(OPSStyle.Typography.captionBold)
-                    }
-                    .opsSecondaryButtonStyle()
-                }
-
-                if let email = opportunity.contactEmail, !email.isEmpty {
-                    Button {
-                        if let url = URL(string: "mailto:\(email)") { UIApplication.shared.open(url) }
-                    } label: {
-                        Label("EMAIL", systemImage: "envelope.fill")
-                            .font(OPSStyle.Typography.captionBold)
-                    }
-                    .opsSecondaryButtonStyle()
-                }
-
-                if !opportunity.stage.isTerminal {
                     Button {
                         Task { await viewModel.advanceStage(opportunity: opportunity) }
                     } label: {
-                        Label("ADVANCE", systemImage: OPSStyle.Icons.stageAdvance)
+                        Label("ADVANCE TO \(nextStage.displayName)", systemImage: OPSStyle.Icons.stageAdvance)
                             .font(OPSStyle.Typography.captionBold)
                     }
-                    .opsSecondaryButtonStyle()
+                    .opsPrimaryButtonStyle()
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
                 }
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
         }
     }
 
@@ -208,9 +183,9 @@ struct OpportunityDetailView: View {
 
     private var tabSelector: some View {
         SegmentedControl(selection: $selectedTab, options: [
+            (.details, "DETAILS"),
             (.activity, "ACTIVITY"),
-            (.estimates, "ESTIMATES"),
-            (.invoices, "INVOICES")
+            (.followUps, "FOLLOW-UPS")
         ])
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
@@ -221,18 +196,201 @@ struct OpportunityDetailView: View {
     @ViewBuilder
     private var tabContent: some View {
         switch selectedTab {
+        case .details:
+            detailsTab
         case .activity:
             activityTab
-        case .estimates:
-            placeholderTab(title: "ESTIMATES", icon: OPSStyle.Icons.estimateDoc, message: "Coming in Sprint 3")
-        case .invoices:
-            placeholderTab(title: "INVOICES", icon: OPSStyle.Icons.invoiceReceipt, message: "Coming in Sprint 4")
+        case .followUps:
+            followUpsTab
         }
     }
 
+    // MARK: - Details Tab
+
+    private var detailsTab: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+            // CONTACT section
+            if hasContactInfo {
+                sectionHeader("CONTACT")
+
+                VStack(spacing: 0) {
+                    if let phone = opportunity.contactPhone, !phone.isEmpty {
+                        contactRow(
+                            icon: "phone.fill",
+                            title: "PHONE",
+                            value: phone,
+                            action: {
+                                if let url = URL(string: "tel:\(phone)") {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                        )
+                    }
+
+                    if hasPhone && hasEmail {
+                        Rectangle()
+                            .frame(height: 0.5)
+                            .foregroundColor(OPSStyle.Colors.cardBorder)
+                    }
+
+                    if let email = opportunity.contactEmail, !email.isEmpty {
+                        contactRow(
+                            icon: "envelope.fill",
+                            title: "EMAIL",
+                            value: email,
+                            action: {
+                                if let url = URL(string: "mailto:\(email)") {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                        )
+                    }
+                }
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+            }
+
+            // DEAL INFO section
+            sectionHeader("DEAL INFO")
+
+            VStack(spacing: 0) {
+                infoRow(icon: "dollarsign.circle", title: "ESTIMATED VALUE",
+                        value: opportunity.estimatedValue.map {
+                            currencyFormatter.string(from: NSNumber(value: $0)) ?? "—"
+                        } ?? "—")
+
+                infoDivider
+
+                infoRow(icon: "chart.bar", title: "WEIGHTED VALUE",
+                        value: currencyFormatter.string(from: NSNumber(value: opportunity.weightedValue)) ?? "—")
+
+                infoDivider
+
+                infoRow(icon: "tag", title: "SOURCE",
+                        value: opportunity.source ?? "—")
+
+                infoDivider
+
+                infoRow(icon: "calendar", title: "CREATED",
+                        value: opportunity.createdAt.formatted(date: .abbreviated, time: .omitted))
+
+                infoDivider
+
+                infoRow(icon: "clock", title: "LAST ACTIVITY",
+                        value: lastActivityLabel)
+            }
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+        }
+        .padding(.top, OPSStyle.Layout.spacing3)
+        .padding(.bottom, OPSStyle.Layout.spacing4)
+    }
+
+    private var hasContactInfo: Bool {
+        hasPhone || hasEmail
+    }
+
+    private var hasPhone: Bool {
+        if let phone = opportunity.contactPhone, !phone.isEmpty { return true }
+        return false
+    }
+
+    private var hasEmail: Bool {
+        if let email = opportunity.contactEmail, !email.isEmpty { return true }
+        return false
+    }
+
+    private var lastActivityLabel: String {
+        guard let lastActivity = detailVM.activities.first else { return "—" }
+        let interval = Date().timeIntervalSince(lastActivity.createdAt)
+        let minutes = Int(interval / 60)
+        if minutes < 60 { return "\(max(minutes, 1))m ago" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours)hr ago" }
+        let days = hours / 24
+        if days == 1 { return "yesterday" }
+        return "\(days) days ago"
+    }
+
+    // MARK: - Details Helpers
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(OPSStyle.Typography.captionBold)
+            .foregroundColor(OPSStyle.Colors.secondaryText)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+    }
+
+    private func contactRow(icon: String, title: String, value: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: icon)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .frame(width: OPSStyle.Layout.IconSize.sm)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Text(value)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func infoRow(icon: String, title: String, value: String) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Image(systemName: icon)
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .frame(width: OPSStyle.Layout.IconSize.sm)
+
+            Text(title)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            Spacer()
+
+            Text(value)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+        }
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+    }
+
+    private var infoDivider: some View {
+        Rectangle()
+            .frame(height: 0.5)
+            .foregroundColor(OPSStyle.Colors.cardBorder)
+    }
+
+    // MARK: - Activity Tab
+
     private var activityTab: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-            // Activities
             if detailVM.isLoading && detailVM.activities.isEmpty {
                 HStack { Spacer(); TacticalLoadingBarAnimated(); Spacer() }
                     .padding(.top, OPSStyle.Layout.spacing4)
@@ -241,6 +399,9 @@ struct OpportunityDetailView: View {
                     Text("NO ACTIVITY YET")
                         .font(OPSStyle.Typography.subtitle)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Text("Log the first note to start tracking.")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Button("LOG THE FIRST NOTE") { showActivitySheet = true }
                         .opsPrimaryButtonStyle()
                         .padding(.horizontal, OPSStyle.Layout.spacing4)
@@ -259,13 +420,11 @@ struct OpportunityDetailView: View {
                     }
 
                     if detailVM.activities.count > 5 {
-                        Button("[VIEW ALL \(detailVM.activities.count) EVENTS]") {
-                            // TODO: expand or navigate
-                        }
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, OPSStyle.Layout.spacing2)
+                        Text("\(detailVM.activities.count - 5) MORE")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
                     }
                 }
                 .padding(OPSStyle.Layout.spacing3)
@@ -278,72 +437,49 @@ struct OpportunityDetailView: View {
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.top, OPSStyle.Layout.spacing3)
             }
-
-            // Follow-ups section
-            if !detailVM.followUps.isEmpty {
-                followUpsSection
-            }
         }
+        .padding(.bottom, OPSStyle.Layout.spacing4)
     }
 
-    private var followUpsSection: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text("FOLLOW-UPS")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
+    // MARK: - Follow-Ups Tab
 
-            VStack(spacing: 0) {
-                ForEach(detailVM.followUps) { fu in
-                    FollowUpRowView(followUp: fu)
-                    if fu.id != detailVM.followUps.last?.id {
-                        Rectangle()
-                            .frame(height: 0.5)
-                            .foregroundColor(OPSStyle.Colors.cardBorder)
+    private var followUpsTab: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+            if detailVM.followUps.isEmpty {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    Image(systemName: "bell")
+                        .font(OPSStyle.Typography.heading)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text("NO FOLLOW-UPS")
+                        .font(OPSStyle.Typography.subtitle)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Text("Schedule your first reminder.")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, OPSStyle.Layout.spacing5)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(detailVM.followUps) { fu in
+                        FollowUpRowView(followUp: fu)
+                        if fu.id != detailVM.followUps.last?.id {
+                            Rectangle()
+                                .frame(height: 0.5)
+                                .foregroundColor(OPSStyle.Colors.cardBorder)
+                        }
                     }
                 }
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.top, OPSStyle.Layout.spacing3)
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
-    }
-
-    private func placeholderTab(title: String, icon: String, message: String) -> some View {
-        VStack(spacing: OPSStyle.Layout.spacing3) {
-            Spacer()
-            Image(systemName: icon)
-                .font(OPSStyle.Typography.heading)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Text(title)
-                .font(OPSStyle.Typography.subtitle)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-            Text(message)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, minHeight: 200)
-    }
-
-    // MARK: - FAB
-
-    private var detailFAB: some View {
-        Button {
-            showActivitySheet = true
-        } label: {
-            Image(systemName: "plus")
-                .font(OPSStyle.Typography.heading)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)
-                .background(OPSStyle.Colors.primaryAccent)
-                .clipShape(Circle())
-        }
-        .padding(OPSStyle.Layout.spacing3)
-        .accessibilityLabel("Log Activity")
+        .padding(.bottom, OPSStyle.Layout.spacing4)
     }
 }

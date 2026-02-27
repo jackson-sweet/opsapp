@@ -30,9 +30,9 @@ struct ActivityRowView: View {
             Image(systemName: activity.type.icon)
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(isSystemGenerated ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.secondaryText)
-                .frame(width: 20)
+                .frame(width: OPSStyle.Layout.IconSize.sm)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 HStack {
                     Text(activity.type.rawValue.uppercased().replacingOccurrences(of: "_", with: " "))
                         .font(OPSStyle.Typography.smallCaption)

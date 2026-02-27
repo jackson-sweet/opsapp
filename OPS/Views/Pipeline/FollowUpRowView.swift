@@ -26,9 +26,9 @@ struct FollowUpRowView: View {
             Image(systemName: followUp.type.icon)
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(followUp.isOverdue ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.secondaryText)
-                .frame(width: 20)
+                .frame(width: OPSStyle.Layout.IconSize.sm)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 HStack {
                     Text(followUp.type.rawValue.replacingOccurrences(of: "_", with: " ").uppercased())
                         .font(OPSStyle.Typography.smallCaption)

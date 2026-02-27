@@ -2,7 +2,7 @@
 //  PipelineView.swift
 //  OPS
 //
-//  Pipeline Kanban — stage-filtered opportunity cards with swipe gestures and FAB.
+//  Pipeline CRM — stage-filtered opportunity cards with search and swipe gestures.
 //
 
 import SwiftUI
@@ -10,7 +10,6 @@ import SwiftUI
 struct PipelineView: View {
     @StateObject private var viewModel = PipelineViewModel()
     @EnvironmentObject private var dataController: DataController
-    @State private var showNewOpportunitySheet = false
     @State private var selectedOpportunity: Opportunity? = nil
     @State private var showLostSheet = false
     @State private var opportunityToMarkLost: Opportunity? = nil
@@ -24,69 +23,56 @@ struct PipelineView: View {
     }()
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            OPSStyle.Colors.background.ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                // Header metrics
-                HStack {
-                    Text("\(currencyFormatter.string(from: NSNumber(value: viewModel.weightedPipelineValue)) ?? "$0") WEIGHTED · \(viewModel.activeDealsCount) DEALS")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Spacer()
-                }
+        VStack(spacing: 0) {
+            // 1. Search bar
+            SearchBar(searchText: $viewModel.searchText, placeholder: "Search deals...")
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.top, OPSStyle.Layout.spacing2)
-                .padding(.bottom, OPSStyle.Layout.spacing2)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
 
-                // Stage strip
-                PipelineStageStrip(
-                    stages: viewModel.stagesWithCounts,
-                    selectedStage: $viewModel.selectedStage
-                )
+            // 2. Metrics strip
+            metricsStrip
 
-                // Cards list
-                if viewModel.isLoading && viewModel.opportunities.isEmpty {
-                    Spacer()
-                    TacticalLoadingBarAnimated()
-                    Spacer()
-                } else if viewModel.filteredOpportunities.isEmpty {
-                    emptyState
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: OPSStyle.Layout.spacing2) {
-                            ForEach(viewModel.filteredOpportunities) { opp in
-                                OpportunityCard(
-                                    opportunity: opp,
-                                    onTap: { selectedOpportunity = opp },
-                                    onAdvance: {
-                                        Task { await viewModel.advanceStage(opportunity: opp) }
-                                    },
-                                    onLost: {
-                                        opportunityToMarkLost = opp
-                                        showLostSheet = true
-                                    }
-                                )
-                            }
+            // 3. Stage filter strip
+            PipelineStageStrip(
+                stages: viewModel.stagesWithCounts,
+                selectedStage: $viewModel.selectedStage
+            )
+
+            // 4. Content
+            if viewModel.isLoading && viewModel.opportunities.isEmpty {
+                Spacer()
+                TacticalLoadingBarAnimated()
+                Spacer()
+            } else if viewModel.filteredOpportunities.isEmpty {
+                emptyState
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: OPSStyle.Layout.spacing2) {
+                        ForEach(viewModel.filteredOpportunities) { opp in
+                            OpportunityCard(
+                                opportunity: opp,
+                                onTap: { selectedOpportunity = opp },
+                                onAdvance: {
+                                    Task { await viewModel.advanceStage(opportunity: opp) }
+                                },
+                                onLost: {
+                                    opportunityToMarkLost = opp
+                                    showLostSheet = true
+                                }
+                            )
                         }
-                        .padding(.horizontal, OPSStyle.Layout.spacing3)
-                        .padding(.vertical, OPSStyle.Layout.spacing2)
-                        .padding(.bottom, 80) // FAB clearance
                     }
-                    .refreshable {
-                        await viewModel.loadOpportunities()
-                    }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                }
+                .refreshable {
+                    await viewModel.loadOpportunities()
                 }
             }
-
-            // FAB
-            pipelineFAB
         }
+        .background(OPSStyle.Colors.background.ignoresSafeArea())
         .navigationDestination(item: $selectedOpportunity) { opp in
             OpportunityDetailView(opportunity: opp, viewModel: viewModel)
-        }
-        .sheet(isPresented: $showNewOpportunitySheet) {
-            OpportunityFormSheet(viewModel: viewModel)
         }
         .sheet(isPresented: $showLostSheet) {
             if let opp = opportunityToMarkLost {
@@ -111,6 +97,45 @@ struct PipelineView: View {
         }
     }
 
+    // MARK: - Metrics Strip
+
+    private var metricsStrip: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            metricPill(label: "DEALS", value: "\(viewModel.activeDealsCount)")
+            metricPill(
+                label: "WEIGHTED",
+                value: currencyFormatter.string(from: NSNumber(value: viewModel.weightedPipelineValue)) ?? "$0"
+            )
+            metricPill(
+                label: "TOTAL",
+                value: currencyFormatter.string(from: NSNumber(value: viewModel.totalPipelineValue)) ?? "$0"
+            )
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.bottom, OPSStyle.Layout.spacing2)
+    }
+
+    private func metricPill(label: String, value: String) -> some View {
+        VStack(spacing: OPSStyle.Layout.spacing1) {
+            Text(label)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            Text(value)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
     // MARK: - Empty State
 
     private var emptyState: some View {
@@ -125,33 +150,13 @@ struct PipelineView: View {
                 .font(OPSStyle.Typography.subtitle)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             if viewModel.opportunities.isEmpty {
-                Text("Create your first lead to get started.")
+                Text("Use the + button to create your first lead.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, OPSStyle.Layout.spacing4)
-                Button("NEW LEAD") { showNewOpportunitySheet = true }
-                    .opsPrimaryButtonStyle()
-                    .padding(.horizontal, OPSStyle.Layout.spacing4)
             }
             Spacer()
         }
-    }
-
-    // MARK: - Pipeline FAB
-
-    private var pipelineFAB: some View {
-        Button {
-            showNewOpportunitySheet = true
-        } label: {
-            Image(systemName: "plus")
-                .font(OPSStyle.Typography.heading)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)
-                .background(OPSStyle.Colors.primaryAccent)
-                .clipShape(Circle())
-        }
-        .padding(OPSStyle.Layout.spacing3)
-        .accessibilityLabel("New Lead")
     }
 }

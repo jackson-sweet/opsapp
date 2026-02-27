@@ -10,14 +10,38 @@ import SwiftUI
 @MainActor
 class PipelineViewModel: ObservableObject {
     @Published var opportunities: [Opportunity] = []
-    @Published var selectedStage: PipelineStage = .newLead
+    @Published var selectedStage: PipelineStage? = nil
+    @Published var searchText: String = ""
     @Published var isLoading: Bool = false
     @Published var error: String? = nil
 
     private var repository: OpportunityRepository?
 
     var filteredOpportunities: [Opportunity] {
-        opportunities.filter { $0.stage == selectedStage }
+        var result = opportunities
+
+        // Stage filter (nil = ALL)
+        if let stage = selectedStage {
+            result = result.filter { $0.stage == stage }
+        }
+
+        // Search filter
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !query.isEmpty {
+            result = result.filter { opp in
+                opp.contactName.lowercased().contains(query)
+                || (opp.jobDescription?.lowercased().contains(query) ?? false)
+                || (opp.source?.lowercased().contains(query) ?? false)
+            }
+        }
+
+        return result
+    }
+
+    var totalPipelineValue: Double {
+        opportunities
+            .filter { !$0.stage.isTerminal }
+            .reduce(0) { $0 + ($1.estimatedValue ?? 0) }
     }
 
     var weightedPipelineValue: Double {
@@ -47,12 +71,6 @@ class PipelineViewModel: ObservableObject {
         do {
             let dtos = try await repo.fetchAll()
             opportunities = dtos.map { $0.toModel() }
-            // Auto-select first non-empty stage
-            if let first = PipelineStage.allCases.first(where: { stage in
-                opportunities.contains { $0.stage == stage }
-            }) {
-                selectedStage = first
-            }
         } catch {
             self.error = error.localizedDescription
         }

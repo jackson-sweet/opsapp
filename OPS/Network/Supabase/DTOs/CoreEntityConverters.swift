@@ -46,6 +46,7 @@ extension SupabaseCompanyDTO {
         company.trialEndDate = trialEndDate.flatMap { SupabaseDate.parse($0) }
         company.hasPrioritySupport = hasPrioritySupport ?? false
         company.stripeCustomerId = stripeCustomerId
+        company.externalId = companyCode
         company.deletedAt = deletedAt.flatMap { SupabaseDate.parse($0) }
         return company
     }

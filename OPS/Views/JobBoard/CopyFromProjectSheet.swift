@@ -436,20 +436,13 @@ struct CopyFromProjectSheet: View {
                     copiedData["notes"] = notes
                 }
             case "tasks":
-                // Copy task data including team members and dates
+                // Copy task structure and team — reset dates and status for fresh start
                 copiedData["tasks"] = project.tasks.map { task in
-                    var taskDict: [String: Any] = [
+                    let taskDict: [String: Any] = [
                         "taskTypeId": task.taskTypeId,
-                        "status": task.status.rawValue,
+                        "status": TaskStatus.active.rawValue,
                         "teamMemberIds": task.getTeamMemberIds()
                     ]
-                    // Include dates if the task has scheduling dates
-                    if let startDate = task.startDate {
-                        taskDict["startDate"] = startDate
-                    }
-                    if let endDate = task.endDate {
-                        taskDict["endDate"] = endDate
-                    }
                     return taskDict
                 }
             case "images":

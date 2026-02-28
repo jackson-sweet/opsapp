@@ -435,6 +435,7 @@ class RealtimeManager: ObservableObject {
             existing.trialEndDate = model.trialEndDate
             existing.hasPrioritySupport = model.hasPrioritySupport
             existing.stripeCustomerId = model.stripeCustomerId
+            existing.externalId = model.externalId
             existing.deletedAt = model.deletedAt
             existing.lastSyncedAt = Date()
             existing.needsSync = false

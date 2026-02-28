@@ -880,6 +880,60 @@ class SupabaseSyncManager: ObservableObject {
         }
     }
 
+    /// Create a new project on Supabase and locally, return the ID
+    func createProject(dto: SupabaseProjectDTO) async throws -> String {
+        print("[SUPABASE_CREATE] Creating project")
+        guard let repo = projectRepo else {
+            throw NSError(domain: "SupabaseSyncManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Project repository not initialized"])
+        }
+
+        let created = try await repo.create(dto)
+        print("[SUPABASE_CREATE] Project created: \(created.id)")
+        return created.id
+    }
+
+    /// Create a new client on Supabase and locally, return the ID
+    func createClient(dto: SupabaseClientDTO) async throws -> String {
+        print("[SUPABASE_CREATE] Creating client")
+        guard let repo = clientRepo else {
+            throw NSError(domain: "SupabaseSyncManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Client repository not initialized"])
+        }
+
+        let created = try await repo.create(dto)
+        print("[SUPABASE_CREATE] Client created: \(created.id)")
+        return created.id
+    }
+
+    /// Create a new task type on Supabase, return the ID
+    func createTaskType(dto: SupabaseTaskTypeDTO) async throws -> String {
+        print("[SUPABASE_CREATE] Creating task type")
+        guard let repo = taskTypeRepo else {
+            throw NSError(domain: "SupabaseSyncManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "TaskType repository not initialized"])
+        }
+
+        let created = try await repo.create(dto)
+        print("[SUPABASE_CREATE] Task type created: \(created.id)")
+        return created.id
+    }
+
+    /// Soft delete a task type
+    func deleteTaskType(taskTypeId: String) async throws {
+        print("[SUPABASE_DELETE] Deleting task type \(taskTypeId)")
+
+        let predicate = #Predicate<TaskType> { $0.id == taskTypeId }
+        let descriptor = FetchDescriptor<TaskType>(predicate: predicate)
+
+        if let taskType = try modelContext.fetch(descriptor).first {
+            taskType.deletedAt = Date()
+            try modelContext.save()
+        }
+
+        if isConnected {
+            try await taskTypeRepo?.softDelete(taskTypeId)
+            print("[SUPABASE_DELETE] Task type deleted and synced")
+        }
+    }
+
     /// Create a new task on Supabase and locally, return the ID
     func createTask(dto: SupabaseProjectTaskDTO) async throws -> String {
         print("[SUPABASE_CREATE] Creating task")
@@ -1077,6 +1131,7 @@ class SupabaseSyncManager: ObservableObject {
             existing.trialEndDate = model.trialEndDate
             existing.hasPrioritySupport = model.hasPrioritySupport
             existing.stripeCustomerId = model.stripeCustomerId
+            existing.externalId = model.externalId
             existing.deletedAt = model.deletedAt
             existing.lastSyncedAt = Date()
             existing.needsSync = false

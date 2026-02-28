@@ -376,8 +376,9 @@ struct SettingsView: View {
         }
         .fullScreenCover(isPresented: $showSubscriptionSettings) {
             NavigationStack {
-                OrganizationSettingsView()
+                ManageSubscriptionView()
                     .environmentObject(dataController)
+                    .environmentObject(SubscriptionManager.shared)
             }
         }
         .fullScreenCover(isPresented: $showNotificationSettings) {

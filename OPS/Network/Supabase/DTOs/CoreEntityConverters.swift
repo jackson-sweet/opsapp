@@ -84,6 +84,7 @@ extension SupabaseUserDTO {
         user.longitude = longitude
         user.locationName = locationName
         user.isActive = isActive ?? true
+        user.specialPermissions = specialPermissions ?? []
         user.deletedAt = deletedAt.flatMap { SupabaseDate.parse($0) }
         return user
     }
@@ -204,7 +205,7 @@ extension SupabaseProjectDTO {
 
 extension SupabaseProjectTaskDTO {
     func toModel() -> ProjectTask {
-        let resolvedStatus = TaskStatus(rawValue: status) ?? .booked
+        let resolvedStatus = TaskStatus(rawValue: status) ?? .active
         let task = ProjectTask(
             id: id,
             projectId: projectId,

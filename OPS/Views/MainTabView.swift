@@ -61,10 +61,9 @@ struct MainTabView: View {
     private let keyboardWillHide = NotificationCenter.default
         .publisher(for: UIResponder.keyboardWillHideNotification)
     
-    // Whether the current user has Pipeline access (admin/office crew only)
+    // Whether the current user has Pipeline access (requires "pipeline" special permission)
     private var hasPipelineAccess: Bool {
-        let role = dataController.currentUser?.role
-        return role == .admin || role == .officeCrew
+        dataController.currentUser?.specialPermissions.contains("pipeline") ?? false
     }
 
     // Computed tab indices that adapt based on role
@@ -99,15 +98,6 @@ struct MainTabView: View {
         ])
 
         return baseTabs
-    }
-
-    // Get tab index for specific tab type, accounting for conditional tabs
-    private var scheduleTabIndex: Int {
-        hasInventoryAccess ? 3 : 2
-    }
-
-    private var jobBoardTabIndex: Int {
-        1
     }
 
     // Check if currently on Settings tab
@@ -368,6 +358,16 @@ struct MainTabView: View {
             let newTabCount = tabs.count
             if selectedTab >= newTabCount {
                 selectedTab = 0 // Reset to home if current tab no longer exists
+            }
+        }
+        .onChange(of: dataController.currentUser?.specialPermissions) { oldValue, newValue in
+            print("[MAIN_TAB_VIEW] specialPermissions changed from \(String(describing: oldValue)) to \(String(describing: newValue))")
+            print("[MAIN_TAB_VIEW] After specialPermissions change - Tab count: \(tabs.count)")
+
+            // Ensure selected tab is valid for new tab count
+            let newTabCount = tabs.count
+            if selectedTab >= newTabCount {
+                selectedTab = 0
             }
         }
     }

@@ -45,6 +45,10 @@ struct SettingsView: View {
         return role == .admin || role == .officeCrew
     }
 
+    private var hasPipelineAccess: Bool {
+        dataController.currentUser?.specialPermissions.contains("pipeline") ?? false
+    }
+
     private var shouldShowDeveloperOptions: Bool {
         if developerModeExplicitlyDisabled { return false }
         #if DEBUG
@@ -120,8 +124,8 @@ struct SettingsView: View {
             )
         ])
 
-        // Business items (role-gated)
-        if isAdmin {
+        // Business items (pipeline permission-gated)
+        if hasPipelineAccess {
             items.append(contentsOf: [
                 SearchableSettingItem(
                     title: "Products & Services",
@@ -249,10 +253,10 @@ struct SettingsView: View {
                             }
                             .padding(.horizontal, 20)
 
-                            // Business section (admin/office crew)
-                            if isAdminOrOffice {
+                            // Business section (admin/office crew, or pipeline permission holders)
+                            if isAdminOrOffice || hasPipelineAccess {
                                 settingsSection(title: "BUSINESS") {
-                                    if isAdmin {
+                                    if hasPipelineAccess {
                                         settingsRow(
                                             icon: OPSStyle.Icons.productTag,
                                             title: "Products & Services",
@@ -267,14 +271,18 @@ struct SettingsView: View {
                                             action: { showIntegrations = true }
                                         )
 
-                                        sectionDivider
+                                        if isAdminOrOffice {
+                                            sectionDivider
+                                        }
                                     }
 
-                                    settingsRow(
-                                        icon: "hammer.circle",
-                                        title: "Project Settings",
-                                        action: { showProjectSettings = true }
-                                    )
+                                    if isAdminOrOffice {
+                                        settingsRow(
+                                            icon: "hammer.circle",
+                                            title: "Project Settings",
+                                            action: { showProjectSettings = true }
+                                        )
+                                    }
                                 }
                                 .padding(.horizontal, 20)
                             }
@@ -585,7 +593,7 @@ struct SettingsView: View {
             HStack(spacing: 14) {
                 Image(systemName: icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(width: 28, alignment: .center)
 
                 Text(title)

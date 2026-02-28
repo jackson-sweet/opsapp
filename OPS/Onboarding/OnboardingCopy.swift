@@ -17,6 +17,21 @@ enum OnboardingCopy {
     // MARK: - Team Invite Messages
 
     enum TeamInvite {
+        /// First SMS: invite with download link (no code)
+        static func smsInviteMessage(companyName: String) -> String {
+            """
+            \(companyName) added you to OPS.
+
+            Get the app: \(OnboardingCopy.appStoreURL)
+            """
+        }
+
+        /// Second SMS: just the crew code (easy to copy-paste)
+        static func smsCodeMessage(companyCode: String) -> String {
+            companyCode
+        }
+
+        /// Legacy combined message (kept for backwards compatibility)
         static func smsMessage(companyName: String, companyCode: String) -> String {
             """
             \(companyName) added you to OPS.

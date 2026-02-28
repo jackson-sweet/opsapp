@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import MessageUI
 import SwiftData
 
 struct CompanyCodeScreen: View {
@@ -295,14 +296,12 @@ struct InviteTeamSheet: View {
     @State private var inviteEmails: [String] = [""]
     @State private var isSendingInvites = false
     @State private var sentEmails: [String] = []
+    @State private var showingMessageCompose = false
+    @State private var showingCodeCompose = false
+    @State private var messageRecipients: [String] = []
     @FocusState private var focusedEmailIndex: Int?
 
     private let onboardingService = OnboardingService()
-
-    // Centralized copy
-    private var smsMessage: String {
-        OnboardingCopy.TeamInvite.smsMessage(companyName: companyName, companyCode: companyCode)
-    }
 
     var body: some View {
         NavigationView {
@@ -335,6 +334,27 @@ struct InviteTeamSheet: View {
             }
         }
         .tint(OPSStyle.Colors.primaryText)
+        .sheet(isPresented: $showingMessageCompose) {
+            MessageComposeView(
+                body: OnboardingCopy.TeamInvite.smsInviteMessage(companyName: companyName)
+            ) { result, recipients in
+                if result == .sent {
+                    // Store recipients and show follow-up code message
+                    messageRecipients = recipients
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        showingCodeCompose = true
+                    }
+                }
+            }
+            .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showingCodeCompose) {
+            MessageComposeView(
+                recipients: messageRecipients,
+                body: OnboardingCopy.TeamInvite.smsCodeMessage(companyCode: companyCode)
+            ) { _, _ in }
+            .ignoresSafeArea()
+        }
     }
 
     // MARK: - Main Invite Options
@@ -385,23 +405,26 @@ struct InviteTeamSheet: View {
 
             // Share options
             VStack(spacing: 12) {
-                // Send via Text Message
-                if let smsURL = URL(string: "sms:&body=\(smsMessage.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")") {
-                    Link(destination: smsURL) {
-                        HStack {
-                            Image(systemName: "message")
-                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-
-                            Text("TEXT IT")
-                                .font(OPSStyle.Typography.bodyBold)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(OPSStyle.Colors.primaryText)
-                        .foregroundColor(OPSStyle.Colors.invertedText)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                // Send via Text Message (two-step: invite then code)
+                Button {
+                    if MFMessageComposeViewController.canSendText() {
+                        showingMessageCompose = true
                     }
+                } label: {
+                    HStack {
+                        Image(systemName: "message")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+
+                        Text("TEXT IT")
+                            .font(OPSStyle.Typography.bodyBold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(MFMessageComposeViewController.canSendText() ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                    .foregroundColor(OPSStyle.Colors.invertedText)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
+                .disabled(!MFMessageComposeViewController.canSendText())
 
                 // Email invite section (expands inline)
                 VStack(spacing: 12) {
@@ -618,6 +641,48 @@ struct InviteTeamSheet: View {
 
     return CompanyCodeScreen(manager: manager)
         .environmentObject(dataController)
+}
+
+// MARK: - MFMessageComposeViewController Wrapper
+
+struct MessageComposeView: UIViewControllerRepresentable {
+    var recipients: [String] = []
+    var body: String
+    var onCompletion: (MessageComposeResult, [String]) -> Void
+
+    func makeUIViewController(context: Context) -> MFMessageComposeViewController {
+        let controller = MFMessageComposeViewController()
+        controller.messageComposeDelegate = context.coordinator
+        controller.body = body
+        if !recipients.isEmpty {
+            controller.recipients = recipients
+        }
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: MFMessageComposeViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onCompletion: onCompletion)
+    }
+
+    class Coordinator: NSObject, MFMessageComposeViewControllerDelegate {
+        let onCompletion: (MessageComposeResult, [String]) -> Void
+
+        init(onCompletion: @escaping (MessageComposeResult, [String]) -> Void) {
+            self.onCompletion = onCompletion
+        }
+
+        func messageComposeViewController(
+            _ controller: MFMessageComposeViewController,
+            didFinishWith result: MessageComposeResult
+        ) {
+            let recipients = controller.recipients ?? []
+            controller.dismiss(animated: true) {
+                self.onCompletion(result, recipients)
+            }
+        }
+    }
 }
 
 #Preview("Invite Sheet") {

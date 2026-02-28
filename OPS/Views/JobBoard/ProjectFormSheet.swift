@@ -93,6 +93,7 @@ struct ProjectFormSheet: View {
     @State private var showingImagePicker = false
     @State private var showingScheduler = false
     @State private var showingCopyFromProject = false
+    @State private var showingTeamPicker = false
     @State private var showingTaskForm = false
     @State private var editingTaskIndex: Int?
 
@@ -104,15 +105,17 @@ struct ProjectFormSheet: View {
     @State private var isTasksExpanded = false
     @State private var isDatesExpanded = false
     @State private var isPhotosExpanded = false
+    @State private var isTeamMembersExpanded = false
 
     // Section ordering - tracks which sections appear first
-    @State private var sectionOrder: [OptionalSection] = [.address, .description, .notes, .tasks, .photos]
+    @State private var sectionOrder: [OptionalSection] = [.address, .description, .notes, .tasks, .teamMembers, .photos]
 
     enum OptionalSection: CaseIterable, Hashable {
         case address
         case description
         case notes
         case tasks
+        case teamMembers
         case photos
     }
 
@@ -282,6 +285,7 @@ struct ProjectFormSheet: View {
                 )
             })
             _isTasksExpanded = State(initialValue: !project.tasks.isEmpty)
+            _isTeamMembersExpanded = State(initialValue: !project.teamMembers.isEmpty)
         } else if let preselectedClient = preselectedClient {
             // Pre-populate with client info when creating from client view
             _selectedClientId = State(initialValue: preselectedClient.id)
@@ -484,6 +488,12 @@ struct ProjectFormSheet: View {
             CopyFromProjectSheet(
                 onCopy: handleCopyFromProject,
                 populatedFields: currentlyPopulatedFields
+            )
+        }
+        .sheet(isPresented: $showingTeamPicker) {
+            TeamMemberPickerSheet(
+                selectedTeamMemberIds: $selectedTeamMemberIds,
+                allTeamMembers: uniqueTeamMembers
             )
         }
     }
@@ -881,6 +891,13 @@ struct ProjectFormSheet: View {
                             isTasksExpanded = true
                         }
                     }),
+                    (title: "TEAM", icon: "person.2", isExpanded: isTeamMembersExpanded,
+                     isDisabled: tutorialMode, isHighlighted: false, action: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            bringSectionToTop(.teamMembers)
+                            isTeamMembersExpanded = true
+                        }
+                    }),
                     (title: "PHOTOS", icon: "photo", isExpanded: isPhotosExpanded,
                      isDisabled: tutorialMode, isHighlighted: false, action: {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -914,6 +931,11 @@ struct ProjectFormSheet: View {
                     if isTasksExpanded {
                         tasksSection
                             .id(OptionalSection.tasks)
+                    }
+                case .teamMembers:
+                    if isTeamMembersExpanded {
+                        teamMembersSection
+                            .id(OptionalSection.teamMembers)
                     }
                 case .photos:
                     if isPhotosExpanded {
@@ -1183,6 +1205,72 @@ struct ProjectFormSheet: View {
                 localTasks.remove(at: index)
             }
         )
+    }
+
+    private var teamMembersSection: some View {
+        ExpandableSection(
+            title: "TEAM MEMBERS",
+            icon: "person.2",
+            isExpanded: $isTeamMembersExpanded,
+            onDelete: {
+                selectedTeamMemberIds.removeAll()
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    isTeamMembersExpanded = false
+                }
+                #if !targetEnvironment(simulator)
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
+                #endif
+            }
+        ) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                // Selected team members list
+                if !selectedTeamMemberIds.isEmpty {
+                    ForEach(uniqueTeamMembers.filter { selectedTeamMemberIds.contains($0.id) }, id: \.id) { member in
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            Circle()
+                                .fill(OPSStyle.Colors.primaryAccent.opacity(0.3))
+                                .frame(width: 28, height: 28)
+                                .overlay(
+                                    Text("\(member.firstName.prefix(1))\(member.lastName.prefix(1))")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                )
+
+                            Text("\(member.firstName) \(member.lastName)")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+
+                            Spacer()
+
+                            Button {
+                                selectedTeamMemberIds.remove(member.id)
+                            } label: {
+                                Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                            }
+                        }
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
+                    }
+                }
+
+                // Add members button
+                Button {
+                    showingTeamPicker = true
+                } label: {
+                    HStack {
+                        Image(systemName: "plus.circle")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        Text(selectedTeamMemberIds.isEmpty ? "ADD TEAM MEMBERS" : "EDIT TEAM")
+                            .font(OPSStyle.Typography.captionBold)
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                }
+            }
+        }
     }
 
     private var photosSection: some View {

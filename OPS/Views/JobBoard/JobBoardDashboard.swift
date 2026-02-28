@@ -41,7 +41,7 @@ struct JobBoardDashboard: View {
 
     /// Status columns to display - all users see all statuses
     private var statuses: [Status] {
-        return [.rfq, .estimated, .accepted, .inProgress, .completed]
+        return [.rfq, .estimated, .accepted, .inProgress, .completed, .closed, .archived]
     }
     private let columnWidth: CGFloat = 280
     private let edgeZoneWidth: CGFloat = 60

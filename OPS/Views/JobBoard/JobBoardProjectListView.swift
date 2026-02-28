@@ -18,7 +18,7 @@ struct JobBoardProjectListView: View {
     @Binding var showingFilterSheet: Bool
     @State private var selectedStatuses: Set<Status> = []
     @State private var selectedTeamMemberIds: Set<String> = []
-    @State private var sortOption: ProjectSortOption = .scheduledDateDescending
+    @State private var sortOption: ProjectSortOption = .statusAscending
     @State private var showingCreateProject = false
     @State private var showingClosedSheet = false
     @State private var showingArchivedSheet = false

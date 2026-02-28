@@ -794,7 +794,72 @@ struct ProjectFormSheet: View {
                         )
                     }
                 }
+
+            // Autofill suggestions (hidden in tutorial mode)
+            if !tutorialMode && title.isEmpty {
+                autofillSuggestions
+            }
         }
+    }
+
+    /// Quick-fill chips for project name based on client and address
+    @ViewBuilder
+    private var autofillSuggestions: some View {
+        let clientName = selectedClient?.name
+        let streetAddress = extractStreetNumber(from: address)
+        let hasSuggestions = clientName != nil || streetAddress != nil
+
+        if hasSuggestions {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    if let name = clientName {
+                        autofillChip(label: name) {
+                            title = name
+                        }
+                    }
+
+                    if let street = streetAddress {
+                        autofillChip(label: street) {
+                            title = street
+                        }
+                    }
+
+                    if let name = clientName, let street = streetAddress {
+                        autofillChip(label: "\(street) - \(name)") {
+                            title = "\(street) - \(name)"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func autofillChip(label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
+                )
+        }
+    }
+
+    /// Extract street number and name from an address string (e.g. "123 Main St, City, ST" → "123 Main St")
+    private func extractStreetNumber(from fullAddress: String) -> String? {
+        let trimmed = fullAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let components = trimmed.components(separatedBy: ",")
+        if let street = components.first?.trimmingCharacters(in: .whitespaces), !street.isEmpty {
+            return street
+        }
+        return nil
     }
 
     private var statusField: some View {

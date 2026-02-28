@@ -52,6 +52,12 @@ class DataController: ObservableObject {
     // MARK: - Public Access
     var syncManager: SupabaseSyncManager!
     var imageSyncManager: ImageSyncManager!
+
+    /// Convenience accessor for inventory operations via Supabase
+    var inventoryRepository: InventoryRepository? {
+        guard let companyId = currentUser?.companyId, !companyId.isEmpty else { return nil }
+        return InventoryRepository(companyId: companyId)
+    }
     @Published var simplePINManager = SimplePINManager()
     
     // MARK: - Initialization
@@ -1818,17 +1824,7 @@ class DataController: ObservableObject {
             )
             let companies = try context.fetch(descriptor)
             
-            if let company = companies.first {
-                return company
-            } else {
-                // Create a dummy company for preview/testing
-                let dummyCompany = Company(id: id, name: "Example Company")
-                dummyCompany.address = "123 Main Street, San Francisco, CA 94105"
-                dummyCompany.phone = "(555) 123-4567"
-                dummyCompany.email = "info@example.com"
-                dummyCompany.website = "www.example.com"
-                return dummyCompany
-            }
+            return companies.first
         } catch {
             return nil
         }
@@ -2644,10 +2640,10 @@ class DataController: ObservableObject {
         // Case 1: Project is "accepted" and task is set to "active"
         if project.status == .accepted && taskNewStatus == .active {
             shouldUpdateToInProgress = true
-            print("[PROJECT_STATUS] Project '\(project.title)' is accepted and task set to active - updating project to inProgress")
+            print("[PROJECT_STATUS] Project '\(project.title)' is accepted and task set to \(taskNewStatus.rawValue) - updating project to inProgress")
         }
 
-        // Case 2: Project is "completed" and task changed from "completed" to "active"
+        // Case 2: Project is "completed" and task changed from "completed" to non-terminal
         if project.status == .completed &&
            taskOldStatus == .completed &&
            taskNewStatus == .active {
@@ -2658,7 +2654,7 @@ class DataController: ObservableObject {
         // Case 3: Project is "rfq" or "estimated" and task is set to "active"
         if (project.status == .rfq || project.status == .estimated) && taskNewStatus == .active {
             shouldUpdateToInProgress = true
-            print("[PROJECT_STATUS] Project '\(project.title)' is \(project.status.rawValue) and task set to active - updating project to inProgress")
+            print("[PROJECT_STATUS] Project '\(project.title)' is \(project.status.rawValue) and task set to \(taskNewStatus.rawValue) - updating project to inProgress")
         }
 
         if shouldUpdateToInProgress {
@@ -2688,7 +2684,7 @@ class DataController: ObservableObject {
         // Case 2: Project is "rfq" or "estimated" and new task is "active"
         if (project.status == .rfq || project.status == .estimated) && taskStatus == .active {
             shouldUpdateToInProgress = true
-            print("[PROJECT_STATUS] Project '\(project.title)' is \(project.status.rawValue) and new task is active - updating project to inProgress")
+            print("[PROJECT_STATUS] Project '\(project.title)' is \(project.status.rawValue) and new task is \(taskStatus.rawValue) - updating project to inProgress")
         }
 
         if shouldUpdateToInProgress {

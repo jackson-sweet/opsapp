@@ -49,7 +49,7 @@ struct EstimateDTO: Codable, Identifiable {
         case version
         case createdAt       = "created_at"
         case updatedAt       = "updated_at"
-        case lineItems       = "estimate_line_items"
+        case lineItems       = "line_items"
     }
 
     func toModel() -> Estimate {

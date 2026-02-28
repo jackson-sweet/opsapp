@@ -20,7 +20,7 @@ class EstimateRepository {
     func fetchAll() async throws -> [EstimateDTO] {
         try await client
             .from("estimates")
-            .select("*, estimate_line_items(*)")
+            .select("*, line_items(*)")
             .eq("company_id", value: companyId)
             .order("created_at", ascending: false)
             .execute()
@@ -30,7 +30,7 @@ class EstimateRepository {
     func fetchOne(_ estimateId: String) async throws -> EstimateDTO {
         try await client
             .from("estimates")
-            .select("*, estimate_line_items(*)")
+            .select("*, line_items(*)")
             .eq("id", value: estimateId)
             .single()
             .execute()
@@ -49,7 +49,7 @@ class EstimateRepository {
         try await client
             .from("estimates")
             .insert(dto)
-            .select("*, estimate_line_items(*)")
+            .select("*, line_items(*)")
             .single()
             .execute()
             .value
@@ -57,7 +57,7 @@ class EstimateRepository {
 
     func addLineItem(_ dto: CreateLineItemDTO) async throws -> EstimateLineItemDTO {
         try await client
-            .from("estimate_line_items")
+            .from("line_items")
             .insert(dto)
             .select()
             .single()
@@ -67,7 +67,7 @@ class EstimateRepository {
 
     func updateLineItem(_ id: String, fields: UpdateLineItemDTO) async throws -> EstimateLineItemDTO {
         try await client
-            .from("estimate_line_items")
+            .from("line_items")
             .update(fields)
             .eq("id", value: id)
             .select()
@@ -78,7 +78,7 @@ class EstimateRepository {
 
     func deleteLineItem(_ id: String) async throws {
         try await client
-            .from("estimate_line_items")
+            .from("line_items")
             .delete()
             .eq("id", value: id)
             .execute()
@@ -89,7 +89,7 @@ class EstimateRepository {
             .from("estimates")
             .update(["status": status.rawValue])
             .eq("id", value: estimateId)
-            .select("*, estimate_line_items(*)")
+            .select("*, line_items(*)")
             .single()
             .execute()
             .value

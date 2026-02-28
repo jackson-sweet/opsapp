@@ -532,25 +532,44 @@ struct SettingsView: View {
 
     // MARK: - Profile Avatar
 
+    /// Normalizes a profile image URL (handles // prefix from Bubble storage).
+    private func normalizedProfileURL(_ urlString: String) -> URL? {
+        var fixed = urlString
+        if fixed.hasPrefix("//") {
+            fixed = "https:" + fixed
+        }
+        return URL(string: fixed)
+    }
+
     @ViewBuilder
     private var profileAvatar: some View {
         if let user = dataController.currentUser {
             if let imageData = user.profileImageData,
                let uiImage = UIImage(data: imageData) {
+                // Local image data available
                 Image(uiImage: uiImage)
                     .resizable()
                     .scaledToFill()
                     .frame(width: 48, height: 48)
                     .clipShape(Circle())
+            } else if let urlString = user.profileImageURL,
+                      !urlString.isEmpty,
+                      let url = normalizedProfileURL(urlString) {
+                // Load from URL
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 48, height: 48)
+                            .clipShape(Circle())
+                    default:
+                        initialsAvatar(user: user)
+                    }
+                }
             } else {
-                Circle()
-                    .fill(Color(hex: user.userColor ?? "#59779F") ?? OPSStyle.Colors.primaryAccent)
-                    .frame(width: 48, height: 48)
-                    .overlay(
-                        Text("\(user.firstName.prefix(1))\(user.lastName.prefix(1))")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    )
+                initialsAvatar(user: user)
             }
         } else {
             Circle()
@@ -562,6 +581,17 @@ struct SettingsView: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 )
         }
+    }
+
+    private func initialsAvatar(user: User) -> some View {
+        Circle()
+            .fill(Color(hex: user.userColor ?? "#59779F") ?? OPSStyle.Colors.primaryAccent)
+            .frame(width: 48, height: 48)
+            .overlay(
+                Text("\(user.firstName.prefix(1))\(user.lastName.prefix(1))")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            )
     }
 
     // MARK: - Grouped Section Builder

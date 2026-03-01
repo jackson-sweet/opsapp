@@ -461,7 +461,7 @@ class TutorialDemoDataManager {
             return .accepted
         }
 
-        // If any task is active, project is in progress
+        // If any task is booked or in progress, project is in progress
         if tasks.contains(where: { $0.status == .active }) {
             return .inProgress
         }
@@ -508,7 +508,7 @@ class TutorialDemoDataManager {
             }
         )
         let allDemoTasks = try context.fetch(descriptor)
-        // Filter to only active tasks (today's work)
+        // Filter to only booked/in-progress tasks (today's work)
         return allDemoTasks.filter { $0.status == .active }
     }
 
@@ -600,6 +600,125 @@ class TutorialDemoDataManager {
         dataController.currentUser = nil
 
         print("[TUTORIAL_DEMO] Temporary demo user cleaned up")
+    }
+
+    // MARK: - Demo Data Migration (A/B/C Test)
+
+    /// Migrates demo data created during pre-signup tutorial to a real user account.
+    /// Called after successful signup in Variant A of the onboarding A/B/C test.
+    /// Re-assigns all DEMO_ entities from the temporary demo company to the real user's company,
+    /// then deletes the temporary demo user and company.
+    static func migrateDemoDataToRealUser(
+        dataController: DataController,
+        realUserId: String,
+        realCompanyId: String
+    ) async {
+        guard let context = dataController.modelContext else {
+            print("[DEMO_DATA] Migration failed — no model context")
+            return
+        }
+
+        print("[DEMO_DATA] Starting demo data migration to real user: \(realUserId)")
+
+        // Migrate projects
+        let projectDescriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { $0.id.starts(with: "DEMO_") }
+        )
+        if let projects = try? context.fetch(projectDescriptor) {
+            for project in projects {
+                project.companyId = realCompanyId
+                print("[DEMO_DATA] Migrated project: \(project.title)")
+            }
+        }
+
+        // Migrate tasks
+        let taskDescriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { $0.id.starts(with: "DEMO_") }
+        )
+        if let tasks = try? context.fetch(taskDescriptor) {
+            for task in tasks {
+                task.companyId = realCompanyId
+                print("[DEMO_DATA] Migrated task: \(task.displayTitle)")
+            }
+        }
+
+        // Migrate clients
+        let clientDescriptor = FetchDescriptor<Client>(
+            predicate: #Predicate<Client> { $0.id.starts(with: "DEMO_") }
+        )
+        if let clients = try? context.fetch(clientDescriptor) {
+            for client in clients {
+                client.companyId = realCompanyId
+                print("[DEMO_DATA] Migrated client: \(client.name)")
+            }
+        }
+
+        // Migrate task types
+        let taskTypeDescriptor = FetchDescriptor<TaskType>(
+            predicate: #Predicate<TaskType> { $0.id.starts(with: "DEMO_") }
+        )
+        if let taskTypes = try? context.fetch(taskTypeDescriptor) {
+            for taskType in taskTypes {
+                taskType.companyId = realCompanyId
+                print("[DEMO_DATA] Migrated task type: \(taskType.display)")
+            }
+        }
+
+        // Migrate team members — TeamMember uses a company relationship, not companyId
+        // Fetch the real company to set the relationship
+        let realCompanyDescriptor = FetchDescriptor<Company>(
+            predicate: #Predicate<Company> { $0.id == realCompanyId }
+        )
+        let realCompany = try? context.fetch(realCompanyDescriptor).first
+
+        let teamDescriptor = FetchDescriptor<TeamMember>(
+            predicate: #Predicate<TeamMember> { $0.id.starts(with: "DEMO_") }
+        )
+        if let members = try? context.fetch(teamDescriptor) {
+            for member in members {
+                member.company = realCompany
+                print("[DEMO_DATA] Migrated team member: \(member.firstName)")
+            }
+        }
+
+        // Migrate demo users (crew users seeded for the tutorial, NOT the anonymous user)
+        let demoCrewDescriptor = FetchDescriptor<User>(
+            predicate: #Predicate<User> { $0.id.starts(with: "DEMO_") && $0.id != "DEMO_USER_ANONYMOUS" }
+        )
+        if let crewUsers = try? context.fetch(demoCrewDescriptor) {
+            for user in crewUsers {
+                user.companyId = realCompanyId
+                print("[DEMO_DATA] Migrated demo crew user: \(user.firstName)")
+            }
+        }
+
+        // Delete the temporary anonymous demo user
+        let demoUserDescriptor = FetchDescriptor<User>(
+            predicate: #Predicate<User> { $0.id == "DEMO_USER_ANONYMOUS" }
+        )
+        if let demoUsers = try? context.fetch(demoUserDescriptor) {
+            for user in demoUsers {
+                context.delete(user)
+            }
+        }
+
+        // Delete the temporary demo company
+        let demoCompanyDescriptor = FetchDescriptor<Company>(
+            predicate: #Predicate<Company> { $0.id.starts(with: "DEMO_") }
+        )
+        if let demoCompanies = try? context.fetch(demoCompanyDescriptor) {
+            for company in demoCompanies {
+                context.delete(company)
+            }
+        }
+
+        // Save changes
+        try? context.save()
+
+        // Clear the migration flag
+        UserDefaults.standard.removeObject(forKey: "pending_demo_data_migration")
+
+        print("[DEMO_DATA] Migration complete — demo data now belongs to real user")
     }
 
     /// Gets a count of all demo entities for debugging

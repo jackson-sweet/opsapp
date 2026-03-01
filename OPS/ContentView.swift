@@ -12,6 +12,7 @@ import Combine
 struct ContentView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
+    @EnvironmentObject private var variantManager: OnboardingVariantManager
     @StateObject private var appState = AppState()
     @StateObject private var locationManager = LocationManager()
     
@@ -24,15 +25,35 @@ struct ContentView: View {
     @State private var isCheckingAuth = true
     @State private var showLocationPermissionView = false
     @State private var showTutorialForReturningUser = false
+    @State private var showABTestOnboarding = false
+    @State private var showExistingLogin = false
+    @State private var onboardingManagerInstance: OnboardingManager?
 
     var body: some View {
         Group {
             if isCheckingAuth {
                 // Show a simple loading view while checking authentication
                 SplashLoadingView()
-            } else if !dataController.isAuthenticated {
-                // Show login view with onboarding
-                // The LoginView will handle onboarding presentation
+            } else if showABTestOnboarding && variantManager.isReady, let manager = onboardingManagerInstance {
+                // A/B/C test onboarding for new users
+                OnboardingABTestCoordinator(
+                    variantManager: variantManager,
+                    onboardingManager: manager,
+                    onComplete: {
+                        showABTestOnboarding = false
+                        onboardingManagerInstance = nil
+                    },
+                    onShowLogin: {
+                        showABTestOnboarding = false
+                        showExistingLogin = true
+                        onboardingManagerInstance = nil
+                    }
+                )
+                .environmentObject(dataController)
+                .environmentObject(appState)
+                .environmentObject(locationManager)
+            } else if showExistingLogin || !dataController.isAuthenticated {
+                // Existing login for returning users or "I already have an account"
                 LoginView()
                     .environmentObject(appState)
                     .environmentObject(locationManager)
@@ -80,9 +101,27 @@ struct ContentView: View {
                 print("[CONTENT_VIEW] shouldShowOnboarding: \(shouldShowOnboarding)")
 
                 if shouldShowOnboarding {
-                    // User needs to complete onboarding - show LoginView which handles it
-                    print("[CONTENT_VIEW] -> Showing onboarding (LoginView)")
-                    dataController.isAuthenticated = false
+                    // Check if this is a brand new user (never completed onboarding)
+                    // vs a returning user who needs to redo onboarding
+                    let hasEverCompletedOnboarding = UserDefaults.standard.bool(forKey: "onboarding_completed")
+
+                    if !hasEverCompletedOnboarding {
+                        if variantManager.isReady {
+                            // New user, variant ready → A/B/C test onboarding
+                            print("[CONTENT_VIEW] -> Showing A/B/C test onboarding (variant: \(variantManager.variant.rawValue))")
+                            onboardingManagerInstance = OnboardingManager(dataController: dataController)
+                            showABTestOnboarding = true
+                        } else {
+                            // New user, variant still loading → wait for it
+                            // The .onChange(of: variantManager.isReady) handler below will route them
+                            print("[CONTENT_VIEW] -> Waiting for variant manager before showing onboarding")
+                        }
+                        dataController.isAuthenticated = false
+                    } else {
+                        // Returning user → existing LoginView with onboarding
+                        print("[CONTENT_VIEW] -> Showing onboarding (LoginView)")
+                        dataController.isAuthenticated = false
+                    }
                 } else if dataController.isAuthenticated {
                     // Check if returning user needs to complete tutorial
                     let user = dataController.currentUser
@@ -143,6 +182,17 @@ struct ContentView: View {
         .onChange(of: locationManager.isLocationDenied) { _, isDenied in
             if isDenied && dataController.isAuthenticated {
                 showLocationPermissionView = true
+            }
+        }
+        // Watch for variant manager becoming ready (fixes race condition for new users)
+        .onChange(of: variantManager.isReady) { _, isReady in
+            if isReady && !isCheckingAuth && !showABTestOnboarding && !dataController.isAuthenticated {
+                let hasEverCompletedOnboarding = UserDefaults.standard.bool(forKey: "onboarding_completed")
+                if !hasEverCompletedOnboarding {
+                    print("[CONTENT_VIEW] Variant manager became ready — showing A/B/C onboarding (variant: \(variantManager.variant.rawValue))")
+                    onboardingManagerInstance = OnboardingManager(dataController: dataController)
+                    showABTestOnboarding = true
+                }
             }
         }
         // Watch for tutorial restart request from settings

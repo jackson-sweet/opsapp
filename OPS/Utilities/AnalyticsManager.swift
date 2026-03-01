@@ -63,6 +63,84 @@ final class AnalyticsManager {
         print("[ANALYTICS] 📊 Tracked app_open")
     }
 
+    // MARK: - Onboarding A/B/C Test Events
+
+    /// Track variant assignment on first launch
+    func trackVariantAssigned(variant: String) {
+        Analytics.setUserProperty(variant, forName: "onboarding_variant")
+        Analytics.logEvent("variant_assigned", parameters: [
+            "variant": variant
+        ])
+        print("[ANALYTICS] Tracked variant_assigned: \(variant)")
+    }
+
+    /// Track onboarding flow started
+    func trackOnboardingStarted(variant: String, entryPoint: String) {
+        Analytics.logEvent("onboarding_started", parameters: [
+            "variant": variant,
+            "entry_point": entryPoint
+        ])
+        print("[ANALYTICS] Tracked onboarding_started - variant: \(variant), entry: \(entryPoint)")
+    }
+
+    /// Track when signup screen is shown
+    func trackSignupScreenShown(variant: String) {
+        Analytics.logEvent("signup_screen_shown", parameters: [
+            "variant": variant
+        ])
+        print("[ANALYTICS] Tracked signup_screen_shown - variant: \(variant)")
+    }
+
+    /// Track signup completion with variant
+    func trackSignupCompleted(variant: String, method: SignUpMethod) {
+        Analytics.logEvent("signup_completed", parameters: [
+            "variant": variant,
+            "method": method.rawValue
+        ])
+        print("[ANALYTICS] Tracked signup_completed - variant: \(variant), method: \(method.rawValue)")
+    }
+
+    /// Track crew code screen interactions
+    func trackCrewCodeAction(variant: String, action: String) {
+        Analytics.logEvent("crew_code_action", parameters: [
+            "variant": variant,
+            "action": action
+        ])
+        print("[ANALYTICS] Tracked crew_code_action - variant: \(variant), action: \(action)")
+    }
+
+    /// Track tutorial started with variant context
+    func trackTutorialStartedWithVariant(variant: String, isPreSignup: Bool) {
+        Analytics.logEvent("tutorial_started", parameters: [
+            "variant": variant,
+            "is_pre_signup": isPreSignup
+        ])
+        print("[ANALYTICS] Tracked tutorial_started - variant: \(variant), preSignup: \(isPreSignup)")
+    }
+
+    /// Track tutorial completion (fires to Firebase for A/B test goal metric)
+    func trackTutorialCompleted(variant: String? = nil, flowType: String? = nil, isPreSignup: Bool = false) {
+        var parameters: [String: Any] = [
+            "is_pre_signup": isPreSignup
+        ]
+        if let variant = variant {
+            parameters["variant"] = variant
+        }
+        if let flowType = flowType {
+            parameters["flow_type"] = flowType
+        }
+        Analytics.logEvent("tutorial_completed", parameters: parameters)
+        print("[ANALYTICS] Tracked tutorial_completed - variant: \(variant ?? "none"), flow: \(flowType ?? "none"), preSignup: \(isPreSignup)")
+    }
+
+    /// Track walkthrough screen views (Variant C)
+    func trackWalkthroughScreenViewed(screenIndex: Int) {
+        Analytics.logEvent("walkthrough_screen_viewed", parameters: [
+            "screen_index": screenIndex
+        ])
+        print("[ANALYTICS] Tracked walkthrough_screen_viewed - screen: \(screenIndex)")
+    }
+
     // MARK: - Trial & Subscription Events
 
     /// Track when a user starts their free trial
@@ -560,6 +638,11 @@ enum ScreenName: String {
     // Auth
     case login = "login"
     case forgotPassword = "forgot_password"
+
+    // Onboarding A/B/C Test
+    case minimalSignup = "minimal_signup"
+    case crewCodeShare = "crew_code_share"
+    case walkthroughScreen = "walkthrough_screen"
 }
 
 /// Tab names for analytics tracking
@@ -578,8 +661,9 @@ enum TabName: String {
         case .home: return 0
         case .pipeline: return 1
         case .jobBoard: return 2
-        case .schedule: return 3
-        case .settings: return 4
+        case .inventory: return 3
+        case .schedule: return 4
+        case .settings: return 5
         }
     }
 }

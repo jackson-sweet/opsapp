@@ -220,7 +220,7 @@ struct CrewCodeShareView: View {
     }
 
     private func handleContinue() {
-        AnalyticsManager.shared.trackCrewCodeAction(variant: variant.rawValue, action: "skipped")
+        AnalyticsManager.shared.trackCrewCodeAction(variant: variant.rawValue, action: "continued")
         onContinue()
     }
 }

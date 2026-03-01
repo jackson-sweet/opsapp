@@ -8,17 +8,23 @@
 import SwiftUI
 import SwiftData
 import UserNotifications
+import MapboxMaps
 
 @main
 struct OPSApp: App {
     // Register AppDelegate for handling remote notifications
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
+    init() {
+        MapboxConfig.configure()
+    }
     
     // Setup shared instances for app-wide use
     @StateObject private var dataController = DataController()
     @StateObject private var notificationManager = NotificationManager.shared
     @StateObject private var subscriptionManager = SubscriptionManager.shared
-    
+    @StateObject private var variantManager = OnboardingVariantManager.shared
+
     // Create the model container for SwiftData
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -45,7 +51,9 @@ struct OPSApp: App {
             InvoiceLineItem.self,
             Payment.self,
             Product.self,
-            SiteVisit.self
+            SiteVisit.self,
+            ProjectNote.self,
+            PhotoAnnotation.self
         ])
         
         let modelConfiguration = ModelConfiguration(
@@ -68,6 +76,7 @@ struct OPSApp: App {
                 .environmentObject(dataController)
                 .environmentObject(notificationManager)
                 .environmentObject(subscriptionManager)
+                .environmentObject(variantManager)
                 .onAppear {
                     // Check if this is a fresh install
                     if !UserDefaults.standard.bool(forKey: "has_launched_before") {
@@ -78,7 +87,12 @@ struct OPSApp: App {
                         // Mark that we've launched before
                         UserDefaults.standard.set(true, forKey: "has_launched_before")
                     }
-                    
+
+                    // Fetch A/B/C test variant for new users
+                    Task {
+                        await variantManager.fetchVariant()
+                    }
+
                     // Set the model context in the data controller
                     let context = sharedModelContainer.mainContext
                     dataController.setModelContext(context)
@@ -271,7 +285,8 @@ private func clearAllAuthenticationData() {
         "appPIN",
         "hasPINEnabled",
         "location_permission_granted",
-        "notifications_permission_granted"
+        "notifications_permission_granted",
+        "onboarding_variant"
     ]
     
     for key in authKeys {

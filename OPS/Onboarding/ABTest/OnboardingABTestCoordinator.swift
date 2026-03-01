@@ -40,6 +40,7 @@ struct OnboardingABTestCoordinator: View {
 
     // MARK: - Splash Animation State
 
+    @State private var hasTrackedVariant = false
     @State private var logoOpacity: Double = 0
     @State private var textOpacity: Double = 0
     @State private var buttonOpacity: Double = 0
@@ -115,6 +116,8 @@ struct OnboardingABTestCoordinator: View {
         }
         .animation(.easeInOut(duration: 0.35), value: flowStep)
         .onAppear {
+            guard !hasTrackedVariant else { return }
+            hasTrackedVariant = true
             AnalyticsManager.shared.trackVariantAssigned(variant: variantManager.variant.rawValue)
         }
     }
@@ -169,7 +172,8 @@ struct OnboardingABTestCoordinator: View {
                                 .foregroundColor(OPSStyle.Colors.invertedText)
                         }
                         .padding(.horizontal, 20)
-                        .frame(maxWidth: .infinity, height: OPSStyle.Layout.touchTargetStandard)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: OPSStyle.Layout.touchTargetStandard)
                         .background(Color.white)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }

@@ -79,7 +79,7 @@ struct AnimatedWalkthroughView: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
                             .background(OPSStyle.Colors.primaryText)
-                            .cornerRadius(3)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 HStack {
                                     Spacer()

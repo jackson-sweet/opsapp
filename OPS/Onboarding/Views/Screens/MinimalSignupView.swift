@@ -223,7 +223,7 @@ struct MinimalSignupView: View {
             }
         }
         .onAppear {
-            AnalyticsManager.shared.trackSignUp(userType: nil, method: .email)
+            AnalyticsManager.shared.trackSignupScreenShown(variant: variant.rawValue)
         }
     }
 

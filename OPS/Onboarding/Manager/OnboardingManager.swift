@@ -596,6 +596,7 @@ class OnboardingManager: ObservableObject {
                 longitude: nil,
                 locationName: nil,
                 isActive: true,
+                specialPermissions: nil,
                 deletedAt: nil
             )
             try await userRepo.upsert(userDTO)
@@ -1086,18 +1087,22 @@ class OnboardingManager: ObservableObject {
         // Update local user
         dataController.currentUser?.hasCompletedAppTutorial = true
 
-        // Sync to Bubble
+        // Fire Firebase event for A/B test tracking
+        let variant = UserDefaults.standard.string(forKey: "onboarding_variant")
+        AnalyticsManager.shared.trackTutorialCompleted(variant: variant, isPreSignup: true)
+
+        // Sync to Supabase
         guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
             print("[ONBOARDING_MANAGER] No user ID for tutorial completion patch")
             return
         }
 
         do {
-            let fields: [String: Any] = [BubbleFields.User.hasCompletedAppTutorial: true]
-            try await apiService.updateUser(userId: userId, fields: fields)
-            print("[ONBOARDING_MANAGER] hasCompletedAppTutorial PATCHed to true (pre-signup tutorial)")
+            let fields: [String: AnyJSON] = ["has_completed_app_tutorial": .bool(true)]
+            try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
+            print("[ONBOARDING_MANAGER] hasCompletedAppTutorial synced to true (pre-signup tutorial)")
         } catch {
-            print("[ONBOARDING_MANAGER] Failed to patch tutorial completion: \(error)")
+            print("[ONBOARDING_MANAGER] Failed to sync tutorial completion: \(error)")
             // Non-fatal, will be caught by ContentView fallback
         }
     }

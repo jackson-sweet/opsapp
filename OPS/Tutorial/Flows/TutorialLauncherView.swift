@@ -675,26 +675,16 @@ struct TutorialLauncherView: View {
 
     /// Performs the actual tutorial cleanup (extracted from handleTutorialComplete)
     private func performTutorialCleanup() async {
-        // Send tutorial log (fire-and-forget)
-        await sendTutorialLog(skipped: false)
-
+        // If this is a pre-signup tutorial for the A/B/C test, defer cleanup
+        // Demo data will be migrated to the real user after signup
         if isPreSignup {
-            // Pre-signup: only clean demo data + temp user, no Bubble sync
-            print("[TUTORIAL_LAUNCHER] Pre-signup cleanup: cleaning demo data and temp user...")
-            await cleanupDemoData()
-
-            // Clean up temporary demo user
-            if let manager = demoDataManager {
-                do {
-                    try manager.cleanupTemporaryDemoUser(dataController: dataController)
-                } catch {
-                    print("[TUTORIAL_LAUNCHER] Warning: Failed to cleanup temp user: \(error)")
-                }
-            }
-
-            print("[TUTORIAL_LAUNCHER] Pre-signup cleanup complete")
+            UserDefaults.standard.set(true, forKey: "pending_demo_data_migration")
+            print("[TUTORIAL] Pre-signup tutorial complete — deferring demo data cleanup for migration")
             return
         }
+
+        // Send tutorial log (fire-and-forget)
+        await sendTutorialLog(skipped: false)
 
         // Normal post-signup cleanup below
         // Mark tutorial as completed for the user
@@ -706,6 +696,14 @@ struct TutorialLauncherView: View {
         print("[TUTORIAL_LAUNCHER] 📝 Marking tutorial complete for user: \(user.id)")
         user.hasCompletedAppTutorial = true
         user.needsSync = true
+
+        // Fire Firebase event for A/B test tracking
+        let variant = UserDefaults.standard.string(forKey: "onboarding_variant")
+        AnalyticsManager.shared.trackTutorialCompleted(
+            variant: variant,
+            flowType: flowType.rawValue,
+            isPreSignup: isPreSignup
+        )
 
         do {
             try modelContext.save()
@@ -767,6 +765,14 @@ struct TutorialLauncherView: View {
             print("[TUTORIAL_LAUNCHER] 📝 (legacy) Marking tutorial complete for user: \(user.id)")
             user.hasCompletedAppTutorial = true
             user.needsSync = true
+
+            // Fire Firebase event for A/B test tracking
+            let variant = UserDefaults.standard.string(forKey: "onboarding_variant")
+            AnalyticsManager.shared.trackTutorialCompleted(
+                variant: variant,
+                flowType: flowType.rawValue,
+                isPreSignup: isPreSignup
+            )
 
             do {
                 try modelContext.save()

@@ -81,7 +81,7 @@ struct UniversalSearchBar: View {
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
 
-                if section != .clients && section != .dashboard {
+                if section == .projects || section == .tasks {
                     Button(action: {
                         if let onFilterTap = onFilterTap {
                             onFilterTap()
@@ -105,14 +105,16 @@ struct UniversalSearchBar: View {
 
     private var placeholderText: String {
         switch section {
-        case .dashboard:
-            return "Search..."
-        case .clients:
-            return "Search clients..."
         case .projects:
             return "Search projects..."
         case .tasks:
             return "Search tasks..."
+        case .myTasks:
+            return "Search tasks..."
+        case .myProjects:
+            return "Search projects..."
+        default:
+            return "Search..."
         }
     }
 }

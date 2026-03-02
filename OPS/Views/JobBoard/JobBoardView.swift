@@ -13,8 +13,8 @@ struct JobBoardView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
-    @State private var selectedSection: JobBoardSection = .dashboard
-    @State private var previousSection: JobBoardSection = .dashboard
+    @State private var selectedSection: JobBoardSection = .projects
+    @State private var previousSection: JobBoardSection = .projects
     @State private var searchText = ""
     @State private var showingFilters = false
     @State private var showingProjectFilterSheet = false
@@ -74,7 +74,7 @@ struct JobBoardView: View {
 
                     // Section selector (hidden for field crew)
                     if !isFieldCrew {
-                        JobBoardSectionSelector(selectedSection: $selectedSection)
+                        JobBoardSectionSelector(sections: visibleSections(for: dataController.currentUser), selectedSection: $selectedSection)
                             .padding(.top, 70) // Account for header
                             .onChange(of: selectedSection) { oldValue, newValue in
                                 previousSection = oldValue
@@ -133,11 +133,6 @@ struct JobBoardView: View {
                             .padding(.horizontal, 16)
                         } else {
                             switch selectedSection {
-                            case .dashboard:
-                                JobBoardDashboard(searchText: searchText)
-                            case .clients:
-                                ClientListView(searchText: searchText, companyId: dataController.currentUser?.companyId ?? "")
-                                    .padding(.horizontal, 16)
                             case .projects:
                                 JobBoardProjectListView(
                                     searchText: searchText,
@@ -152,6 +147,8 @@ struct JobBoardView: View {
                                     showingFilterSheet: $showingTaskFilterSheet
                                 )
                                 .padding(.horizontal, 16)
+                            default:
+                                EmptyView()
                             }
                         }
                     }
@@ -165,20 +162,21 @@ struct JobBoardView: View {
                         // Client preloading no longer needed — @Query is filtered at DB level
                     }
                     .onAppear {
-                        // Track screen view for analytics
+                        selectedSection = defaultSection(for: dataController.currentUser)
                         AnalyticsManager.shared.trackScreenView(screenName: .jobBoard, screenClass: "JobBoardView")
                     }
                     .onChange(of: selectedSection) { _, newSection in
                         // Track section changes within Job Board
-                        let screenName: ScreenName = {
+                        let screenName: ScreenName? = {
                             switch newSection {
-                            case .dashboard: return .jobBoardDashboard
                             case .projects: return .jobBoardProjects
                             case .tasks: return .jobBoardTasks
-                            case .clients: return .jobBoardClients
+                            default: return nil
                             }
                         }()
-                        AnalyticsManager.shared.trackScreenView(screenName: screenName, screenClass: "JobBoardView")
+                        if let screenName = screenName {
+                            AnalyticsManager.shared.trackScreenView(screenName: screenName, screenClass: "JobBoardView")
+                        }
                     }
 
                 }
@@ -225,63 +223,80 @@ struct FloatingActionItem: View {
 
 // MARK: - Section Types
 enum JobBoardSection: String, CaseIterable {
-    case dashboard = "Dashboard"
-    case clients = "Clients"
-    case projects = "Projects"
-    case tasks = "Tasks"
-    
+    // Field crew sections
+    case myTasks    = "MY TASKS"
+    case myProjects = "MY PROJECTS"
+    // Office / Admin sections
+    case projects   = "PROJECTS"
+    case tasks      = "TASKS"
+    case kanban     = "KANBAN"
+    case pipeline   = "PIPELINE"
+
     var icon: String {
         switch self {
-        case .dashboard:
-            return "chart.bar" // NOTE: No semantic equivalent yet
-        case .clients:
-            return OPSStyle.Icons.crew
-        case .projects:
-            return OPSStyle.Icons.project
-        case .tasks:
-            return OPSStyle.Icons.task
+        case .myTasks:    return OPSStyle.Icons.task
+        case .myProjects: return OPSStyle.Icons.project
+        case .projects:   return OPSStyle.Icons.project
+        case .tasks:      return OPSStyle.Icons.task
+        case .kanban:     return "chart.bar.fill"
+        case .pipeline:   return OPSStyle.Icons.pipelineChart
         }
     }
 }
 
+/// Returns the ordered sections visible to a given user role
+func visibleSections(for user: User?) -> [JobBoardSection] {
+    guard let user = user else { return [.projects] }
+    switch user.role {
+    case .fieldCrew:
+        return [.myTasks, .myProjects]
+    case .officeCrew:
+        return [.projects, .tasks, .kanban]
+    case .admin:
+        let hasPipeline = user.specialPermissions.contains("pipeline")
+        return hasPipeline ? [.projects, .tasks, .kanban, .pipeline] : [.projects, .tasks, .kanban]
+    }
+}
+
+/// Returns the default landing section for a given user role
+func defaultSection(for user: User?) -> JobBoardSection {
+    guard let user = user else { return .projects }
+    return user.role == .fieldCrew ? .myTasks : .projects
+}
+
 // MARK: - Section Selector
 struct JobBoardSectionSelector: View {
+    let sections: [JobBoardSection]
     @Binding var selectedSection: JobBoardSection
     @Environment(\.tutorialMode) private var tutorialMode
 
     var body: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            ForEach(JobBoardSection.allCases, id: \.self) { section in
+            ForEach(sections, id: \.self) { section in
                 Button(action: {
-                    // Disable tab switching in tutorial mode
                     guard !tutorialMode else { return }
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
                         selectedSection = section
                     }
                 }) {
-                    VStack(spacing: 4) {
-                        //Image(systemName: section.icon)
-                         //   .font(.system(size: 20, weight: .medium))
-                         //   .foregroundColor(selectedSection == section ? OPSStyle.Colors.cardBackground : OPSStyle.Colors.primaryText)
-
-                        Text(section.rawValue.uppercased())
-                            .font(OPSStyle.Typography.cardBody)
-                            .foregroundColor(selectedSection == section ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, OPSStyle.Layout.spacing2)
-                    .background(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(selectedSection == section ? OPSStyle.Colors.primaryText : .clear)
-                    )
+                    Text(section.rawValue)
+                        .font(OPSStyle.Typography.cardBody)
+                        .foregroundColor(
+                            selectedSection == section
+                                ? OPSStyle.Colors.cardBackgroundDark
+                                : OPSStyle.Colors.secondaryText
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
+                        .background(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .fill(selectedSection == section
+                                      ? OPSStyle.Colors.primaryText
+                                      : .clear)
+                        )
                 }
             }
         }
-        //.padding(4)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius + 4)
-                .fill(OPSStyle.Colors.cardBackgroundDark)
-)
     }
 }
 

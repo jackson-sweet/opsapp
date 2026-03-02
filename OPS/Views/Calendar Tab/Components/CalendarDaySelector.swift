@@ -17,6 +17,7 @@ struct CalendarDaySelector: View {
     @State private var isDragging: Bool = false
     @State private var isTransitioning: Bool = false
     @State private var transitionOffset: CGFloat = 0
+    @State private var cellsVisible: [Bool] = Array(repeating: false, count: 7)
 
     var body: some View {
         Group {
@@ -34,7 +35,7 @@ struct CalendarDaySelector: View {
                 ZStack {
                     // Week days display container
                     HStack(spacing: 8) {
-                        ForEach(getCurrentWeekDays(), id: \.timeIntervalSince1970) { date in
+                        ForEach(Array(getCurrentWeekDays().enumerated()), id: \.element.timeIntervalSince1970) { index, date in
                             WeekDayCell(
                                 date: date,
                                 isSelected: DateHelper.isSameDay(date, viewModel.selectedDate),
@@ -45,6 +46,8 @@ struct CalendarDaySelector: View {
                                 }
                             )
                             .frame(maxWidth: .infinity)
+                            .opacity(index < cellsVisible.count ? (cellsVisible[index] ? 1 : 0) : 1)
+                            .offset(y: index < cellsVisible.count ? (cellsVisible[index] ? 0 : 5) : 0)
                         }
 
                     }
@@ -90,9 +93,12 @@ struct CalendarDaySelector: View {
             }
         }
         .frame(height: 80)
+        .onAppear {
+            triggerCellAnimation()
+        }
         // Update the week when selectedDate changes from external sources (like DatePickerPopover)
         .onChange(of: viewModel.selectedDate) { _, _ in
-            // The view will automatically refresh with the new week
+            triggerCellAnimation()
         }
         // Watch for calendar event changes and force refresh
         .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
@@ -101,6 +107,23 @@ struct CalendarDaySelector: View {
         }
     }
     
+    private func triggerCellAnimation() {
+        guard !UIAccessibility.isReduceMotionEnabled else {
+            cellsVisible = Array(repeating: true, count: 7)
+            return
+        }
+        // Reset all to hidden first
+        cellsVisible = Array(repeating: false, count: 7)
+        // Stagger each column in
+        for i in 0..<7 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.04) {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    cellsVisible[i] = true
+                }
+            }
+        }
+    }
+
     private func navigateToWeek(offset: Int, screenWidth: CGFloat) {
         guard !isTransitioning else { return }
 

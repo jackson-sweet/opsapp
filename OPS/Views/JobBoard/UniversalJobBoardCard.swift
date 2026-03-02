@@ -85,7 +85,7 @@ struct UniversalJobBoardCard: View {
         .padding(.vertical, 12)
         .contentShape(Rectangle())
         .scaleEffect(isLongPressing ? 0.95 : 1.0)
-        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
+        .animation(.accessibleEaseInOut(duration: 0.2), value: isLongPressing)
         .onTapGesture {
             // Block tap to open details during projectListSwipe tutorial phase
             if tutorialMode && tutorialPhase == .projectListSwipe {
@@ -432,7 +432,7 @@ struct UniversalJobBoardCard: View {
         )
         .contentShape(Rectangle())
         .scaleEffect(isLongPressing ? 0.95 : 1.0)
-        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
+        .animation(.accessibleEaseInOut(duration: 0.2), value: isLongPressing)
         .onTapGesture {
             // Block tap to open details during projectListSwipe tutorial phase
             if tutorialMode && tutorialPhase == .projectListSwipe {
@@ -634,7 +634,7 @@ struct UniversalJobBoardCard: View {
         )
         .contentShape(Rectangle())
         .scaleEffect(isLongPressing ? 0.95 : 1.0)
-        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isLongPressing)
+        .animation(.accessibleEaseInOut(duration: 0.2), value: isLongPressing)
         .onTapGesture {
             // Block tap to open details during projectListSwipe tutorial phase
             if tutorialMode && tutorialPhase == .projectListSwipe {
@@ -1598,7 +1598,7 @@ struct UniversalJobBoardCard: View {
 
         guard canSwipe(direction: direction) else { return }
 
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+        withAnimation(.accessibleEaseInOut()) {
             swipeOffset = value.translation.width
         }
 
@@ -1618,7 +1618,7 @@ struct UniversalJobBoardCard: View {
 
         // Tutorial mode: Block left swipe during projectListSwipe
         if tutorialMode && tutorialPhase == .projectListSwipe && direction == .left {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+            withAnimation(.accessibleEaseInOut()) {
                 swipeOffset = 0
             }
             hasTriggeredHaptic = false
@@ -1642,7 +1642,7 @@ struct UniversalJobBoardCard: View {
             }
 
             // Snap card back to center with smooth animation
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.85)) {
+            withAnimation(.accessibleEaseInOut(duration: 0.2)) {
                 swipeOffset = 0
             }
 
@@ -1654,7 +1654,7 @@ struct UniversalJobBoardCard: View {
 
                 // Immediately hide confirmation after status change
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    withAnimation(.spring(response: 0.2, dampingFraction: 0.85)) {
+                    withAnimation(.accessibleEaseInOut(duration: 0.2)) {
                         isChangingStatus = false
                         confirmingStatus = nil
                         confirmingDirection = nil
@@ -1663,7 +1663,7 @@ struct UniversalJobBoardCard: View {
                 }
             }
         } else {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+            withAnimation(.accessibleEaseInOut()) {
                 swipeOffset = 0
             }
             hasTriggeredHaptic = false

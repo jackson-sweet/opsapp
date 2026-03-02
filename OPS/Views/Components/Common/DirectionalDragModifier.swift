@@ -15,7 +15,6 @@ struct DirectionalDragModifier: ViewModifier {
     var onEnded: ((CGFloat) -> Void)?
 
     @GestureState private var dragState: DragAxisState = .undecided
-    @State private var committedHorizontal: Bool = false
 
     private let threshold: CGFloat = 10
 
@@ -39,8 +38,6 @@ struct DirectionalDragModifier: ViewModifier {
                     guard abs(t.width) > threshold || abs(t.height) > threshold else { return }
                     if abs(t.width) > abs(t.height) {
                         state = .horizontal
-                        DispatchQueue.main.async { committedHorizontal = true }
-                        onChanged?(t.width)
                     } else {
                         state = .vertical
                     }
@@ -51,10 +48,10 @@ struct DirectionalDragModifier: ViewModifier {
                 }
             }
             .onEnded { value in
-                if committedHorizontal {
+                // dragState is still valid here — @GestureState resets after onEnded fires
+                if dragState == .horizontal {
                     onEnded?(value.translation.width)
                 }
-                committedHorizontal = false
             }
     }
 }

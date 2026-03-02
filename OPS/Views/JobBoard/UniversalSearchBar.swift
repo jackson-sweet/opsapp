@@ -86,7 +86,7 @@ struct UniversalSearchBar: View {
                         if let onFilterTap = onFilterTap {
                             onFilterTap()
                         } else {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            withAnimation(.accessibleEaseInOut(duration: 0.2)) {
                                 showingFilters.toggle()
                             }
                         }

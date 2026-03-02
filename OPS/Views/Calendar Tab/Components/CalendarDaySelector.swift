@@ -18,17 +18,25 @@ struct CalendarDaySelector: View {
     @State private var isTransitioning: Bool = false
     @State private var transitionOffset: CGFloat = 0
     @State private var cellsVisible: [Bool] = Array(repeating: false, count: 7)
+    @Namespace private var calendarNamespace
 
     var body: some View {
-        Group {
-            if viewModel.viewMode == .week {
-                weekView
-            } else {
+        ZStack(alignment: .top) {
+            if viewModel.isMonthExpanded {
                 MonthGridView(viewModel: viewModel)
+                    .matchedGeometryEffect(id: "calendarContainer", in: calendarNamespace)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.97, anchor: .top)),
+                        removal: .opacity.combined(with: .scale(scale: 0.97, anchor: .top))
+                    ))
+            } else {
+                weekView
+                    .matchedGeometryEffect(id: "calendarContainer", in: calendarNamespace)
             }
         }
+        .animation(.spring(response: 0.45, dampingFraction: 0.78), value: viewModel.isMonthExpanded)
     }
-    
+
     private var weekView: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
@@ -106,7 +114,7 @@ struct CalendarDaySelector: View {
             viewModel.objectWillChange.send()
         }
     }
-    
+
     private func triggerCellAnimation() {
         guard !UIAccessibility.isReduceMotionEnabled else {
             cellsVisible = Array(repeating: true, count: 7)
@@ -174,20 +182,20 @@ struct CalendarDaySelector: View {
             isTransitioning = false
         }
     }
-    
+
     // Generate only the current week days (7 days starting from Monday)
     private func getCurrentWeekDays() -> [Date] {
         var calendar = Calendar.current
         // Set first weekday to Monday (2 in Calendar, where Sunday = 1)
         calendar.firstWeekday = 2
-        
+
         let baseDate = viewModel.selectedDate
-        
+
         // Get the week containing the selected date
         guard let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: baseDate)?.start else {
             return []
         }
-        
+
         // Since we changed firstWeekday to Monday, startOfWeek is now Monday
         // Generate all 7 days of the week starting from Monday
         var days: [Date] = []
@@ -196,7 +204,7 @@ struct CalendarDaySelector: View {
                 days.append(day)
             }
         }
-        
+
         return days
     }
 }

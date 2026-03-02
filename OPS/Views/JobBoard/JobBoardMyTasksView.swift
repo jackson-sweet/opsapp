@@ -35,14 +35,12 @@ struct JobBoardMyTasksView: View {
         }
     }
 
-    // All tasks from assigned projects that are assigned to the current user
-    // Falls back to all project tasks when a task has no explicit assignment
+    // Tasks from assigned projects that are explicitly assigned to the current user
     private var myTasks: [ProjectTask] {
         guard let userId = dataController.currentUser?.id else { return [] }
         return assignedProjects.flatMap { project in
             project.tasks.filter { task in
-                let taskMemberIds = task.getTeamMemberIds()
-                return taskMemberIds.isEmpty || taskMemberIds.contains(userId)
+                task.getTeamMemberIds().contains(userId)
             }
         }
     }
@@ -160,7 +158,6 @@ struct JobBoardMyTasksView: View {
             Text(emptyMessage)
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .multilineTextAlignment(.center)
             Spacer()
         }
         .frame(maxWidth: .infinity)

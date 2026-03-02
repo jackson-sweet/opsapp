@@ -26,13 +26,20 @@ struct UniversalSearchSheet: View {
         dataController.currentUser?.role == .fieldCrew
     }
 
-    // Field crew see only projects they are assigned to
+    // Field crew see only projects they are assigned to.
+    // Users without pipeline access cannot see RFQ or Estimated projects.
     private var availableProjects: [Project] {
         guard let userId = dataController.currentUser?.id else { return [] }
+        var projects: [Project]
         if isFieldCrew {
-            return allProjects.filter { $0.getTeamMemberIds().contains(userId) }
+            projects = allProjects.filter { $0.getTeamMemberIds().contains(userId) }
+        } else {
+            projects = Array(allProjects)
         }
-        return Array(allProjects)
+        if !hasPipelineAccess {
+            projects = projects.filter { $0.status != .rfq && $0.status != .estimated }
+        }
+        return projects
     }
 
     // Flatten tasks from all visible projects

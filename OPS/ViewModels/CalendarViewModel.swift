@@ -8,6 +8,7 @@
 
 // CalendarViewModel.swift
 import Foundation
+import SwiftUI
 import SwiftData
 import Combine
 
@@ -142,7 +143,7 @@ class CalendarViewModel: ObservableObject {
 
     /// Expand/collapse month grid with animation
     func toggleMonthExpanded() {
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+        withAnimation(.accessibleEaseInOut(duration: 0.35)) {
             isMonthExpanded.toggle()
             viewMode = isMonthExpanded ? .month : .week
         }

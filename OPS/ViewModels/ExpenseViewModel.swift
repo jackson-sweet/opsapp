@@ -170,7 +170,8 @@ class ExpenseViewModel: ObservableObject {
         async let expensesTask: () = loadExpenses()
         async let categoriesTask: () = loadCategories()
         async let settingsTask: () = loadSettings()
-        _ = await (expensesTask, categoriesTask, settingsTask)
+        async let batchesTask: () = loadBatches()
+        _ = await (expensesTask, categoriesTask, settingsTask, batchesTask)
     }
 
     // MARK: - OCR
@@ -333,6 +334,16 @@ class ExpenseViewModel: ObservableObject {
         do {
             let created = try await repo.createCategory(dto)
             categories.append(created)
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func toggleCategory(_ categoryId: String, isActive: Bool) async {
+        guard let repo = repository else { return }
+        do {
+            try await repo.updateCategory(categoryId, name: nil, icon: nil, isActive: isActive)
+            categories = try await repo.fetchCategories()
         } catch {
             self.error = error.localizedDescription
         }

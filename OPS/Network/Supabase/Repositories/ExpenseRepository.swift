@@ -288,4 +288,31 @@ class ExpenseRepository {
             .execute()
             .value
     }
+
+    // MARK: - Accounting Category Mappings
+
+    func fetchCategoryMappings(provider: String) async throws -> [AccountingCategoryMappingDTO] {
+        try await client
+            .from("accounting_category_mappings")
+            .select()
+            .eq("company_id", value: companyId)
+            .eq("provider", value: provider)
+            .execute()
+            .value
+    }
+
+    func upsertCategoryMapping(_ dto: CreateAccountingCategoryMappingDTO) async throws {
+        try await client
+            .from("accounting_category_mappings")
+            .upsert(dto, onConflict: "company_id,expense_category_id,provider")
+            .execute()
+    }
+
+    func deleteCategoryMapping(_ id: String) async throws {
+        try await client
+            .from("accounting_category_mappings")
+            .delete()
+            .eq("id", value: id)
+            .execute()
+    }
 }

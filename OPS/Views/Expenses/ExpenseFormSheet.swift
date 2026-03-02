@@ -32,6 +32,7 @@ struct ExpenseFormSheet: View {
     @State private var showReceiptSourceSheet = false
     @State private var isScanning = false
     @State private var ocrUsed = false
+    @State private var lastOCRResult: OCRResult? = nil
     @State private var projectAllocations: [(projectId: String, percentage: String)] = []
     @State private var isSaving = false
     @State private var validationErrors: [String] = []
@@ -829,6 +830,7 @@ struct ExpenseFormSheet: View {
         isScanning = true
         defer { isScanning = false }
         if let result = await viewModel.scanReceipt(image: image) {
+            lastOCRResult = result
             if let merchant = result.merchantName, !merchant.isEmpty {
                 merchantName = merchant
             }
@@ -903,8 +905,8 @@ struct ExpenseFormSheet: View {
         let dateString = ISO8601DateFormatter().string(from: expenseDate)
         let descriptionValue = notes.isEmpty ? nil : notes
 
-        let ocrData: [String: String]? = nil
-        let ocrConfidence: Double? = nil
+        let ocrData = lastOCRResult?.rawDataDict
+        let ocrConfidence = lastOCRResult != nil ? Double(lastOCRResult!.overallConfidence) : nil
 
         if let exp = editing {
             let fields = UpdateExpenseDTO(
@@ -917,6 +919,24 @@ struct ExpenseFormSheet: View {
                 paymentMethod: paymentMethod.rawValue
             )
             await viewModel.updateExpense(exp.id, fields: fields)
+
+            // Upload receipt if new image captured (not already uploaded)
+            if viewModel.error == nil, !receiptQueue.isEmpty, exp.receiptImageUrl == nil {
+                if let image = receiptQueue.first {
+                    do {
+                        let urls = try await S3UploadService.shared.uploadExpenseReceipt(
+                            image, expenseId: exp.id, companyId: companyId
+                        )
+                        let imageFields = UpdateExpenseDTO(
+                            receiptImageUrl: urls.url,
+                            receiptThumbnailUrl: urls.thumbnailUrl
+                        )
+                        await viewModel.updateExpense(exp.id, fields: imageFields)
+                    } catch {
+                        print("[EXPENSE] ⚠️ Receipt upload failed: \(error.localizedDescription)")
+                    }
+                }
+            }
 
             // Update allocations
             if viewModel.error == nil {
@@ -955,6 +975,23 @@ struct ExpenseFormSheet: View {
             )
 
             if let created = created {
+                // Upload receipt image now that we have the expense ID
+                if !receiptQueue.isEmpty, let image = receiptQueue.first {
+                    do {
+                        let urls = try await S3UploadService.shared.uploadExpenseReceipt(
+                            image, expenseId: created.id, companyId: companyId
+                        )
+                        let imageFields = UpdateExpenseDTO(
+                            receiptImageUrl: urls.url,
+                            receiptThumbnailUrl: urls.thumbnailUrl
+                        )
+                        await viewModel.updateExpense(created.id, fields: imageFields)
+                    } catch {
+                        print("[EXPENSE] ⚠️ Receipt upload failed: \(error.localizedDescription)")
+                        // Non-blocking — expense saved without receipt URL
+                    }
+                }
+
                 let allocs = projectAllocations.compactMap { alloc -> CreateExpenseAllocationDTO? in
                     guard !alloc.projectId.isEmpty, let pct = Double(alloc.percentage) else { return nil }
                     return CreateExpenseAllocationDTO(
@@ -998,6 +1035,7 @@ struct ExpenseFormSheet: View {
         selectedCategoryId = nil
         notes = ""
         ocrUsed = false
+        lastOCRResult = nil
         validationErrors = []
 
         if prefilledProjectId == nil {

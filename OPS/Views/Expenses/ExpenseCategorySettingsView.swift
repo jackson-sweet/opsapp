@@ -110,10 +110,16 @@ struct ExpenseCategorySettingsView: View {
                     Spacer()
 
                     // Active toggle (default categories can be toggled but not deleted)
-                    Toggle("", isOn: .constant(category.isActive ?? true))
-                        .labelsHidden()
-                        .tint(OPSStyle.Colors.primaryAccent)
-                        .disabled(true) // Toggle update requires repository method — placeholder
+                    Toggle("", isOn: Binding(
+                        get: { category.isActive ?? true },
+                        set: { newValue in
+                            Task {
+                                await viewModel.toggleCategory(category.id, isActive: newValue)
+                            }
+                        }
+                    ))
+                    .labelsHidden()
+                    .tint(OPSStyle.Colors.primaryAccent)
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .frame(minHeight: OPSStyle.Layout.touchTargetStandard)

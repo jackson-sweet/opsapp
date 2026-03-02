@@ -240,6 +240,43 @@ class S3UploadService {
         return s3URL
     }
 
+    /// Upload an expense receipt image to S3. Returns (fullUrl, thumbnailUrl).
+    func uploadExpenseReceipt(_ image: UIImage, expenseId: String, companyId: String) async throws -> (url: String, thumbnailUrl: String) {
+        print("[S3_UPLOAD] Starting expense receipt upload for expense: \(expenseId)")
+
+        // Full-size receipt (max 2048px)
+        let fullImage = resizeImageIfNeeded(image)
+        guard let fullData = fullImage.jpegData(compressionQuality: 0.85) else {
+            print("[S3_UPLOAD] ❌ Failed to compress expense receipt")
+            throw S3Error.imageConversionFailed
+        }
+
+        let sizeInMB = Double(fullData.count) / (1024 * 1024)
+        print("[S3_UPLOAD] Expense receipt size: \(String(format: "%.2f", sizeInMB))MB")
+
+        let timestamp = Date().timeIntervalSince1970
+        let filename = "receipt_\(expenseId)_\(timestamp).jpg"
+        let thumbFilename = "receipt_\(expenseId)_\(timestamp)_thumb.jpg"
+
+        // Upload full image: company-{companyId}/expenses/{filename}
+        let fullKey = "company-\(companyId)/expenses/\(filename)"
+        let fullUrl = try await uploadToS3(imageData: fullData, objectKey: fullKey)
+
+        // Generate and upload thumbnail (512px)
+        let thumbImage = resizeImageToSquare(image, maxSize: 512)
+        guard let thumbData = thumbImage.jpegData(compressionQuality: 0.7) else {
+            // Full image uploaded, thumbnail failed — return full URL for both
+            print("[S3_UPLOAD] ⚠️ Thumbnail generation failed, using full URL")
+            return (url: fullUrl, thumbnailUrl: fullUrl)
+        }
+
+        let thumbKey = "company-\(companyId)/expenses/\(thumbFilename)"
+        let thumbUrl = try await uploadToS3(imageData: thumbData, objectKey: thumbKey)
+
+        print("[S3_UPLOAD] ✅ Expense receipt uploaded: \(fullUrl)")
+        return (url: fullUrl, thumbnailUrl: thumbUrl)
+    }
+
     // MARK: - Private Methods
 
     /// Generic S3 upload method

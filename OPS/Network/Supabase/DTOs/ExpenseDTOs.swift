@@ -254,3 +254,41 @@ struct ExpenseSettingsDTO: Codable {
         case requireProjectAssignment = "require_project_assignment"
     }
 }
+
+// MARK: - Accounting Category Mapping DTOs
+
+struct AccountingCategoryMappingDTO: Codable, Identifiable {
+    let id: String
+    let companyId: String
+    let expenseCategoryId: String
+    let provider: String
+    let externalAccountId: String
+    let externalAccountName: String?
+    let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case companyId            = "company_id"
+        case expenseCategoryId    = "expense_category_id"
+        case provider
+        case externalAccountId    = "external_account_id"
+        case externalAccountName  = "external_account_name"
+        case createdAt            = "created_at"
+    }
+}
+
+struct CreateAccountingCategoryMappingDTO: Codable {
+    let companyId: String
+    let expenseCategoryId: String
+    let provider: String
+    let externalAccountId: String
+    let externalAccountName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case companyId            = "company_id"
+        case expenseCategoryId    = "expense_category_id"
+        case provider
+        case externalAccountId    = "external_account_id"
+        case externalAccountName  = "external_account_name"
+    }
+}

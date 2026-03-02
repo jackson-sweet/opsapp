@@ -7,7 +7,6 @@
 
 import SwiftUI
 import SwiftData
-import Supabase
 
 enum JobBoardCardType {
     case project(Project)

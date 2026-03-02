@@ -917,28 +917,28 @@ struct ProjectFormSheet: View {
                 pills: [
                     (title: "DESCRIPTION", icon: "text.alignleft", isExpanded: isDescriptionExpanded,
                      isDisabled: tutorialMode, isHighlighted: false, action: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        withAnimation(.accessibleEaseInOut()) {
                             bringSectionToTop(.description)
                             isDescriptionExpanded = true
                         }
                     }),
                     (title: "NOTES", icon: "note.text", isExpanded: isNotesExpanded,
                      isDisabled: tutorialMode, isHighlighted: false, action: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        withAnimation(.accessibleEaseInOut()) {
                             bringSectionToTop(.notes)
                             isNotesExpanded = true
                         }
                     }),
                     (title: "ADD TASKS", icon: "checklist", isExpanded: isTasksExpanded,
                      isDisabled: tutorialMode && !isAddTaskEnabled, isHighlighted: addTasksPillHighlight.isHighlighted, action: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        withAnimation(.accessibleEaseInOut()) {
                             bringSectionToTop(.tasks)
                             isTasksExpanded = true
                         }
                     }),
                     (title: "PHOTOS", icon: "photo", isExpanded: isPhotosExpanded,
                      isDisabled: tutorialMode, isHighlighted: false, action: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        withAnimation(.accessibleEaseInOut()) {
                             bringSectionToTop(.photos)
                             isPhotosExpanded = true
                         }
@@ -1022,7 +1022,7 @@ struct ProjectFormSheet: View {
             isExpanded: $isDescriptionExpanded,
             onDelete: {
                 description = ""
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                withAnimation(.accessibleEaseInOut()) {
                     isDescriptionExpanded = false
                 }
                 #if !targetEnvironment(simulator)
@@ -1084,7 +1084,7 @@ struct ProjectFormSheet: View {
             isExpanded: $isNotesExpanded,
             onDelete: {
                 notes = ""
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                withAnimation(.accessibleEaseInOut()) {
                     isNotesExpanded = false
                 }
                 #if !targetEnvironment(simulator)
@@ -1146,7 +1146,7 @@ struct ProjectFormSheet: View {
             isExpanded: $isTasksExpanded,
             onDelete: {
                 localTasks.removeAll()
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                withAnimation(.accessibleEaseInOut()) {
                     isTasksExpanded = false
                 }
                 #if !targetEnvironment(simulator)
@@ -1233,7 +1233,7 @@ struct ProjectFormSheet: View {
             isExpanded: $isPhotosExpanded,
             onDelete: {
                 projectImages.removeAll()
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                withAnimation(.accessibleEaseInOut()) {
                     isPhotosExpanded = false
                 }
                 #if !targetEnvironment(simulator)
@@ -1497,14 +1497,14 @@ struct ProjectFormSheet: View {
 
         if let descriptionValue = copiedData["description"] as? String {
             description = descriptionValue
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            withAnimation(.accessibleEaseInOut()) {
                 isDescriptionExpanded = true
             }
         }
 
         if let notesValue = copiedData["notes"] as? String {
             notes = notesValue
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            withAnimation(.accessibleEaseInOut()) {
                 isNotesExpanded = true
             }
         }
@@ -1533,7 +1533,7 @@ struct ProjectFormSheet: View {
                 )
             }
             localTasks.append(contentsOf: newTasks)
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            withAnimation(.accessibleEaseInOut()) {
                 isTasksExpanded = true
             }
         }

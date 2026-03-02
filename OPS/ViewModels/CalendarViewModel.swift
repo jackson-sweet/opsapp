@@ -34,7 +34,6 @@ class CalendarViewModel: ObservableObject {
     }
     @Published var isLoading = false
     @Published var userInitiatedDateSelection = false
-    @Published var shouldShowDaySheet = false // New published property for explicit control
     @Published var selectedTeamMemberId: String? = nil  // Single selection for backward compatibility
     @Published var availableTeamMembers: [TeamMember] = []
     
@@ -110,10 +109,6 @@ class CalendarViewModel: ObservableObject {
         DispatchQueue.main.async {
             self.userInitiatedDateSelection = userInitiated
 
-            // Explicitly trigger day sheet for month view user selections
-            if userInitiated && self.viewMode == .month {
-                self.shouldShowDaySheet = true
-            }
         }
 
         // Update date immediately for instant UI feedback
@@ -135,9 +130,7 @@ class CalendarViewModel: ObservableObject {
     }
     
     func toggleViewMode() {
-        // Reset flags when changing view mode to prevent unwanted sheets
         userInitiatedDateSelection = false
-        shouldShowDaySheet = false
         viewMode = viewMode == .week ? .month : .week
     }
 
@@ -149,17 +142,10 @@ class CalendarViewModel: ObservableObject {
         }
     }
 
-    // Method to reset day sheet state after it's been shown
-    func resetDaySheetState() {
-        shouldShowDaySheet = false
-    }
-    
     // Navigation methods for months and weeks
     func navigateNextPeriod() {
         let calendar = Calendar.current
         
-        // Reset any sheet-related flags
-        shouldShowDaySheet = false
         userInitiatedDateSelection = false
         
         switch viewMode {
@@ -181,8 +167,6 @@ class CalendarViewModel: ObservableObject {
     func navigatePreviousPeriod() {
         let calendar = Calendar.current
         
-        // Reset any sheet-related flags
-        shouldShowDaySheet = false
         userInitiatedDateSelection = false
         
         switch viewMode {

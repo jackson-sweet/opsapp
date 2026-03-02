@@ -147,21 +147,21 @@ struct KeyMetricsGrid: View {
                 title: "ACTIVE",
                 value: "\(activeProjects)",
                 subtitle: "Projects",
-                color: .green
+                color: OPSStyle.Colors.successStatus
             )
 
             MetricCard(
                 title: "COMPLETED",
                 value: "\(completedProjects)",
                 subtitle: "This Month",
-                color: .blue
+                color: OPSStyle.Colors.primaryAccent
             )
 
             MetricCard(
                 title: "TASKS",
                 value: "\(totalTasks)",
                 subtitle: "Total",
-                color: .orange
+                color: OPSStyle.Colors.warningStatus
             )
 
             MetricCard(

@@ -659,8 +659,7 @@ struct MonthDayCell: View {
     let onTap: () -> Void
 
     private var isSelected: Bool {
-        // Only show outline when day sheet is visible (shouldShowDaySheet == true)
-        viewModel.shouldShowDaySheet && DateHelper.isSameDay(date, viewModel.selectedDate)
+        DateHelper.isSameDay(date, viewModel.selectedDate)
     }
 
     private var isToday: Bool {

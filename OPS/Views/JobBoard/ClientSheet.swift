@@ -177,7 +177,7 @@ struct ClientSheet: View {
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                                 .stroke(
-                                                    showEmailError ? Color.red.opacity(0.5) : (focusedField == .email ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder),
+                                                    showEmailError ? OPSStyle.Colors.errorStatus.opacity(0.5) : (focusedField == .email ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder),
                                                     lineWidth: OPSStyle.Layout.Border.standard
                                                 )
                                         )
@@ -211,7 +211,7 @@ struct ClientSheet: View {
                                         .overlay(
                                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                                 .stroke(
-                                                    showPhoneError ? Color.red.opacity(0.5) : (focusedField == .phone ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder),
+                                                    showPhoneError ? OPSStyle.Colors.errorStatus.opacity(0.5) : (focusedField == .phone ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder),
                                                     lineWidth: OPSStyle.Layout.Border.standard
                                                 )
                                         )
@@ -819,8 +819,8 @@ struct DuplicateWarning: View {
         .padding(OPSStyle.Layout.spacing2)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .fill(Color.orange.opacity(0.1))
-                .stroke(Color.orange.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
+                .fill(OPSStyle.Colors.warningStatus.opacity(0.1))
+                .stroke(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 }

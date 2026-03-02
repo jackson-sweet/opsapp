@@ -24,6 +24,7 @@ struct AppHeader: View {
     var onSearchTapped: (() -> Void)? = nil
     var onRefreshTapped: (() -> Void)? = nil
     var onFilterTapped: (() -> Void)? = nil
+    var onMonthTapped: (() -> Void)? = nil
     var hasActiveFilters: Bool = false
     var filterCount: Int = 0
     
@@ -196,6 +197,16 @@ struct AppHeader: View {
                 // Search, filter and refresh buttons for schedule view
                 if headerType == .schedule {
                     HStack(spacing: 8) {
+                        // Calendar/month toggle button
+                        if let onMonthTapped = onMonthTapped {
+                            Button(action: onMonthTapped) {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 18, weight: .light))
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .frame(width: 36, height: 36)
+                            }
+                        }
+
                         // Filter button
                         if let onFilterTapped = onFilterTapped {
                             Button(action: onFilterTapped) {

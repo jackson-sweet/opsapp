@@ -29,6 +29,7 @@ struct FloatingActionMenu: View {
     // Parameters to determine which tab we're on
     let currentTab: Int
     let hasInventoryAccess: Bool
+    var isScheduleTab: Bool = false
 
     // Inventory tab is index 2 when user has inventory access
     private var isInventoryTab: Bool {
@@ -80,6 +81,40 @@ struct FloatingActionMenu: View {
                         VStack(alignment: .trailing, spacing: 24) {
                             // Floating menu items (shown when expanded)
                             if showCreateMenu {
+                                // Schedule tab: Request Time Off
+                                if isScheduleTab {
+                                    FloatingActionItem(
+                                        icon: "clock.badge.questionmark",
+                                        label: "Request Time Off",
+                                        action: {
+                                            showCreateMenu = false
+                                            NotificationCenter.default.post(
+                                                name: Notification.Name("ShowTimeOffRequestSheet"),
+                                                object: nil
+                                            )
+                                        }
+                                    )
+                                    .offset(x: -10)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                                    .animation(OPSStyle.Animation.standard.delay(1.05), value: showCreateMenu)
+
+                                    // Schedule tab: Personal Event
+                                    FloatingActionItem(
+                                        icon: "calendar.badge.plus",
+                                        label: "Personal Event",
+                                        action: {
+                                            showCreateMenu = false
+                                            NotificationCenter.default.post(
+                                                name: Notification.Name("ShowPersonalEventSheet"),
+                                                object: nil
+                                            )
+                                        }
+                                    )
+                                    .offset(x: -10)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                                    .animation(OPSStyle.Animation.standard.delay(0.90), value: showCreateMenu)
+                                }
+
                                 // New Task Type - disabled in tutorial mode
                                 FloatingActionItem(
                                     icon: OPSStyle.Icons.taskType,

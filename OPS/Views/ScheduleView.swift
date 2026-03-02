@@ -240,11 +240,11 @@ struct ScheduleView: View {
             showingTimeOffSheet = true
         }
         .sheet(isPresented: $showingPersonalEventSheet) {
-            PersonalEventSheet()
+            PersonalEventSheet(isPresented: $showingPersonalEventSheet, viewModel: viewModel)
                 .environmentObject(dataController)
         }
         .sheet(isPresented: $showingTimeOffSheet) {
-            TimeOffRequestSheet()
+            TimeOffRequestSheet(isPresented: $showingTimeOffSheet, viewModel: viewModel)
                 .environmentObject(dataController)
         }
         // Tutorial mode: Listen for scroll in week view

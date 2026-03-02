@@ -29,85 +29,85 @@ struct TimeOffRequestSheet: View {
             ZStack {
                 OPSStyle.Colors.background.ignoresSafeArea()
 
-                VStack(alignment: .leading, spacing: 0) {
-                    // Amber info banner
-                    HStack(spacing: 10) {
-                        Image(systemName: "clock.badge.questionmark")
-                            .foregroundColor(Color(red: 196/255, green: 168/255, blue: 104/255))
-                        Text("Request will be sent to your admin for approval.")
-                            .font(.custom("Kosugi-Regular", size: 12))
-                            .foregroundColor(Color(red: 196/255, green: 168/255, blue: 104/255).opacity(0.85))
-                    }
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(red: 196/255, green: 168/255, blue: 104/255).opacity(0.10))
-                    .overlay(
-                        Rectangle()
-                            .frame(height: 0.5)
-                            .foregroundColor(Color(red: 196/255, green: 168/255, blue: 104/255).opacity(0.35)),
-                        alignment: .bottom
-                    )
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 24)
-                    .padding(.top, 20)
-
-                    // From date
-                    sectionLabel("FROM")
-                    DatePicker("", selection: $startDate, displayedComponents: .date)
-                        .datePickerStyle(.compact)
-                        .colorScheme(.dark)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 12)
-
-                    // To date
-                    sectionLabel("TO")
-                    DatePicker("", selection: $endDate, in: startDate..., displayedComponents: .date)
-                        .datePickerStyle(.compact)
-                        .colorScheme(.dark)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
-
-                    // Reason field
-                    sectionLabel("REASON (OPTIONAL)")
-                    TextField("", text: $reason)
-                        .font(.custom("Mohave-Regular", size: 16))
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .placeholder(when: reason.isEmpty) {
-                            Text("ENTER REASON")
-                                .font(.custom("Mohave-Regular", size: 16))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        // Amber info banner
+                        HStack(spacing: 10) {
+                            Image(systemName: "clock.badge.questionmark")
+                                .foregroundColor(Color(red: 196/255, green: 168/255, blue: 104/255))
+                            Text("Request will be sent to your admin for approval.")
+                                .font(.custom("Kosugi-Regular", size: 12))
+                                .foregroundColor(Color(red: 196/255, green: 168/255, blue: 104/255).opacity(0.85))
                         }
                         .padding(14)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(red: 196/255, green: 168/255, blue: 104/255).opacity(0.10))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 2)
-                                .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                            Rectangle()
+                                .frame(height: 0.5)
+                                .foregroundColor(Color(red: 196/255, green: 168/255, blue: 104/255).opacity(0.35)),
+                            alignment: .bottom
                         )
                         .padding(.horizontal, 20)
-                        .padding(.bottom, 32)
+                        .padding(.bottom, 24)
+                        .padding(.top, 20)
 
-                    Spacer()
+                        // From date
+                        sectionLabel("FROM")
+                        DatePicker("", selection: $startDate, displayedComponents: .date)
+                            .datePickerStyle(.compact)
+                            .colorScheme(.dark)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 12)
 
-                    // Submit button (amber)
-                    Button(action: submit) {
-                        HStack {
-                            Spacer()
-                            if isSaving {
-                                ProgressView().tint(.black)
-                            } else {
-                                Text("SUBMIT REQUEST")
-                                    .font(.custom("Kosugi-Regular", size: 14))
-                                    .foregroundColor(.black)
+                        // To date
+                        sectionLabel("TO")
+                        DatePicker("", selection: $endDate, in: startDate..., displayedComponents: .date)
+                            .datePickerStyle(.compact)
+                            .colorScheme(.dark)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 20)
+
+                        // Reason field
+                        sectionLabel("REASON (OPTIONAL)")
+                        TextField("", text: $reason)
+                            .font(.custom("Mohave-Regular", size: 16))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .placeholder(when: reason.isEmpty) {
+                                Text("ENTER REASON")
+                                    .font(.custom("Mohave-Regular", size: 16))
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
-                            Spacer()
+                            .padding(14)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 2)
+                                    .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                            )
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 32)
+
+                        // Submit button (amber)
+                        Button(action: submit) {
+                            HStack {
+                                Spacer()
+                                if isSaving {
+                                    ProgressView().tint(.black)
+                                } else {
+                                    Text("SUBMIT REQUEST")
+                                        .font(.custom("Kosugi-Regular", size: 14))
+                                        .foregroundColor(.black)
+                                }
+                                Spacer()
+                            }
+                            .frame(height: 52)
+                            .background(Color(red: 196/255, green: 168/255, blue: 104/255))
+                            .cornerRadius(2)
                         }
-                        .frame(height: 52)
-                        .background(Color(red: 196/255, green: 168/255, blue: 104/255))
-                        .cornerRadius(2)
+                        .disabled(isSaving)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 32)
                     }
-                    .disabled(isSaving)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 32)
                 }
             }
             .navigationTitle("[ REQUEST TIME OFF ]")

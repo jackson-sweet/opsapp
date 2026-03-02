@@ -14,6 +14,7 @@ struct DayCanvasView: View {
     @EnvironmentObject var dataController: DataController
     @State private var pageIndex: Int = 1  // Always start on middle page
     @State private var cardAnimationTrigger: Date = Date()
+    @State private var isSnappingBack: Bool = false
 
     // The 3 dates for the current page window
     private var pages: [Date] {
@@ -39,7 +40,8 @@ struct DayCanvasView: View {
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         .onChange(of: pageIndex) { _, newIndex in
-            guard newIndex != 1 else { return }
+            guard newIndex != 1, !isSnappingBack else { return }
+            isSnappingBack = true
             let offset = newIndex == 2 ? 1 : -1
             let calendar = Calendar.current
             if let newDate = calendar.date(byAdding: .day, value: offset, to: viewModel.selectedDate) {
@@ -49,6 +51,7 @@ struct DayCanvasView: View {
             // Re-center to middle page — no animation, instant snap back
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 pageIndex = 1
+                isSnappingBack = false
             }
         }
         // When viewModel.selectedDate changes from strip tap, reset to middle page
@@ -172,6 +175,7 @@ struct DayPageView: View {
             }
         }
         .onAppear {
+            guard Calendar.current.isDate(date, inSameDayAs: viewModel.selectedDate) else { return }
             isAnimating = false
             withAnimation { isAnimating = true }
         }
@@ -230,16 +234,24 @@ struct DayPageView: View {
 
     // MARK: - Helpers
 
-    private var dayOfWeek: String {
+    private static let dayOfWeekFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "EEEE"
-        return f.string(from: date).uppercased()
+        return f
+    }()
+
+    private static let dateStringFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMMM d, yyyy"
+        return f
+    }()
+
+    private var dayOfWeek: String {
+        DayPageView.dayOfWeekFormatter.string(from: date).uppercased()
     }
 
     private var dateString: String {
-        let f = DateFormatter()
-        f.dateFormat = "MMMM d, yyyy"
-        return f.string(from: date).uppercased()
+        DayPageView.dateStringFormatter.string(from: date).uppercased()
     }
 
     private func dayPosition(for task: ProjectTask, on date: Date) -> DayPosition {
@@ -264,10 +276,15 @@ struct DayPageView: View {
     }
 
     private func deleteUserEvent(_ event: CalendarUserEvent) {
-        guard let context = dataController.modelContext else { return }
+        guard let context = dataController.modelContext,
+              let companyId = dataController.currentUser?.companyId else { return }
         event.deletedAt = Date()
         try? context.save()
         viewModel.loadUserEvents()
-        // TODO: sync delete to Supabase via CalendarUserEventRepository
+        let eventId = event.id
+        Task {
+            let repo = CalendarUserEventRepository(companyId: companyId)
+            try? await repo.softDelete(eventId)
+        }
     }
 }

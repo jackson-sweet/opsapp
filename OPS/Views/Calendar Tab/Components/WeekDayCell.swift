@@ -49,23 +49,22 @@ struct WeekDayCell: View {
     }
 
     private var densityBarsView: some View {
-        let displayTasks = Array(tasks.prefix(4))
         let overflow = tasks.count > 4
+        let displayTasks = Array(tasks.prefix(overflow ? 3 : 4))
 
         return VStack(spacing: 1) {
             ForEach(Array(displayTasks.enumerated()), id: \.offset) { index, task in
-                if index == 3 && overflow {
-                    Text("···")
-                        .font(.system(size: 7, weight: .medium))
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .frame(height: 3)
-                } else {
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(task.swiftUIColor.opacity(0.85))
-                        .frame(height: 3)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 3)
-                }
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(task.swiftUIColor.opacity(0.85))
+                    .frame(height: 3)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 3)
+            }
+            if overflow {
+                Text("···")
+                    .font(.system(size: 7, weight: .medium))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .frame(height: 3)
             }
         }
         .frame(height: 20)

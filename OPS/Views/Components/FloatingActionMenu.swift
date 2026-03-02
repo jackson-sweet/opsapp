@@ -38,9 +38,11 @@ struct FloatingActionMenu: View {
 
     // Check if current user can see FAB
     private var canShowFAB: Bool {
-        guard let user = dataController.currentUser else { return false }
-        // Hide FAB when in inventory selection mode
+        guard dataController.currentUser != nil else { return false }
         if appState.isInventorySelectionMode { return false }
+        // All roles can access the schedule tab FAB (personal events + time off)
+        if isScheduleTab { return true }
+        guard let user = dataController.currentUser else { return false }
         return user.role == .admin || user.role == .officeCrew
     }
 

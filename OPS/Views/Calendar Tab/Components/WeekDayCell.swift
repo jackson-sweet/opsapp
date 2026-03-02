@@ -14,21 +14,6 @@ struct WeekDayCell: View {
     let tasks: [ProjectTask]
     let onTap: () -> Void
 
-    // Computed counts for new vs ongoing
-    private var newEventCount: Int {
-        tasks.filter { task in
-            Calendar.current.isDate(task.startDate ?? Date(), inSameDayAs: date)
-        }.count
-    }
-
-    private var ongoingEventCount: Int {
-        tasks.filter { task in
-            let startDate = task.startDate ?? Date()
-            let endDate = task.endDate ?? Date()
-            return startDate < date && date <= endDate
-        }.count
-    }
-
     init(date: Date, isSelected: Bool, eventCount: Int, tasks: [ProjectTask] = [], onTap: @escaping () -> Void) {
         self.date = date
         self.isSelected = isSelected
@@ -36,112 +21,71 @@ struct WeekDayCell: View {
         self.tasks = tasks
         self.onTap = onTap
     }
-    
+
     var body: some View {
         Button(action: onTap) {
-            ZStack {
-                VStack(spacing: 4) {
-                    // Day abbreviation
-                    Text(DateHelper.dayAbbreviation(from: date))
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(dayAbbreviationColor)
-                    
-                    // Day number
-                    Text(DateHelper.dayString(from: date))
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(textColor)
-                }
-                
-                // New event count in top-right corner
-                if newEventCount > 0 {
-                    VStack {
-                        HStack {
-                            Spacer()
-                            ZStack {
-                                Circle()
-                                    .fill(OPSStyle.Colors.pinDotActive)
-                                    .frame(width: 16, height: 16)
+            VStack(spacing: 3) {
+                Text(DateHelper.dayAbbreviation(from: date))
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(isToday ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
 
-                                Text("\(newEventCount)")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.invertedText)
-                            }
-                            .padding(.top, 4)
-                            .padding(.trailing, 2)
-                        }
-                        Spacer()
-                    }
-                }
-                
-                // Ongoing event count in bottom-right corner
-                if ongoingEventCount > 0 {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            ZStack {
-                                Circle()
-                                    .fill(OPSStyle.Colors.pinDotNeutral)
-                                    .frame(width: 14, height: 14)
-                                
-                                Text("\(ongoingEventCount)")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                            .padding(.bottom, 4)
-                            .padding(.trailing, 2)
-                        }
-                    }
-                }
+                Text(DateHelper.dayString(from: date))
+                    .font(.custom("Mohave-SemiBold", size: 18))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                densityBarsView
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 60)
+            .frame(height: 80)
             .background(cellBackground)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .cornerRadius(2)
             .overlay(
-                // White border for selected day (outline only, no background)
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                RoundedRectangle(cornerRadius: 2)
                     .stroke(OPSStyle.Colors.primaryText, lineWidth: isSelected ? 1 : 0)
             )
+            .opacity(isPast ? 0.55 : 1.0)
         }
-        .disabled(false) // Always enabled in week view
+        .disabled(false)
     }
-    
+
+    private var densityBarsView: some View {
+        let displayTasks = Array(tasks.prefix(4))
+        let overflow = tasks.count > 4
+
+        return VStack(spacing: 1) {
+            ForEach(Array(displayTasks.enumerated()), id: \.offset) { index, task in
+                if index == 3 && overflow {
+                    Text("···")
+                        .font(.system(size: 7, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .frame(height: 3)
+                } else {
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(task.swiftUIColor.opacity(0.85))
+                        .frame(height: 3)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 3)
+                }
+            }
+        }
+        .frame(height: 20)
+    }
+
+    private var isPast: Bool {
+        let today = Calendar.current.startOfDay(for: Date())
+        let cellDay = Calendar.current.startOfDay(for: date)
+        return cellDay < today && !isToday
+    }
+
     private var isToday: Bool {
         DateHelper.isToday(date)
     }
-    
-    private var isCurrentWeek: Bool {
-        let calendar = Calendar.current
-        let today = Date()
-        return calendar.isDate(date, equalTo: today, toGranularity: .weekOfYear)
-    }
-    
-    private var dayAbbreviationColor: Color {
-        if isToday {
-            return .white
-        } else {
-            return OPSStyle.Colors.secondaryText
-        }
-    }
-    
-    private var textColor: Color {
-        if isToday {
-            return .white
-        } else if isSelected {
-            return OPSStyle.Colors.primaryText
-        } else {
-            return OPSStyle.Colors.primaryText.opacity(0.8)
-        }
-    }
-    
+
     private var cellBackground: some View {
         Group {
             if isToday {
-                // Today gets primaryAccent background fill
-                OPSStyle.Colors.primaryAccent.opacity(0.5)
+                OPSStyle.Colors.primaryAccent.opacity(0.15)
             } else {
-                // Selected and other days get transparent background
                 Color.clear
             }
         }

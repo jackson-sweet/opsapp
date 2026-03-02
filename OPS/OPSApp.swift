@@ -286,7 +286,8 @@ private func clearAllAuthenticationData() {
         "hasPINEnabled",
         "location_permission_granted",
         "notifications_permission_granted",
-        "onboarding_variant"
+        "onboarding_variant",
+        "pending_demo_data_migration"
     ]
     
     for key in authKeys {

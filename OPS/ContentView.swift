@@ -159,6 +159,9 @@ struct ContentView: View {
         // Watch for authentication changes to check tutorial status
         .onChange(of: dataController.isAuthenticated) { _, isAuthenticated in
             if isAuthenticated && !isCheckingAuth {
+                // Clear A/B test login routing flag so user proceeds to main app
+                showExistingLogin = false
+
                 // User just became authenticated (login completed)
                 // Check if they need to complete the tutorial
                 let hasCompletedTutorial = dataController.currentUser?.hasCompletedAppTutorial ?? false

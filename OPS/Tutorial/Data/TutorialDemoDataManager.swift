@@ -712,13 +712,14 @@ class TutorialDemoDataManager {
             }
         }
 
-        // Save changes
-        try? context.save()
-
-        // Clear the migration flag
-        UserDefaults.standard.removeObject(forKey: "pending_demo_data_migration")
-
-        print("[DEMO_DATA] Migration complete — demo data now belongs to real user")
+        // Save changes — only clear the migration flag if save succeeds
+        do {
+            try context.save()
+            UserDefaults.standard.removeObject(forKey: "pending_demo_data_migration")
+            print("[DEMO_DATA] Migration complete — demo data now belongs to real user")
+        } catch {
+            print("[DEMO_DATA] ❌ Migration save failed: \(error). Flag preserved for retry.")
+        }
     }
 
     /// Gets a count of all demo entities for debugging

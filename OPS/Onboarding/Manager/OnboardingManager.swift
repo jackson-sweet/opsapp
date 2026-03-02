@@ -1089,7 +1089,7 @@ class OnboardingManager: ObservableObject {
 
         // Fire Firebase event for A/B test tracking
         let variant = UserDefaults.standard.string(forKey: "onboarding_variant")
-        AnalyticsManager.shared.trackTutorialCompleted(variant: variant, isPreSignup: true)
+        AnalyticsManager.shared.trackTutorialCompleted(variant: variant, flowType: "company_creator", isPreSignup: false)
 
         // Sync to Supabase
         guard let userId = state.userData.userId ?? dataController.currentUser?.id else {

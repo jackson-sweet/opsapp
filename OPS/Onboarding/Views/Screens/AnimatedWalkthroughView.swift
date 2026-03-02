@@ -42,6 +42,7 @@ struct AnimatedWalkthroughView: View {
                         Text("SKIP")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .frame(minWidth: 44, minHeight: 44)
                     }
                 }
                 .padding(.top, 16)
@@ -77,7 +78,7 @@ struct AnimatedWalkthroughView: View {
                             .font(OPSStyle.Typography.button)
                             .foregroundColor(OPSStyle.Colors.invertedText)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 56)
+                            .frame(height: OPSStyle.Layout.touchTargetStandard)
                             .background(OPSStyle.Colors.primaryText)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
@@ -96,7 +97,7 @@ struct AnimatedWalkthroughView: View {
                 }
             }
         }
-        .onChange(of: currentPage) { newIndex in
+        .onChange(of: currentPage) { _, newIndex in
             AnalyticsManager.shared.trackWalkthroughScreenViewed(screenIndex: newIndex)
         }
     }
@@ -119,13 +120,13 @@ private struct WalkthroughPageView: View {
             // Animated icon
             Image(systemName: icon)
                 .font(.system(size: 80))
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .scaleEffect(iconScale)
 
             // Headline
             Text(headline)
                 .font(OPSStyle.Typography.title)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .multilineTextAlignment(.center)
                 .opacity(contentOpacity)
 

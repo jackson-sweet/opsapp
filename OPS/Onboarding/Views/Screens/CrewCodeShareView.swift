@@ -149,7 +149,7 @@ struct CrewCodeShareView: View {
                         .padding(OPSStyle.Layout.spacing3)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .fill(OPSStyle.Colors.primaryAccent.opacity(0.1))
+                                .fill(OPSStyle.Colors.cardBackgroundDark)
                         )
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -182,7 +182,7 @@ struct CrewCodeShareView: View {
                 .background(
                     Rectangle()
                         .fill(OPSStyle.Colors.background)
-                        .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: -4)
+                        .shadow(color: Color.black, radius: 8, x: 0, y: -4)
                 )
             }
         }
@@ -196,7 +196,7 @@ struct CrewCodeShareView: View {
     // MARK: - Computed
 
     private var shareMessage: String {
-        "Join my company on OPS! Use crew code: \(crewCode). Download OPS: [app store link placeholder]"
+        "Join my company on OPS! Use crew code: \(crewCode). Download OPS: \(OnboardingCopy.appStoreURL)"
     }
 
     // MARK: - Actions

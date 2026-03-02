@@ -143,7 +143,7 @@ struct OnboardingABTestCoordinator: View {
                     VStack(spacing: 4) {
                         Text("OPS")
                             .font(OPSStyle.Typography.largeTitle.weight(.bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
 
                         Text("Built by trades, for trades.")
                             .font(OPSStyle.Typography.subtitle)
@@ -168,13 +168,13 @@ struct OnboardingABTestCoordinator: View {
                             Spacer()
 
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(OPSStyle.Typography.caption.weight(.semibold))
                                 .foregroundColor(OPSStyle.Colors.invertedText)
                         }
                         .padding(.horizontal, 20)
                         .frame(maxWidth: .infinity)
                         .frame(height: OPSStyle.Layout.touchTargetStandard)
-                        .background(Color.white)
+                        .background(OPSStyle.Colors.primaryText)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
 

@@ -286,6 +286,12 @@ struct MinimalSignupView: View {
     private func handleAppleSignIn() {
         guard !isLoading else { return }
 
+        // Validate company name before initiating auth to avoid orphaned accounts
+        guard !companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "Please enter your company name before signing up."
+            return
+        }
+
         isLoading = true
         errorMessage = ""
 
@@ -326,11 +332,6 @@ struct MinimalSignupView: View {
                 )
 
                 // 4. Set company name and create company
-                guard !companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    errorMessage = "Please enter your company name before signing up."
-                    isLoading = false
-                    return
-                }
 
                 onboardingManager.state.companyData.name = companyName.trimmingCharacters(in: .whitespacesAndNewlines)
                 let crewCode = try await onboardingManager.createCompany()
@@ -362,6 +363,12 @@ struct MinimalSignupView: View {
 
     private func handleGoogleSignIn() {
         guard !isLoading else { return }
+
+        // Validate company name before initiating auth to avoid orphaned accounts
+        guard !companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "Please enter your company name before signing up."
+            return
+        }
 
         isLoading = true
         errorMessage = ""
@@ -401,11 +408,6 @@ struct MinimalSignupView: View {
                 )
 
                 // 4. Set company name and create company
-                guard !companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    errorMessage = "Please enter your company name before signing up."
-                    isLoading = false
-                    return
-                }
 
                 onboardingManager.state.companyData.name = companyName.trimmingCharacters(in: .whitespacesAndNewlines)
                 let crewCode = try await onboardingManager.createCompany()

@@ -188,7 +188,7 @@ struct MainTabView: View {
             // Floating action menu - visible across all tabs except Settings and during initial sync/loading
             // IMPORTANT: Always render to preserve @State (sheet presentation) when app goes to background
             // Use opacity and allowsHitTesting instead of conditional rendering to prevent sheet dismissal
-            FloatingActionMenu(currentTab: selectedTab, hasInventoryAccess: hasInventoryAccess)
+            FloatingActionMenu(currentTab: selectedTab, hasInventoryAccess: hasInventoryAccess, isScheduleTab: selectedTab == scheduleTabIndex)
                 .environmentObject(dataController)
                 .environmentObject(appState)
                 .opacity(!isSettingsTab && !isPipelineTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects ? 1 : 0)

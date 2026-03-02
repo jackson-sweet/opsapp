@@ -31,7 +31,8 @@ struct ScheduleView: View {
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
     @StateObject private var viewModel = CalendarViewModel()
-    @State private var showDaySheet = false
+    @State private var showingPersonalEventSheet = false
+    @State private var showingTimeOffSheet = false
     @State private var hasPostedWeekScrollNotification = false
     @State private var hasPostedMonthExploredNotification = false
     @State private var hasUserScrolledInWeekView = false
@@ -91,46 +92,30 @@ struct ScheduleView: View {
                         onFilterTapped: {
                             showFilterSheet = true
                         },
+                        onMonthTapped: { viewModel.toggleMonthExpanded() },
                         hasActiveFilters: viewModel.hasActiveFilters,
                         filterCount: viewModel.activeFilterCount
                     )
                     .padding(.bottom, 8)
                 
-                VStack(spacing: 16) {
+                VStack(spacing: 0) {
                     // Extra top padding during calendarMonthPrompt to make room for tooltip
                     if tutorialMode && tutorialPhase == .calendarMonthPrompt {
-                        Spacer()
-                            .frame(height: 48)
+                        Spacer().frame(height: 48)
                     }
 
-                    // View toggle
-                    CalendarToggleView(viewModel: viewModel)
+                    // Week strip (or month grid when expanded) — always visible
+                    CalendarDaySelector(viewModel: viewModel)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 8)
 
-                    // Content below toggle with tutorial gray-out
-                    ZStack {
-                        VStack(spacing: 16) {
-                            // Day selector
-                            CalendarDaySelector(viewModel: viewModel)
-
-                            // Project list - only shown in week view
-                            if viewModel.viewMode == .week {
-                                ProjectListView(viewModel: viewModel)
-                                    .transition(.opacity.combined(with: .move(edge: .top)))
-                            } else {
-                                // Spacer for month view to push content up
-                                //Spacer()
-                            }
-                        }
-                        .animation(OPSStyle.Animation.standard, value: viewModel.viewMode)
-
-                        // Tutorial gray-out overlay when in calendarMonthPrompt phase
-                        if tutorialMode && tutorialPhase == .calendarMonthPrompt {
-                            OPSStyle.Colors.overlayMedium
-                                .allowsHitTesting(true)
-                        }
+                    // Day canvas — only in week mode
+                    if !viewModel.isMonthExpanded {
+                        DayCanvasView(viewModel: viewModel)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
-                .padding(.horizontal, 20)
+                .animation(OPSStyle.Animation.standard, value: viewModel.isMonthExpanded)
                 .padding(.bottom, 90) // Add padding for tab bar
                 //.frame(maxWidth: 50)
             }
@@ -142,17 +127,6 @@ struct ScheduleView: View {
         .onChange(of: viewModel.viewMode) { _, newMode in
             // Reset any project selection when switching view modes
             selectedProjectID = nil
-        }
-        // Observe the explicit shouldShowDaySheet flag
-        .onChange(of: viewModel.shouldShowDaySheet) { _, shouldShow in
-            if shouldShow {
-                // Show the sheet
-                DispatchQueue.main.async {
-                    showDaySheet = true
-                    // Reset the flag after showing
-                    viewModel.resetDaySheetState()
-                }
-            }
         }
         // Initialize on appear
         .onAppear {
@@ -166,52 +140,6 @@ struct ScheduleView: View {
         .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
             viewModel.reloadCalendarData()
         }
-        // Show day project sheet
-        .sheet(isPresented: $showDaySheet, onDismiss: {
-            // Deselect the day when sheet is dismissed (clear the outline)
-            viewModel.shouldShowDaySheet = false
-            viewModel.userInitiatedDateSelection = false
-
-            // If we have a selected project ID, navigate to project details after day sheet is dismissed
-            if selectedProjectID != nil {
-                // Significant delay to ensure complete dismissal BEFORE showing project details
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
-                    // First, update the appState to make sure we know we're in details mode
-                    if let project = dataController.getProject(id: selectedProjectID!) {
-                        // Display using the global sheet
-                        appState.viewProjectDetails(project)
-                    } else {
-                    }
-                }
-            }
-        }) {
-            // Sheet displayed when selecting a day in month view
-            DayEventsSheet(
-                date: viewModel.selectedDate,
-                scheduledTasks: viewModel.scheduledTasksForSelectedDate,
-                onTaskSelected: { task in
-                    let userInfo: [String: String] = [
-                        "taskID": task.id,
-                        "projectID": task.projectId
-                    ]
-
-                    // Dismiss sheet first
-                    self.showDaySheet = false
-
-                    // Post notification for task details after a delay
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        NotificationCenter.default.post(
-                            name: Notification.Name("ShowCalendarTaskDetails"),
-                            object: nil,
-                            userInfo: userInfo
-                        )
-                    }
-                }
-            )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-        }
-        
         // Search sheet for finding projects
         .sheet(isPresented: $showSearchSheet) {
             ProjectSearchSheet(
@@ -303,6 +231,21 @@ struct ScheduleView: View {
                 .environmentObject(dataController)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+        }
+        // Personal event sheet (triggered by FAB)
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowPersonalEventSheet"))) { _ in
+            showingPersonalEventSheet = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowTimeOffRequestSheet"))) { _ in
+            showingTimeOffSheet = true
+        }
+        .sheet(isPresented: $showingPersonalEventSheet) {
+            PersonalEventSheet()
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingTimeOffSheet) {
+            TimeOffRequestSheet()
+                .environmentObject(dataController)
         }
         // Tutorial mode: Listen for scroll in week view
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarWeekViewScrolled"))) { _ in

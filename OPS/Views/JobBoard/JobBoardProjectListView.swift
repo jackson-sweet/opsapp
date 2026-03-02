@@ -208,7 +208,7 @@ struct JobBoardProjectListView: View {
                             // Without this delay, the "closedProjectsSection" ID may not exist yet
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                 // Animate scroll to the closed projects section
-                                withAnimation(.easeInOut(duration: 0.8)) {
+                                withAnimation(.accessibleEaseInOut(duration: 0.8)) {
                                     scrollProxy.scrollTo("closedProjectsSection", anchor: .center)
                                 }
                             }
@@ -343,7 +343,7 @@ struct JobBoardProjectListView: View {
                 .scaleEffect(emphasisSwipeInstruction ? 1.1 : 1.0)
         }
         .scaleEffect(emphasisSwipeInstruction ? 1.05 : 1.0)
-        .animation(.easeInOut(duration: 0.25), value: emphasisSwipeInstruction)
+        .animation(.accessibleEaseInOut(duration: 0.25), value: emphasisSwipeInstruction)
     }
 
 
@@ -631,7 +631,7 @@ struct CollapsibleSection<Content: View>: View {
             .padding(.vertical, 8)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.25)) {
+                withAnimation(.accessibleEaseInOut(duration: 0.25)) {
                     isExpanded.toggle()
                 }
             }

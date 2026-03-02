@@ -19,7 +19,7 @@ struct AppHeader: View {
     
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
-    @State private var showingProfileSettings = false
+    @EnvironmentObject private var appState: AppState
     var headerType: HeaderType
     var onSearchTapped: (() -> Void)? = nil
     var onRefreshTapped: (() -> Void)? = nil
@@ -84,40 +84,87 @@ struct AppHeader: View {
                 
                 Spacer()
 
-                // User profile image - use unified UserAvatar component
+                // User avatar with notification bell overlay — tap opens notifications
                 Button(action: {
-                    showingProfileSettings = true
+                    appState.showingNotifications = true
                 }) {
-                    if let user = dataController.currentUser {
-                        UserAvatar(user: user, size: 44)
+                    ZStack {
+                        if let user = dataController.currentUser {
+                            UserAvatar(user: user, size: 44)
+                                .overlay(
+                                    Circle()
+                                        .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
+                                )
+                        } else {
+                            UserAvatar(
+                                firstName: "U",
+                                lastName: "",
+                                size: 44,
+                                backgroundColor: OPSStyle.Colors.primaryAccent
+                            )
                             .overlay(
                                 Circle()
                                     .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
-                            )
-                    } else {
-                        // Fallback if no user
-                        UserAvatar(
-                            firstName: "U",
-                            lastName: "",
-                            size: 44,
-                            backgroundColor: OPSStyle.Colors.primaryAccent
-                        )
-                        .overlay(
+                                )
+                        }
+
+                        // Bell icon — bottom-left of avatar
+                        ZStack {
                             Circle()
-                                .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
-                        )
+                                .fill(OPSStyle.Colors.background)
+                                .frame(width: 22, height: 22)
+
+                            Image(systemName: appState.unreadNotificationCount > 0 ? "bell.fill" : "bell")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(appState.unreadNotificationCount > 0 ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                        }
+                        .offset(x: -14, y: 14)
+
+                        // Unread count badge — top-right of avatar
+                        if appState.unreadNotificationCount > 0 {
+                            Text("\(min(appState.unreadNotificationCount, 99))")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .padding(4)
+                                .background(OPSStyle.Colors.primaryAccent)
+                                .clipShape(Circle())
+                                .offset(x: 14, y: -14)
+                        }
                     }
                 }
                 .buttonStyle(PlainButtonStyle())
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
-            .sheet(isPresented: $showingProfileSettings) {
+            .background(
+                LinearGradient(
+                    colors: [
+                        OPSStyle.Colors.background,
+                        OPSStyle.Colors.background.opacity(0.85),
+                        OPSStyle.Colors.background.opacity(0.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+            )
+            .sheet(isPresented: $appState.showingNotifications) {
                 NavigationStack {
-                    ProfileSettingsView()
+                    NotificationListView()
+                        .environmentObject(dataController)
+                        .environmentObject(appState)
                 }
             }
-            
+            .onAppear {
+                appState.refreshUnreadCount()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .pushNotificationReceived)) { _ in
+                appState.refreshUnreadCount()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                appState.refreshUnreadCount()
+            }
+
         } else {
             
             HStack {
@@ -200,34 +247,20 @@ struct AppHeader: View {
                     }
                 }
                 
-                // User information if available
-                if headerType == .settings || headerType == .jobBoard || headerType == .inventory || headerType == .pipeline {
-                    if let user = dataController.currentUser {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            // Name and role
-                            HStack(spacing: 8) {
-                                Text("\(user.firstName) \(user.lastName)")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                Text("|")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                Text("\(user.role.displayName)")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                            
-                            // Email
-                            if let email = user.email, !email.isEmpty {
-                                Text(email)
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                        }
+                // Search button — Job Board only
+                if headerType == .jobBoard {
+                    Button(action: {
+                        appState.showingJobBoardSearch = true
+                    }) {
+                        Image(systemName: "magnifyingglass")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .frame(width: 44, height: 44)
+                            .background(OPSStyle.Colors.cardBackground)
+                            .clipShape(Circle())
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
-                
-                
 
             }
             .padding(.horizontal, 20)
@@ -314,7 +347,7 @@ struct AppHeader: View {
     private var versionAndActionsView: some View {
         VStack(spacing: 16) {
             Divider()
-                .background(OPSStyle.Colors.secondaryText.opacity(0.3))
+                .background(OPSStyle.Colors.separator)
                 .padding(.horizontal, 20)
             
             // Feature request and logout buttons in HStack
@@ -332,7 +365,7 @@ struct AppHeader: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                    .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                 }
                 .frame(height: 44)
@@ -352,7 +385,7 @@ struct AppHeader: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                    .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

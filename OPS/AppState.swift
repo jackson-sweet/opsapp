@@ -28,6 +28,29 @@ class AppState: ObservableObject {
     // Tutorial restart flag - when true, ContentView should show the tutorial
     @Published var shouldRestartTutorial: Bool = false
 
+    // MARK: - In-App Notifications
+    @Published var unreadNotificationCount: Int = 0
+    @Published var showingNotifications: Bool = false
+
+    // MARK: - Job Board
+    @Published var showingJobBoardSearch: Bool = false
+
+    /// Refresh unread notification count from Supabase
+    func refreshUnreadCount() {
+        guard let userId = UserDefaults.standard.string(forKey: "user_id"), !userId.isEmpty else { return }
+        Task {
+            do {
+                let repo = NotificationRepository()
+                let count = try await repo.fetchUnreadCount(userId: userId)
+                await MainActor.run {
+                    self.unreadNotificationCount = count
+                }
+            } catch {
+                print("[NOTIFICATIONS] Failed to fetch unread count: \(error)")
+            }
+        }
+    }
+
     // MARK: - Centralized Project Completion Cascade
     // These properties allow any view to trigger the completion checklist sheet
     @Published var projectPendingCompletion: Project?
@@ -179,6 +202,8 @@ class AppState: ObservableObject {
         self.isLoadingProjects = false
         self.projectPendingCompletion = nil
         self.showingGlobalCompletionChecklist = false
+        self.unreadNotificationCount = 0
+        self.showingNotifications = false
     }
     
     // Helper method to dismiss project details without exiting project mode

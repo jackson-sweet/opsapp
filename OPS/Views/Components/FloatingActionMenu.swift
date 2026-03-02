@@ -117,124 +117,130 @@ struct FloatingActionMenu: View {
                                     .animation(OPSStyle.Animation.standard.delay(0.90), value: showCreateMenu)
                                 }
 
-                                // New Task Type - disabled in tutorial mode
-                                FloatingActionItem(
-                                    icon: OPSStyle.Icons.taskType,
-                                    label: "New Task Type",
-                                    action: {
-                                        showCreateMenu = false
-                                        showingCreateTaskType = true
-                                    }
-                                )
-                                .offset(x: -10)
-                                .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(OPSStyle.Animation.standard.delay(0.9), value: showCreateMenu)
-                                .opacity(tutorialMode ? 0.4 : 1.0)
-                                .allowsHitTesting(!tutorialMode)
+                                // Admin / office crew items only
+                                if let user = dataController.currentUser,
+                                   user.role == .admin || user.role == .officeCrew {
 
-                                // Create Task - disabled in tutorial mode
-                                FloatingActionItem(
-                                    icon: OPSStyle.Icons.task,
-                                    label: "Create Task",
-                                    action: {
-                                        showCreateMenu = false
-                                        showingCreateTask = true
-                                    }
-                                )
-                                .offset(x: -10)
-                                .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(OPSStyle.Animation.standard.delay(0.75), value: showCreateMenu)
-                                .opacity(tutorialMode ? 0.4 : 1.0)
-                                .allowsHitTesting(!tutorialMode)
-
-                                // Create Project - always enabled
-                                FloatingActionItem(
-                                    icon: OPSStyle.Icons.project,
-                                    label: "Create Project",
-                                    action: {
-                                        showCreateMenu = false
-                                        if tutorialMode {
-                                            NotificationCenter.default.post(
-                                                name: Notification.Name("TutorialCreateProjectTapped"),
-                                                object: nil
-                                            )
-                                        } else {
-                                            showingCreateProject = true
+                                    // New Task Type - disabled in tutorial mode
+                                    FloatingActionItem(
+                                        icon: OPSStyle.Icons.taskType,
+                                        label: "New Task Type",
+                                        action: {
+                                            showCreateMenu = false
+                                            showingCreateTaskType = true
                                         }
-                                    }
-                                )
-                                .offset(x: -10)
-                                .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(OPSStyle.Animation.standard.delay(0.6), value: showCreateMenu)
+                                    )
+                                    .offset(x: -10)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                                    .animation(OPSStyle.Animation.standard.delay(0.9), value: showCreateMenu)
+                                    .opacity(tutorialMode ? 0.4 : 1.0)
+                                    .allowsHitTesting(!tutorialMode)
 
-                                // Create Client - disabled in tutorial mode
-                                FloatingActionItem(
-                                    icon: OPSStyle.Icons.client,
-                                    label: "Create Client",
-                                    action: {
-                                        showCreateMenu = false
-                                        showingCreateClient = true
-                                    }
-                                )
-                                .offset(x: -10)
-                                .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(OPSStyle.Animation.standard.delay(0.45), value: showCreateMenu)
-                                .opacity(tutorialMode ? 0.4 : 1.0)
-                                .allowsHitTesting(!tutorialMode)
-
-                                // New Estimate - disabled in tutorial mode
-                                FloatingActionItem(
-                                    icon: OPSStyle.Icons.estimateDoc,
-                                    label: "New Estimate",
-                                    action: {
-                                        showCreateMenu = false
-                                        if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
-                                            estimateViewModel.setup(companyId: companyId)
+                                    // Create Task - disabled in tutorial mode
+                                    FloatingActionItem(
+                                        icon: OPSStyle.Icons.task,
+                                        label: "Create Task",
+                                        action: {
+                                            showCreateMenu = false
+                                            showingCreateTask = true
                                         }
-                                        showingCreateEstimate = true
-                                    }
-                                )
-                                .offset(x: -10)
-                                .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(OPSStyle.Animation.standard.delay(0.3), value: showCreateMenu)
-                                .opacity(tutorialMode ? 0.4 : 1.0)
-                                .allowsHitTesting(!tutorialMode)
+                                    )
+                                    .offset(x: -10)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                                    .animation(OPSStyle.Animation.standard.delay(0.75), value: showCreateMenu)
+                                    .opacity(tutorialMode ? 0.4 : 1.0)
+                                    .allowsHitTesting(!tutorialMode)
 
-                                // New Lead - disabled in tutorial mode
-                                FloatingActionItem(
-                                    icon: OPSStyle.Icons.pipelineChart,
-                                    label: "New Lead",
-                                    action: {
-                                        showCreateMenu = false
-                                        if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
-                                            pipelineViewModel.setup(companyId: companyId)
+                                    // Create Project - always enabled
+                                    FloatingActionItem(
+                                        icon: OPSStyle.Icons.project,
+                                        label: "Create Project",
+                                        action: {
+                                            showCreateMenu = false
+                                            if tutorialMode {
+                                                NotificationCenter.default.post(
+                                                    name: Notification.Name("TutorialCreateProjectTapped"),
+                                                    object: nil
+                                                )
+                                            } else {
+                                                showingCreateProject = true
+                                            }
                                         }
-                                        showingCreateLead = true
-                                    }
-                                )
-                                .offset(x: -10)
-                                .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(OPSStyle.Animation.standard.delay(0.15), value: showCreateMenu)
-                                .opacity(tutorialMode ? 0.4 : 1.0)
-                                .allowsHitTesting(!tutorialMode)
+                                    )
+                                    .offset(x: -10)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                                    .animation(OPSStyle.Animation.standard.delay(0.6), value: showCreateMenu)
 
-                                // Add Expense - disabled in tutorial mode
-                                FloatingActionItem(
-                                    icon: OPSStyle.Icons.invoiceReceipt,
-                                    label: "Add Expense",
-                                    action: {
-                                        showCreateMenu = false
-                                        if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
-                                            expenseViewModel.setup(companyId: companyId)
+                                    // Create Client - disabled in tutorial mode
+                                    FloatingActionItem(
+                                        icon: OPSStyle.Icons.client,
+                                        label: "Create Client",
+                                        action: {
+                                            showCreateMenu = false
+                                            showingCreateClient = true
                                         }
-                                        showingCreateExpense = true
-                                    }
-                                )
-                                .offset(x: -10)
-                                .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(OPSStyle.Animation.standard.delay(0.0), value: showCreateMenu)
-                                .opacity(tutorialMode ? 0.4 : 1.0)
-                                .allowsHitTesting(!tutorialMode)
+                                    )
+                                    .offset(x: -10)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                                    .animation(OPSStyle.Animation.standard.delay(0.45), value: showCreateMenu)
+                                    .opacity(tutorialMode ? 0.4 : 1.0)
+                                    .allowsHitTesting(!tutorialMode)
+
+                                    // New Estimate - disabled in tutorial mode
+                                    FloatingActionItem(
+                                        icon: OPSStyle.Icons.estimateDoc,
+                                        label: "New Estimate",
+                                        action: {
+                                            showCreateMenu = false
+                                            if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
+                                                estimateViewModel.setup(companyId: companyId)
+                                            }
+                                            showingCreateEstimate = true
+                                        }
+                                    )
+                                    .offset(x: -10)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                                    .animation(OPSStyle.Animation.standard.delay(0.3), value: showCreateMenu)
+                                    .opacity(tutorialMode ? 0.4 : 1.0)
+                                    .allowsHitTesting(!tutorialMode)
+
+                                    // New Lead - disabled in tutorial mode
+                                    FloatingActionItem(
+                                        icon: OPSStyle.Icons.pipelineChart,
+                                        label: "New Lead",
+                                        action: {
+                                            showCreateMenu = false
+                                            if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
+                                                pipelineViewModel.setup(companyId: companyId)
+                                            }
+                                            showingCreateLead = true
+                                        }
+                                    )
+                                    .offset(x: -10)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                                    .animation(OPSStyle.Animation.standard.delay(0.15), value: showCreateMenu)
+                                    .opacity(tutorialMode ? 0.4 : 1.0)
+                                    .allowsHitTesting(!tutorialMode)
+
+                                    // Add Expense - disabled in tutorial mode
+                                    FloatingActionItem(
+                                        icon: OPSStyle.Icons.invoiceReceipt,
+                                        label: "Add Expense",
+                                        action: {
+                                            showCreateMenu = false
+                                            if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
+                                                expenseViewModel.setup(companyId: companyId)
+                                            }
+                                            showingCreateExpense = true
+                                        }
+                                    )
+                                    .offset(x: -10)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                                    .animation(OPSStyle.Animation.standard.delay(0.0), value: showCreateMenu)
+                                    .opacity(tutorialMode ? 0.4 : 1.0)
+                                    .allowsHitTesting(!tutorialMode)
+
+                                } // end admin/office items
                             }
 
                             // Main plus button

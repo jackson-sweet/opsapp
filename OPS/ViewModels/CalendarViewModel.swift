@@ -18,6 +18,8 @@ class CalendarViewModel: ObservableObject {
     @Published var visibleMonth: Date = Date() // Track visible month in month grid view
     @Published var projectIdsForSelectedDate: [String] = []  // Store IDs to avoid invalidation
     @Published var scheduledTaskIdsForSelectedDate: [String] = []  // Store IDs to avoid invalidation
+    @Published var userEventsForCurrentPeriod: [CalendarUserEvent] = []
+    @Published var isMonthExpanded: Bool = false
 
     // Computed properties to get fresh models
     var projectsForSelectedDate: [Project] {
@@ -61,6 +63,7 @@ class CalendarViewModel: ObservableObject {
         self.dataController = controller
         loadTeamMembersIfNeeded()
         loadProjectsForDate(selectedDate)
+        loadUserEvents()
     }
 
     /// Force reload of calendar data (called after scheduling changes)
@@ -136,7 +139,15 @@ class CalendarViewModel: ObservableObject {
         shouldShowDaySheet = false
         viewMode = viewMode == .week ? .month : .week
     }
-    
+
+    /// Expand/collapse month grid with animation
+    func toggleMonthExpanded() {
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+            isMonthExpanded.toggle()
+            viewMode = isMonthExpanded ? .month : .week
+        }
+    }
+
     // Method to reset day sheet state after it's been shown
     func resetDaySheetState() {
         shouldShowDaySheet = false
@@ -234,6 +245,11 @@ class CalendarViewModel: ObservableObject {
         return projectCountCache[dateKey] ?? 0
     }
     
+    /// Returns tasks for density bar rendering — safe to call during layout.
+    func tasksForDensityBars(for date: Date) -> [ProjectTask] {
+        return scheduledTasks(for: date)
+    }
+
     private func formatDateKey(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -387,6 +403,28 @@ class CalendarViewModel: ObservableObject {
         projectCountCache[dateKey] = scheduledTasks.count
     }
     
+    /// Load CalendarUserEvents for the current user from local SwiftData store
+    func loadUserEvents() {
+        guard let dataController = dataController,
+              let context = dataController.modelContext,
+              let userId = dataController.currentUser?.id else { return }
+
+        let descriptor = FetchDescriptor<CalendarUserEvent>(
+            predicate: #Predicate { event in
+                event.userId == userId && event.deletedAt == nil
+            }
+        )
+        let events = (try? context.fetch(descriptor)) ?? []
+        DispatchQueue.main.async {
+            self.userEventsForCurrentPeriod = events
+        }
+    }
+
+    /// User events overlapping a given date
+    func userEvents(for date: Date) -> [CalendarUserEvent] {
+        userEventsForCurrentPeriod.filter { $0.overlaps(date: date) }
+    }
+
     // Refresh projects from the data source
     @MainActor
     func refreshProjects() async {

@@ -107,6 +107,38 @@ class PresignedURLUploadService {
         return uploadedImages
     }
 
+    /// Upload images for a project note attachment
+    func uploadNoteImages(_ images: [UIImage], projectId: String, companyId: String) async throws -> [String] {
+        var urls: [String] = []
+
+        for (index, image) in images.enumerated() {
+            let processedImage = resizeImageIfNeeded(image)
+            let compressionQuality = getAdaptiveCompressionQuality(for: processedImage)
+
+            guard let imageData = processedImage.jpegData(compressionQuality: compressionQuality) else {
+                continue
+            }
+
+            let timestamp = Date().timeIntervalSince1970
+            let filename = "note_\(timestamp)_\(index).jpg"
+
+            let presignedResponse = try await requestPresignedURL(
+                filename: filename,
+                contentType: "image/jpeg",
+                folder: "notes/\(companyId)/\(projectId)"
+            )
+
+            try await uploadToPresignedURL(
+                presignedResponse: presignedResponse,
+                imageData: imageData
+            )
+
+            urls.append(presignedResponse.publicUrl)
+        }
+
+        return urls
+    }
+
     /// Upload a user profile image using presigned URL
     func uploadProfileImage(_ image: UIImage, userId: String, companyId: String) async throws -> String {
         print("[PRESIGNED_UPLOAD] Starting profile image upload for user: \(userId)")

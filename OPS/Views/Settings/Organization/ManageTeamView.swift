@@ -140,7 +140,7 @@ struct ManageTeamView: View {
                                             }
                                         }
                                     }
-                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                                    .background(OPSStyle.Colors.cardBackgroundDark)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -164,7 +164,7 @@ struct ManageTeamView: View {
                                     }
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 14)
-                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                                    .background(OPSStyle.Colors.cardBackgroundDark)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -265,10 +265,10 @@ struct ManageTeamView: View {
                         if isCurrentUser {
                             Text("YOU")
                                 .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(OPSStyle.Colors.primaryAccent.opacity(0.2))
+                                .background(OPSStyle.Colors.cardBackgroundDark)
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         }
 
@@ -890,7 +890,7 @@ struct EditTeamMemberSheet: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(selectedRole == role ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(selectedRole == role ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
         .buttonStyle(PlainButtonStyle())

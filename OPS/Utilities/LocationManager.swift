@@ -162,7 +162,10 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             
             // Store full location for course data
             self.currentLocation = location
-            
+
+            // Adjust GPS accuracy based on speed
+            self.adjustAccuracyForSpeed(location.speed)
+
             // Update course if valid (course is -1 when invalid)
             if location.course >= 0 {
                 self.userCourse = location.course
@@ -172,9 +175,10 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             NotificationCenter.default.post(name: .locationDidChange, object: nil, 
                                           userInfo: ["location": location])
             
-            // Check if this is from significant location change monitoring
-            if manager.monitoredRegions.isEmpty && !manager.location!.timestamp.timeIntervalSinceNow.isZero {
-                // Post a notification for significant location change
+            // Post significant location change if applicable
+            if manager.monitoredRegions.isEmpty,
+               let managerLoc = manager.location,
+               abs(managerLoc.timestamp.timeIntervalSinceNow) > 1 {
                 NotificationCenter.default.post(
                     name: .significantLocationChange,
                     object: nil,
@@ -189,7 +193,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             // Use true heading if available, otherwise magnetic heading
             let heading = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
             self.deviceHeading = heading
-            
+
             // Post notification for heading updates during navigation
             NotificationCenter.default.post(
                 name: .init("headingDidChange"),
@@ -198,7 +202,23 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             )
         }
     }
-    
+
+    func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
+        NotificationCenter.default.post(
+            name: Notification.Name("GeofenceEntry"),
+            object: nil,
+            userInfo: ["region": region]
+        )
+    }
+
+    func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
+        NotificationCenter.default.post(
+            name: Notification.Name("GeofenceExit"),
+            object: nil,
+            userInfo: ["region": region]
+        )
+    }
+
     // MARK: - Helper Methods
     
     /// Determines if the app has sufficient permission to use location features
@@ -268,11 +288,49 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
         locationManager.distanceFilter = 10
         locationManager.headingFilter = 5.0
-        
+
         // Restart updates if already running to apply new settings
         if isUpdatingLocation {
             locationManager.stopUpdatingLocation()
             locationManager.startUpdatingLocation()
+        }
+    }
+
+    // MARK: - Region Monitoring (for GeofenceManager)
+
+    /// Start monitoring a circular region. Uses the shared CLLocationManager.
+    func startMonitoringRegion(_ region: CLCircularRegion) {
+        locationManager.startMonitoring(for: region)
+    }
+
+    /// Stop monitoring a region.
+    func stopMonitoringRegion(_ region: CLRegion) {
+        locationManager.stopMonitoring(for: region)
+    }
+
+    /// Currently monitored regions.
+    var monitoredRegions: Set<CLRegion> {
+        locationManager.monitoredRegions
+    }
+
+    /// Adjusts GPS accuracy based on speed to conserve battery.
+    /// Called automatically from location updates.
+    func adjustAccuracyForSpeed(_ speed: CLLocationSpeed) {
+        // Don't adjust during navigation mode (which uses its own settings)
+        guard locationManager.desiredAccuracy != kCLLocationAccuracyBestForNavigation else { return }
+
+        if speed > 10 {
+            // Driving — precise, frequent
+            locationManager.distanceFilter = 10
+            locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        } else if speed > 1 {
+            // Walking — moderate
+            locationManager.distanceFilter = 20
+            locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        } else {
+            // Stationary — minimal
+            locationManager.distanceFilter = 100
+            locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         }
     }
 }

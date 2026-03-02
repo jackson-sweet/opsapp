@@ -515,7 +515,7 @@ struct OrganizationDetailsView: View {
                 HStack(spacing: 8) {
                     if isSaving {
                         ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .black))
+                            .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
                             .scaleEffect(0.8)
                     }
                     Text(isSaving ? "SAVING..." : "SAVE CHANGES")

@@ -34,6 +34,7 @@ struct SettingsView: View {
     @State private var showWhatsNew = false
     @State private var showReportIssue = false
     @State private var showDeveloperDashboard = false
+    @State private var showAllPhotosGallery = false
 
     // Role checks
     private var isAdmin: Bool {
@@ -123,6 +124,17 @@ struct SettingsView: View {
                 destination: AnyView(SecuritySettingsView().environmentObject(dataController))
             )
         ])
+
+        // Data items
+        items.append(
+            SearchableSettingItem(
+                title: "Photos",
+                categoryTitle: "Data",
+                categoryIcon: "photo.on.rectangle.angled",
+                keywords: ["photos", "images", "pictures", "gallery", "project photos"],
+                destination: AnyView(AllPhotosGalleryView().environmentObject(dataController).environmentObject(appState))
+            )
+        )
 
         // Business items (pipeline permission-gated)
         if hasPipelineAccess {
@@ -249,6 +261,16 @@ struct SettingsView: View {
                                     icon: "lock",
                                     title: "Security & Privacy",
                                     action: { showSecuritySettings = true }
+                                )
+                            }
+                            .padding(.horizontal, 20)
+
+                            // Data section
+                            settingsSection(title: "DATA") {
+                                settingsRow(
+                                    icon: "photo.on.rectangle.angled",
+                                    title: "Photos",
+                                    action: { showAllPhotosGallery = true }
                                 )
                             }
                             .padding(.horizontal, 20)
@@ -438,6 +460,13 @@ struct SettingsView: View {
             NavigationStack {
                 DeveloperDashboard()
                     .environmentObject(dataController)
+            }
+        }
+        .fullScreenCover(isPresented: $showAllPhotosGallery) {
+            NavigationStack {
+                AllPhotosGalleryView()
+                    .environmentObject(dataController)
+                    .environmentObject(appState)
             }
         }
         .onChange(of: showDeveloperDashboard) { _, isShowing in

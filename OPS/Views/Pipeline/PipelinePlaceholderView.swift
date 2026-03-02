@@ -12,7 +12,7 @@ struct PipelinePlaceholderView: View {
         VStack(spacing: OPSStyle.Layout.spacing4) {
             Image(systemName: OPSStyle.Icons.pipelineChart)
                 .font(OPSStyle.Typography.largeTitle)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             Text("PIPELINE")
                 .font(OPSStyle.Typography.title)

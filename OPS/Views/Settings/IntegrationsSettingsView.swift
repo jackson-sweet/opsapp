@@ -87,10 +87,14 @@ struct IntegrationsSettingsView: View {
             HStack(spacing: 14) {
                 Image(systemName: iconName)
                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(width: 40, height: 40)
-                    .background(OPSStyle.Colors.primaryAccent.opacity(0.15))
+                    .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name.uppercased())
@@ -128,7 +132,7 @@ struct IntegrationsSettingsView: View {
         }
         .padding(.vertical, 14)
         .padding(.horizontal, 16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -147,7 +151,7 @@ struct IntegrationsSettingsView: View {
 
                 Image(systemName: "link.badge.plus")
                     .font(.system(size: OPSStyle.Layout.IconSize.xxl))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                 Text("\(provider.uppercased()) OAUTH")
                     .font(OPSStyle.Typography.title)

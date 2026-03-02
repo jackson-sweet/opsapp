@@ -49,6 +49,18 @@ class TaskTypeRepository {
             .value
     }
 
+    // MARK: - Create
+
+    func create(_ dto: SupabaseTaskTypeDTO) async throws -> SupabaseTaskTypeDTO {
+        try await client
+            .from("task_types")
+            .insert(dto)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
     // MARK: - Upsert
 
     func upsert(_ dto: SupabaseTaskTypeDTO) async throws {

@@ -139,8 +139,10 @@ struct ProjectPhotosGrid: View {
             BasicPhotoViewer(
                 photos: project.getProjectImages(),
                 initialIndex: item.index,
-                onDismiss: { selectedPhotoIndex = nil }
+                onDismiss: { selectedPhotoIndex = nil },
+                projectId: project.id
             )
+            .environmentObject(dataController)
         }
         .sheet(isPresented: $showingCamera) {
             ImagePicker(
@@ -392,39 +394,80 @@ struct BasicPhotoViewer: View {
     let photos: [String]
     let initialIndex: Int
     let onDismiss: () -> Void
-    
+    var projectId: String? = nil
+
     @State private var currentIndex: Int
-    
-    init(photos: [String], initialIndex: Int, onDismiss: @escaping () -> Void) {
+    @State private var showingAnnotation = false
+
+    init(photos: [String], initialIndex: Int, onDismiss: @escaping () -> Void, projectId: String? = nil) {
         self.photos = photos
         self.initialIndex = initialIndex
         self.onDismiss = onDismiss
+        self.projectId = projectId
         self._currentIndex = State(initialValue: initialIndex)
     }
-    
+
     var body: some View {
-        TabView(selection: $currentIndex) {
-            ForEach(0..<photos.count, id: \.self) { index in
-                SinglePhotoView(
-                    url: photos[index],
-                    onDismiss: onDismiss
-                )
-                .tag(index)
+        ZStack {
+            TabView(selection: $currentIndex) {
+                ForEach(0..<photos.count, id: \.self) { index in
+                    SinglePhotoView(
+                        url: photos[index],
+                        onDismiss: onDismiss
+                    )
+                    .tag(index)
+                }
+            }
+            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
+            .background(OPSStyle.Colors.background)
+            .edgesIgnoringSafeArea(.all)
+            .statusBar(hidden: true)
+
+            // Controls overlay
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: OPSStyle.Layout.IconSize.xl))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .padding(20)
+                    }
+                }
+
+                Spacer()
+
+                if let projectId = projectId {
+                    HStack {
+                        Spacer()
+                        Button(action: { showingAnnotation = true }) {
+                            HStack(spacing: OPSStyle.Layout.spacing1) {
+                                Image(systemName: "pencil.tip")
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                Text("ANNOTATE")
+                                    .font(OPSStyle.Typography.captionBold)
+                            }
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
+                            .background(OPSStyle.Colors.background)
+                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        }
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.bottom, OPSStyle.Layout.spacing5)
+                    .fullScreenCover(isPresented: $showingAnnotation) {
+                        if currentIndex < photos.count {
+                            PhotoAnnotationView(
+                                photoURL: photos[currentIndex],
+                                projectId: projectId
+                            )
+                        }
+                    }
+                }
             }
         }
-        .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
-        .background(OPSStyle.Colors.background)
-        .edgesIgnoringSafeArea(.all)
-        .statusBar(hidden: true)
-        .overlay(
-            // Close button
-            Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: OPSStyle.Layout.IconSize.xl))
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(20)
-            }, alignment: .topTrailing
-        )
     }
 }
 

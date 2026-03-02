@@ -11,7 +11,7 @@ import UIKit
 struct ProfileSettingsView: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.dismiss) private var dismiss
-    
+
     @State private var firstName: String = ""
     @State private var lastName: String = ""
     @State private var email: String = ""
@@ -30,26 +30,26 @@ struct ProfileSettingsView: View {
     @State private var deleteConfirmationText = ""
     @State private var isDeletingAccount = false
     @State private var deleteError: String? = nil
-    
+
     // Track changes for save button
     @State private var originalFirstName: String = ""
     @State private var originalLastName: String = ""
     @State private var originalPhone: String = ""
     @State private var originalHomeAddress: String = ""
-    
+
     private var hasChanges: Bool {
         firstName != originalFirstName ||
         lastName != originalLastName ||
         phone != originalPhone ||
         homeAddress != originalHomeAddress
     }
-    
+
     var body: some View {
         ZStack {
             // Background gradient
             OPSStyle.Colors.backgroundGradient
                 .edgesIgnoringSafeArea(.all)
-            
+
             VStack(spacing: 0) {
                 // Header area with back button and title
                 SettingsHeader(
@@ -65,11 +65,11 @@ struct ProfileSettingsView: View {
                     }
                 )
                 .padding(.bottom, 8)
-                
+
                 // Scrollable content
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
-                        
+
                         // Contact Preview Card
                         if let user = dataController.currentUser {
                             VStack(alignment: .leading, spacing: 0) {
@@ -150,7 +150,7 @@ struct ProfileSettingsView: View {
                                 }
                                 .padding(.vertical, 14)
                                 .padding(.horizontal, 16)
-                                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
+                                .background(OPSStyle.Colors.cardBackgroundDark)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -159,70 +159,80 @@ struct ProfileSettingsView: View {
                             }
                             .padding(.horizontal, 20)
                         }
-                        
+
                         // Form fields - all directly editable
                         VStack(spacing: 24) {
                             // PERSONAL INFORMATION section
-                            SectionCard(
-                                icon: "person.circle",
-                                title: "Personal Information"
-                            ) {
-                                VStack(spacing: 16) {
-                                    // Name fields in HStack
-                                    HStack(spacing: 16) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("PERSONAL INFORMATION")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                VStack(spacing: 0) {
+                                    VStack(spacing: 16) {
+                                        // Name fields in HStack
+                                        HStack(spacing: 16) {
+                                            OPSProfileInput(
+                                                label: "First Name",
+                                                text: $firstName,
+                                                placeholder: "Enter first name"
+                                            )
+
+                                            OPSProfileInput(
+                                                label: "Last Name",
+                                                text: $lastName,
+                                                placeholder: "Enter last name"
+                                            )
+                                        }
+
+                                        // Email - non-editable field
                                         OPSProfileInput(
-                                            label: "First Name",
-                                            text: $firstName,
-                                            placeholder: "Enter first name"
+                                            label: "Email Address",
+                                            text: $email,
+                                            type: .email,
+                                            isEditable: false,
+                                            helperText: "You cannot change your email address, it is the foundation of your account"
                                         )
 
+                                        // Phone - editable
                                         OPSProfileInput(
-                                            label: "Last Name",
-                                            text: $lastName,
-                                            placeholder: "Enter last name"
+                                            label: "Phone Number",
+                                            text: $phone,
+                                            placeholder: "Enter phone number",
+                                            type: .phone
                                         )
-                                    }
 
-                                    // Email - non-editable field
-                                    OPSProfileInput(
-                                        label: "Email Address",
-                                        text: $email,
-                                        type: .email,
-                                        isEditable: false,
-                                        helperText: "You cannot change your email address, it is the foundation of your account"
-                                    )
+                                        // Home address - with autocomplete
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            Text("HOME ADDRESS")
+                                                .font(OPSStyle.Typography.captionBold)
+                                                .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                                    // Phone - editable
-                                    OPSProfileInput(
-                                        label: "Phone Number",
-                                        text: $phone,
-                                        placeholder: "Enter phone number",
-                                        type: .phone
-                                    )
-
-                                    // Home address - with autocomplete
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Text("HOME ADDRESS")
-                                            .font(OPSStyle.Typography.captionBold)
-                                            .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                                        AddressAutocompleteField(
-                                            address: $homeAddress,
-                                            placeholder: "Enter your home address"
-                                        ) { address, coordinate in
-                                            // Optional: Could store coordinates if needed
+                                            AddressAutocompleteField(
+                                                address: $homeAddress,
+                                                placeholder: "Enter your home address"
+                                            ) { address, coordinate in
+                                                // Optional: Could store coordinates if needed
+                                            }
                                         }
                                     }
                                 }
+                                .padding(16)
+                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                )
                             }
                             .padding(.horizontal, 20)
-                            
+
                             // CREDENTIALS section
-                            SectionCard(
-                                icon: "lock.shield",
-                                title: "Credentials",
-                                contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-                            ) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("CREDENTIALS")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
                                 VStack(spacing: 0) {
                                     SettingsCategoryButton(
                                         title: "Reset Password",
@@ -245,6 +255,12 @@ struct ProfileSettingsView: View {
                                         }
                                     )
                                 }
+                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                )
                             }
                             .padding(.horizontal, 20)
                         }
@@ -253,7 +269,7 @@ struct ProfileSettingsView: View {
                     .padding(.top, 12)
                     .tabBarPadding() // Add padding for tab bar
                 }
-                
+
             }
             .navigationBarBackButtonHidden(true)
             .swipeBackGesture() // Add swipe-back gesture
@@ -286,19 +302,19 @@ struct ProfileSettingsView: View {
             }
         }
     }
-    
+
     // Password reset sheet view (unchanged)
     private var resetPasswordSheet: some View {
         ZStack {
             OPSStyle.Colors.backgroundGradient
                 .edgesIgnoringSafeArea(.all)
-            
+
             VStack(spacing: 24) {
                 Text("Reset Password")
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.top, 24)
-                
+
                 if !passwordResetSuccess {
                     VStack(spacing: 16) {
                         Text("Enter your email address to receive a password reset link.")
@@ -307,12 +323,12 @@ struct ProfileSettingsView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 20)
                             .padding(.bottom, 8)
-                        
+
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Email Address")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
+
                             TextField("", text: $resetEmail)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -324,11 +340,11 @@ struct ProfileSettingsView: View {
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                         }
                         .padding(.horizontal, 20)
-                        
+
                         if let error = passwordResetError {
                             Text(error)
                                 .font(OPSStyle.Typography.smallCaption)
@@ -337,9 +353,9 @@ struct ProfileSettingsView: View {
                                 .padding(.horizontal, 20)
                                 .padding(.top, 8)
                         }
-                        
+
                         Spacer()
-                        
+
                         HStack(spacing: 16) {
                             Button(action: {
                                 resetPasswordFields()
@@ -359,7 +375,7 @@ struct ProfileSettingsView: View {
                             }) {
                                 if passwordResetInProgress {
                                     ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .black))
+                                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 16)
                                         .background(OPSStyle.Colors.primaryAccent)
@@ -384,21 +400,21 @@ struct ProfileSettingsView: View {
                     VStack(spacing: 24) {
                         Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                             .font(OPSStyle.Typography.largeTitle)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .foregroundColor(OPSStyle.Colors.successStatus)
                             .padding(.top, 20)
-                        
+
                         Text("Reset Link Sent!")
                             .font(OPSStyle.Typography.title)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                        
+
                         Text("We've sent a password reset link to your email. Please check your inbox and follow the instructions to reset your password.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 20)
-                        
+
                         Spacer()
-                        
+
                         Button(action: {
                             resetPasswordFields()
                             showResetPasswordSheet = false
@@ -419,13 +435,13 @@ struct ProfileSettingsView: View {
             .padding(.vertical, 20)
         }
     }
-    
+
     // Delete account sheet view
     private var deleteAccountSheet: some View {
         ZStack {
             OPSStyle.Colors.backgroundGradient
                 .edgesIgnoringSafeArea(.all)
-            
+
             VStack(spacing: 24) {
                 // Header
                 HStack {
@@ -443,7 +459,7 @@ struct ProfileSettingsView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
-                
+
                 // Icon
                 Image(systemName: OPSStyle.Icons.exclamationmarkTriangle)
                     .font(.system(size: OPSStyle.Layout.IconSize.xxl))
@@ -454,30 +470,30 @@ struct ProfileSettingsView: View {
                     Text("DELETE ACCOUNT")
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                    
+
                     // Warning message
                     VStack(spacing: 16) {
                         Text("PERMANENT ACTION")
                             .font(OPSStyle.Typography.subtitle)
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                     }
-                    
+
                     Spacer()
-                    
+
                     Text("This action cannot be undone. All your data, projects, and settings will be permanently deleted.")
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 20)
-                    
+
                     Spacer()
-                    
+
                     // Confirmation input
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Type \"confirm delete\" to proceed")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                        
+
                         TextField("", text: $deleteConfirmationText)
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -490,13 +506,13 @@ struct ProfileSettingsView: View {
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(deleteConfirmationText.lowercased() == "confirm delete" ?
                                             OPSStyle.Colors.errorStatus :
-                                                OPSStyle.Colors.tertiaryText.opacity(0.3),
+                                                OPSStyle.Colors.cardBorder,
                                             lineWidth: OPSStyle.Layout.Border.standard)
                             )
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 10)
-                    
+
                     // Error message
                     if let error = deleteError {
                         Text(error)
@@ -506,9 +522,9 @@ struct ProfileSettingsView: View {
                             .padding(.horizontal, 20)
                     }
                 }
-                
+
                 Spacer()
-                
+
                 // Buttons
                 VStack(spacing: 16) {
                     Button(action: {
@@ -516,7 +532,7 @@ struct ProfileSettingsView: View {
                     }) {
                         if isDeletingAccount {
                             ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
                                 .background(OPSStyle.Colors.errorStatus)
@@ -533,7 +549,7 @@ struct ProfileSettingsView: View {
                     }
                     .disabled(deleteConfirmationText.lowercased() != "confirm delete" || isDeletingAccount)
                     .opacity(deleteConfirmationText.lowercased() == "confirm delete" && !isDeletingAccount ? 1.0 : 0.6)
-                    
+
                     Button(action: {
                         showDeleteAccountSheet = false
                         deleteConfirmationText = ""
@@ -553,36 +569,36 @@ struct ProfileSettingsView: View {
             }
         }
     }
-    
+
     // Email validation
     private var isEmailValid: Bool {
         let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
         let emailPredicate = NSPredicate(format: "SELF MATCHES %@", emailRegex)
         return !resetEmail.isEmpty && emailPredicate.evaluate(with: resetEmail)
     }
-    
+
     // Request password reset function (unchanged)
     private func requestPasswordReset() {
         passwordResetError = nil
         passwordResetInProgress = true
-        
+
         if resetEmail.isEmpty, let userEmail = dataController.currentUser?.email {
             resetEmail = userEmail
         }
-        
+
         guard isEmailValid else {
             passwordResetError = "Please enter a valid email address"
             passwordResetInProgress = false
             return
         }
-        
-        
+
+
         Task {
             let (success, errorMessage) = await dataController.requestPasswordReset(email: resetEmail)
-            
+
             await MainActor.run {
                 passwordResetInProgress = false
-                
+
                 if success {
                     passwordResetSuccess = true
                 } else {
@@ -591,7 +607,7 @@ struct ProfileSettingsView: View {
             }
         }
     }
-    
+
     // Reset password fields (unchanged)
     private func resetPasswordFields() {
         resetEmail = ""
@@ -599,7 +615,7 @@ struct ProfileSettingsView: View {
         passwordResetSuccess = false
         passwordResetInProgress = false
     }
-    
+
     private func getInitials() -> String {
         if let firstInitial = firstName.first, let lastInitial = lastName.first {
             return "\(firstInitial)\(lastInitial)".uppercased()
@@ -610,7 +626,7 @@ struct ProfileSettingsView: View {
         }
         return "U"
     }
-    
+
     private func loadUserData() {
         if let user = dataController.currentUser {
             firstName = user.firstName
@@ -618,21 +634,21 @@ struct ProfileSettingsView: View {
             email = user.email ?? ""
             phone = user.phone ?? ""
             homeAddress = user.homeAddress ?? ""
-            
+
             // Store original values to track changes
             originalFirstName = firstName
             originalLastName = lastName
             originalPhone = phone
             originalHomeAddress = homeAddress
-            
+
             // Load profile image if available
             if let profileImageURL = user.profileImageURL {
                 Task {
-                    
+
                     if let _ = ImageCache.shared.get(forKey: profileImageURL) {
                         return
                     }
-                    
+
                     if await loadImage(from: profileImageURL) != nil {
                     } else {
                     }
@@ -641,7 +657,7 @@ struct ProfileSettingsView: View {
             }
         }
     }
-    
+
     private func loadImage(from urlString: String) async -> UIImage? {
         if urlString.starts(with: "local://") {
             if let imageBase64 = UserDefaults.standard.string(forKey: urlString),
@@ -652,14 +668,14 @@ struct ProfileSettingsView: View {
             }
             return nil
         }
-        
+
         var imageURL = urlString
         if imageURL.starts(with: "//") {
             imageURL = "https:" + imageURL
         }
-        
+
         guard let url = URL(string: imageURL) else { return nil }
-        
+
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
             if let image = UIImage(data: data) {
@@ -668,17 +684,17 @@ struct ProfileSettingsView: View {
             }
         } catch {
         }
-        
+
         return nil
     }
-    
+
     private func saveChanges() {
         showSaveConfirmation = true
     }
-    
+
     private func performSave() {
         Task {
-            
+
             let success = await dataController.updateUserProfile(
                 firstName: firstName,
                 lastName: lastName,
@@ -686,7 +702,7 @@ struct ProfileSettingsView: View {
                 phone: phone,
                 homeAddress: homeAddress
             )
-            
+
             await MainActor.run {
                 if success {
                     // Update original values to reflect successful save
@@ -701,13 +717,13 @@ struct ProfileSettingsView: View {
             }
         }
     }
-    
+
     private func deleteAccount() {
         guard deleteConfirmationText.lowercased() == "confirm delete" else { return }
-        
+
         isDeletingAccount = true
         deleteError = nil
-        
+
         Task {
             do {
                 // Get current user ID
@@ -718,25 +734,25 @@ struct ProfileSettingsView: View {
                     }
                     return
                 }
-                
-                
+
+
                 // Call API to delete user
                 let success = await dataController.deleteUserAccount(userId: userId)
-                
+
                 if success {
-                    
+
                     await MainActor.run {
                         // Clear all UserDefaults to ensure clean state
                         if let bundleID = Bundle.main.bundleIdentifier {
                             UserDefaults.standard.removePersistentDomain(forName: bundleID)
                         }
                         UserDefaults.standard.synchronize()
-                        
+
                         // The deleteUserAccount already logged out, which cleared auth state
                         // This will automatically trigger ContentView to show LoginView (signup page)
                         isDeletingAccount = false
                         showDeleteAccountSheet = false
-                        
+
                         // Dismiss all presented views to ensure clean navigation
                         dismiss()
                     }

@@ -60,7 +60,7 @@ class InvoiceViewModel: ObservableObject {
                 return inv
             }
         } catch {
-            self.error = error.localizedDescription
+            if !error.isCancellation { self.error = error.localizedDescription }
         }
     }
 

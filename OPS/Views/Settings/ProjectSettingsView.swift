@@ -8,108 +8,118 @@
 import SwiftUI
 import SwiftData
 
-// Settings row component for ProjectSettingsView
-struct SettingsRow: View {
-    let icon: String
-    let title: String
-    let subtitle: String
-    let showChevron: Bool
-    
-    var body: some View {
-        HStack(spacing: 16) {
-            // Icon
-            Image(systemName: icon)
-                .font(.system(size: OPSStyle.Layout.IconSize.lg))
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(width: 30)
-            
-            // Text content
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                
-                Text(subtitle)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .lineLimit(2)
-            }
-            
-            Spacer()
-            
-            // Chevron
-            if showChevron {
-                Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-            }
-        }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-    }
-}
-
 struct ProjectSettingsView: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.dismiss) private var dismiss
-    
+
+    // Navigation states
+    @State private var showTaskSettings = false
+    @State private var showSchedulingType = false
+
     var body: some View {
         ZStack {
-            // Background gradient
             OPSStyle.Colors.backgroundGradient
-                .edgesIgnoringSafeArea(.all)
-            
+                .ignoresSafeArea()
+
             VStack(spacing: 0) {
-                // Header
                 SettingsHeader(
                     title: "Project Settings",
                     onBackTapped: { dismiss() }
                 )
                 .padding(.bottom, 8)
-                
-                // Direct navigation to Task Settings
-                NavigationLink(destination: TaskSettingsView()) {
-                    SettingsRow(
-                        icon: "square.grid.2x2",
-                        title: "Task Types",
-                        subtitle: "Manage task categories and icons",
-                        showChevron: true
-                    )
-                }
-                .buttonStyle(PlainButtonStyle())
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
 
-                NavigationLink(destination: SchedulingTypeExplanationView()) {
-                    SettingsRow(
-                        icon: "calendar.badge.clock",
-                        title: "Scheduling Type",
-                        subtitle: "Project Based vs Task Based",
-                        showChevron: true
-                    )
-                }
-                .buttonStyle(PlainButtonStyle())
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
+                ScrollView {
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
+                        settingsSection(title: "PROJECT SETTINGS") {
+                            settingsRow(
+                                icon: "square.grid.2x2",
+                                title: "Task Types",
+                                action: { showTaskSettings = true }
+                            )
 
-                Spacer()
+                            sectionDivider
+
+                            settingsRow(
+                                icon: "calendar.badge.clock",
+                                title: "Scheduling Type",
+                                action: { showSchedulingType = true }
+                            )
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 20)
+                    }
+                    .padding(.bottom, 90)
+                }
             }
         }
         .navigationBarHidden(true)
+        .fullScreenCover(isPresented: $showTaskSettings) {
+            NavigationStack {
+                TaskSettingsView()
+                    .environmentObject(dataController)
+            }
+        }
+        .fullScreenCover(isPresented: $showSchedulingType) {
+            NavigationStack {
+                SchedulingTypeExplanationView()
+                    .environmentObject(dataController)
+            }
+        }
+    }
+
+    // MARK: - Grouped Section Builder
+
+    private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            VStack(spacing: 0) {
+                content()
+            }
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+    }
+
+    // MARK: - Row Component
+
+    private func settingsRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .frame(width: 28, alignment: .center)
+
+                Text(title)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                Spacer()
+
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Divider
+
+    private var sectionDivider: some View {
+        Rectangle()
+            .fill(OPSStyle.Colors.cardBorder)
+            .frame(height: 1)
+            .padding(.leading, 58)
     }
 }
-
-// Project Settings Suggestions:
-// 1. Task Types Management (implemented)
-// 2. Project Templates - Create reusable project structures with predefined tasks
-// 3. Default Project Color - Set company-wide default project color
-// 4. Scheduling Mode Defaults - Choose between task-based or project-based scheduling
-// 5. Status Workflows - Define custom status transitions and rules
-// 6. Task Dependencies - Set up task relationships and prerequisites
-// 7. Milestone Management - Define project milestones and checkpoints
-// 8. Resource Allocation - Assign default crews or equipment to project types
-// 9. Budget Templates - Set up standard budget categories for projects
-// 10. Document Templates - Create standard documents for different project phases
-// 11. Quality Checklists - Define inspection and quality control checklists
-// 12. Client Communication Settings - Default communication preferences per project type

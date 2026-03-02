@@ -112,3 +112,63 @@ enum SiteVisitStatus: String, Codable {
     case completed = "completed"
     case cancelled = "cancelled"
 }
+
+// MARK: - Expense Status
+
+enum ExpenseStatus: String, Codable, CaseIterable {
+    case draft      = "draft"
+    case submitted  = "submitted"
+    case approved   = "approved"
+    case rejected   = "rejected"
+    case reimbursed = "reimbursed"
+
+    var displayName: String { rawValue.uppercased() }
+    var isEditable: Bool { self == .draft || self == .rejected || self == .submitted }
+    var canSubmit: Bool { self == .draft }
+    var canApprove: Bool { self == .submitted }
+    var isTerminal: Bool { self == .approved || self == .reimbursed }
+}
+
+// MARK: - Expense Payment Method
+
+enum ExpensePaymentMethod: String, Codable, CaseIterable {
+    case cash        = "cash"
+    case personalCard = "personal_card"
+    case companyCard  = "company_card"
+
+    var displayName: String {
+        switch self {
+        case .cash:         return "CASH"
+        case .personalCard: return "PERSONAL CARD"
+        case .companyCard:  return "COMPANY CARD"
+        }
+    }
+}
+
+// MARK: - Review Frequency
+
+enum ReviewFrequency: String, Codable, CaseIterable {
+    case perJob    = "per_job"
+    case weekly    = "weekly"
+    case biweekly  = "biweekly"
+    case monthly   = "monthly"
+    case quarterly = "quarterly"
+
+    var displayName: String {
+        switch self {
+        case .perJob:    return "PER JOB"
+        case .weekly:    return "WEEKLY"
+        case .biweekly:  return "BI-WEEKLY"
+        case .monthly:   return "MONTHLY"
+        case .quarterly: return "QUARTERLY"
+        }
+    }
+}
+
+// MARK: - Accounting Sync Status
+
+enum AccountingSyncStatus: String, Codable {
+    case pending = "pending"
+    case synced  = "synced"
+    case error   = "error"
+}

@@ -525,7 +525,7 @@ struct DemoDateCalculator {
         if daysFromCurrent < -1 {
             return .completed
         } else {
-            // Current or future tasks are "active"
+            // Current or future tasks are "booked"
             return .active
         }
     }

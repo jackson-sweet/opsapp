@@ -54,7 +54,7 @@ struct InvoiceDTO: Codable, Identifiable {
         case notes
         case createdAt      = "created_at"
         case updatedAt      = "updated_at"
-        case lineItems      = "invoice_line_items"
+        case lineItems      = "line_items"
         case payments
     }
 
@@ -87,41 +87,44 @@ struct InvoiceDTO: Codable, Identifiable {
 
 struct InvoiceLineItemDTO: Codable, Identifiable {
     let id: String
-    let invoiceId: String
+    let invoiceId: String?
     let productId: String?
-    let description: String
+    let name: String
+    let description: String?
     let quantity: Double
     let unitPrice: Double
     let unit: String?
     let type: String?
-    let total: Double
+    let lineTotal: Double?
     let sortOrder: Int
 
     enum CodingKeys: String, CodingKey {
         case id
         case invoiceId  = "invoice_id"
         case productId  = "product_id"
+        case name
         case description
         case quantity
         case unitPrice  = "unit_price"
         case unit
         case type
-        case total
+        case lineTotal  = "line_total"
         case sortOrder  = "sort_order"
     }
 
     func toModel() -> InvoiceLineItem {
         let item = InvoiceLineItem(
             id: id,
-            invoiceId: invoiceId,
-            name: description,
+            invoiceId: invoiceId ?? "",
+            name: name,
             type: type.flatMap { LineItemType(rawValue: $0) } ?? .labor,
             quantity: quantity,
             unitPrice: unitPrice,
             displayOrder: sortOrder
         )
-        item.lineTotal = total
+        item.lineTotal = lineTotal ?? (quantity * unitPrice)
         item.unit = unit
+        item.itemDescription = description
         return item
     }
 }

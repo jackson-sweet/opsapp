@@ -47,6 +47,9 @@ class TutorialStateManager: ObservableObject {
     /// Current phase index (0-based position in flow)
     @Published var phaseIndex: Int = 0
 
+    /// Highest phase reached during this tutorial run
+    var highestPhaseReached: TutorialPhase = .notStarted
+
     // MARK: - Timing Properties
 
     /// When the tutorial started

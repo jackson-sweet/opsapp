@@ -15,7 +15,8 @@ import CoreLocation
 struct HomeContentView: View {
     // Bindings - mapRegion removed, now handled internally by ProjectMapView
     let todaysScheduledTasks: [ProjectTask]
-    let todaysProjects: [Project] // Keep for map
+    let todaysProjects: [Project] // Keep for carousel
+    let allProjects: [Project] // All projects for map "All" filter
     @Binding var selectedEventIndex: Int
     @Binding var showStartConfirmation: Bool
     @Binding var selectedProject: Project? // Not used anymore but keeping for backward compatibility
@@ -43,6 +44,9 @@ struct HomeContentView: View {
     // State for project editing
     @State private var showingEditProject = false
     @State private var projectToEdit: Project?
+
+    // Map filter mode (today / all projects)
+    @State private var mapFilterMode: MapFilterMode = .today
 
     // State for random quote - only set once on view creation
     @State private var randomQuote: String = AppConfiguration.UX.noProjectQuotes.randomElement() ?? "No projects found"
@@ -111,11 +115,11 @@ struct HomeContentView: View {
     private var mapLayer: some View {
         ZStack {
             // New map implementation with safety wrapper
-            SafeMapContainer(
-                projects: todaysProjects,
-                selectedIndex: todaysProjects.isEmpty ? 0 :
+            OPSMapContainer(
+                projects: allProjects,
+                selectedIndex: allProjects.isEmpty ? 0 :
                     (todaysScheduledTasks.indices.contains(selectedEventIndex) ?
-                        todaysProjects.firstIndex(where: { $0.id == todaysScheduledTasks[selectedEventIndex].projectId }) ?? 0 : 0),
+                        allProjects.firstIndex(where: { $0.id == todaysScheduledTasks[selectedEventIndex].projectId }) ?? 0 : 0),
                 selectedTask: todaysScheduledTasks.indices.contains(selectedEventIndex) ? todaysScheduledTasks[selectedEventIndex] : nil,
                 onProjectSelected: { project in
                     // Find event index for this project
@@ -170,6 +174,7 @@ struct HomeContentView: View {
                         }
                     }
                 },
+                filterMode: $mapFilterMode,
                 appState: appState,
                 locationManager: locationManager
             )
@@ -185,13 +190,19 @@ struct HomeContentView: View {
     
     private var gradientOverlay: some View {
         VStack(spacing: 0) {
-            // Top gradient overlay
-            OPSStyle.Colors.background
-                .frame(height: 80)
+            // Top gradient — map bleeds through with increasing opacity toward the top
+            LinearGradient(
+                stops: [
+                    .init(color: OPSStyle.Colors.background.opacity(0.95), location: 0),
+                    .init(color: OPSStyle.Colors.background.opacity(0.85), location: 0.15),
+                    .init(color: OPSStyle.Colors.background.opacity(0.5), location: 0.45),
+                    .init(color: OPSStyle.Colors.background.opacity(0), location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 320)
 
-            OPSStyle.Layout.Gradients.headerFade
-                .frame(height: 300)
-            
             Spacer()
         }
         .ignoresSafeArea()
@@ -216,6 +227,13 @@ struct HomeContentView: View {
                 // Placeholder space when carousel is in separate layer
                 Spacer()
                     .frame(height: 120)
+            }
+
+            // Map filter chips — below carousel
+            if !appState.isInProjectMode {
+                MapFilterChips(filterMode: $mapFilterMode)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 4)
             }
 
             Spacer()

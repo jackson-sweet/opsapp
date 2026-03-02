@@ -54,6 +54,7 @@ struct CalendarDaySelector: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .offset(x: isTransitioning ? transitionOffset : dragOffset)
                     .opacity(isTransitioning ? Double(1.0 - abs(transitionOffset) / geometry.size.width) : 1.0)
+                    .animation(.interactiveSpring(response: 0.15, dampingFraction: 0.9), value: dragOffset)
                 }
                 .clipped() // Prevent content from going outside safe area
                 .gesture(
@@ -132,22 +133,22 @@ struct CalendarDaySelector: View {
         }
 
         // Update the date mid-animation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(120))
             viewModel.selectDate(newWeekStart, userInitiated: false)
             impactFeedback.impactOccurred()
 
-            // Reset position for incoming animation
+            // Reset position for incoming slide — no animation to snap instantly
             transitionOffset = -slideDirection * screenWidth * 0.3
 
-            // Second phase: slide new week in
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+            // Second phase: slide new week in smoothly
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                 transitionOffset = 0
             }
 
             // Clean up after animation completes
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                isTransitioning = false
-            }
+            try? await Task.sleep(for: .milliseconds(300))
+            isTransitioning = false
         }
     }
     

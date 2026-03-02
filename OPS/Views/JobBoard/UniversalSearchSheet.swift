@@ -154,7 +154,7 @@ struct UniversalSearchSheet: View {
             }
             .padding(.bottom, 40)
         }
-        .animation(.easeInOut(duration: 0.15), value: query)
+        .animation(.accessibleEaseInOut(duration: 0.15), value: query)
     }
 
     private func sectionHeader(_ label: String) -> some View {

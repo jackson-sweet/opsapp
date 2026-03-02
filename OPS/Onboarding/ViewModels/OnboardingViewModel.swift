@@ -540,6 +540,7 @@ class OnboardingViewModel: ObservableObject {
                 longitude: nil,
                 locationName: nil,
                 isActive: true,
+                specialPermissions: nil,
                 deletedAt: nil
             )
             try? await userRepo.upsert(userDTO)

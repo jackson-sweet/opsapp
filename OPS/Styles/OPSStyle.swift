@@ -421,7 +421,13 @@ enum OPSStyle {
         static let pencil = "pencil"
         static let pencilCircle = "pencil.circle"
         static let arrowClockwise = "arrow.clockwise"
+        static let bell = "bell"
         static let bellFill = "bell.fill"
+        static let mention = "at"
+        static let assignmentNotification = "person.badge.plus"
+        static let undo = "arrow.uturn.backward"
+        static let pencilTip = "pencil.tip"
+        static let sendFill = "arrow.up.circle.fill"
         static let photo = "photo"
         static let photoFill = "photo.fill"
         static let clock = "clock"
@@ -437,6 +443,13 @@ enum OPSStyle {
         static let accountingChart  = "chart.bar.fill"
         static let productTag       = "tag.fill"
         static let stale            = "exclamationmark.triangle.fill"
+
+        // Expenses (Mar 2026)
+        static let expense          = "dollarsign.circle"
+        static let receipt          = "doc.text.viewfinder"
+        static let clockFill        = "clock.fill"
+        static let banknoteFill     = "banknote.fill"
+        static let exclamationmarkCircleFill = "exclamationmark.circle.fill"
     }
 
     // MARK: - Inventory

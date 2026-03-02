@@ -1,0 +1,62 @@
+RICH PUSH NOTIFICATION IMAGES — SETUP REQUIRED
+================================================
+
+The code changes for sending photo URLs with notifications are done
+(backend + iOS). But iOS will NOT display images in push notifications
+until you add a Notification Service Extension to the Xcode project.
+
+WHAT TO DO:
+1. In Xcode: File > New > Target > "Notification Service Extension"
+   - Name it: OneSignalNotificationServiceExtension
+   - Language: Swift
+   - Bundle ID: com.ops-app.OPS.OneSignalNotificationServiceExtension
+
+2. In the new target's NotificationService.swift, replace the contents with:
+
+   import UserNotifications
+   import OneSignalExtension
+
+   class NotificationService: UNNotificationServiceExtension {
+       var contentHandler: ((UNNotificationContent) -> Void)?
+       var receivedRequest: UNNotificationRequest!
+       var bestAttemptContent: UNMutableNotificationContent?
+
+       override func didReceive(
+           _ request: UNNotificationRequest,
+           withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void
+       ) {
+           self.receivedRequest = request
+           self.contentHandler = contentHandler
+           self.bestAttemptContent = (request.content.mutableCopy() as? UNMutableNotificationContent)
+
+           if let bestAttemptContent = bestAttemptContent {
+               OneSignalExtension.didReceiveNotificationExtensionRequest(
+                   self.receivedRequest,
+                   with: bestAttemptContent,
+                   withContentHandler: self.contentHandler
+               )
+           }
+       }
+
+       override func serviceExtensionTimeWillExpire() {
+           if let contentHandler = contentHandler,
+              let bestAttemptContent = bestAttemptContent {
+               OneSignalExtension.serviceExtensionTimeWillExpireRequest(
+                   self.receivedRequest,
+                   with: bestAttemptContent
+               )
+               contentHandler(bestAttemptContent)
+           }
+       }
+   }
+
+3. Add OneSignalExtension SPM dependency to the new target:
+   - In Xcode: select the extension target > General > Frameworks
+   - Add the OneSignalExtension package (from the existing OneSignal SPM dependency)
+
+4. Set the extension's deployment target to match the main app (iOS 17.0)
+
+5. Build and test — mention someone on a note with a photo attached.
+   The push notification should show the photo thumbnail.
+
+WITHOUT THIS: Notifications still send and arrive, but with text only (no image).

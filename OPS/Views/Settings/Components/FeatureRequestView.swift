@@ -58,11 +58,11 @@ struct FeatureRequestView: View {
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .padding()
-                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                                    .background(OPSStyle.Colors.cardBackgroundDark)
                                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
                             .padding(.horizontal, 20)
@@ -78,7 +78,7 @@ struct FeatureRequestView: View {
                                 ZStack(alignment: .topLeading) {
                                     // iOS 16 compatibility handling 
                                     ZStack {
-                                        OPSStyle.Colors.cardBackgroundDark.opacity(0.6)
+                                        OPSStyle.Colors.cardBackgroundDark
                                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                                         
                                         TextEditor(text: $featureDescription)
@@ -91,13 +91,13 @@ struct FeatureRequestView: View {
                                     .padding(12)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
-                                    
+
                                     if featureDescription.isEmpty {
                                         Text("Please describe the feature you'd like to see and how it would help you...")
                                             .font(OPSStyle.Typography.body)
-                                            .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.6))
+                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 16)
                                             .allowsHitTesting(false)
@@ -111,7 +111,7 @@ struct FeatureRequestView: View {
                                 HStack {
                                     if isSubmitting {
                                         ProgressView()
-                                            .tint(.black)
+                                            .tint(OPSStyle.Colors.invertedText)
                                     } else {
                                         Text("SUBMIT REQUEST")
                                             .font(OPSStyle.Typography.bodyBold)

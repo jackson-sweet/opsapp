@@ -58,7 +58,7 @@ class EstimateViewModel: ObservableObject {
                 return est
             }
         } catch {
-            self.error = error.localizedDescription
+            if !error.isCancellation { self.error = error.localizedDescription }
         }
     }
 

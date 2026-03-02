@@ -2,7 +2,7 @@
 //  MapSettingsView.swift
 //  OPS
 //
-//  Created by Jackson Sweet on 2025-05-12.
+//  Map settings — style, 3D buildings, camera behavior, navigation, location.
 //
 
 import SwiftUI
@@ -12,179 +12,149 @@ struct MapSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var locationManager: LocationManager
-    
-    // Map settings preferences
+
+    // ── Map Appearance ──
+    @AppStorage("mapStyle") private var mapStyleRaw = "dark"
+    @AppStorage("map3DBuildings") private var map3DBuildings = true
+
+    // ── Camera Behavior ──
+    @AppStorage("mapOrientation") private var mapOrientationRaw = "northUp"
     @AppStorage("mapAutoZoom") private var mapAutoZoom = true
+    @AppStorage("mapZoomLevel") private var mapZoomLevel = "medium"
     @AppStorage("mapAutoCenter") private var mapAutoCenter = true
-    @AppStorage("map3DBuildings") private var map3DBuildings = false
-    @AppStorage("mapTrafficDisplay") private var mapTrafficDisplay = false
-    @AppStorage("mapDefaultType") private var mapDefaultType = "standard"
-    
-    // New configurable settings for re-centering and zoom levels
-    @AppStorage("mapAutoCenterTime") private var mapAutoCenterTime = "10" // "off", "2", "5", "10" seconds
-    @AppStorage("mapZoomLevel") private var mapZoomLevel = "medium" // "close", "medium", "far"
-    
-    
-    // Map types for picker
-    private let mapTypes = ["standard", "satellite", "hybrid"]
-    private let mapTypeLabels = ["Standard", "Satellite", "Hybrid"]
-    
-    // Auto center time options
-    private let autoCenterTimes = ["off", "2", "5", "10"]
-    private let autoCenterLabels = ["Off", "2 sec", "5 sec", "10 sec"]
-    
-    // Zoom level options
-    private let zoomLevels = ["close", "medium", "far"]
-    private let zoomLevelLabels = ["Close", "Medium", "Far"]
-    
+    @AppStorage("mapAutoCenterTime") private var mapAutoCenterTime = "10"
+
+    // ── Navigation ──
+    @AppStorage("mapSpeedZoom") private var mapSpeedZoom = true
+
     var body: some View {
         ZStack {
-            // Background
             OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
-            
-            // Main content layout with fixed header
+
             VStack(spacing: 0) {
-                // Header - Always visible, not part of ScrollView
                 SettingsHeader(
                     title: "Maps",
-                    onBackTapped: {
-                        dismiss()
-                    }
+                    onBackTapped: { dismiss() }
                 )
                 .padding(.bottom, 8)
-                
-                // Content - Scrollable when needed
+
                 ScrollView {
                     VStack(spacing: 24) {
-                        // Location Permission Status Card
+
+                        // ── LOCATION ──
                         locationStatusCard
-                        
-                        // Map Features
-                        SectionCard(
-                            icon: "slider.horizontal.3",
-                            title: "Map Features",
-                            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-                        ) {
-                            VStack(spacing: 0) {
-                                SettingsToggle(
-                                    title: "Auto Zoom",
-                                    description: "Automatically zoom to fit all markers",
-                                    isOn: $mapAutoZoom
-                                )
-                                
-                                Divider()
-                                    .background(OPSStyle.Colors.secondaryText.opacity(0.3))
-                                    .padding(.vertical, 8)
-                                
-                                SettingsToggle(
-                                    title: "Auto Center/Rotate",
-                                    description: "Re-center map when moving between projects",
-                                    isOn: $mapAutoCenter
-                                )
-                                
-                                Divider()
-                                    .background(OPSStyle.Colors.secondaryText.opacity(0.3))
-                                    .padding(.vertical, 8)
-                                
-                                // Auto-center time picker
-                                VStack(alignment: .leading, spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Auto Re-center Time")
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
 
-                                        Text("Time before the map automatically re-centers")
-                                            .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    }
+                        // ── PROJECT MARKER LEGEND ──
+                        markerLegendSection
 
-                                    SegmentedControl(
-                                        selection: $mapAutoCenterTime,
-                                        options: Array(zip(autoCenterTimes, autoCenterLabels))
-                                    )
-                                    .disabled(!mapAutoCenter) // Disable when auto-center is off
-                                    .opacity(mapAutoCenter ? 1.0 : 0.6)
-                                }
-                                .padding(16)
-                                
-                                Divider()
-                                    .background(OPSStyle.Colors.secondaryText.opacity(0.3))
-                                    .padding(.vertical, 8)
-                                
-                                // Zoom level picker
-                                VStack(alignment: .leading, spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Auto Zoom Level")
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        // ── MAP APPEARANCE ──
+                        settingsSection(title: "MAP APPEARANCE") {
 
-                                        Text("Default zoom level when showing projects")
-                                            .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    }
-
-                                    SegmentedControl(
-                                        selection: $mapZoomLevel,
-                                        options: Array(zip(zoomLevels, zoomLevelLabels))
-                                    )
-                                    .disabled(!mapAutoZoom) // Disable when auto-zoom is off
-                                    .opacity(mapAutoZoom ? 1.0 : 0.6)
-                                }
-                                .padding(16)
-                            }
-                        }
-                        .padding(.horizontal, 20)
-
-                        // Map Display
-                        SectionCard(
-                            icon: "map",
-                            title: "Map Display",
-                            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-                        ) {
-                            VStack(spacing: 0) {
-                                // Map type picker
-                                VStack(alignment: .leading, spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Map Type")
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
-
-                                        Text("Choose the map display style")
-                                            .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    }
-
-                                    SegmentedControl(
-                                        selection: $mapDefaultType,
-                                        options: Array(zip(mapTypes, mapTypeLabels))
-                                    )
-                                }
-                                .padding(16)
-                                
-                                Divider()
-                                    .background(OPSStyle.Colors.secondaryText.opacity(0.3))
-                                    .padding(.vertical, 8)
-                                
-                                SettingsToggle(
-                                    title: "3D Buildings",
-                                    description: "Show 3D building models on map",
-                                    isOn: $map3DBuildings
-                                )
-                                
-                                Divider()
-                                    .background(OPSStyle.Colors.secondaryText.opacity(0.3))
-                                    .padding(.vertical, 8)
-                                
-                                SettingsToggle(
-                                    title: "Traffic Display",
-                                    description: "Show traffic conditions on map",
-                                    isOn: $mapTrafficDisplay
+                            // Map Style
+                            settingsRow(title: "Map Style", description: "Color theme for the map") {
+                                SegmentedControl(
+                                    selection: $mapStyleRaw,
+                                    options: [
+                                        ("dark", "Dark"),
+                                        ("light", "Light"),
+                                        ("classic", "Classic")
+                                    ]
                                 )
                             }
+
+                            settingsDivider
+
+                            // 3D Buildings
+                            SettingsToggle(
+                                title: "3D Buildings",
+                                description: "Buildings appear in 3D when you tilt the map",
+                                isOn: $map3DBuildings
+                            )
                         }
-                        .padding(.horizontal, 20)
-                        
-                        // Reset to defaults button
+
+                        // ── CAMERA BEHAVIOR ──
+                        settingsSection(title: "CAMERA") {
+
+                            // Default Orientation
+                            settingsRow(title: "Default Orientation", description: "Map rotation behavior") {
+                                SegmentedControl(
+                                    selection: $mapOrientationRaw,
+                                    options: [
+                                        ("northUp", "North Up"),
+                                        ("courseUp", "Track Up")
+                                    ]
+                                )
+                            }
+
+                            settingsDivider
+
+                            // Auto Center
+                            SettingsToggle(
+                                title: "Auto Center",
+                                description: "Re-center map when switching between projects",
+                                isOn: $mapAutoCenter
+                            )
+
+                            settingsDivider
+
+                            // Auto Re-center Time
+                            settingsRow(
+                                title: "Re-center Delay",
+                                description: "Time before map automatically re-centers"
+                            ) {
+                                SegmentedControl(
+                                    selection: $mapAutoCenterTime,
+                                    options: [
+                                        ("off", "Off"),
+                                        ("2", "2s"),
+                                        ("5", "5s"),
+                                        ("10", "10s")
+                                    ]
+                                )
+                                .disabled(!mapAutoCenter)
+                                .opacity(mapAutoCenter ? 1.0 : 0.5)
+                            }
+
+                            settingsDivider
+
+                            // Auto Zoom
+                            SettingsToggle(
+                                title: "Auto Zoom",
+                                description: "Zoom to fit project markers automatically",
+                                isOn: $mapAutoZoom
+                            )
+
+                            settingsDivider
+
+                            // Zoom Level
+                            settingsRow(
+                                title: "Default Zoom Level",
+                                description: "How close the map zooms to projects"
+                            ) {
+                                SegmentedControl(
+                                    selection: $mapZoomLevel,
+                                    options: [
+                                        ("close", "Close"),
+                                        ("medium", "Medium"),
+                                        ("far", "Far")
+                                    ]
+                                )
+                                .disabled(!mapAutoZoom)
+                                .opacity(mapAutoZoom ? 1.0 : 0.5)
+                            }
+                        }
+
+                        // ── NAVIGATION ──
+                        settingsSection(title: "NAVIGATION") {
+
+                            SettingsToggle(
+                                title: "Speed-Based Zoom",
+                                description: "Zoom out at highway speed, zoom in when slow",
+                                isOn: $mapSpeedZoom
+                            )
+                        }
+
+                        // ── RESET ──
                         SettingsButton(
                             title: "Reset to Defaults",
                             icon: "arrow.clockwise",
@@ -193,7 +163,7 @@ struct MapSettingsView: View {
                             resetToDefaults()
                         }
                         .padding(.horizontal, 20)
-                        .padding(.top, 16)
+                        .padding(.top, 8)
                     }
                     .padding(.vertical, 24)
                 }
@@ -201,77 +171,278 @@ struct MapSettingsView: View {
         }
         .navigationBarBackButtonHidden(true)
         .onAppear {
-            // Request current location authorization status
             locationManager.requestPermissionIfNeeded(requestAlways: false)
         }
-        .onChange(of: mapAutoCenterTime) { _, newValue in
-            // Force UserDefaults to synchronize immediately
-            UserDefaults.standard.synchronize()
+    }
+
+    // MARK: - Project Marker Legend
+
+    private var markerLegendSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("PROJECT MARKERS")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            VStack(spacing: 0) {
+                // Large marker example
+                VStack(spacing: 16) {
+                    markerDiagram
+                        .padding(.top, 8)
+
+                    // Explanation text
+                    Text("Each pin on the map represents a project. The center dot shows the project's pipeline status. The outer ring is divided into segments — one for each task type assigned to the project.")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(16)
+
+                Divider().background(OPSStyle.Colors.cardBorder)
+
+                // Pipeline status colors
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("CENTER DOT — PIPELINE STATUS")
+                        .font(Font.custom("Kosugi-Regular", size: 10))
+                        .tracking(0.3)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    legendColorGrid(items: [
+                        ("RFQ", "#BCBCBC"),
+                        ("Estimated", "#B5A381"),
+                        ("Accepted", "#9DB582"),
+                        ("In Progress", "#8195B5"),
+                        ("Completed", "#B58289"),
+                        ("Closed", "#E9E9E9"),
+                        ("Archived", "#A182B5"),
+                    ])
+                }
+                .padding(16)
+
+                Divider().background(OPSStyle.Colors.cardBorder)
+
+                // Task type colors
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("OUTER RING — TASK TYPES")
+                        .font(Font.custom("Kosugi-Regular", size: 10))
+                        .tracking(0.3)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    legendColorGrid(items: [
+                        ("Site Estimate", "#A5B368"),
+                        ("Quote/Proposal", "#59779F"),
+                        ("Material Order", "#C4A868"),
+                        ("Installation", "#931A32"),
+                        ("Inspection", "#7B68A6"),
+                        ("Completion", "#4A4A4A"),
+                    ])
+
+                    Text("Task type colors are customizable in your company settings.")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .padding(16)
+            }
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
         }
-        .onChange(of: mapAutoCenter) { _, newValue in
-            UserDefaults.standard.synchronize()
-        }
-        .onChange(of: mapZoomLevel) { _, newValue in
-            UserDefaults.standard.synchronize()
+        .padding(.horizontal, 20)
+    }
+
+    /// Large visual diagram of a project marker with labels.
+    private var markerDiagram: some View {
+        HStack(spacing: 24) {
+            // Large rendered marker
+            ZStack {
+                // Outer ring — segmented
+                Circle()
+                    .trim(from: 0, to: 0.3)
+                    .stroke(Color(hex: "#A5B368") ?? .green, lineWidth: 4)
+                    .frame(width: 56, height: 56)
+                    .rotationEffect(.degrees(-90))
+
+                Circle()
+                    .trim(from: 0.33, to: 0.63)
+                    .stroke(Color(hex: "#59779F") ?? .blue, lineWidth: 4)
+                    .frame(width: 56, height: 56)
+                    .rotationEffect(.degrees(-90))
+
+                Circle()
+                    .trim(from: 0.66, to: 0.96)
+                    .stroke(Color(hex: "#931A32") ?? .red, lineWidth: 4)
+                    .frame(width: 56, height: 56)
+                    .rotationEffect(.degrees(-90))
+
+                // Center dot — status color
+                Circle()
+                    .fill(Color(hex: "#8195B5") ?? .blue)
+                    .frame(width: 32, height: 32)
+            }
+
+            // Labels
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.left")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text("OUTER RING = TASK TYPES")
+                        .font(Font.custom("Kosugi-Regular", size: 10))
+                        .tracking(0.3)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.left")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text("CENTER DOT = STATUS")
+                        .font(Font.custom("Kosugi-Regular", size: 10))
+                        .tracking(0.3)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+            }
         }
     }
-    
+
+    /// Grid of color swatches with labels.
+    private func legendColorGrid(items: [(String, String)]) -> some View {
+        let columns = [
+            GridItem(.flexible(), spacing: 8),
+            GridItem(.flexible(), spacing: 8)
+        ]
+
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            ForEach(items, id: \.0) { item in
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Color(hex: item.1) ?? .gray)
+                        .frame(width: 10, height: 10)
+
+                    Text(item.0)
+                        .font(Font.custom("Mohave-Regular", size: 13))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+
+    // MARK: - Reusable Section Builders
+
+    /// Section with a header label and a card body.
+    @ViewBuilder
+    private func settingsSection<Content: View>(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            VStack(spacing: 0) {
+                content()
+            }
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+        .padding(.horizontal, 20)
+    }
+
+    /// A row inside a section card: title + description + custom control.
+    @ViewBuilder
+    private func settingsRow<Control: View>(
+        title: String,
+        description: String,
+        @ViewBuilder control: () -> Control
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                Text(description)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+
+            control()
+        }
+        .padding(16)
+    }
+
+    /// Standard divider between rows inside a section card.
+    private var settingsDivider: some View {
+        Divider()
+            .background(OPSStyle.Colors.cardBorder)
+            .padding(.vertical, 4)
+    }
+
     // MARK: - Location Status Card
-    
+
+    private var isLocationAuthorized: Bool {
+        locationManager.authorizationStatus == .authorizedAlways ||
+        locationManager.authorizationStatus == .authorizedWhenInUse
+    }
+
     private var locationStatusCard: some View {
         HStack(spacing: 16) {
             // Status Icon
             ZStack {
                 Circle()
-                    .fill(locationManager.authorizationStatus == .authorizedAlways || 
-                          locationManager.authorizationStatus == .authorizedWhenInUse ? 
-                          OPSStyle.Colors.successStatus.opacity(0.2) : 
-                          OPSStyle.Colors.errorStatus.opacity(0.2))
+                    .fill((isLocationAuthorized
+                           ? OPSStyle.Colors.successStatus
+                           : OPSStyle.Colors.errorStatus).opacity(0.2))
                     .frame(width: 48, height: 48)
-                
-                Image(systemName: locationManager.authorizationStatus == .authorizedAlways ||
-                                  locationManager.authorizationStatus == .authorizedWhenInUse ?
-                      OPSStyle.Icons.locationFill : "location.slash.fill")
+
+                Image(systemName: isLocationAuthorized
+                      ? OPSStyle.Icons.locationFill
+                      : "location.slash.fill")
                     .font(OPSStyle.Typography.headingLarge)
-                    .foregroundColor(locationManager.authorizationStatus == .authorizedAlways || 
-                                     locationManager.authorizationStatus == .authorizedWhenInUse ? 
-                                   OPSStyle.Colors.successStatus : 
-                                   OPSStyle.Colors.errorStatus)
+                    .foregroundColor(isLocationAuthorized
+                                     ? OPSStyle.Colors.successStatus
+                                     : OPSStyle.Colors.errorStatus)
             }
-            
+
             // Status Text
             VStack(alignment: .leading, spacing: 4) {
                 Text(locationStatusText)
                     .font(OPSStyle.Typography.cardTitle)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                
+
                 Text(locationStatusDescription)
                     .font(OPSStyle.Typography.cardBody)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            
+
             Spacer()
-            
+
             // Action Button
             Button {
                 handleLocationAction()
             } label: {
                 Text(locationActionText)
                     .font(OPSStyle.Typography.button)
-                    .foregroundColor(locationManager.authorizationStatus == .authorizedAlways || 
-                                   locationManager.authorizationStatus == .authorizedWhenInUse ? 
-                                   OPSStyle.Colors.primaryText : .black)
+                    .foregroundColor(isLocationAuthorized
+                                     ? OPSStyle.Colors.primaryText
+                                     : OPSStyle.Colors.invertedText)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(locationManager.authorizationStatus == .authorizedAlways || 
-                                locationManager.authorizationStatus == .authorizedWhenInUse ? 
-                                Color.clear : OPSStyle.Colors.primaryText)
+                    .background(isLocationAuthorized ? Color.clear : OPSStyle.Colors.primaryText)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(locationManager.authorizationStatus == .authorizedAlways || 
-                                  locationManager.authorizationStatus == .authorizedWhenInUse ? 
-                                  OPSStyle.Colors.primaryText : Color.clear, 
-                                  lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(isLocationAuthorized
+                                    ? OPSStyle.Colors.primaryText
+                                    : Color.clear,
+                                    lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
@@ -279,80 +450,70 @@ struct MapSettingsView: View {
         .padding(24)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
         .padding(.horizontal, 20)
     }
-    
+
+    // MARK: - Location Helpers
+
     private var locationStatusText: String {
         switch locationManager.authorizationStatus {
-        case .authorizedAlways:
-            return "LOCATION ALWAYS ENABLED"
-        case .authorizedWhenInUse:
-            return "LOCATION WHEN IN USE"
-        case .denied, .restricted:
-            return "LOCATION DISABLED"
-        case .notDetermined:
-            return "LOCATION NOT SET"
-        @unknown default:
-            return "LOCATION STATUS UNKNOWN"
+        case .authorizedAlways:  return "LOCATION ALWAYS ENABLED"
+        case .authorizedWhenInUse: return "LOCATION WHEN IN USE"
+        case .denied, .restricted: return "LOCATION DISABLED"
+        case .notDetermined:     return "LOCATION NOT SET"
+        @unknown default:        return "LOCATION STATUS UNKNOWN"
         }
     }
-    
+
     private var locationStatusDescription: String {
         switch locationManager.authorizationStatus {
-        case .authorizedAlways:
-            return "Full location access enabled"
-        case .authorizedWhenInUse:
-            return "Location available when app is open"
-        case .denied, .restricted:
-            return "Enable to see your location on map"
-        case .notDetermined:
-            return "Grant permission to use location"
-        @unknown default:
-            return "Check location settings"
+        case .authorizedAlways:  return "Full location access enabled"
+        case .authorizedWhenInUse: return "Location available when app is open"
+        case .denied, .restricted: return "Enable to see your location on map"
+        case .notDetermined:     return "Grant permission to use location"
+        @unknown default:        return "Check location settings"
         }
     }
-    
+
     private var locationActionText: String {
         switch locationManager.authorizationStatus {
-        case .authorizedAlways, .authorizedWhenInUse:
-            return "MANAGE"
-        case .denied, .restricted:
-            return "ENABLE"
-        case .notDetermined:
-            return "ALLOW"
-        @unknown default:
-            return "SETTINGS"
+        case .authorizedAlways, .authorizedWhenInUse: return "MANAGE"
+        case .denied, .restricted: return "ENABLE"
+        case .notDetermined:       return "ALLOW"
+        @unknown default:          return "SETTINGS"
         }
     }
-    
+
     private func handleLocationAction() {
         switch locationManager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse, .restricted:
-            // Open app settings
             if let url = URL(string: UIApplication.openSettingsURLString) {
                 UIApplication.shared.open(url)
             }
         case .denied, .notDetermined:
-            // Request permission
             locationManager.requestPermissionIfNeeded(requestAlways: true)
         @unknown default:
-            // Open settings as fallback
             if let url = URL(string: UIApplication.openSettingsURLString) {
                 UIApplication.shared.open(url)
             }
         }
     }
-    
+
+    // MARK: - Reset
+
     private func resetToDefaults() {
+        mapStyleRaw = "dark"
+        map3DBuildings = true
+        mapOrientationRaw = "northUp"
         mapAutoZoom = true
-        mapAutoCenter = true
-        map3DBuildings = false
-        mapTrafficDisplay = false
-        mapDefaultType = "standard"
-        
-        // Reset new settings to defaults
-        mapAutoCenterTime = "10"
         mapZoomLevel = "medium"
+        mapAutoCenter = true
+        mapAutoCenterTime = "10"
+        mapSpeedZoom = true
     }
 }
 

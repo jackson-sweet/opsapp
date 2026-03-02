@@ -190,14 +190,29 @@ struct ManageSubscriptionView: View {
     // MARK: - Subscription Dashboard
 
     private func subscriptionDashboard(_ company: Company) -> some View {
-        VStack(spacing: 0) {
+        // Resolve plan: prefer fresh Stripe data, fall back to cached company data
+        let resolvedPlanName = stripeSubscriptionInfo?.planName?.lowercased() ?? company.subscriptionPlan
+        let resolvedPlan = resolvedPlanName.flatMap { SubscriptionPlan(rawValue: $0) }
+        let resolvedStatus = (stripeSubscriptionInfo?.status ?? company.subscriptionStatus)
+            .flatMap { SubscriptionStatus(rawValue: $0) }
+        let resolvedPeriod = displayBillingInterval(stripeSubscriptionInfo?.billingInterval ?? company.subscriptionPeriod)
+
+        return VStack(spacing: 0) {
             // Status row
             HStack(alignment: .center) {
                 // Plan name and status
                 VStack(alignment: .leading, spacing: 4) {
-                    if let plan = company.subscriptionPlan,
-                       let planEnum = SubscriptionPlan(rawValue: plan) {
-                        Text(planEnum.displayName.uppercased())
+                    if isLoadingStripeInfo && resolvedPlan == nil {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                                .scaleEffect(0.7)
+                            Text("LOADING...")
+                                .font(OPSStyle.Typography.title)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
+                    } else if let plan = resolvedPlan {
+                        Text(plan.displayName.uppercased())
                             .font(OPSStyle.Typography.title)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     } else {
@@ -206,8 +221,7 @@ struct ManageSubscriptionView: View {
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
 
-                    if let status = company.subscriptionStatus,
-                       let statusEnum = SubscriptionStatus(rawValue: status) {
+                    if let statusEnum = resolvedStatus {
                         HStack(spacing: 6) {
                             Circle()
                                 .fill(statusColor(for: statusEnum))
@@ -223,14 +237,13 @@ struct ManageSubscriptionView: View {
                 Spacer()
 
                 // Price display
-                if let plan = company.subscriptionPlan,
-                   let planEnum = SubscriptionPlan(rawValue: plan) {
+                if let plan = resolvedPlan {
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text(formatPrice(planEnum.monthlyPrice))
+                        Text(formatPrice(plan.monthlyPrice))
                             .font(OPSStyle.Typography.title)
                             .foregroundColor(OPSStyle.Colors.primaryText)
 
-                        Text(company.subscriptionPeriod ?? "Monthly")
+                        Text(resolvedPeriod ?? "Monthly")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
@@ -745,7 +758,7 @@ struct ManageSubscriptionView: View {
                                 HStack(spacing: 8) {
                                     if isCancelling {
                                         ProgressView()
-                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                            .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
                                             .scaleEffect(0.8)
                                     }
                                     Text(isCancelling ? "CANCELLING..." : "CONFIRM CANCELLATION")

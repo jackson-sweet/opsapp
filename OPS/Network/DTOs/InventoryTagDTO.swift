@@ -124,16 +124,16 @@ struct InventoryTagDTO: Codable {
     /// Create dictionary for Bubble API updates
     static func dictionaryFrom(_ model: InventoryTag) -> [String: Any] {
         var dict: [String: Any] = [
-            BubbleFields.Tag.name: model.name,
-            BubbleFields.Tag.company: model.companyId
+            "name": model.name,
+            "company": model.companyId
         ]
 
         if let warning = model.warningThreshold {
-            dict[BubbleFields.Tag.warningThreshold] = warning
+            dict["warningThreshold"] = warning
         }
 
         if let critical = model.criticalThreshold {
-            dict[BubbleFields.Tag.criticalThreshold] = critical
+            dict["criticalThreshold"] = critical
         }
 
         return dict

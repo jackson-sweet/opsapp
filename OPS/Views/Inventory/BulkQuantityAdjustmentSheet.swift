@@ -321,21 +321,19 @@ struct BulkQuantityAdjustmentSheet: View {
         Task {
             var failedCount = 0
 
-            for item in items {
-                do {
-                    let updates: [String: Any] = [
-                        BubbleFields.InventoryItem.quantity: item.quantity
-                    ]
-
-                    try await dataController.apiService.updateInventoryItem(id: item.id, updates: updates)
-
-                    await MainActor.run {
-                        item.needsSync = false
-                        item.lastSyncedAt = Date()
+            if let repo = dataController.inventoryRepository {
+                for item in items {
+                    do {
+                        let updates = UpdateInventoryItemDTO(quantity: item.quantity)
+                        _ = try await repo.updateItem(item.id, fields: updates)
+                        await MainActor.run {
+                            item.needsSync = false
+                            item.lastSyncedAt = Date()
+                        }
+                    } catch {
+                        failedCount += 1
+                        print("[BULK ADJUST] ❌ Failed to sync \(item.name): \(error)")
                     }
-                } catch {
-                    failedCount += 1
-                    print("[BULK ADJUST] Failed to update \(item.name): \(error)")
                 }
             }
 

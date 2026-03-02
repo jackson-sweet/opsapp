@@ -242,14 +242,14 @@ struct TaskTypeRow: View {
                 if taskType.isDefault {
                     Text("DEFAULT")
                         .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
+                        .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 } else {
                     Image(systemName: OPSStyle.Icons.chevronRight)
@@ -258,8 +258,12 @@ struct TaskTypeRow: View {
                 }
             }
             .padding(16)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+            .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(taskType.isDefault)

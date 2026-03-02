@@ -15,7 +15,7 @@ struct CreateDefaultInventoryUnitsView: View {
 
     @State private var isLoading = false
     @State private var errorMessage: String? = nil
-    @State private var createdUnits: [InventoryUnitDTO] = []
+    @State private var createdUnits: [InventoryUnitReadDTO] = []
     @State private var hasCreated = false
 
     // Get current company info
@@ -84,7 +84,7 @@ struct CreateDefaultInventoryUnitsView: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
                                 ForEach(createdUnits, id: \.id) { unit in
-                                    UnitChip(display: unit.display, isDefault: unit.isDefault ?? true)
+                                    UnitChip(display: unit.display, isDefault: unit.isDefault)
                                 }
                             }
                         }
@@ -113,7 +113,7 @@ struct CreateDefaultInventoryUnitsView: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                    Text("The Bubble workflow will handle creating these units in the database.")
+                    Text("Units will be created directly in Supabase.")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .padding(.top, 4)
@@ -175,21 +175,47 @@ struct CreateDefaultInventoryUnitsView: View {
             do {
                 print("[DEV_TOOLS] Creating default inventory units for company: \(companyId)")
 
-                let units = try await dataController.apiService.createDefaultInventoryUnits(companyId: companyId)
+                guard let repo = dataController.inventoryRepository else {
+                    throw NSError(domain: "OPS", code: -1, userInfo: [NSLocalizedDescriptionKey: "No inventory repository available"])
+                }
+
+                let defaultUnits: [(display: String, sortOrder: Int)] = [
+                    ("ea", 1), ("box", 2), ("ft", 3), ("gal", 4), ("lb", 5),
+                    ("roll", 6), ("bag", 7), ("pallet", 8), ("sheet", 9), ("bundle", 10)
+                ]
+
+                var created: [InventoryUnitReadDTO] = []
+                for unit in defaultUnits {
+                    let dto = CreateInventoryUnitDTO(
+                        companyId: companyId,
+                        display: unit.display,
+                        isDefault: true,
+                        sortOrder: unit.sortOrder
+                    )
+                    let result = try await repo.createUnit(dto)
+                    created.append(result)
+
+                    // Save locally
+                    await MainActor.run {
+                        let localUnit = InventoryUnit(
+                            id: result.id,
+                            display: result.display,
+                            companyId: result.companyId,
+                            isDefault: result.isDefault,
+                            sortOrder: result.sortOrder
+                        )
+                        localUnit.needsSync = false
+                        localUnit.lastSyncedAt = Date()
+                        modelContext.insert(localUnit)
+                    }
+                }
 
                 await MainActor.run {
-                    createdUnits = units
+                    createdUnits = created
                     hasCreated = true
                     isLoading = false
-
-                    // Also save the units locally
-                    for dto in units {
-                        let unit = dto.toModel()
-                        modelContext.insert(unit)
-                    }
                     try? modelContext.save()
-
-                    print("[DEV_TOOLS] Successfully created \(units.count) default inventory units")
+                    print("[DEV_TOOLS] Successfully created \(created.count) default inventory units")
                 }
             } catch {
                 await MainActor.run {

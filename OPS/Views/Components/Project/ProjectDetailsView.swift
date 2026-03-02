@@ -1,2729 +1,420 @@
 //
-//  ProjectDetailsView.swift
+//  ProjectDetailsViewRedesign.swift
 //  OPS
 //
-//  Created by Jackson Sweet on 2025-04-25.
+//  Redesigned ProjectDetailsView — thin container composing sub-views.
+//  Replaces the former 5K-line monolith.
 //
 
 import SwiftUI
-import UIKit
-import MapKit
-import CoreLocation
-import Supabase
-// Import team member components
+import SwiftData
 
-/// Enum for collapsible sections in ProjectDetailsView
-enum DetailsSection: String, CaseIterable, Hashable, Codable {
-    case client
-    case schedule
-    case notes
-    case tasks
-    case photos
-    case team
-
-    var title: String {
-        switch self {
-        case .client: return "CLIENT"
-        case .schedule: return "SCHEDULE"
-        case .notes: return "NOTES"
-        case .tasks: return "TASKS"
-        case .photos: return "PHOTOS"
-        case .team: return "TEAM"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .client: return OPSStyle.Icons.client
-        case .schedule: return OPSStyle.Icons.calendar
-        case .notes: return OPSStyle.Icons.notes
-        case .tasks: return OPSStyle.Icons.task
-        case .photos: return OPSStyle.Icons.photo
-        case .team: return OPSStyle.Icons.personTwo
-        }
-    }
-}
-
-/// Main tab options for project details view
-enum ProjectDetailsTab: String, CaseIterable {
-    case photosNotes = "Photos & Notes"
-    case tasks = "Tasks"
-    case details = "Details"
-
-    var title: String {
-        return rawValue.uppercased()
-    }
-}
-
-/// Map annotation item for project location - using existing type from ProjectMapView
-private struct ProjectLocationAnnotation: Identifiable {
-    let id = UUID()
-    let coordinate: CLLocationCoordinate2D
-}
-
-/// Pointed pill shape - pill with a triangular point on the left side (like a map callout)
 struct ProjectDetailsView: View {
     @Bindable var project: Project
     var isEditMode: Bool = false
-    var initialSelectedTask: ProjectTask? = nil  // Task to show when view opens
-    @Environment(\.dismiss) var dismiss
+    var initialSelectedTask: ProjectTask? = nil
+
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
-
-
-    @State private var noteText: String
-    @State private var originalNoteText: String
-    @State private var isEditingProjectNotes = false
-    @State private var editingTaskNotesId: String? = nil
-    @State private var editingTaskNotesText: String = ""
-    @State private var isEditingProjectDetails = false
-    @State private var editingProjectDetailsText: String = ""
     @EnvironmentObject private var dataController: DataController
-    @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var appState: AppState
-    @State private var showingPhotoViewer = false
-    @State private var selectedPhotoIndex: Int = 0
-    @State private var showingImagePicker = false
-    @State private var selectedImages: [UIImage] = []
-    @State private var processingImages = false
-    @State private var showingNetworkError = false
-    @State private var networkErrorMessage = ""
-    // REMOVED: No longer tracking photo deletion state
-    @State private var showingUnsavedChangesAlert = false
-    @State private var showingClientContact = false
-    @State private var isRefreshingClient = false
-    @State private var showingScheduler = false
-    @State private var showingAddressEditor = false
-    @State private var editedAddress: String = ""
-    @State private var isEditingAddress = false  // Inline address editing mode
-    @State private var addressMapRegion = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
-        span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-    )
-    @State private var isGeocodingAddress = false
-    @State private var addressDebounceTask: Task<Void, Never>?
-    @StateObject private var addressSearchCompleter = AddressSearchCompleter()
-    // Note: showingCompletionSheet removed - now handled globally via AppState in ContentView
-    @State private var showingCompletionAlert = false
-    @State private var showingDeleteAlert = false
-    @State private var refreshTrigger = false  // Toggle to force view refresh
-    @State private var isNotesExpanded = false
-    @State private var isEditingTitle = false
-    @State private var editedTitle: String = ""
-    @State private var showingAddTaskSheet = false
+
+    @StateObject private var viewModel: ProjectDetailsViewModel
+    @StateObject private var notesViewModel: ProjectNotesViewModel
+    @StateObject private var expenseViewModel = ExpenseViewModel()
+
+    // Photo state owned by container (sheets need them)
+    @State private var noteSelectedImages: [UIImage] = []
     @State private var selectedTeamMember: User? = nil
-    @State private var isTeamExpanded = false
-    @State private var isDeleting = false  // Flag to prevent accessing deleted project
-    @State private var completeBorderPulse = false  // Tutorial mode: pulsing border for complete button
-    @State private var photosBorderPulse = false  // Tutorial mode: pulsing border for photos section
-    @State private var notesBorderPulse = false  // Tutorial mode: pulsing border for notes section
-    @State private var showCompletedFlash = false  // Tutorial mode: flash "PROJECT COMPLETED" on button
+    @State private var editingExpense: ExpenseDTO? = nil
+    @State private var showNewExpenseSheet = false
+    @State private var showingStatusPicker = false
+    @State private var showingCameraBatch = false
+    @State private var isNoteComposing = false
+    @State private var showingTaskPicker = false
+    @State private var taskDetailTask: ProjectTask? = nil
 
-    // MARK: - Task Selection State
-    @State private var selectedTask: ProjectTask? = nil  // Currently selected task
-    @State private var taskNotes: String = ""
-    @State private var originalTaskNotes: String = ""
-    @State private var isTaskNotesExpanded: Bool = false
-    @State private var showingTaskTeamPicker: Bool = false
-    @State private var selectedTaskTeamMemberIds: Set<String> = []
-    @State private var taskTeamMembers: [TeamMember] = []
-    @State private var showingTaskScheduler: Bool = false
-    @State private var showingTaskDeleteConfirmation: Bool = false
-    @State private var showingCancelTaskConfirmation: Bool = false
-    @State private var showTaskTeamUpdateMessage: Bool = false
-    @State private var selectedProjectTab: ProjectDetailsTab = .photosNotes
-    @State private var showingTaskActionMenu: Bool = false
-
-    // MARK: - Collapsible Section State
-    @State private var sectionOrder: [DetailsSection] = DetailsSection.allCases
-    @State private var isClientExpanded: Bool = false
-    @State private var isScheduleExpanded: Bool = false
-    @State private var isProjectNotesExpanded: Bool = false
-    @State private var isTasksExpanded: Bool = false
-    @State private var isPhotosExpanded: Bool = false
-    // Note: isTeamExpanded is defined earlier at line 91
-    @State private var pinnedSections: Set<DetailsSection> = []
-
-    // UserDefaults key for section preferences
-    private static let sectionPrefsKey = "projectDetailsExpandedSections"
-
-    // Initialize with project's existing notes and optional selected task
     init(project: Project, isEditMode: Bool = false, initialSelectedTask: ProjectTask? = nil) {
         self._project = Bindable(wrappedValue: project)
         self.isEditMode = isEditMode
         self.initialSelectedTask = initialSelectedTask
-        let notes = project.notes ?? ""
-        self._noteText = State(initialValue: notes)
-        self._originalNoteText = State(initialValue: notes)
 
-        // Initialize selected task and task notes
-        self._selectedTask = State(initialValue: initialSelectedTask)
-        if let task = initialSelectedTask {
-            let taskNotesValue = task.taskNotes ?? ""
-            self._taskNotes = State(initialValue: taskNotesValue)
-            self._originalTaskNotes = State(initialValue: taskNotesValue)
-        }
-
-        // Initialize address map region to project's location
-        if let coordinate = project.coordinate {
-            self._addressMapRegion = State(initialValue: MKCoordinateRegion(
-                center: coordinate,
-                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-            ))
-        }
-        
-        // Debug output to help troubleshoot issues
-        
-        // New debug output for navigation
-        
-        // Debug project team member information
-        
-        // Team member debugging removed - no longer needed
-        
-        // Convert project to JSON for complete debugging
-        do {
-            let projectDict: [String: Any] = [
-                "id": project.id,
-                "title": project.title,
-                "clientName": project.effectiveClientName,
-                "address": project.address ?? "",
-                "status": project.status.rawValue,
-                "teamMemberIdsString": project.teamMemberIdsString,
-                "teamMemberIds": project.getTeamMemberIds(),
-                "teamMembersCount": project.teamMembers.count,
-                "projectImagesCount": project.getProjectImages().count,
-                "needsSync": project.needsSync,
-                "startDate": project.startDate?.description ?? "nil",
-                "endDate": project.endDate?.description ?? "nil"
-            ]
-            
-            let _ = try JSONSerialization.data(withJSONObject: projectDict, options: .prettyPrinted)
-            // JSON debugging removed - no longer needed
-        } catch {
-        }
+        self._viewModel = StateObject(wrappedValue: ProjectDetailsViewModel(
+            project: project,
+            initialSelectedTask: initialSelectedTask
+        ))
+        self._notesViewModel = StateObject(wrappedValue: ProjectNotesViewModel(projectId: project.id))
     }
-    
+
     var body: some View {
         Group {
-            if isDeleting {
-                // Show placeholder during deletion to avoid accessing deleted project
-                // CRITICAL: No modifiers that access project properties can be outside this if/else
+            if viewModel.isDeleting {
                 ZStack {
                     OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                 }
             } else {
-                mainView
+                mainContent
                     .navigationBarHidden(true)
+                    // MARK: - Sheets & Alerts
                     .overlay(saveNotificationOverlay)
-                    .fullScreenCover(isPresented: $showingPhotoViewer) {
+                    .fullScreenCover(isPresented: $viewModel.showingPhotoViewer) {
                         photoViewerContent
                     }
-                    .sheet(isPresented: $showingImagePicker) {
+                    .sheet(isPresented: $viewModel.showingImagePicker) {
                         imagePickerContent
                     }
-                    .confirmationDialog(
-                        "Unsaved Changes",
-                        isPresented: $showingUnsavedChangesAlert,
-                        titleVisibility: .visible
-                    ) {
-                        unsavedChangesButtons
-                    } message: {
-                        Text("You have unsaved changes to your notes. Would you like to save them before leaving?")
+                    .fullScreenCover(isPresented: $showingCameraBatch) {
+                        CameraBatchView { capturedImages in
+                            viewModel.selectedImages = capturedImages
+                            if !capturedImages.isEmpty {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    viewModel.addPhotosToProject(tutorialMode: tutorialMode)
+                                }
+                            }
+                        }
                     }
-                    .onAppear(perform: handleOnAppear)
-                    .onDisappear(perform: handleOnDisappear)
-                    .alert("Network Error", isPresented: $showingNetworkError) {
-                        Button("OK", role: .cancel) { }
-                    } message: {
-                        Text(networkErrorMessage)
+                    .sheet(isPresented: $viewModel.showingNoteImagePicker) {
+                        noteImagePickerContent
                     }
-                    // ALL sheets that access project properties MUST be inside this else block
-                    .sheet(isPresented: $showingClientContact) {
+                    .fullScreenCover(isPresented: $viewModel.showingNotePhotoViewer) {
+                        notePhotoViewerContent
+                    }
+                    .sheet(isPresented: $viewModel.showingClientContact) {
                         clientContactSheet
                     }
                     .sheet(item: $selectedTeamMember) { member in
                         ContactDetailView(user: member)
                             .environmentObject(dataController)
                     }
-                    .sheet(isPresented: $showingScheduler) {
+                    .sheet(isPresented: $viewModel.showingScheduler) {
                         CalendarSchedulerSheet(
-                            isPresented: $showingScheduler,
+                            isPresented: $viewModel.showingScheduler,
                             itemType: .project(project),
                             currentStartDate: project.startDate,
                             currentEndDate: project.endDate,
-                            onScheduleUpdate: { startDate, endDate in
-                                handleScheduleUpdate(startDate: startDate, endDate: endDate)
+                            onScheduleUpdate: { start, end in
+                                viewModel.handleScheduleUpdate(startDate: start, endDate: end)
                             },
-                            onClearDates: {
-                                handleClearDates()
-                            }
+                            onClearDates: { viewModel.handleClearDates() }
                         )
                         .environmentObject(dataController)
                     }
-                    // Note: Completion checklist sheet is now handled globally via AppState in ContentView
-                    .sheet(isPresented: $showingAddressEditor) {
+                    .sheet(isPresented: $viewModel.showingAddressEditor) {
                         AddressEditorSheet(
-                            address: $editedAddress,
-                            onSave: {
-                                saveAddress()
-                            },
-                            onCancel: {
-                                showingAddressEditor = false
-                            }
+                            address: $viewModel.editedAddress,
+                            onSave: { viewModel.saveAddress() },
+                            onCancel: { viewModel.showingAddressEditor = false }
                         )
                     }
-                    .sheet(isPresented: $showingAddTaskSheet) {
+                    .sheet(isPresented: $viewModel.showingAddTaskSheet) {
                         TaskFormSheet(
                             mode: .create,
                             preselectedProjectId: project.id,
-                            onSave: { _ in
-                                // No manual refresh needed - @Bindable project automatically updates when tasks change
-                            }
+                            onSave: { _ in }
                         )
                         .environmentObject(dataController)
                     }
-                    .sheet(isPresented: $showingTaskScheduler) {
-                        if let task = selectedTask {
+                    .sheet(isPresented: $viewModel.showingTaskScheduler) {
+                        if let task = viewModel.selectedTask {
                             CalendarSchedulerSheet(
-                                isPresented: $showingTaskScheduler,
+                                isPresented: $viewModel.showingTaskScheduler,
                                 itemType: .task(task),
                                 currentStartDate: task.startDate,
                                 currentEndDate: task.endDate,
-                                onScheduleUpdate: handleTaskScheduleUpdate
+                                onScheduleUpdate: viewModel.handleTaskScheduleUpdate
                             )
                             .environmentObject(dataController)
                         }
                     }
-            }
-        }
-    }
-
-    // MARK: - Main View Components
-
-    private var mainView: some View {
-        GeometryReader { geometry in
-            let mapHeight = geometry.size.width * 4 / 3 // 4:3 aspect ratio (height:width)
-
-            ZStack(alignment: .top) {
-                // MARK: - Map Background
-                mapBackgroundView(height: mapHeight)
-
-                // MARK: - Content with Gradient Overlay
-                VStack(spacing: 0) {
-                    // Header nav bar
-                    headerView
-
-                    // Scrollable content with gradient behind it
-                    ScrollView {
-                        contentWithGradient(mapHeight: mapHeight)
+                    .sheet(item: $editingExpense) { expense in
+                        ExpenseFormSheet(viewModel: expenseViewModel, editing: expense)
+                            .environmentObject(dataController)
                     }
-                }
-            }
-            .background(OPSStyle.Colors.background)
-        }
-    }
-
-    /// Map background with 5:3 aspect ratio, address badge, and project label annotation
-    private func mapBackgroundView(height: CGFloat) -> some View {
-        ZStack(alignment: .topTrailing) {
-            if let coordinate = project.coordinate {
-                Map(coordinateRegion: .constant(MKCoordinateRegion(
-                    center: coordinate,
-                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-                )), interactionModes: [.pan, .zoom, .rotate], annotationItems: [ProjectLocationAnnotation(coordinate: coordinate)]) { item in
-                    MapAnnotation(coordinate: item.coordinate, anchorPoint: CGPoint(x: 0, y: 0.5)) {
-                        // Label annotation centered above coordinate
-                        mapAnnotationLabel
+                    .sheet(isPresented: $showNewExpenseSheet) {
+                        ExpenseFormSheet(viewModel: expenseViewModel, prefilledProjectId: project.id)
+                            .environmentObject(dataController)
                     }
-                }
-                .frame(height: height)
-                .allowsHitTesting(true)
-            } else {
-                // Fallback when no coordinates
-                Rectangle()
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
-                    .frame(height: height)
-                    .overlay(
-                        VStack(spacing: 8) {
-                            Image(systemName: "map")
-                                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            Text("No location set")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .sheet(isPresented: $showingStatusPicker) {
+                        ProjectStatusChangeSheet(project: project)
+                            .environmentObject(dataController)
+                    }
+                    .sheet(isPresented: $showingTaskPicker) {
+                        taskPickerSheet
+                    }
+                    .sheet(item: $taskDetailTask) { task in
+                        TaskDetailPopupSheet(
+                            task: task,
+                            onSelect: { t in
+                                withAnimation(OPSStyle.Animation.fast) {
+                                    viewModel.selectedTask = t
+                                }
+                            },
+                            onComplete: { t in
+                                viewModel.selectedTask = t
+                                viewModel.toggleTaskStatus()
+                            },
+                            onReschedule: { t in
+                                viewModel.selectedTask = t
+                                viewModel.showingTaskScheduler = true
+                            },
+                            onCancel: { t in
+                                viewModel.selectedTask = t
+                                viewModel.showingCancelTaskConfirmation = true
+                            }
+                        )
+                    }
+                    .confirmationDialog("Unsaved Changes", isPresented: $viewModel.showingUnsavedChangesAlert, titleVisibility: .visible) {
+                        Button("Discard Changes", role: .destructive) { dismiss() }
+                        Button("Cancel", role: .cancel) { }
+                    } message: {
+                        Text("You have unsaved changes. Discard them?")
+                    }
+                    .alert("Network Error", isPresented: $viewModel.showingNetworkError) {
+                        Button("OK", role: .cancel) { }
+                    } message: {
+                        Text(viewModel.networkErrorMessage)
+                    }
+                    .alert("Delete Project?", isPresented: $viewModel.showingDeleteAlert) {
+                        Button("Delete", role: .destructive) {
+                            viewModel.isDeleting = true
+                            viewModel.deleteProject()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { dismiss() }
                         }
-                    )
+                        Button("Cancel", role: .cancel) { }
+                    } message: {
+                        Text("This action cannot be undone.")
+                    }
+                    .confirmationDialog("Cancel Task?", isPresented: $viewModel.showingCancelTaskConfirmation, titleVisibility: .visible) {
+                        Button("Cancel Task", role: .destructive) { viewModel.cancelSelectedTask() }
+                        Button("Keep Task", role: .cancel) { }
+                    } message: {
+                        Text("This task will be marked as cancelled.")
+                    }
+                    .alert("Delete Task?", isPresented: $viewModel.showingTaskDeleteConfirmation) {
+                        Button("Delete", role: .destructive) { viewModel.deleteSelectedTask() }
+                        Button("Cancel", role: .cancel) { }
+                    } message: {
+                        Text("This action cannot be undone.")
+                    }
+                    .onAppear { handleOnAppear() }
+            }
+        }
+    }
+
+    // MARK: - Main Content
+
+    private var mainContent: some View {
+        ZStack(alignment: .top) {
+            // Layer 1: Fixed map background (behind everything)
+            VStack(spacing: 0) {
+                ProjectMapHeader(
+                    project: project,
+                    taskColorHexes: viewModel.projectTaskColorHexes,
+                    pinLabel: viewModel.pinLabel,
+                    nearbyProjects: viewModel.nearbyProjectPins,
+                    onMapTap: { viewModel.openDirections() }
+                )
+                Spacer()
             }
 
-            // Address badge at top right
-            if let address = project.address, !address.isEmpty {
-                addressBadge(address: address)
-                    .padding(.top, 108) // Below header with extra spacing
-                    .padding(.trailing, 12)
+            // Layer 2: Scrollable content that slides up over the map
+            ScrollView {
+                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    // Initial spacer — positions content in lower portion of map
+                    Color.clear.frame(height: ProjectMapHeader.mapHeight - 130)
+
+                    // Gradient scrolls with content (not pinned — avoids content peeking through)
+                    mapScrollGradient
+
+                    // Pinned header: title + tab bar (solid background blocks content behind it)
+                    Section(header: stickyHeader) {
+                        tabContent
+                            .padding(.bottom, 100)
+                            .background(OPSStyle.Colors.background)
+                    }
+                }
             }
 
-            // Bottom gradient overlay - blends map edge to black
+            // Layer 3: Nav bar (above scroll view so it's always tappable)
+            projectNavBar
+                .zIndex(10)
+
+            // Layer 4: Floating toolbar — quick actions or note compose toolbar
             VStack {
                 Spacer()
-                LinearGradient(
-                    gradient: Gradient(colors: [.clear, .black]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: height * 0.1)
-            }
-            .allowsHitTesting(false)
-        }
-        .frame(height: height)
-    }
-
-    /// Address badge for map overlay - styled like status badge with secondary text colors
-    private func addressBadge(address: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "mappin.circle.fill")
-                .font(.system(size: OPSStyle.Layout.IconSize.xs))
-            Text(formatHeaderAddress(address))
-                .font(OPSStyle.Typography.caption)
-                .lineLimit(1)
-        }
-        .foregroundColor(OPSStyle.Colors.secondaryText)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .fill(.ultraThinMaterial)
-                .environment(\.colorScheme, .dark)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-    }
-
-    /// Map annotation label - uses custom MapMarkerBadge with pointer
-    private var mapAnnotationLabel: some View {
-        let isTaskCompleted = selectedTask?.status == .completed
-
-        return VStack(spacing: 4) {
-            // Completed badge above marker
-            if isTaskCompleted {
-                Text("COMPLETED")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(Color("StatusCompleted"))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(Color("StatusCompleted").opacity(0.15))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(Color("StatusCompleted"), lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-            }
-
-            MapMarkerBadge(
-                fillColor: OPSStyle.Colors.overlayHeavy,
-                strokeColor: isTaskCompleted ? Color("StatusCompleted").opacity(0.5) : OPSStyle.Colors.primaryText,
-                strokeWidth: 1
-            ) {
-                HStack(spacing: 6) {
-                    // Colored dot for task (or primary accent if no task)
-                    Circle()
-                        .fill(selectedTask != nil ? (Color(hex: selectedTask!.taskColor) ?? OPSStyle.Colors.primaryAccent) : OPSStyle.Colors.primaryAccent)
-                        .frame(width: 8, height: 8)
-
-                    // Project title or task name
-                    Text(selectedTask?.taskType?.display.uppercased() ?? project.title.uppercased())
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(isTaskCompleted ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
-                        .strikethrough(isTaskCompleted, color: OPSStyle.Colors.tertiaryText)
-                        .lineLimit(1)
-                }
-            }
-        }
-    }
-
-    /// Content area with gradient behind it
-    private func contentWithGradient(mapHeight: CGFloat) -> some View {
-        ZStack(alignment: .top) {
-            // Gradient background: starts clear, fades to solid
-            VStack(spacing: 0) {
-                // Transparent spacer for top 1/3 - allows map touches to pass through
-                Color.clear
-                    .frame(height: mapHeight * 0.33)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        openDirections()
-                    }
-
-                // Gradient from 1/3 to 2/3 of map
-                LinearGradient(
-                    gradient: Gradient(stops: [
-                        .init(color: Color.clear, location: 0),
-                        .init(color: OPSStyle.Colors.background.opacity(0.5), location: 0.5),
-                        .init(color: OPSStyle.Colors.background, location: 1.0)
-                    ]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: mapHeight * 0.33)
-                .allowsHitTesting(false)
-
-                // Solid background continues below
-                OPSStyle.Colors.background
-            }
-
-            // Main content positioned at 2/3 down the map
-            VStack(spacing: 16) {
-                // Task section (only when task selected)
-                if selectedTask != nil {
-                    compactTaskSection
-                }
-
-                // Tab selector with sliding underline
-                tabSelector
-
-                // Tab content
-                tabContent
-            }
-            .padding(.top, mapHeight * 0.5) // Content starts at 2/3 of map height
-        }
-    }
-
-    private var headerView: some View {
-        HStack(alignment: .bottom, spacing: 12) {
-            // Left side: Title, client, metadata
-            VStack(alignment: .leading, spacing: 6) {
-                // Spacer to add padding above title
-                Spacer()
-                    .frame(height: 8)
-
-                // Title
-                if isEditingTitle {
-                    TextField("Project Title", text: $editedTitle)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .submitLabel(.done)
-                        .onSubmit {
-                            saveTitle()
-                        }
-                } else {
-                    Text(project.title.uppercased())
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .lineLimit(1)
-                }
-
-                // Client name
-                Text(project.effectiveClientName.uppercased())
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .lineLimit(1)
-
-                // Metadata row
-                HStack(spacing: 12) {
-                    // Calendar icon + date range
-                    HStack(spacing: 4) {
-                        Image(systemName: OPSStyle.Icons.calendar)
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                        if let startDate = project.computedStartDate {
-                            if let endDate = project.computedEndDate {
-                                Text("\(DateHelper.simpleDateString(from: startDate)) - \(DateHelper.simpleDateString(from: endDate))")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            } else {
-                                Text(DateHelper.simpleDateString(from: startDate))
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                if isNoteComposing {
+                    NoteComposeToolbar(
+                        onMention: {
+                            notesViewModel.newNoteText += "@"
+                            notesViewModel.handleMentionInput(notesViewModel.newNoteText)
+                        },
+                        onPhoto: { viewModel.showingNoteImagePicker = true },
+                        onPost: {
+                            Task {
+                                await notesViewModel.postNote()
+                                isNoteComposing = false
                             }
-                        } else {
-                            Text("—")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-                    }
-
-                    // Team icon + count
-                    HStack(spacing: 4) {
-                        Image(systemName: OPSStyle.Icons.personTwo)
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        Text("\(project.teamMembers.count)")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-
-                    // Task icon + count
-                    HStack(spacing: 4) {
-                        Image(systemName: OPSStyle.Icons.task)
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        Text("\(project.tasks.count)")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
+                        },
+                        canPost: notesViewModel.canPost
+                    )
+                    .padding(.bottom, 16)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else {
+                    ProjectQuickActionsBar(
+                        selectedTask: viewModel.selectedTask,
+                        hasClientContact: viewModel.hasClientContact,
+                        canEdit: viewModel.canEditProject,
+                        onPhoto: { showingCameraBatch = true },
+                        onNote: {
+                            viewModel.selectedTab = .activity
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                isNoteComposing = true
+                            }
+                        },
+                        onExpense: { openNewExpenseSheet() },
+                        onComplete: { viewModel.toggleTaskStatus() },
+                        onReschedule: { viewModel.showingTaskScheduler = true },
+                        onContact: { viewModel.showingClientContact = true },
+                        onAddTask: { viewModel.showingAddTaskSheet = true }
+                    )
+                    .padding(.bottom, 16)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+            }
+            .zIndex(5)
+            .animation(OPSStyle.Animation.fast, value: isNoteComposing)
+        }
+        .background(OPSStyle.Colors.background.edgesIgnoringSafeArea(.all))
+    }
+
+    /// Gradient overlay that scrolls with title content — fades map into background
+    private var mapScrollGradient: some View {
+        LinearGradient(
+            gradient: Gradient(stops: [
+                .init(color: .clear, location: 0),
+                .init(color: OPSStyle.Colors.background.opacity(0.5), location: 0.3),
+                .init(color: OPSStyle.Colors.background.opacity(0.85), location: 0.7),
+                .init(color: OPSStyle.Colors.background, location: 1.0)
+            ]),
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(height: 100)
+        .allowsHitTesting(false)
+    }
+
+    /// Navigation bar extracted from map header — sits above scroll view for reliable tap targets
+    private var projectNavBar: some View {
+        HStack {
+            // DONE button
+            Button(action: { handleDismiss() }) {
+                Text("DONE")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.invertedText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(OPSStyle.Colors.primaryText)
+                    .cornerRadius(OPSStyle.Layout.buttonRadius)
             }
 
             Spacer()
 
-            // Status badge at bottom right - job board style
-            Text(project.status.displayName.uppercased())
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(project.status.color)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .fill(project.status.color.opacity(0.1))
+            // Task badge — tappable to open picker
+            if let task = viewModel.selectedTask {
+                let taskColor = Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent
+                let isComplete = task.status == .completed
+                Button(action: { showingTaskPicker = true }) {
+                    TaskBadge(
+                        name: task.taskType?.display ?? "Task",
+                        color: taskColor,
+                        size: .navBar,
+                        faded: isComplete
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+            } else if project.tasks.isEmpty {
+                // No tasks on project — non-tappable
+                TaskBadge(
+                    name: "No Tasks",
+                    color: OPSStyle.Colors.tertiaryText,
+                    size: .navBar,
+                    faded: true
                 )
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(project.status.color, lineWidth: OPSStyle.Layout.Border.standard)
-                )
-        }
-        .overlay(alignment: .topTrailing) {
-            // DONE button positioned at top right
-            doneButton
+            } else {
+                // Has tasks but none selected — tappable
+                Button(action: { showingTaskPicker = true }) {
+                    TaskBadge(
+                        name: "Select Task",
+                        color: OPSStyle.Colors.tertiaryText,
+                        size: .navBar
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 16)
-        .background {
-            ZStack {
-                OPSStyle.Colors.background
-                Rectangle().fill(.ultraThinMaterial)
-                OPSStyle.Colors.modalOverlay
-            }
-            .environment(\.colorScheme, .dark)
-        }
+        .padding(.top, 8)
     }
 
-    private var doneButton: some View {
-        Button("DONE") {
-            checkForUnsavedChanges()
+    /// Pinned section header: title + tab bar with solid background.
+    /// Solid background blocks content from showing through when pinned.
+    private var stickyHeader: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ProjectTitleOverlay(project: project)
+            ProjectDetailsTabBar(selectedTab: $viewModel.selectedTab)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 4)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(OPSStyle.Colors.primaryText)
-        .foregroundColor(OPSStyle.Colors.invertedText)
-        .cornerRadius(OPSStyle.Layout.buttonRadius)
-        .font(OPSStyle.Typography.bodyBold)
-    }
-
-    /// Format address to show street and city only
-    private func formatHeaderAddress(_ address: String) -> String {
-        let components = address.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        if components.count >= 2 {
-            return "\(components[0]), \(components[1])"
-        }
-        return components.first ?? address
-    }
-
-    // MARK: - Compact Task Section
-
-    /// Compact task section displayed above tabs when a task is selected
-    private var compactTaskSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-                // Header: Task type + Status badge
-                HStack {
-                    Text(selectedTask?.taskType?.display.uppercased() ?? "TASK")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                    Spacer()
-
-                    if let task = selectedTask {
-                        // Status badge - job board style (outlined with colored background)
-                        Text(task.status.displayName.uppercased())
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(task.status.color)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .fill(task.status.color.opacity(0.1))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .stroke(task.status.color, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
-                    }
-                }
-
-                // Info row: Date range + Team count + Team member avatars (right aligned)
-                if let task = selectedTask {
-                    let taskTeamMemberIds = task.getTeamMemberIds()
-                    let taskTeamMembers = project.teamMembers.filter { taskTeamMemberIds.contains($0.id) }
-
-                    HStack(spacing: 16) {
-                        // Calendar icon + date range
-                        HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.calendar)
-                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                            if let start = task.startDate {
-                                if let end = task.endDate, !Calendar.current.isDate(start, inSameDayAs: end) {
-                                    Text("\(DateHelper.simpleDateString(from: start)) - \(DateHelper.simpleDateString(from: end))")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                } else {
-                                    Text(DateHelper.simpleDateString(from: start))
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                }
-                            } else {
-                                Text("Not scheduled")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            }
-                        }
-
-                        // Team icon + count
-                        HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.personTwo)
-                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            Text("\(taskTeamMemberIds.count)")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-
-                        Spacer()
-
-                        // Team member avatars (right aligned)
-                        if !taskTeamMembers.isEmpty {
-                            HStack(spacing: -6) {
-                                ForEach(taskTeamMembers.prefix(4), id: \.id) { member in
-                                    UserAvatar(user: member, size: 22)
-                                        .overlay(
-                                            Circle()
-                                                .stroke(OPSStyle.Colors.background, lineWidth: OPSStyle.Layout.Border.standard)
-                                        )
-                                }
-                                if taskTeamMembers.count > 4 {
-                                    Text("+\(taskTeamMembers.count - 4)")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        .frame(width: 22, height: 22)
-                                        .background(OPSStyle.Colors.cardBackgroundDark)
-                                        .clipShape(Circle())
-                                        .overlay(
-                                            Circle()
-                                                .stroke(OPSStyle.Colors.background, lineWidth: OPSStyle.Layout.Border.standard)
-                                        )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Notes preview (2-3 lines if exists)
-                if let task = selectedTask,
-                   let notes = task.taskNotes,
-                   !notes.isEmpty {
-                    Text(notes)
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .lineLimit(2)
-                }
-
-                // Button row: Complete/Reopen (75%) + ... menu (25%)
-                HStack(spacing: 8) {
-                    // Complete/Reopen button (75% width)
-                    if let task = selectedTask {
-                        let isCompleted = task.status == .completed
-                        let buttonColor = isCompleted ? OPSStyle.Colors.secondaryText : Color("StatusCompleted")
-                        let taskName = task.taskType?.display.uppercased() ?? "TASK"
-
-                        Button(action: {
-                            toggleTaskStatus()
-                        }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: isCompleted ? "arrow.uturn.backward" : "checkmark")
-                                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                                Text(isCompleted ? "REOPEN \(taskName)" : "COMPLETE \(taskName)")
-                                    .font(OPSStyle.Typography.captionBold)
-                            }
-                            .foregroundColor(buttonColor)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 36)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                    .stroke(buttonColor, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-
-                    // Admin action menu button (25% width)
-                    if canEditProjectSettings() {
-                        Button(action: {
-                            showingTaskActionMenu = true
-                        }) {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .frame(width: 60, height: 36)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                        .stroke(OPSStyle.Colors.secondaryText.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
-                                )
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .confirmationDialog("Task Actions", isPresented: $showingTaskActionMenu) {
-                            Button("Edit Team") {
-                                if let task = selectedTask {
-                                    selectedTaskTeamMemberIds = Set(task.getTeamMemberIds())
-                                    loadTaskTeamMembers()
-                                    showingTaskTeamPicker = true
-                                }
-                            }
-                            Button("Reschedule") {
-                                showingTaskScheduler = true
-                            }
-                            Button("Cancel Task", role: .destructive) {
-                                showingCancelTaskConfirmation = true
-                            }
-                            Button("Delete Task", role: .destructive) {
-                                showingTaskDeleteConfirmation = true
-                            }
-                            Button("Cancel", role: .cancel) { }
-                        }
-                    }
-                }
-            }
-            .padding(.vertical, 16)
-            .padding(.leading, 20)  // Extra 4pt to account for color stripe
-            .padding(.trailing, 16)
-        .background(
-            HStack(spacing: 0) {
-                // Left color stripe - full height via background
-                if let task = selectedTask {
-                    (Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent)
-                        .frame(width: 4)
-                }
-                Spacer()
-            }
-        )
-        .confirmationDialog(
-            "Cancel Task?",
-            isPresented: $showingCancelTaskConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Cancel Task", role: .destructive) {
-                cancelSelectedTask()
-            }
-            Button("Keep Task", role: .cancel) { }
-        } message: {
-            Text("This task will be marked as cancelled.")
-        }
-        .alert("Delete Task?", isPresented: $showingTaskDeleteConfirmation) {
-            Button("Delete", role: .destructive) {
-                deleteSelectedTask()
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("This action cannot be undone.")
-        }
-        .padding(.horizontal)
-    }
-
-    // MARK: - Tab Selector with Sliding Underline
-
-    private var tabSelector: some View {
-        GeometryReader { geometry in
-            let tabWidth = geometry.size.width / CGFloat(ProjectDetailsTab.allCases.count)
-
-            ZStack(alignment: .bottomLeading) {
-                // Tab labels
-                HStack(spacing: 0) {
-                    ForEach(ProjectDetailsTab.allCases, id: \.self) { tab in
-                        Button(action: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                selectedProjectTab = tab
-                            }
-                        }) {
-                            Text(tab.title)
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(selectedProjectTab == tab ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-
-                // Sliding underline
-                Rectangle()
-                    .fill(OPSStyle.Colors.primaryText)
-                    .frame(width: tabWidth, height: 2)
-                    .offset(x: tabWidth * CGFloat(ProjectDetailsTab.allCases.firstIndex(of: selectedProjectTab) ?? 0))
-                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: selectedProjectTab)
-            }
-        }
-        .frame(height: 44)
-        .padding(.horizontal)
+        .background(OPSStyle.Colors.background)
     }
 
     // MARK: - Tab Content
 
     @ViewBuilder
     private var tabContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            switch selectedProjectTab {
-            case .photosNotes:
-                photosNotesTabContent
-            case .tasks:
-                tasksTabContent
-            case .details:
-                detailsTabContent
-            }
-        }
-    }
+        switch viewModel.selectedTab {
+        case .activity:
+            ActivityTabView(
+                notesViewModel: notesViewModel,
+                project: project,
+                onShowImagePicker: { viewModel.showingImagePicker = true },
+                onShowNoteImagePicker: { viewModel.showingNoteImagePicker = true },
+                onPhotoTap: { urls, index in
+                    viewModel.notePhotoViewerURLs = urls
+                    viewModel.notePhotoViewerIndex = index
+                    viewModel.showingNotePhotoViewer = true
+                },
+                onProjectPhotoTap: { index in
+                    viewModel.selectedPhotoIndex = index
+                    viewModel.showingPhotoViewer = true
+                },
+                noteFieldFocused: $isNoteComposing
+            )
 
-    // MARK: - Photos & Notes Tab
-
-    private var photosNotesTabContent: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // PHOTOS section
-            photosTabSection
-
-            // Divider
-            Rectangle()
-                .fill(OPSStyle.Colors.cardBorder)
-                .frame(height: 1)
-                .padding(.horizontal)
-
-            // TEAM NOTES section
-            teamNotesTabSection
-
-            Spacer()
-                .frame(height: 300)
-        }
-    }
-
-    private var photosTabSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Section header with count in brackets
-            let photos = project.getProjectImages()
-
-            Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    isPhotosExpanded.toggle()
-                }
-            }) {
-                HStack {
-                    Image(systemName: OPSStyle.Icons.photo)
-                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Text("PHOTOS")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Text("[\(photos.count)]")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                    Spacer()
-
-                    Image(systemName: isPhotosExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-            }
-            .buttonStyle(PlainButtonStyle())
-            .padding(.horizontal)
-
-            // Photos content
-            if photos.isEmpty {
-                // Empty state - styled like task list
-                Button(action: { showingImagePicker = true }) {
-                    HStack {
-                        Image(systemName: "plus")
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                        Text("ADD PHOTOS")
-                        Spacer()
-                    }
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .padding(.horizontal)
-            } else if isPhotosExpanded {
-                // Grid view when expanded
-                LazyVGrid(columns: [
-                    GridItem(.flexible(), spacing: 8),
-                    GridItem(.flexible(), spacing: 8),
-                    GridItem(.flexible(), spacing: 8)
-                ], spacing: 8) {
-                    // Add button first
-                    Button(action: { showingImagePicker = true }) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [6, 4]))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
-                            Image(systemName: "plus")
-                                .font(.system(size: OPSStyle.Layout.IconSize.lg))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                        .aspectRatio(1, contentMode: .fit)
-                    }
-
-                    ForEach(Array(photos.enumerated()), id: \.element) { index, url in
-                        photoThumbnailView(url: url, index: index)
-                            .aspectRatio(1, contentMode: .fit)
-                            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    }
-                }
-                .padding(.horizontal)
-            } else {
-                // Horizontal scroll when collapsed
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        // Add button first
-                        Button(action: { showingImagePicker = true }) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .stroke(style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [6, 4]))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
-                                Image(systemName: "plus")
-                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            }
-                            .frame(width: 80, height: 80)
-                        }
-
-                        ForEach(Array(photos.enumerated()), id: \.element) { index, url in
-                            photoThumbnailView(url: url, index: index)
-                                .frame(width: 80, height: 80)
-                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-            }
-        }
-    }
-
-    private var teamNotesTabSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Count notes: project notes + task notes
-            let notesCount = (noteText.isEmpty ? 0 : 1) + project.tasks.filter { !($0.taskNotes ?? "").isEmpty }.count
-
-            // Section header with count in brackets
-            Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    isNotesExpanded.toggle()
-                }
-            }) {
-                HStack {
-                    Image(systemName: OPSStyle.Icons.notes)
-                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Text("NOTES")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Text("[\(notesCount)]")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                    Spacer()
-
-                    Image(systemName: isNotesExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-            }
-            .buttonStyle(PlainButtonStyle())
-            .padding(.horizontal)
-
-            // Notes content
-            if isNotesExpanded {
-                VStack(alignment: .leading, spacing: 16) {
-                    // Project Notes
-                    projectNotesField
-
-                    // Task Notes (for each task)
-                    ForEach(project.tasks.sorted { $0.displayOrder < $1.displayOrder }, id: \.id) { task in
-                        taskNotesField(task: task)
-                    }
-                }
-                .padding(.horizontal)
-            } else {
-                // Preview when collapsed
-                if notesCount == 0 {
-                    Button(action: {
-                        withAnimation {
-                            isNotesExpanded = true
-                        }
-                    }) {
-                        HStack {
-                            Image(systemName: "plus")
-                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            Text("ADD NOTES")
-                            Spacer()
-                        }
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .padding(.horizontal)
-                } else {
-                    // Show preview of first note
-                    VStack(alignment: .leading, spacing: 8) {
-                        if !noteText.isEmpty {
-                            Text(noteText)
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .lineLimit(2)
-                        } else if let firstTaskWithNotes = project.tasks.first(where: { !($0.taskNotes ?? "").isEmpty }) {
-                            Text(firstTaskWithNotes.taskNotes ?? "")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .lineLimit(2)
-                        }
-
-                        // "SEE ALL NOTES" button with colored dots for tasks with hidden notes
-                        let tasksWithNotes = project.tasks
-                            .sorted { $0.displayOrder < $1.displayOrder }
-                            .filter { !($0.taskNotes ?? "").isEmpty }
-                        let hasMultipleNotes = notesCount > 1
-                        let previewedNoteIsLong = (!noteText.isEmpty && noteText.count > 80) ||
-                            (noteText.isEmpty && (project.tasks.first(where: { !($0.taskNotes ?? "").isEmpty })?.taskNotes?.count ?? 0) > 80)
-
-                        if hasMultipleNotes || previewedNoteIsLong {
-                            Button(action: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    isNotesExpanded = true
-                                }
-                            }) {
-                                HStack(spacing: 6) {
-                                    Text("SEE ALL NOTES")
-                                        .font(OPSStyle.Typography.captionBold)
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-
-                                    // Colored dots for tasks with notes
-                                    if !tasksWithNotes.isEmpty {
-                                        HStack(spacing: 4) {
-                                            ForEach(tasksWithNotes, id: \.id) { task in
-                                                Circle()
-                                                    .fill(Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent)
-                                                    .frame(width: 6, height: 6)
-                                            }
-                                        }
-                                    }
-
-                                    Spacer()
-                                }
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                    }
-                    .padding(.horizontal)
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            isNotesExpanded = true
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var projectNotesField: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Sub-header
-            Text("PROJECT NOTES")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-            if isEditingProjectNotes {
-                // Editing mode
-                VStack(alignment: .leading, spacing: 8) {
-                    TextEditor(text: $noteText)
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .scrollContentBackground(.hidden)
-                        .background(Color.clear)
-                        .frame(minHeight: 80)
-                        .padding(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
-
-                    // Cancel/Save buttons
-                    HStack {
-                        Button(action: {
-                            withAnimation(OPSStyle.Animation.fast) {
-                                noteText = originalNoteText
-                                isEditingProjectNotes = false
-                            }
-                        }) {
-                            Text("Cancel")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-
-                        Spacer()
-
-                        Button(action: {
-                            saveNotes()
-                            withAnimation(OPSStyle.Animation.fast) {
-                                isEditingProjectNotes = false
-                            }
-                        }) {
-                            Text("Save")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
-            } else {
-                // Display mode
-                HStack(alignment: .top) {
-                    if noteText.isEmpty {
-                        Button(action: {
-                            withAnimation(OPSStyle.Animation.fast) {
-                                isEditingProjectNotes = true
-                            }
-                        }) {
-                            HStack {
-                                Image(systemName: "plus")
-                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                Text("ADD NOTES")
-                                Spacer()
-                            }
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    } else {
-                        Text(noteText)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-
-                    Spacer()
-
-                    if !noteText.isEmpty {
-                        Button(action: {
-                            withAnimation(OPSStyle.Animation.fast) {
-                                isEditingProjectNotes = true
-                            }
-                        }) {
-                            Image(systemName: OPSStyle.Icons.pencil)
-                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-                .transition(.opacity)
-            }
-        }
-        .animation(OPSStyle.Animation.fast, value: isEditingProjectNotes)
-    }
-
-    private func taskNotesField(task: ProjectTask) -> some View {
-        let taskNotes = task.taskNotes ?? ""
-        let isEditing = editingTaskNotesId == task.id
-        let taskColor = Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent
-
-        return VStack(alignment: .leading, spacing: 8) {
-            // Sub-header with task name and color
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(taskColor)
-                    .frame(width: 8, height: 8)
-                Text("\(task.taskType?.display.uppercased() ?? "TASK") NOTES")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-            }
-
-            if isEditing {
-                // Editing mode
-                VStack(alignment: .leading, spacing: 8) {
-                    TextEditor(text: Binding(
-                        get: { editingTaskNotesText },
-                        set: { editingTaskNotesText = $0 }
-                    ))
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .scrollContentBackground(.hidden)
-                    .background(Color.clear)
-                    .frame(minHeight: 80)
-                    .padding(12)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(taskColor, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-
-                    // Cancel/Save buttons
-                    HStack {
-                        Button(action: {
-                            withAnimation(OPSStyle.Animation.fast) {
-                                editingTaskNotesId = nil
-                                editingTaskNotesText = ""
-                            }
-                        }) {
-                            Text("Cancel")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-
-                        Spacer()
-
-                        Button(action: {
-                            saveTaskNotes(task: task, notes: editingTaskNotesText)
-                            withAnimation(OPSStyle.Animation.fast) {
-                                editingTaskNotesId = nil
-                                editingTaskNotesText = ""
-                            }
-                        }) {
-                            Text("Save")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
-            } else {
-                // Display mode
-                HStack(alignment: .top) {
-                    if taskNotes.isEmpty {
-                        Button(action: {
-                            withAnimation(OPSStyle.Animation.fast) {
-                                editingTaskNotesId = task.id
-                                editingTaskNotesText = ""
-                            }
-                        }) {
-                            HStack {
-                                Image(systemName: "plus")
-                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                Text("ADD NOTES")
-                                Spacer()
-                            }
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    } else {
-                        Text(taskNotes)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-
-                    Spacer()
-
-                    if !taskNotes.isEmpty {
-                        Button(action: {
-                            withAnimation(OPSStyle.Animation.fast) {
-                                editingTaskNotesId = task.id
-                                editingTaskNotesText = taskNotes
-                            }
-                        }) {
-                            Image(systemName: OPSStyle.Icons.pencil)
-                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-                .transition(.opacity)
-            }
-        }
-        .animation(OPSStyle.Animation.fast, value: isEditing)
-    }
-
-    private func saveTaskNotes(task: ProjectTask, notes: String) {
-        task.taskNotes = notes.isEmpty ? nil : notes
-        // Sync to Bubble
-        Task {
-            try? await dataController.updateTask(task: task)
-        }
-    }
-
-    // MARK: - Tasks Tab
-
-    private var tasksTabContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Section header with count in brackets
-            HStack {
-                Image(systemName: OPSStyle.Icons.task)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Text("TASKS")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Text("[\(project.tasks.count)]")
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Spacer()
-            }
-            .padding(.horizontal)
-
-            // Task list
-            let sortedTasks = project.tasks.sorted { $0.displayOrder < $1.displayOrder }
-
-            VStack(spacing: 0) {
-                ForEach(sortedTasks, id: \.id) { task in
-                    taskListRow(task: task)
-
-                    // Divider between tasks
-                    if task.id != sortedTasks.last?.id {
-                        Rectangle()
-                            .fill(OPSStyle.Colors.cardBorderSubtle)
-                            .frame(height: 1)
-                            .padding(.leading, 20)
-                    }
-                }
-
-                // Add task row (admin/office only)
-                if canEditProjectSettings() {
-                    Rectangle()
-                        .fill(OPSStyle.Colors.cardBorderSubtle)
-                        .frame(height: 1)
-                        .padding(.leading, 20)
-
-                    Button(action: { showingAddTaskSheet = true }) {
-                        HStack(spacing: 0) {
-                            // Dashed left border
-                            Rectangle()
-                                .stroke(style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [4, 4]))
-                                .fill(OPSStyle.Colors.primaryAccent.opacity(0.5))
-                                .frame(width: 4)
-
-                            HStack {
-                                Image(systemName: "plus")
-                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                Text("ADD TASK")
-                                    .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                Spacer()
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
-                        }
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-            }
-            .padding(.horizontal)
-
-            Spacer()
-                .frame(height: 300)
-        }
-    }
-
-    /// Individual task row in the tasks tab
-    private func taskListRow(task: ProjectTask) -> some View {
-        let isSelected = selectedTask?.id == task.id
-        let taskColor = Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent
-
-        // Get team members for this task
-        let taskTeamMemberIds = task.getTeamMemberIds()
-        let taskTeamMembers = project.teamMembers.filter { taskTeamMemberIds.contains($0.id) }
-
-        return Button(action: {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                selectedTask = task
-                taskNotes = task.taskNotes ?? ""
-                originalTaskNotes = task.taskNotes ?? ""
-            }
-        }) {
-            HStack(spacing: 0) {
-                // Content
-                VStack(alignment: .leading, spacing: 4) {
-                    // Title + status badges (adjacent)
-                    HStack(alignment: .center, spacing: 8) {
-                        Text(task.taskType?.display.uppercased() ?? "TASK")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-
-                        Spacer()
-
-                        // "Current" badge for selected task - same style as status badge
-                        if isSelected {
-                            Text("CURRENT")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .fill(OPSStyle.Colors.secondaryText.opacity(0.1))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .stroke(OPSStyle.Colors.secondaryText, lineWidth: OPSStyle.Layout.Border.standard)
-                                )
-                        }
-
-                        // Status badge - job board style
-                        Text(task.status.displayName.uppercased())
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(task.status.color)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .fill(task.status.color.opacity(0.1))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .stroke(task.status.color, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
-                    }
-
-                    // Info row: Date range + Team count + Team avatars (right aligned)
-                    HStack(spacing: 4) {
-                        // Date range
-                        if let start = task.startDate {
-                            Image(systemName: OPSStyle.Icons.calendar)
-                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                            if let end = task.endDate, !Calendar.current.isDate(start, inSameDayAs: end) {
-                                Text("\(DateHelper.simpleDateString(from: start)) - \(DateHelper.simpleDateString(from: end))")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            } else {
-                                Text(DateHelper.simpleDateString(from: start))
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            }
-                        }
-
-                        // Team icon + count
-                        HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.personTwo)
-                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            Text("\(taskTeamMemberIds.count)")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-                        .padding(.leading, 8)
-
-                        Spacer()
-
-                        // Team member avatars (right aligned)
-                        if !taskTeamMembers.isEmpty {
-                            HStack(spacing: -6) {
-                                ForEach(taskTeamMembers.prefix(3), id: \.id) { member in
-                                    UserAvatar(user: member, size: 20)
-                                        .overlay(
-                                            Circle()
-                                                .stroke(OPSStyle.Colors.background, lineWidth: OPSStyle.Layout.Border.standard)
-                                        )
-                                }
-                                if taskTeamMembers.count > 3 {
-                                    Text("+\(taskTeamMembers.count - 3)")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        .frame(width: 20, height: 20)
-                                        .background(OPSStyle.Colors.cardBackgroundDark)
-                                        .clipShape(Circle())
-                                        .overlay(
-                                            Circle()
-                                                .stroke(OPSStyle.Colors.background, lineWidth: OPSStyle.Layout.Border.standard)
-                                        )
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(.leading, 16)
-                .padding(.trailing, 8)
-                .padding(.vertical, 12)
-
-                // Chevron
-                Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .padding(.trailing, 16)
-            }
-            .background(
-                HStack(spacing: 0) {
-                    // Left color stripe - full height via background
-                    taskColor
-                        .frame(width: 4)
-                    Spacer()
+        case .details:
+            DetailsTabView(
+                project: project,
+                viewModel: viewModel,
+                onClientTap: { viewModel.showingClientContact = true },
+                onTeamMemberTap: { member in selectedTeamMember = member },
+                onTaskTap: { task in taskDetailTask = task },
+                onAddTask: { viewModel.showingAddTaskSheet = true },
+                onEditAddress: {
+                    viewModel.editedAddress = project.address ?? ""
+                    viewModel.showingAddressEditor = true
                 }
             )
-            .background(isSelected ? OPSStyle.Colors.cardBackgroundDark.opacity(0.5) : Color.clear)
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
 
-    // MARK: - Project Details Tab
-
-    private var detailsTabContent: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // CLIENT section
-            clientDetailsSection
-
-            // Divider
-            Rectangle()
-                .fill(OPSStyle.Colors.cardBorder)
-                .frame(height: 1)
-                .padding(.horizontal)
-
-            // TEAM section
-            teamDetailsSection
-
-            // Divider
-            Rectangle()
-                .fill(OPSStyle.Colors.cardBorder)
-                .frame(height: 1)
-                .padding(.horizontal)
-
-            // SCHEDULE section
-            scheduleDetailsSection
-
-            // Divider
-            Rectangle()
-                .fill(OPSStyle.Colors.cardBorder)
-                .frame(height: 1)
-                .padding(.horizontal)
-
-            // PROJECT DETAILS section (editable field for admin/office)
-            projectDetailsFieldSection
-
-            // Divider
-            Rectangle()
-                .fill(OPSStyle.Colors.cardBorder)
-                .frame(height: 1)
-                .padding(.horizontal)
-
-            // Action buttons
-            detailsActionButtons
-
-            Spacer()
-                .frame(height: 300)
-        }
-    }
-
-    private var clientDetailsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Section header
-            HStack {
-                Image(systemName: OPSStyle.Icons.client)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Text("CLIENT")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Spacer()
-            }
-            .padding(.horizontal)
-
-            // Client row - styled like team member row
-            let hasPhone = project.client?.phoneNumber != nil && !(project.client?.phoneNumber?.isEmpty ?? true)
-            let hasEmail = project.client?.email != nil && !(project.client?.email?.isEmpty ?? true)
-
-            Button(action: {
-                showingClientContact = true
-            }) {
-                HStack(spacing: 12) {
-                    // Client avatar - uses UserAvatar component with profile image support
-                    if let client = project.client {
-                        UserAvatar(client: client, size: 32)
-                    } else {
-                        // Fallback for no client - building icon
-                        Circle()
-                            .fill(OPSStyle.Colors.cardBackgroundDark)
-                            .frame(width: 32, height: 32)
-                            .overlay(
-                                Image(systemName: "building.2")
-                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            )
-                    }
-
-                    // Client name and role
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(project.effectiveClientName)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                        if project.client != nil {
-                            Text("Client")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-                    }
-
-                    Spacer()
-
-                    // Contact icons
-                    HStack(spacing: 12) {
-                        // Phone icon
-                        Image(systemName: "phone.fill")
-                            .font(.system(size: OPSStyle.Layout.IconSize.md))
-                            .foregroundColor(hasPhone ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-
-                        // Email icon
-                        Image(systemName: "envelope.fill")
-                            .font(.system(size: OPSStyle.Layout.IconSize.md))
-                            .foregroundColor(hasEmail ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                    }
-
-                    // Chevron
-                    Image(systemName: OPSStyle.Icons.chevronRight)
-                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
-            .padding(.horizontal)
-        }
-    }
-
-    private var teamDetailsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Section header with count in brackets
-            HStack {
-                Image(systemName: OPSStyle.Icons.personTwo)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Text("TEAM")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Text("[\(project.teamMembers.count)]")
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Spacer()
-            }
-            .padding(.horizontal)
-
-            // Team members
-            if project.teamMembers.isEmpty {
-                Button(action: {
-                    // Could show team picker
-                }) {
-                    HStack {
-                        Image(systemName: "plus")
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                        Text("ADD TEAM")
-                        Spacer()
-                    }
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .padding(.horizontal)
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(project.teamMembers, id: \.id) { member in
-                        Button(action: { selectedTeamMember = member }) {
-                            HStack(spacing: 12) {
-                                UserAvatar(user: member, size: 32)
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(member.fullName)
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                    Text(member.role.rawValue)
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                }
-
-                                Spacer()
-
-                                Image(systemName: OPSStyle.Icons.chevronRight)
-                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-                .padding(.horizontal)
-            }
-        }
-    }
-
-    private var scheduleDetailsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Section header
-            HStack {
-                Image(systemName: OPSStyle.Icons.calendar)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Text("SCHEDULE")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Spacer()
-            }
-            .padding(.horizontal)
-
-            // Date info
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Start:")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .frame(width: 50, alignment: .leading)
-
-                    if let startDate = project.computedStartDate {
-                        Text(DateHelper.fullDateString(from: startDate))
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    } else {
-                        Text("Not set")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-                }
-
-                HStack {
-                    Text("End:")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .frame(width: 50, alignment: .leading)
-
-                    if let endDate = project.computedEndDate {
-                        Text(DateHelper.fullDateString(from: endDate))
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    } else {
-                        Text("Not set")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-                }
-            }
-            .padding(.horizontal)
-        }
-    }
-
-    private var projectDetailsFieldSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Section header
-            HStack {
-                Image(systemName: "doc.text")
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Text("PROJECT DETAILS")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Spacer()
-            }
-            .padding(.horizontal)
-
-            // Project details/description - no card background
-            if canEditProjectSettings() {
-                if isEditingProjectDetails {
-                    VStack(alignment: .leading, spacing: 8) {
-                        TextEditor(text: $editingProjectDetailsText)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .scrollContentBackground(.hidden)
-                            .background(Color.clear)
-                            .frame(minHeight: 80)
-                            .padding(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
-
-                        // Cancel/Save buttons
-                        HStack {
-                            Button(action: {
-                                isEditingProjectDetails = false
-                                editingProjectDetailsText = ""
-                            }) {
-                                Text("Cancel")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-
-                            Spacer()
-
-                            Button(action: {
-                                project.projectDescription = editingProjectDetailsText.isEmpty ? nil : editingProjectDetailsText
-                                isEditingProjectDetails = false
-                                editingProjectDetailsText = ""
-                            }) {
-                                Text("Save")
-                                    .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                    }
-                    .padding(.horizontal)
-                } else {
-                    // Display mode with edit icon
-                    HStack(alignment: .top) {
-                        if let description = project.projectDescription, !description.isEmpty {
-                            Text(description)
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                        } else {
-                            Button(action: {
-                                editingProjectDetailsText = ""
-                                isEditingProjectDetails = true
-                            }) {
-                                HStack {
-                                    Image(systemName: "plus")
-                                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                    Text("ADD DETAILS")
-                                    Spacer()
-                                }
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-
-                        Spacer()
-
-                        if project.projectDescription != nil && !(project.projectDescription?.isEmpty ?? true) {
-                            Button(action: {
-                                editingProjectDetailsText = project.projectDescription ?? ""
-                                isEditingProjectDetails = true
-                            }) {
-                                Image(systemName: OPSStyle.Icons.pencil)
-                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-            } else {
-                // Non-editable display
-                if let description = project.projectDescription, !description.isEmpty {
-                    Text(description)
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(.horizontal)
-                } else {
-                    Text("No details added")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .padding(.horizontal)
-                }
-            }
-        }
-    }
-
-    private var detailsActionButtons: some View {
-        VStack(spacing: 8) {
-            // Complete Project button
-            if project.status != .completed && project.status != .closed {
-                Button(action: {
-                    handleProjectCompletion()
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle")
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                        Text("COMPLETE PROJECT")
-                            .font(OPSStyle.Typography.captionBold)
-                    }
-                    .foregroundColor(Color("StatusCompleted"))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                            .stroke(Color("StatusCompleted"), lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-                }
-                .buttonStyle(PlainButtonStyle())
-                .id("completeButton")
-            }
-
-            // Delete Project button (admin/office only)
-            if canEditProjectSettings() {
-                Button(action: {
-                    showingDeleteAlert = true
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: OPSStyle.Icons.delete)
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                        Text("DELETE PROJECT")
-                            .font(OPSStyle.Typography.captionBold)
-                    }
-                    .foregroundColor(OPSStyle.Colors.errorStatus)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                            .stroke(OPSStyle.Colors.errorStatus, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-        }
-        .padding(.horizontal)
-    }
-
-    // MARK: - Helper functions for client contact
-
-    private func callPhone(_ phone: String) {
-        let cleanedPhone = phone.replacingOccurrences(of: " ", with: "")
-            .replacingOccurrences(of: "-", with: "")
-            .replacingOccurrences(of: "(", with: "")
-            .replacingOccurrences(of: ")", with: "")
-        if let url = URL(string: "tel://\(cleanedPhone)") {
-            UIApplication.shared.open(url)
-        }
-    }
-
-    private func sendEmail(_ email: String) {
-        if let url = URL(string: "mailto:\(email)") {
-            UIApplication.shared.open(url)
-        }
-    }
-
-    /// Open Maps app with directions to project address
-    private func openDirections() {
-        guard let address = project.address, !address.isEmpty else { return }
-
-        let encodedAddress = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address
-        if let url = URL(string: "http://maps.apple.com/?daddr=\(encodedAddress)&dirflg=d") {
-            UIApplication.shared.open(url)
-        }
-    }
-
-    /// Toggle selected task between active and completed
-    private func toggleTaskStatus() {
-        guard let task = selectedTask else { return }
-
-        let newStatus = task.status.toggled()
-
-        // Haptic feedback
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
-
-        // Use centralized status update
-        Task {
-            do {
-                try await dataController.updateTaskStatus(task: task, to: newStatus)
-                print("[TASK_TOGGLE] ✅ Task \(task.id) status toggled to \(newStatus.displayName)")
-            } catch {
-                print("[TASK_TOGGLE] ❌ Failed to toggle task status: \(error)")
-            }
-        }
-    }
-
-    /// Delete the selected task
-    private func deleteSelectedTask() {
-        guard let task = selectedTask else { return }
-
-        // Haptic feedback
-        let generator = UINotificationFeedbackGenerator()
-        generator.notificationOccurred(.success)
-
-        // Clear selection first
-        selectedTask = nil
-
-        // Use centralized delete
-        Task {
-            do {
-                try await dataController.deleteTask(task)
-                print("[TASK_DELETE] ✅ Task \(task.id) deleted")
-            } catch {
-                print("[TASK_DELETE] ❌ Failed to delete task: \(error)")
-            }
-        }
-    }
-
-    /// Handle project completion - uses the existing completion logic
-    private func handleProjectCompletion() {
-        // Use the same logic as completeButton
-        if appState.requestProjectCompletion(project) {
-            markProjectComplete()
-        }
-        // If false, the global checklist sheet will be shown via AppState in ContentView
-    }
-
-    // MARK: - Old Scrollable Content (kept for reference during migration)
-
-    private var scrollableContent: some View {
-        ScrollViewReader { scrollProxy in
-            ScrollView {
-                VStack(spacing: 16) {
-                    // MARK: - Task Details Section (now using compactTaskSection in new layout)
-                    if selectedTask != nil {
-                        compactTaskSection
-                            .id("taskDetailsSection")
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                            .onChange(of: selectedTask) { oldTask, newTask in
-                                // Update task notes when selection changes
-                                if let task = newTask {
-                                    let notes = task.taskNotes ?? ""
-                                    taskNotes = notes
-                                    originalTaskNotes = notes
-                                    isTaskNotesExpanded = false
-                                }
-                            }
-                    }
-
-                    // Opportunity badge (Pipeline link)
-                    if let oppId = project.opportunityId, !oppId.isEmpty {
-                        OpportunityBadgeView(opportunityId: oppId)
-                            .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    }
-
-                    // projectInfoSection handles its own internal dimming
-                    projectInfoSection
-
-                    // MARK: - Quick Access Pills
-                    sectionPillsView
-                        .padding(.horizontal)
-
-                    // MARK: - Collapsible Sections (dynamic order)
-                    ForEach(sectionOrder, id: \.self) { section in
-                        sectionView(for: section)
-                            .id(section)
-                    }
-
-                    // MARK: - Action Buttons
-                    if project.status != .completed && project.status != .closed {
-                        Spacer()
-                            .frame(height: 40)
-
-                        completeButton
-                            .modifier(TutorialSectionDimModifier(
-                                shouldDim: shouldDimSection(except: .completeProject),
-                                tutorialMode: tutorialMode
-                            ))
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    } else if project.status == .completed {
-                        Spacer()
-                            .frame(height: 40)
-
-                        closeJobButton
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    }
-
-                    if canEditProjectSettings() {
-                        deleteButton
-                    }
-
-                    // Cancel Task button - only show for admin/office when a task is selected and not cancelled
-                    if let task = selectedTask,
-                       task.status != .cancelled,
-                       canEditProjectSettings() {
-                        cancelTaskButton
-                    }
-                }
-                .padding(.top, 16)
-                .animation(OPSStyle.Animation.standard, value: project.status)
-                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: sectionOrder)
-            }
-            .onAppear {
-                // Scroll to appropriate section if already in that phase when view appears
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    if tutorialMode {
-                        if tutorialPhase == .addNote {
-                            withAnimation(.easeInOut(duration: 0.5)) {
-                                scrollProxy.scrollTo("teamNotesField", anchor: .center)
-                            }
-                        } else if tutorialPhase == .addPhoto {
-                            withAnimation(.easeInOut(duration: 0.5)) {
-                                scrollProxy.scrollTo("photosSection", anchor: .center)
-                            }
-                        } else if tutorialPhase == .completeProject {
-                            withAnimation(.easeInOut(duration: 0.5)) {
-                                scrollProxy.scrollTo("completeButton", anchor: .center)
-                            }
-                        }
-                    }
-                }
-            }
-            .onChange(of: tutorialPhase) { _, newPhase in
-                // Auto-scroll to notes section when entering addNote phase
-                if newPhase == .addNote {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        withAnimation(.easeInOut(duration: 0.5)) {
-                            scrollProxy.scrollTo("teamNotesField", anchor: .center)
-                        }
-                    }
-                }
-                // Auto-scroll to photos section when entering addPhoto phase
-                if newPhase == .addPhoto {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        withAnimation(.easeInOut(duration: 0.5)) {
-                            scrollProxy.scrollTo("photosSection", anchor: .center)
-                        }
-                    }
-                }
-                // Auto-scroll to complete button when entering completeProject phase
-                if newPhase == .completeProject {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        withAnimation(.easeInOut(duration: 0.5)) {
-                            scrollProxy.scrollTo("completeButton", anchor: .center)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Tutorial Dim Helper
-
-    /// Determines if a section should be dimmed based on the current tutorial phase
-    /// - Parameter exceptPhase: The phase during which this section should NOT be dimmed
-    /// - Returns: true if the section should be dimmed, false otherwise
-    private func shouldDimSection(except exceptPhase: TutorialPhase?) -> Bool {
-        guard tutorialMode else { return false }
-        guard let phase = tutorialPhase else { return false }
-
-        // Only dim during these specific phases
-        let dimmingPhases: [TutorialPhase] = [.addNote, .addPhoto, .completeProject]
-        guard dimmingPhases.contains(phase) else { return false }
-
-        // If this section's exception phase matches the current phase, don't dim
-        if let exceptPhase = exceptPhase, phase == exceptPhase {
-            return false
-        }
-
-        // Dim this section
-        return true
-    }
-
-    // MARK: - Collapsible Section Helpers
-
-    /// Quick access pills for collapsed sections
-    private var sectionPillsView: some View {
-        OptionalSectionPillGroup(
-            pills: [
-                (
-                    title: DetailsSection.client.title,
-                    icon: DetailsSection.client.icon,
-                    isExpanded: isClientExpanded,
-                    isDisabled: false,
-                    isHighlighted: false,
-                    action: { expandSection(.client) }
-                ),
-                (
-                    title: DetailsSection.schedule.title,
-                    icon: DetailsSection.schedule.icon,
-                    isExpanded: isScheduleExpanded,
-                    isDisabled: false,
-                    isHighlighted: false,
-                    action: { expandSection(.schedule) }
-                ),
-                (
-                    title: DetailsSection.notes.title,
-                    icon: DetailsSection.notes.icon,
-                    isExpanded: isProjectNotesExpanded,
-                    isDisabled: false,
-                    isHighlighted: tutorialMode && tutorialPhase == .addNote,
-                    action: { expandSection(.notes) }
-                ),
-                (
-                    title: DetailsSection.tasks.title,
-                    icon: DetailsSection.tasks.icon,
-                    isExpanded: isTasksExpanded,
-                    isDisabled: false,
-                    isHighlighted: false,
-                    action: { expandSection(.tasks) }
-                ),
-                (
-                    title: DetailsSection.photos.title,
-                    icon: DetailsSection.photos.icon,
-                    isExpanded: isPhotosExpanded,
-                    isDisabled: false,
-                    isHighlighted: tutorialMode && tutorialPhase == .addPhoto,
-                    action: { expandSection(.photos) }
-                ),
-                (
-                    title: DetailsSection.team.title,
-                    icon: DetailsSection.team.icon,
-                    isExpanded: isTeamExpanded,
-                    isDisabled: project.tasks.isEmpty,
-                    isHighlighted: false,
-                    action: { expandSection(.team) }
-                )
-            ],
-            highlightPulse: tutorialMode
-        )
-    }
-
-    /// Expand a section and bring it to top
-    private func expandSection(_ section: DetailsSection) {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            bringSectionToTop(section)
-            setExpanded(true, for: section)
-        }
-    }
-
-    /// Move a section to the top of the order
-    private func bringSectionToTop(_ section: DetailsSection) {
-        sectionOrder.removeAll { $0 == section }
-        sectionOrder.insert(section, at: 0)
-    }
-
-    /// Get/set expanded state for a section
-    private func isExpanded(for section: DetailsSection) -> Bool {
-        switch section {
-        case .client: return isClientExpanded
-        case .schedule: return isScheduleExpanded
-        case .notes: return isProjectNotesExpanded
-        case .tasks: return isTasksExpanded
-        case .photos: return isPhotosExpanded
-        case .team: return isTeamExpanded
-        }
-    }
-
-    private func setExpanded(_ value: Bool, for section: DetailsSection) {
-        switch section {
-        case .client: isClientExpanded = value
-        case .schedule: isScheduleExpanded = value
-        case .notes: isProjectNotesExpanded = value
-        case .tasks: isTasksExpanded = value
-        case .photos: isPhotosExpanded = value
-        case .team: isTeamExpanded = value
-        }
-    }
-
-    /// Check if a section is pinned
-    private func isPinned(_ section: DetailsSection) -> Bool {
-        pinnedSections.contains(section)
-    }
-
-    /// Toggle pin state for a section
-    private func togglePin(for section: DetailsSection) {
-        if pinnedSections.contains(section) {
-            pinnedSections.remove(section)
-        } else {
-            pinnedSections.insert(section)
-        }
-        saveSectionPreferences()
-    }
-
-    /// Load pinned section preferences from UserDefaults
-    private func loadSectionPreferences() {
-        if let data = UserDefaults.standard.data(forKey: Self.sectionPrefsKey),
-           let sections = try? JSONDecoder().decode(Set<DetailsSection>.self, from: data) {
-            pinnedSections = sections
-            // Auto-expand pinned sections
-            for section in sections {
-                setExpanded(true, for: section)
-            }
-        }
-    }
-
-    /// Save pinned section preferences to UserDefaults
-    private func saveSectionPreferences() {
-        if let data = try? JSONEncoder().encode(pinnedSections) {
-            UserDefaults.standard.set(data, forKey: Self.sectionPrefsKey)
-        }
-    }
-
-    /// Returns the appropriate view for a section
-    @ViewBuilder
-    private func sectionView(for section: DetailsSection) -> some View {
-        switch section {
-        case .client:
-            if isClientExpanded {
-                clientExpandableSection
-                    .padding(.horizontal)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        case .schedule:
-            if isScheduleExpanded {
-                scheduleExpandableSection
-                    .padding(.horizontal)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        case .notes:
-            if isProjectNotesExpanded {
-                notesExpandableSection
-                    .padding(.horizontal)
-                    .modifier(TutorialSectionDimModifier(
-                        shouldDim: shouldDimSection(except: .addNote),
-                        tutorialMode: tutorialMode
-                    ))
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        case .tasks:
-            if isTasksExpanded {
-                tasksExpandableSection
-                    .padding(.horizontal)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        case .photos:
-            if isPhotosExpanded {
-                photosExpandableSection
-                    .padding(.horizontal)
-                    .modifier(TutorialSectionDimModifier(
-                        shouldDim: shouldDimSection(except: .addPhoto),
-                        tutorialMode: tutorialMode
-                    ))
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        case .team:
-            if isTeamExpanded {
-                teamExpandableSection
-                    .padding(.horizontal)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-    }
-
-    // MARK: - Expandable Section Views
-
-    private var clientExpandableSection: some View {
-        ExpandableSection(
-            title: "CLIENT",
-            icon: OPSStyle.Icons.client,
-            isExpanded: $isClientExpanded,
-            onDelete: nil,
-            collapsible: true
-        ) {
-            clientSectionContent
-        }
-        .overlay(alignment: .topTrailing) {
-            pinButton(for: .client)
-        }
-    }
-
-    /// Pin button for sections
-    private func pinButton(for section: DetailsSection) -> some View {
-        Button(action: {
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
-                togglePin(for: section)
-            }
-            #if !targetEnvironment(simulator)
-            let generator = UIImpactFeedbackGenerator(style: .light)
-            generator.impactOccurred()
-            #endif
-        }) {
-            Image(systemName: isPinned(section) ? "pin.fill" : "pin")
-                .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                .foregroundColor(isPinned(section) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                .padding(8)
-        }
-        .offset(x: -32, y: 4)
-    }
-
-    private var clientSectionContent: some View {
-        Button(action: {
-            showingClientContact = true
-        }) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(project.effectiveClientName)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                    if let email = project.effectiveClientEmail {
-                        Text(email)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-                }
-
-                Spacer()
-
-                HStack(spacing: 8) {
-                    Image(systemName: OPSStyle.Icons.phoneFill)
-                        .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .opacity(project.effectiveClientPhone != nil ? 1.0 : 0.3)
-
-                    Image(systemName: OPSStyle.Icons.envelopeFill)
-                        .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .opacity(project.effectiveClientEmail != nil ? 1.0 : 0.3)
-                }
-
-                Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-
-    private var scheduleExpandableSection: some View {
-        ExpandableSection(
-            title: "SCHEDULE",
-            icon: OPSStyle.Icons.calendar,
-            isExpanded: $isScheduleExpanded,
-            onDelete: nil,
-            collapsible: true
-        ) {
-            scheduleSectionContent
-        }
-        .overlay(alignment: .topTrailing) {
-            pinButton(for: .schedule)
-        }
-    }
-
-    private var scheduleSectionContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if project.tasks.isEmpty {
-                HStack(spacing: 8) {
-                    Text("No tasks to schedule. Create one?")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                    Spacer()
-
-                    Button(action: {
-                        showingAddTaskSheet = true
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.add)
-                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            Text("Add Task")
-                                .font(OPSStyle.Typography.caption)
-                        }
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                }
-            } else if project.computedStartDate == nil {
-                HStack {
-                    Text("Not Scheduled")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    Spacer()
-                }
-            } else {
-                HStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("START DATE")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                        if let startDate = project.computedStartDate {
-                            Text(formatDate(startDate))
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                        }
-                    }
-
-                    Spacer()
-
-                    if let endDate = project.computedEndDate,
-                       let startDate = project.computedStartDate,
-                       endDate >= startDate {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("END DATE")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                            Text(formatDate(endDate))
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var notesExpandableSection: some View {
-        ExpandableSection(
-            title: "TEAM NOTES",
-            icon: OPSStyle.Icons.notes,
-            isExpanded: $isProjectNotesExpanded,
-            onDelete: nil,
-            collapsible: true
-        ) {
-            NotesDisplayField(
-                title: "",
-                notes: project.notes ?? "",
-                isExpanded: $isNotesExpanded,
-                editedNotes: $noteText,
-                canEdit: true,
-                onSave: saveNotes
+        case .expenses:
+            ProjectExpensesTabView(
+                viewModel: viewModel,
+                expenseViewModel: expenseViewModel,
+                onAddExpense: { openNewExpenseSheet() },
+                onTapExpense: { expense in editingExpense = expense }
             )
-            .id("teamNotesField")
-        }
-        .overlay(alignment: .topTrailing) {
-            pinButton(for: .notes)
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius + TutorialHighlightStyle.padding)
-                .stroke(
-                    shouldHighlightNotesSection ? TutorialHighlightStyle.color : Color.clear,
-                    lineWidth: shouldHighlightNotesSection ? TutorialHighlightStyle.lineWidth : 0
-                )
-                .opacity(shouldHighlightNotesSection ? (notesBorderPulse ? 1.0 : 0.4) : 0)
-                .padding(-TutorialHighlightStyle.padding)
-        )
-    }
-
-    private var tasksExpandableSection: some View {
-        ExpandableSection(
-            title: "TASKS",
-            icon: OPSStyle.Icons.task,
-            isExpanded: $isTasksExpanded,
-            onDelete: nil,
-            collapsible: true
-        ) {
-            VStack(spacing: 12) {
-                // Add task button at top
-                if canEditProjectSettings() {
-                    Button(action: {
-                        showingAddTaskSheet = true
-                    }) {
-                        HStack {
-                            Image(systemName: OPSStyle.Icons.add)
-                                .font(.system(size: OPSStyle.Layout.IconSize.md))
-                            Text("Add Task")
-                                .font(OPSStyle.Typography.captionBold)
-                            Spacer()
-                        }
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-
-                // Task list
-                TaskListView(
-                    project: project,
-                    onTaskSelected: { task in
-                        if taskNotes != originalTaskNotes {
-                            saveSelectedTaskNotes()
-                        }
-                        withAnimation(OPSStyle.Animation.standard) {
-                            selectedTask = task
-                            let notes = task.taskNotes ?? ""
-                            taskNotes = notes
-                            originalTaskNotes = notes
-                            isTaskNotesExpanded = false
-                        }
-                    }
-                )
-                .environmentObject(dataController)
-            }
-        }
-        .overlay(alignment: .topTrailing) {
-            pinButton(for: .tasks)
-        }
-    }
-
-    private var photosExpandableSection: some View {
-        ExpandableSection(
-            title: "PROJECT PHOTOS",
-            icon: OPSStyle.Icons.photo,
-            isExpanded: $isPhotosExpanded,
-            onDelete: nil,
-            collapsible: true
-        ) {
-            photoContentView
-        }
-        .id("photosSection")
-        .overlay(alignment: .topTrailing) {
-            pinButton(for: .photos)
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius + TutorialHighlightStyle.padding)
-                .stroke(
-                    shouldHighlightPhotosSection ? TutorialHighlightStyle.color : Color.clear,
-                    lineWidth: shouldHighlightPhotosSection ? TutorialHighlightStyle.lineWidth : 0
-                )
-                .opacity(shouldHighlightPhotosSection ? (photosBorderPulse ? 1.0 : 0.4) : 0)
-                .padding(-TutorialHighlightStyle.padding)
-        )
-    }
-
-    private var teamExpandableSection: some View {
-        ExpandableSection(
-            title: "ASSIGNED TEAM",
-            icon: OPSStyle.Icons.personTwo,
-            isExpanded: $isTeamExpanded,
-            onDelete: nil,
-            collapsible: true
-        ) {
-            teamSectionContent
-        }
-        .overlay(alignment: .topTrailing) {
-            pinButton(for: .team)
-        }
-    }
-
-    private var teamSectionContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if project.tasks.isEmpty {
-                HStack(spacing: 8) {
-                    Text("No tasks to assign to. Create one?")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                    Spacer()
-
-                    Button(action: {
-                        showingAddTaskSheet = true
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: OPSStyle.Icons.add)
-                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            Text("Add Task")
-                                .font(OPSStyle.Typography.caption)
-                        }
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                }
-            } else if project.teamMembers.isEmpty {
-                HStack {
-                    Text("No team assigned")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    Spacer()
-                }
-            } else {
-                VStack(spacing: 12) {
-                    ForEach(project.teamMembers.prefix(5), id: \.id) { member in
-                        Button(action: {
-                            selectedTeamMember = member
-                        }) {
-                            HStack(spacing: 12) {
-                                UserAvatar(user: member, size: 32)
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(member.fullName)
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                                    Text(member.role.rawValue)
-                                        .font(OPSStyle.Typography.caption)
-                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                }
-
-                                Spacer()
-
-                                Image(systemName: OPSStyle.Icons.chevronRight)
-                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-
-                    if project.teamMembers.count > 5 {
-                        Text("+ \(project.teamMembers.count - 5) more")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-                }
-            }
         }
     }
 
@@ -2731,44 +422,56 @@ struct ProjectDetailsView: View {
 
     private var photoViewerContent: some View {
         let photos = project.getProjectImages()
-        print("[PhotoViewer] Opening with photos: \(photos), index: \(selectedPhotoIndex)")
-        return FullScreenPhotoViewer(
+        let safeIndex = min(viewModel.selectedPhotoIndex, max(photos.count - 1, 0))
+        return PhotoCommentViewer(
             photos: photos,
-            initialIndex: selectedPhotoIndex,
-            onDismiss: { showingPhotoViewer = false }
+            initialIndex: safeIndex,
+            onDismiss: { viewModel.showingPhotoViewer = false },
+            projectId: project.id
         )
-        .id(selectedPhotoIndex) // Force view recreation when index changes
+        .environmentObject(dataController)
+        .id(safeIndex)
     }
 
     private var imagePickerContent: some View {
         ImagePicker(
-            images: $selectedImages,
+            images: $viewModel.selectedImages,
             allowsEditing: false,
             selectionLimit: 10,
             onSelectionComplete: {
-                showingImagePicker = false
-
-                if !selectedImages.isEmpty {
+                viewModel.showingImagePicker = false
+                if !viewModel.selectedImages.isEmpty {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        addPhotosToProject()
+                        viewModel.addPhotosToProject(tutorialMode: tutorialMode)
                     }
                 }
             }
         )
     }
 
-    @ViewBuilder
-    private var unsavedChangesButtons: some View {
-        Button("Save Changes", role: .none) {
-            saveNotes()
-            dismiss()
-        }
+    private var noteImagePickerContent: some View {
+        ImagePicker(
+            images: $noteSelectedImages,
+            allowsEditing: false,
+            selectionLimit: 5,
+            onSelectionComplete: {
+                viewModel.showingNoteImagePicker = false
+                for image in noteSelectedImages {
+                    notesViewModel.addImage(image)
+                }
+                noteSelectedImages = []
+            }
+        )
+    }
 
-        Button("Discard Changes", role: .destructive) {
-            dismiss()
-        }
-
-        Button("Cancel", role: .cancel) { }
+    private var notePhotoViewerContent: some View {
+        PhotoCommentViewer(
+            photos: viewModel.notePhotoViewerURLs,
+            initialIndex: viewModel.notePhotoViewerIndex,
+            onDismiss: { viewModel.showingNotePhotoViewer = false },
+            projectId: project.id
+        )
+        .environmentObject(dataController)
     }
 
     @ViewBuilder
@@ -2778,3038 +481,185 @@ struct ProjectDetailsView: View {
                 .presentationDragIndicator(.visible)
                 .environmentObject(dataController)
         } else {
-            let clientTeamMember = TeamMember(
-                id: "client-\(project.id)",
-                firstName: project.effectiveClientName.components(separatedBy: " ").first ?? project.effectiveClientName,
-                lastName: project.effectiveClientName.components(separatedBy: " ").dropFirst().joined(separator: " "),
-                role: "Client",
-                avatarURL: nil,
-                email: project.effectiveClientEmail,
-                phone: project.effectiveClientPhone
-            )
+            Text("No client assigned")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+        }
+    }
 
-            ContactDetailView(teamMember: clientTeamMember)
-                .presentationDragIndicator(.visible)
-                .environmentObject(dataController)
+    // MARK: - Task Picker Sheet
+
+    private var taskPickerSheet: some View {
+        let sortedTasks = project.tasks.sorted { $0.displayOrder < $1.displayOrder }
+        return NavigationView {
+            ScrollView {
+                VStack(spacing: 8) {
+                    // Deselect option (only if a task is currently selected)
+                    if viewModel.selectedTask != nil {
+                        Button(action: {
+                            withAnimation(OPSStyle.Animation.fast) {
+                                viewModel.selectedTask = nil
+                            }
+                            showingTaskPicker = false
+                        }) {
+                            HStack(spacing: 12) {
+                                Circle()
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    .frame(width: 10, height: 10)
+
+                                Text("DESELECT")
+                                    .font(.custom("Kosugi-Regular", size: 12))
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        Divider()
+                            .background(OPSStyle.Colors.cardBorder)
+                            .padding(.vertical, 4)
+                    }
+
+                    // Task list
+                    ForEach(sortedTasks, id: \.id) { task in
+                        Button(action: {
+                            withAnimation(OPSStyle.Animation.fast) {
+                                viewModel.selectedTask = task
+                            }
+                            showingTaskPicker = false
+                        }) {
+                            HStack(spacing: 12) {
+                                Circle()
+                                    .fill(Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent)
+                                    .frame(width: 10, height: 10)
+
+                                Text(task.displayTitle.uppercased())
+                                    .font(.custom("Kosugi-Regular", size: 12))
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .lineLimit(1)
+
+                                StatusBadgePill(
+                                    text: task.status.displayName.uppercased(),
+                                    color: task.status.color,
+                                    size: .small
+                                )
+
+                                Spacer()
+
+                                if viewModel.selectedTask?.id == task.id {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .background(viewModel.selectedTask?.id == task.id ? OPSStyle.Colors.primaryAccent.opacity(0.1) : Color.clear)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .padding()
+            }
+            .background(OPSStyle.Colors.background)
+            .navigationTitle("SELECT TASK")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        showingTaskPicker = false
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
+
+    // MARK: - Save Notification Overlay
+
+    private var saveNotificationOverlay: some View {
+        Group {
+            if viewModel.showingSaveNotification {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Image(systemName: OPSStyle.Icons.complete)
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        Text("Saved")
+                            .font(OPSStyle.Typography.captionBold)
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .fill(.ultraThinMaterial)
+                            .environment(\.colorScheme, .dark)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    )
+                    .padding(.bottom, 32)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(OPSStyle.Animation.standard, value: viewModel.showingSaveNotification)
+            }
         }
     }
 
     // MARK: - Actions
 
+    private func handleDismiss() {
+        if viewModel.checkForUnsavedChanges() {
+            viewModel.showingUnsavedChangesAlert = true
+        } else {
+            dismiss()
+        }
+    }
+
+    private func openNewExpenseSheet() {
+        showNewExpenseSheet = true
+    }
+
     private func handleOnAppear() {
-        // Track screen view for analytics
-        AnalyticsManager.shared.trackScreenView(screenName: .projectDetails, screenClass: "ProjectDetailsView")
+        // Inject dependencies
+        viewModel.dataController = dataController
+        viewModel.appState = appState
 
-        // Load pinned section preferences
-        loadSectionPreferences()
-
-        DispatchQueue.main.async {
-            if let appState = dataController.appState {
-                if InProgressManager.shared.isRouting && appState.activeProjectID != project.id {
-                    appState.activeProjectID = project.id
-                }
-            }
+        // Setup expense VM
+        if let companyId = dataController.currentUser?.companyId {
+            expenseViewModel.setup(companyId: companyId)
+            Task { await expenseViewModel.loadCategories() }
         }
 
-        // Skip location permission request in tutorial mode to avoid LocationManager crash
-        if !tutorialMode {
-            locationManager.requestPermissionIfNeeded()
-        }
+        // Setup notes VM
+        setupNotesViewModel()
 
-        if let clientId = project.clientId, !clientId.isEmpty {
-            refreshClientData(clientId: clientId, forceRefresh: true)
-        }
-
-        // NOTE: Team members are computed from tasks during sync (CentralizedSyncManager)
-        // and when tasks are modified (TaskFormSheet). Do NOT compute here as it
-        // causes view dismissal due to model changes during onAppear.
+        // Refresh client
+        viewModel.refreshClientData()
     }
 
-    private func handleOnDisappear() {
-        notificationTimer?.invalidate()
-        notificationTimer = nil
-    }
+    private func setupNotesViewModel() {
+        guard let currentUser = dataController.currentUser,
+              let companyId = currentUser.companyId,
+              let company = dataController.getCurrentUserCompany(),
+              let modelContext = dataController.modelContext else { return }
 
-    private func handleScheduleUpdate(startDate: Date, endDate: Date) {
-        print("🔄 handleScheduleUpdate called - New dates: \(startDate) to \(endDate)")
-
-        // Update project dates using centralized function
-        Task {
-            do {
-                try await dataController.updateProjectDates(project: project, startDate: startDate, endDate: endDate)
-                print("✅ Project dates updated and synced")
-
-                // Force view refresh to show updated dates
-                await MainActor.run {
-                    refreshTrigger.toggle()
-                }
-            } catch {
-                print("❌ Failed to sync schedule update: \(error)")
-            }
-        }
-    }
-
-    private func handleClearDates() {
-        print("🗑️ handleClearDates called - Clearing project dates")
-
-        Task {
-            do {
-                // Clear project dates using centralized function
-                try await dataController.updateProjectDates(project: project, startDate: nil, endDate: nil, clearDates: true)
-                print("✅ Project dates cleared and synced")
-
-                // Force view refresh to show cleared dates
-                await MainActor.run {
-                    refreshTrigger.toggle()
-                    // Notify calendar views to refresh
-                    dataController.scheduledTasksDidChange.toggle()
-                }
-            } catch {
-                print("❌ Failed to clear dates: \(error)")
-            }
-        }
-    }
-
-
-    // Project header section with title and date
-    private var projectHeaderSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Project title with task count if applicable
-            HStack(alignment: .top, spacing: 12) {
-                Text(project.title)
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-
-                // Show task count if project has tasks
-                if !project.tasks.isEmpty {
-                    Text("\(project.tasks.count) \(project.tasks.count == 1 ? "TASK" : "TASKS")")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .fill(OPSStyle.Colors.cardBackgroundDark)
-                        )
-                        .padding(.top, 4)
-                }
-
-                Spacer()
-            }
-
-            // Client info
-            VStack(alignment: .leading, spacing: 4) {
-                Text("CLIENT")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                Text(project.effectiveClientName)
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-            }
-        }
-    }
-
-    // Location map
-    private var locationSection: some View {
-        SectionCard(
-            icon: OPSStyle.Icons.jobSite,
-            title: "Location",
-            actionIcon: "arrow.triangle.turn.up.right.circle.fill",
-            actionLabel: "Directions",
-            onAction: {
-                openInMaps(coordinate: project.coordinate, address: project.address ?? "")
-            }
-        ) {
-            VStack(spacing: 16) {
-
-            // Address field
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("ADDRESS")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                    Spacer()
-
-                    // Edit button for admin/office crew
-                    if canEditProjectSettings() && !isEditingAddress {
-                        Button(action: {
-                            withAnimation(OPSStyle.Animation.fast) {
-                                editedAddress = project.address ?? ""
-                                isEditingAddress = true
-                            }
-                        }) {
-                            Image(systemName: OPSStyle.Icons.pencil)
-                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                    }
-
-                    // Save/Cancel buttons when editing
-                    if isEditingAddress {
-                        HStack(spacing: 12) {
-                            Button("Cancel") {
-                                withAnimation(OPSStyle.Animation.fast) {
-                                    editedAddress = project.address ?? ""
-                                    isEditingAddress = false
-                                }
-                                addressSearchCompleter.clear()
-                            }
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                            Button("Save") {
-                                saveAddress()
-                                withAnimation(OPSStyle.Animation.fast) {
-                                    isEditingAddress = false
-                                }
-                                addressSearchCompleter.clear()
-                            }
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                    }
-                }
-
-                if isEditingAddress {
-                    VStack(spacing: 0) {
-                        // Editable TextField with autocomplete
-                        TextField("Enter address", text: $editedAddress)
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText.opacity(0.9))
-                            .textContentType(.fullStreetAddress)
-                            .autocorrectionDisabled(true)
-                            .submitLabel(.done)
-                            .padding(12)
-                            .background(OPSStyle.Colors.cardBackground.opacity(0.6))
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .onSubmit {
-                                if editedAddress != project.address {
-                                    saveAddress()
-                                }
-                                withAnimation(OPSStyle.Animation.fast) {
-                                    isEditingAddress = false
-                                }
-                                addressSearchCompleter.clear()
-                            }
-                            .onChange(of: editedAddress) { oldValue, newValue in
-                                // Update search suggestions
-                                addressSearchCompleter.searchFragment = newValue
-
-                                // Debounce geocoding for map update
-                                addressDebounceTask?.cancel()
-                                addressDebounceTask = Task {
-                                    try? await Task.sleep(nanoseconds: 800_000_000)
-                                    if !Task.isCancelled && !newValue.isEmpty {
-                                        await geocodeAddressInline(newValue)
-                                    }
-                                }
-                            }
-
-                        // Address suggestions dropdown
-                        if !addressSearchCompleter.results.isEmpty {
-                            VStack(spacing: 0) {
-                                ForEach(addressSearchCompleter.results, id: \.self) { result in
-                                    Button(action: {
-                                        selectAddressSuggestion(result)
-                                    }) {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(result.title)
-                                                .font(OPSStyle.Typography.body)
-                                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                            if !result.subtitle.isEmpty {
-                                                Text(result.subtitle)
-                                                    .font(OPSStyle.Typography.caption)
-                                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                            }
-                                        }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 10)
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-
-                                    if result != addressSearchCompleter.results.last {
-                                        Divider()
-                                            .background(OPSStyle.Colors.secondaryText.opacity(0.2))
-                                    }
-                                }
-                            }
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .padding(.top, 4)
-                        }
-                    }
-                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                } else {
-                    // Read-only text
-                    Text(project.address ?? "No address")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                }
-            }
-            .animation(OPSStyle.Animation.fast, value: isEditingAddress)
-
-            // Map view - larger and more prominent
-            ZStack(alignment: .bottomTrailing) {
-                MiniMapView(
-                    coordinate: isEditingAddress ? addressMapRegion.center : project.coordinate,
-                    address: isEditingAddress ? editedAddress : (project.address ?? "")
-                ) {
-                    openInMaps(
-                        coordinate: isEditingAddress ? addressMapRegion.center : project.coordinate,
-                        address: isEditingAddress ? editedAddress : (project.address ?? "")
-                    )
-                }
-                .frame(height: 180)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                
-                
-                // Directions button on map
-                Button(action: {
-                    openInMaps(
-                        coordinate: isEditingAddress ? addressMapRegion.center : project.coordinate,
-                        address: isEditingAddress ? editedAddress : (project.address ?? "")
-                    )
-                }) {
-                    HStack {
-                        // NOTE: Missing icon in OPSStyle - "arrow.triangle.turn.up.right.diamond.fill" (directions)
-                        Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
-
-                        Text("Directions")
-                            .font(OPSStyle.Typography.smallCaption)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(OPSStyle.Colors.cardBackground)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                }
-                .padding(12)
-            }
-            }
-        }
-        .padding(.horizontal)
-    }
-
-    // MARK: - Info Sections
-
-    // Project Info section - groups client, schedule, description, notes, team fields
-    private var projectInfoSection: some View {
-        SectionCard(
-            icon: "doc.text",
-            title: "Project Details"
-        ) {
-            VStack(spacing: 16) {
-                // Client field
-                clientField
-                    .modifier(TutorialSectionDimModifier(
-                        shouldDim: shouldDimSection(except: nil),
-                        tutorialMode: tutorialMode
-                    ))
-
-                // Schedule field
-                scheduleField
-                    .modifier(TutorialSectionDimModifier(
-                        shouldDim: shouldDimSection(except: nil),
-                        tutorialMode: tutorialMode
-                    ))
-
-                // Description field (only if exists)
-                if let description = project.projectDescription, !description.isEmpty {
-                    descriptionField
-                        .modifier(TutorialSectionDimModifier(
-                            shouldDim: shouldDimSection(except: nil),
-                            tutorialMode: tutorialMode
-                        ))
-                }
-
-                // Team Notes field - NOT dimmed during addNote phase
-                teamNotesField
-                    .modifier(TutorialSectionDimModifier(
-                        shouldDim: shouldDimSection(except: .addNote),
-                        tutorialMode: tutorialMode
-                    ))
-
-                // Assigned Team field
-                assignedTeamField
-                    .modifier(TutorialSectionDimModifier(
-                        shouldDim: shouldDimSection(except: nil),
-                        tutorialMode: tutorialMode
-                    ))
-            }
-        }
-        .padding(.horizontal)
-        .id(refreshTrigger)
-    }
-
-    private var clientField: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("CLIENT")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            Button(action: {
-                showingClientContact = true
-            }) {
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(project.effectiveClientName)
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-
-                        // Show email if available
-                        if let email = project.effectiveClientEmail {
-                            Text(email)
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-                    }
-
-                    Spacer()
-
-                    // Contact indicators
-                    HStack(spacing: 8) {
-                        Image(systemName: OPSStyle.Icons.phoneFill)
-                            .font(.system(size: OPSStyle.Layout.IconSize.md))
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .opacity(project.effectiveClientPhone != nil ? 1.0 : 0.3)
-
-                        Image(systemName: OPSStyle.Icons.envelopeFill)
-                            .font(.system(size: OPSStyle.Layout.IconSize.md))
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .opacity(project.effectiveClientEmail != nil ? 1.0 : 0.3)
-                    }
-
-                    Image(systemName: OPSStyle.Icons.chevronRight)
-                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
-                .background(Color.clear)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
-            }
-            .buttonStyle(PlainButtonStyle())
-        }
-    }
-
-    private var scheduleField: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("SCHEDULE")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            VStack(alignment: .leading, spacing: 0) {
-                if project.tasks.isEmpty {
-                    // No tasks - show create prompt
-                    HStack(spacing: 8) {
-                        Text("No tasks to schedule. Create one?")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                        Spacer()
-                        
-                        Button(action: {
-                            showingAddTaskSheet = true
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: OPSStyle.Icons.add)
-                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                Text("Add Task")
-                                    .font(OPSStyle.Typography.caption)
-                            }
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                    }
-                } else if project.computedStartDate == nil {
-                    HStack(){
-                        // Has tasks but not scheduled
-                        Text("Not Scheduled")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        Spacer()
-                    }
-                    } else {
-                    // Has scheduled tasks
-                    HStack(spacing: 16) {
-                        // Start date
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("START DATE")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                            if let startDate = project.computedStartDate {
-                                Text(formatDate(startDate))
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                            }
-                        }
-
-                        Spacer()
-
-                        // End date (only show if valid)
-                        if let endDate = project.computedEndDate,
-                           let startDate = project.computedStartDate,
-                           endDate >= startDate {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("END DATE")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                                Text(formatDate(endDate))
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
-            .background(Color.clear)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-        }
-    }
-
-    private var descriptionField: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("DESCRIPTION")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            Text(project.projectDescription ?? "")
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
-                .background(Color.clear)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
-        }
-    }
-
-    private var teamNotesField: some View {
-        NotesDisplayField(
-            title: "Team Notes",
-            notes: project.notes ?? "",
-            isExpanded: $isNotesExpanded,
-            editedNotes: $noteText,
-            canEdit: true,  // All users including field crew can edit team notes
-            onSave: saveNotes
+        notesViewModel.setup(
+            companyId: companyId,
+            currentUserId: currentUser.id,
+            teamMembers: company.teamMembers,
+            modelContext: modelContext
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius + TutorialHighlightStyle.padding)
-                .stroke(
-                    shouldHighlightNotesSection ? TutorialHighlightStyle.color : Color.clear,
-                    lineWidth: shouldHighlightNotesSection ? TutorialHighlightStyle.lineWidth : 0
-                )
-                .opacity(shouldHighlightNotesSection ? (notesBorderPulse ? 1.0 : 0.4) : 0)
-                .padding(-TutorialHighlightStyle.padding)
-        )
-        .id("teamNotesField")
-        .onAppear {
-            if shouldHighlightNotesSection {
-                withAnimation(.easeInOut(duration: TutorialHighlightStyle.pulseDuration).repeatForever(autoreverses: true)) {
-                    notesBorderPulse = true
-                }
-            }
-        }
-        .onChange(of: tutorialPhase) { _, newPhase in
-            if tutorialMode {
-                if newPhase == .addNote {
-                    withAnimation(.easeInOut(duration: TutorialHighlightStyle.pulseDuration).repeatForever(autoreverses: true)) {
-                        notesBorderPulse = true
-                    }
-                } else {
-                    // Stop pulsing when leaving addNote phase
-                    withAnimation(OPSStyle.Animation.fast) {
-                        notesBorderPulse = false
-                    }
-                }
-            }
-        }
-    }
-
-    /// Whether to highlight the notes section during tutorial
-    private var shouldHighlightNotesSection: Bool {
-        tutorialMode && tutorialPhase == .addNote
-    }
-
-    private var assignedTeamField: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("ASSIGNED TEAM")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            VStack(alignment: .leading, spacing: 0) {
-                if project.tasks.isEmpty {
-                    // No tasks - show create prompt
-                    HStack(spacing: 8) {
-                        Text("No tasks to assign to. Create one?")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                        Spacer()
-                        
-                        Button(action: {
-                            showingAddTaskSheet = true
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: OPSStyle.Icons.add)
-                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                Text("Add Task")
-                                    .font(OPSStyle.Typography.caption)
-                            }
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                    }
-                } else if project.teamMembers.isEmpty {
-                    
-                    HStack(){
-                        // Has tasks but no team assigned
-                        Text("No team assigned")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        Spacer()
-                    }
-                    
-                    
-                } else {
-                    // Has team members
-                    let displayedMembers = isTeamExpanded ? project.teamMembers : Array(project.teamMembers.prefix(3))
-                    let hiddenCount = project.teamMembers.count - 3
-
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(displayedMembers.enumerated()), id: \.element.id) { index, member in
-                            Button(action: {
-                                selectedTeamMember = member
-                            }) {
-                                HStack(spacing: 12) {
-                                    UserAvatar(user: member, size: 32)
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(member.fullName)
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
-
-                                        Text(member.role.displayName)
-                                            .font(OPSStyle.Typography.caption)
-                                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    }
-
-                                    Spacer()
-
-                                    Image(systemName: OPSStyle.Icons.chevronRight)
-                                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                }
-                                .padding(.vertical, 8)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(PlainButtonStyle())
-
-                            // Add divider between items (not after last one)
-                            if index < displayedMembers.count - 1 {
-                                Divider()
-                                    .background(OPSStyle.Colors.inputFieldBorder.opacity(0.5))
-                            }
-                        }
-
-                        // Show more/less button when there are more than 3 members
-                        if hiddenCount > 0 {
-                            Button(action: {
-                                withAnimation(OPSStyle.Animation.fast) {
-                                    isTeamExpanded.toggle()
-                                }
-                            }) {
-                                HStack {
-                                    Text(isTeamExpanded ? "Show less" : "+\(hiddenCount) more")
-                                        .font(OPSStyle.Typography.caption)
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-
-                                    Spacer()
-
-                                    Image(systemName: isTeamExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
-                                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                }
-                                .padding(.top, 8)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Notes section (DEPRECATED - now in projectInfoSection)
-    private var notesSection: some View {
-        SectionCard(
-            icon: OPSStyle.Icons.notes,
-            title: "Project Notes",
-            contentPadding: EdgeInsets(top: 0, leading: 16, bottom: 16, trailing: 16)
-        ) {
-            VStack(spacing: 0) {
-                // Expand/collapse button
-                Button(action: {
-                    withAnimation(OPSStyle.Animation.fast) {
-                        isNotesExpanded.toggle()
-                    }
-                }) {
-                    HStack {
-                        Text(isNotesExpanded ? "Hide Notes" : "Show Notes")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-
-                        Spacer()
-
-                        Image(systemName: isNotesExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-                }
-                .buttonStyle(PlainButtonStyle())
-                .padding(.vertical, 12)
-
-                // Expandable notes content
-                if isNotesExpanded {
-                    Divider()
-                        .background(OPSStyle.Colors.cardBorder)
-                        .padding(.bottom, 12)
-
-                    ExpandableNotesView(
-                        notes: project.notes ?? "",
-                        isExpanded: $isNotesExpanded,
-                        editedNotes: $noteText,
-                        onSave: saveNotes
-                    )
-                }
-            }
-        }
-        .padding(.horizontal)
-    }
-
-    // Project info (DEPRECATED - now split into individual sections)
-    private var infoSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            
-            // Card-based info items
-            VStack(spacing: 1) {
-                // Client card with tap interaction
-                Button(action: {
-                    showingClientContact = true
-                }) {
-                    HStack {
-                        infoRow(
-                            icon: "person",
-                            title: "CLIENT",
-                            value: project.effectiveClientName.uppercased(),
-                            valueColor: OPSStyle.Colors.primaryText,
-                            showChevron: true
-                        )
-                        
-                        // Always show contact indicators with availability status
-                        HStack(spacing: 6) {
-                            Image(systemName: OPSStyle.Icons.phoneFill)
-                                .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .opacity(project.effectiveClientPhone != nil ? 1.0 : 0.2)
-
-                            Image(systemName: OPSStyle.Icons.envelopeFill)
-                                .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .opacity(project.effectiveClientEmail != nil ? 1.0 : 0.2)
-                        }
-                        .padding(.trailing, 12)
-                        
-                    }.background(OPSStyle.Colors.cardBackgroundDark)
-                }
-                .buttonStyle(PlainButtonStyle())
-                
-                // Dates row - show computed dates from tasks
-                HStack(spacing: 0) {
-                    // Start date (show computed date from tasks)
-                    HStack(spacing: 12) {
-                        Image(systemName: OPSStyle.Icons.schedule)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .frame(width: 24)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("START DATE")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                            if let startDate = project.computedStartDate {
-                                Text(formatDate(startDate))
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                            } else {
-                                Text("No scheduled tasks")
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    // End date (only show if valid - exists and on or after start date)
-                    if let endDate = project.computedEndDate,
-                       let startDate = project.computedStartDate,
-                       endDate >= startDate {
-                        HStack(spacing: 12) {
-                            Image(systemName: OPSStyle.Icons.calendarBadgeCheckmark)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .frame(width: 24)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("COMPLETION DATE")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                                Text(formatDate(endDate))
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .padding()
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .id(refreshTrigger)  // Force refresh when dates change
-                
-                // Description card
-                if let description = project.projectDescription, !description.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Image(systemName: OPSStyle.Icons.description)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .frame(width: 24)
-                            
-                            Text("DESCRIPTION")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                        
-                        Text(description)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                }
-                
-                // Notes section
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Image(systemName: OPSStyle.Icons.notes)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .frame(width: 24)
-
-                        Text("PROJECT NOTES")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                        Spacer()
-
-                        Image(systemName: isNotesExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(OPSStyle.Animation.fast) {
-                            isNotesExpanded.toggle()
-                        }
-                    }
-
-                    // Expandable notes view
-                    ExpandableNotesView(
-                        notes: project.notes ?? "",
-                        isExpanded: $isNotesExpanded,
-                        editedNotes: $noteText,
-                        onSave: saveNotes
-                    )
-                }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-            }
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .padding(.horizontal)
-        }
-    }
-    
-    // Helper to get color for status - using the OPSStyle's official status colors
-    private func getStatusColor(_ status: Status) -> Color {
-        return OPSStyle.Colors.statusColor(for: status)
-    }
-    
-    // Helper to create consistent info rows
-    private func infoRow(icon: String, title: String, value: String, valueColor: Color = .white, showChevron: Bool = false) -> some View {
-        HStack(spacing: 12) {
-            // Icon
-            Image(systemName: icon)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(width: 24)
-            
-            // Title and value
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                
-                Text(value)
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(valueColor)
-            }
-            
-            Spacer()
-
-            if showChevron {
-                Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-        }
-        .padding()
-        .background(OPSStyle.Colors.cardBackgroundDark)
-    }
-    // Photos section with improved styling
-    private var photosSection: some View {
-        SectionCard(
-            icon: OPSStyle.Icons.photo,
-            title: "Project Photos",
-            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-        ) {
-            photoContentView
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius + TutorialHighlightStyle.padding)
-                .stroke(
-                    shouldHighlightPhotosSection ? TutorialHighlightStyle.color : Color.clear,
-                    lineWidth: shouldHighlightPhotosSection ? TutorialHighlightStyle.lineWidth : 0
-                )
-                .opacity(shouldHighlightPhotosSection ? (photosBorderPulse ? 1.0 : 0.4) : 0)
-                .padding(-TutorialHighlightStyle.padding)
-        )
-        .padding(.horizontal)
-        .id("photosSection")
-        .onAppear {
-            if shouldHighlightPhotosSection {
-                withAnimation(.easeInOut(duration: TutorialHighlightStyle.pulseDuration).repeatForever(autoreverses: true)) {
-                    photosBorderPulse = true
-                }
-            }
-        }
-        .onChange(of: tutorialPhase) { _, newPhase in
-            if tutorialMode {
-                if newPhase == .addPhoto {
-                    withAnimation(.easeInOut(duration: TutorialHighlightStyle.pulseDuration).repeatForever(autoreverses: true)) {
-                        photosBorderPulse = true
-                    }
-                } else {
-                    // Stop pulsing when leaving addPhoto phase
-                    withAnimation(OPSStyle.Animation.fast) {
-                        photosBorderPulse = false
-                    }
-                }
-            }
-        }
-    }
-
-    /// Whether to highlight the photos section during tutorial
-    private var shouldHighlightPhotosSection: Bool {
-        tutorialMode && tutorialPhase == .addPhoto
-    }
-    
-    // Photo content view to break up complexity
-    private var photoContentView: some View {
-        VStack(spacing: 12) {
-            // Photo display (empty state or grid)
-            photoDisplayView
-
-            // Loading indicator for processing images
-            if processingImages {
-                processingIndicator
-                    .padding(.horizontal)
-            }
-        }
-        .padding(.vertical)
-    }
-    
-    // Photo display - either empty state or grid of photos
-    private var photoDisplayView: some View {
-        let photos = project.getProjectImages()
-        print("[ProjectDetailsView] Project photos: \(photos)")
-
-        if photos.isEmpty {
-            return AnyView(emptyPhotosView)
-        } else {
-            return AnyView(
-                photoGridView(photos: photos)
-            )
-        }
-    }
-    
-    // Empty state when no photos - shows add photo placeholder
-    private var emptyPhotosView: some View {
-        VStack(spacing: 16) {
-            // Add photo placeholder button (same style as in carousel)
-            Button(action: {
-                showingImagePicker = true
-            }) {
-                ZStack {
-                    // Dashed border outline to look like a photo placeholder
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(
-                            style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [6, 4])
-                        )
-                        .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
-
-                    // Plus icon centered
-                    VStack(spacing: 8) {
-                        Image(systemName: "plus")
-                            .font(.system(size: OPSStyle.Layout.IconSize.xl, weight: .medium))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-
-                        Text("ADD PHOTO")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                }
-                .frame(width: 110, height: 110)
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            }
-            .disabled(processingImages)
-
-            Text("Tap to add photos to this project")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-        }
-        .frame(height: 180)
-        .frame(maxWidth: .infinity)
-        .padding()
-    }
-    
-    // Grid view for photos
-    private func photoGridView(photos: [String]) -> some View {
-        VStack(spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    // Add photo button as first item in carousel
-                    addPhotoPlaceholderButton
-
-                    ForEach(Array(photos.enumerated()), id: \.element) { index, url in
-                        photoThumbnailView(url: url, index: index)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
-            }
-            .frame(height: 142) // 110 image + 32 padding
-
-            // Photo count indicator
-            HStack {
-                // NOTE: Missing icon in OPSStyle - "photo.stack" (photo count indicator)
-                Image(systemName: "photo.stack")
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-
-                Text("\(photos.count) \(photos.count == 1 ? "photo" : "photos")")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 12)
-        }
-    }
-
-    // Add photo placeholder button (first item in carousel)
-    private var addPhotoPlaceholderButton: some View {
-        Button(action: {
-            showingImagePicker = true
-        }) {
-            ZStack {
-                // Dashed border outline to look like a photo placeholder
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(
-                        style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [6, 4])
-                    )
-                    .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
-
-                // Plus icon centered
-                VStack(spacing: 8) {
-                    Image(systemName: "plus")
-                        .font(.system(size: OPSStyle.Layout.IconSize.xl, weight: .medium))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-
-                    Text("ADD")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
-            }
-            .frame(width: 110, height: 110)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-        }
-        .disabled(processingImages)
-    }
-    
-    // Individual photo thumbnail
-    private func photoThumbnailView(url: String, index: Int) -> some View {
-        PhotoThumbnail(url: url, project: project)
-            .frame(width: 110, height: 110)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .contentShape(Rectangle())
-            .onTapGesture { [index] in  // Explicitly capture index
-                print("DEBUG: Photo tapped at index \(index)")
-                selectedPhotoIndex = index
-                showingPhotoViewer = true
-            }
-            // Simple scale animation on tap
-            .hoverEffect(.lift)
-    }
-    
-    // REMOVED: No longer need to track long press for deletion
-    // REMOVED: Old addPhotosButton - now using placeholder button in carousel
-
-    // Processing indicator
-    private var processingIndicator: some View {
-        HStack {
-            ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-            Text("Processing images...")
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-        }
-        .padding(.top, 4)
-        .padding(.horizontal)
-    }
-    
-    // Save notification overlay
-    private var saveNotificationOverlay: some View {
-        Group {
-            if showingSaveNotification {
-                saveNotificationContent
-            }
-        }
-    }
-    
-    // Content of the save notification
-    private var saveNotificationContent: some View {
-        VStack {
-            Spacer()
-
-
-            HStack {
-                Image(systemName: OPSStyle.Icons.complete)
-                    .foregroundColor(OPSStyle.Colors.successStatus)
-                    .font(.system(size: OPSStyle.Layout.IconSize.md))
-                
-                Text("Notes saved")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(OPSStyle.Colors.cardBackground)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            
-            Spacer().frame(height: 300)
-        }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-        .animation(OPSStyle.Animation.standard, value: showingSaveNotification)
-        .zIndex(100)
-    }
-
-    // MARK: - Old Task Details Section (replaced by compactTaskSection)
-
-    // Old taskDetailsSection removed - now using compactTaskSection above
-
-    /// Task selector header with inline status badge (kept for legacy support)
-    private var taskSelectorHeader: some View {
-        HStack(spacing: 12) {
-            if let task = selectedTask {
-                // Task type name (acts as selector)
-                Button(action: {
-                    // Could open task picker dropdown in future
-                }) {
-                    HStack(spacing: 8) {
-                        Text(task.taskType?.display.uppercased() ?? "TASK")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-
-                        // Status badge inline
-                        StatusBadge(
-                            status: task.status.displayName,
-                            color: task.status.color,
-                            size: .small
-                        )
-                    }
-                }
-                .buttonStyle(PlainButtonStyle())
-
-                Spacer()
-
-                // Task navigation arrows
-                HStack(spacing: 4) {
-                    let sortedTasks = project.tasks.sorted { $0.displayOrder < $1.displayOrder }
-                    let currentIndex = sortedTasks.firstIndex(where: { $0.id == task.id }) ?? 0
-
-                    Button(action: {
-                        if currentIndex > 0 {
-                            selectedTask = sortedTasks[currentIndex - 1]
-                        }
-                    }) {
-                        Image(systemName: OPSStyle.Icons.chevronLeft)
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                            .foregroundColor(currentIndex > 0 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
-                            .frame(width: 32, height: 32)
-                    }
-                    .disabled(currentIndex == 0)
-
-                    Text("\(currentIndex + 1)/\(sortedTasks.count)")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                    Button(action: {
-                        if currentIndex < sortedTasks.count - 1 {
-                            selectedTask = sortedTasks[currentIndex + 1]
-                        }
-                    }) {
-                        Image(systemName: OPSStyle.Icons.chevronRight)
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                            .foregroundColor(currentIndex < sortedTasks.count - 1 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
-                            .frame(width: 32, height: 32)
-                    }
-                    .disabled(currentIndex >= sortedTasks.count - 1)
-                }
-            }
-        }
-    }
-
-    // Old taskTabSelector removed - replaced by new tab system
-
-    /// Schedule content for task tab
-    private var taskScheduleContent: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("SCHEDULE")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-            Button(action: {
-                if canEditProjectSettings() {
-                    showingTaskScheduler = true
-                }
-            }) {
-                HStack(spacing: 12) {
-                    Image(systemName: OPSStyle.Icons.calendar)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .frame(width: 20)
-
-                    if let task = selectedTask,
-                       let start = task.startDate {
-                        Text(formatTaskDateRange(start, task.endDate))
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    } else {
-                        Text("Tap to Schedule")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-
-                    Spacer()
-
-                    if canEditProjectSettings() {
-                        Image(systemName: OPSStyle.Icons.chevronRight)
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-                }
-                .padding(.vertical, 10)
-                .padding(.horizontal, 12)
-                .background(OPSStyle.Colors.cardBackground)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-            }
-            .buttonStyle(PlainButtonStyle())
-            .allowsHitTesting(canEditProjectSettings())
-        }
-    }
-
-    /// Team content for task tab
-    private var taskTeamContent: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("TEAM")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                Spacer()
-
-                if canEditProjectSettings() {
-                    Button(action: {
-                        if let task = selectedTask {
-                            selectedTaskTeamMemberIds = Set(task.getTeamMemberIds())
-                            loadTaskTeamMembers()
-                            showingTaskTeamPicker = true
-                        }
-                    }) {
-                        Text("Edit")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                }
-            }
-
-            if let task = selectedTask {
-                TaskTeamView(task: task)
-                    .environmentObject(dataController)
-            }
-        }
-        .sheet(isPresented: $showingTaskTeamPicker, onDismiss: {
-            saveTaskTeamChanges()
-        }) {
-            TeamMemberPickerSheet(
-                selectedTeamMemberIds: $selectedTaskTeamMemberIds,
-                allTeamMembers: taskTeamMembers
-            )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-        }
-    }
-
-    /// Notes content for task tab
-    private var taskNotesContent: some View {
-        NotesDisplayField(
-            title: "Task Notes",
-            notes: selectedTask?.taskNotes ?? "",
-            isExpanded: $isTaskNotesExpanded,
-            editedNotes: $taskNotes,
-            canEdit: true,
-            onSave: saveSelectedTaskNotes
-        )
-    }
-
-    /// Button to toggle task status between active and completed
-    private var taskStatusButton: some View {
-        Group {
-            if let task = selectedTask {
-                let buttonColor = task.status == .completed ? OPSStyle.Colors.primaryAccent : Color("StatusCompleted")
-                Button(action: {
-                    let newStatus: TaskStatus = task.status == .completed ? .active : .completed
-                    updateSelectedTaskStatus(to: newStatus)
-                }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: task.status == .completed ? "arrow.uturn.backward" : "checkmark")
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-
-                        Text(task.status == .completed ? "REOPEN TASK" : "COMPLETE TASK")
-                            .font(OPSStyle.Typography.bodyBold)
-                    }
-                    .foregroundColor(buttonColor)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Color.clear)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(buttonColor, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-        }
-    }
-
-    private var taskNavigationSection: some View {
-        VStack(spacing: 12) {
-            let sortedTasks = project.tasks.sorted { $0.displayOrder < $1.displayOrder }
-            let currentIndex = sortedTasks.firstIndex(where: { $0.id == selectedTask?.id })
-
-            HStack(spacing: 12) {
-                // Previous task pill
-                if let index = currentIndex, index > 0 {
-                    let prevTask = sortedTasks[index - 1]
-                    taskNavigationPill(
-                        caption: "PREVIOUS",
-                        label: prevTask.taskType?.display ?? "Task",
-                        icon: OPSStyle.Icons.chevronLeft,
-                        iconPosition: .leading,
-                        task: prevTask
-                    )
-                } else {
-                    emptyTaskNavigationPill(caption: "PREVIOUS", iconPosition: .leading)
-                }
-
-                // Next task pill
-                if let index = currentIndex, index < sortedTasks.count - 1 {
-                    let nextTask = sortedTasks[index + 1]
-                    taskNavigationPill(
-                        caption: "NEXT",
-                        label: nextTask.taskType?.display ?? "Task",
-                        icon: OPSStyle.Icons.chevronRight,
-                        iconPosition: .trailing,
-                        task: nextTask
-                    )
-                } else {
-                    emptyTaskNavigationPill(caption: "NEXT", iconPosition: .trailing)
-                }
-            }
-        }
-        .padding(.horizontal)
-    }
-
-    private enum TaskNavIconPosition {
-        case leading, trailing
-    }
-
-    private func taskNavigationPill(caption: String, label: String, icon: String, iconPosition: TaskNavIconPosition, task: ProjectTask) -> some View {
-        Button(action: {
-            // Save current task notes if changed
-            if taskNotes != originalTaskNotes {
-                saveSelectedTaskNotes()
-            }
-
-            // Switch to new task
-            withAnimation(OPSStyle.Animation.standard) {
-                selectedTask = task
-                let notes = task.taskNotes ?? ""
-                taskNotes = notes
-                originalTaskNotes = notes
-                isTaskNotesExpanded = false
-            }
-        }) {
-            HStack(spacing: 8) {
-                if iconPosition == .leading {
-                    Image(systemName: icon)
-                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
-
-                VStack(alignment: iconPosition == .leading ? .leading : .trailing, spacing: 2) {
-                    Text(caption)
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                    Text(label.uppercased())
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .lineLimit(1)
-                }
-
-                if iconPosition == .trailing {
-                    Image(systemName: icon)
-                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .padding(.horizontal, 16)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .strokeBorder(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-        }
-    }
-
-    private func emptyTaskNavigationPill(caption: String, iconPosition: TaskNavIconPosition) -> some View {
-        HStack(spacing: 8) {
-            if iconPosition == .leading {
-                Image(systemName: OPSStyle.Icons.chevronLeft)
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
-            }
-
-            VStack(alignment: iconPosition == .leading ? .leading : .trailing, spacing: 2) {
-                Text(caption)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                Text("NO TASK")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
-            }
-
-            if iconPosition == .trailing {
-                Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.5))
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .padding(.horizontal, 16)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .fill(Color.clear)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.inputFieldBorder.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
-        )
-    }
-
-    private func formatTaskDateRange(_ start: Date, _ end: Date?) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-
-        if let end = end, !Calendar.current.isDate(start, inSameDayAs: end) {
-            return "\(formatter.string(from: start)) - \(formatter.string(from: end))"
-        } else {
-            return formatter.string(from: start)
-        }
-    }
-
-    // Tasks section
-    private var tasksSection: some View {
-        SectionCard(
-            icon: OPSStyle.Icons.task,
-            title: "Tasks",
-            count: project.tasks.count,
-            actionIcon: "plus.circle",
-            actionLabel: "Add",
-            onAction: {
-                showingAddTaskSheet = true
-            },
-            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-        ) {
-            TaskListView(
-                project: project,
-                onTaskSelected: { task in
-                    // Save current task notes if changed before switching
-                    if selectedTask != nil && taskNotes != originalTaskNotes {
-                        saveSelectedTaskNotes()
-                    }
-
-                    // Switch to new task
-                    withAnimation(OPSStyle.Animation.standard) {
-                        selectedTask = task
-                        let notes = task.taskNotes ?? ""
-                        taskNotes = notes
-                        originalTaskNotes = notes
-                        isTaskNotesExpanded = false
-                    }
-                }
-            )
-            .environmentObject(dataController)
-            .environmentObject(appState)
-        }
-        .padding(.horizontal)
-    }
-
-    private var completeButton: some View {
-        let completedColor = OPSStyle.Colors.statusColor(for: .completed)
-
-        return Button(action: {
-            // Tutorial mode: show flash animation then post notification
-            if tutorialMode && tutorialPhase == .completeProject {
-                // Show flash animation
-                withAnimation(OPSStyle.Animation.standard) {
-                    showCompletedFlash = true
-                }
-                // Haptic feedback
-                let generator = UINotificationFeedbackGenerator()
-                generator.notificationOccurred(.success)
-
-                // After flash animation, post notification and complete
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                    // Clear active project state so Home view resets after tutorial
-                    appState.activeProjectID = nil
-                    appState.activeTaskID = nil
-
-                    NotificationCenter.default.post(
-                        name: Notification.Name("TutorialProjectCompleted"),
-                        object: nil
-                    )
-                    markProjectComplete()
-                }
-                return
-            }
-
-            // CENTRALIZED COMPLETION CHECK: Uses AppState for global checklist sheet
-            if appState.requestProjectCompletion(project) {
-                // No incomplete tasks - proceed with completion
-                markProjectComplete()
-            }
-            // If false, the global checklist sheet will be shown via AppState in ContentView
-        }) {
-            Text(showCompletedFlash ? "PROJECT COMPLETED" : "MARK PROJECT COMPLETE")
-                .font(OPSStyle.Typography.bodyBold)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .foregroundColor(showCompletedFlash ? OPSStyle.Colors.primaryText : OPSStyle.Colors.primaryAccent)
-                .background(showCompletedFlash ? completedColor : Color.clear)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(
-                            showCompletedFlash ? completedColor : OPSStyle.Colors.primaryAccent,
-                            lineWidth: shouldHighlightCompleteButton ? 2 : 1
-                        )
-                        .opacity(showCompletedFlash ? 1.0 : (shouldHighlightCompleteButton ? (completeBorderPulse ? 1.0 : 0.4) : 1.0))
-                )
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-        }
-        .disabled(showCompletedFlash)
-        .animation(OPSStyle.Animation.standard, value: showCompletedFlash)
-        .padding(.horizontal)
-        .padding(.top, 8)
-        .id("completeButton")
-        .onAppear {
-            // Start pulsing animation when in tutorial mode at completeProject phase
-            if shouldHighlightCompleteButton {
-                withAnimation(.easeInOut(duration: TutorialHighlightStyle.pulseDuration).repeatForever(autoreverses: true)) {
-                    completeBorderPulse = true
-                }
-            }
-        }
-        .onChange(of: tutorialPhase) { _, newPhase in
-            // Start pulsing when entering completeProject phase
-            if tutorialMode && newPhase == .completeProject {
-                withAnimation(.easeInOut(duration: TutorialHighlightStyle.pulseDuration).repeatForever(autoreverses: true)) {
-                    completeBorderPulse = true
-                }
-            }
-        }
-    }
-
-    /// Whether to highlight the complete button during tutorial
-    private var shouldHighlightCompleteButton: Bool {
-        tutorialMode && tutorialPhase == .completeProject
-    }
-
-    private var closeJobButton: some View {
-        let closedColor = OPSStyle.Colors.statusColor(for: .closed)
-        return Button(action: {
-            markProjectClosed()
-        }) {
-            Text("CLOSE JOB")
-                .font(OPSStyle.Typography.bodyBold)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .foregroundColor(closedColor)
-                .background(Color.clear)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(closedColor, lineWidth: OPSStyle.Layout.Border.standard)
-                )
-        }
-        .padding(.horizontal)
-        .padding(.top, 8)
-    }
-
-    private var deleteButton: some View {
-        Button(action: {
-            showingDeleteAlert = true
-        }) {
-            Text("DELETE PROJECT")
-                .font(OPSStyle.Typography.bodyBold)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .foregroundColor(OPSStyle.Colors.errorStatus)
-                .background(Color.clear)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.errorStatus, lineWidth: OPSStyle.Layout.Border.standard)
-                )
-        }
-        .padding(.horizontal)
-        .padding(.top, 8)
-        .deleteConfirmation(
-            isPresented: $showingDeleteAlert,
-            itemName: "Project",
-            message: "Are you sure you want to delete this project? This action cannot be undone.",
-            onConfirm: deleteProject
-        )
-    }
-
-    /// Button to cancel the selected task
-    private var cancelTaskButton: some View {
-        Button(action: {
-            showingCancelTaskConfirmation = true
-        }) {
-            HStack(spacing: 8) {
-                Image(systemName: "xmark.circle")
-                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
-
-                Text("CANCEL TASK")
-                    .font(OPSStyle.Typography.bodyBold)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .foregroundColor(OPSStyle.Colors.tertiaryText)
-            .background(Color.clear)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.tertiaryText.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
-            )
-        }
-        .padding(.horizontal)
-        .padding(.top, 8)
-        .alert("Cancel Task", isPresented: $showingCancelTaskConfirmation) {
-            Button("Keep Task", role: .cancel) { }
-            Button("Cancel Task", role: .destructive) {
-                cancelSelectedTask()
-            }
-        } message: {
-            Text("Are you sure you want to cancel this task? You can reactivate it later if needed.")
-        }
-    }
-
-    /// Cancel the selected task
-    private func cancelSelectedTask() {
-        guard let task = selectedTask else { return }
-
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
-
-        Task {
-            do {
-                try await dataController.updateTaskStatus(task: task, to: .cancelled)
-                print("[TASK_CANCEL] ✅ Task \(task.id) cancelled")
-            } catch {
-                print("[TASK_CANCEL] ❌ Failed to cancel task: \(error)")
-            }
-        }
-    }
-
-    // Check if user can edit project settings
-    private func canEditProjectSettings() -> Bool {
-        guard let currentUser = dataController.currentUser else { return false }
-        return currentUser.role != .fieldCrew
-    }
-
-    private func markProjectComplete() {
-        let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
-        impactFeedback.impactOccurred()
-
-        // Note: Tutorial mode notification is posted in completeButton action
-        // to avoid duplicate notifications (which would skip phases)
-
-        Task {
-            // Auto-complete all incomplete tasks when marking project complete
-            let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
-
-            for task in incompleteTasks {
-                do {
-                    try await dataController.updateTaskStatus(task: task, to: .completed)
-                    print("[PROJECT_COMPLETE] ✅ Task \(task.id) marked complete")
-                } catch {
-                    print("[PROJECT_COMPLETE] ❌ Failed to complete task \(task.id): \(error)")
-                }
-            }
-
-            // Then update project status
-            try? await dataController.syncManager?.updateProjectStatus(
-                projectId: project.id,
-                status: .completed,
-                forceSync: true
-            )
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            dismiss()
-        }
-    }
-
-    private func markProjectClosed() {
-        let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
-        impactFeedback.impactOccurred()
-
-        // Dismiss first with animation, then update status
-        // This prevents the status change from causing view updates during dismissal
-        dismiss()
-
-        // Update status after dismissal animation starts
-        Task {
-            // Small delay to let dismissal animation begin
-            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-            try? await dataController.syncManager?.updateProjectStatus(
-                projectId: project.id,
-                status: .closed,
-                forceSync: true
-            )
-        }
-    }
-
-    private func markProjectCompleteWithTasks() {
-        let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
-        impactFeedback.impactOccurred()
-
-        Task {
-            let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
-
-            for task in incompleteTasks {
-                do {
-                    // Use centralized status update function
-                    try await dataController.updateTaskStatus(task: task, to: .completed)
-                    print("[PROJECT_COMPLETE] ✅ Task \(task.id) marked complete")
-                } catch {
-                    print("[PROJECT_COMPLETE] ❌ Failed to sync task \(task.id): \(error)")
-                }
-            }
-
-            await MainActor.run {
-                Task {
-                    try? await dataController.syncManager?.updateProjectStatus(
-                        projectId: project.id,
-                        status: .completed,
-                        forceSync: true
-                    )
-                }
-            }
-
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            await MainActor.run {
-                dismiss()
-            }
-        }
-    }
-
-    private func deleteProject() {
-        let projectTitle = project.title
-
-        print("[PROJECT_DETAILS] 🗑️ Starting soft delete for project: \(projectTitle)")
-
-        // Soft delete sets deletedAt - project object still exists, just marked as deleted
-        Task {
-            do {
-                try await dataController.deleteProject(project)
-                print("[PROJECT_DETAILS] ✅ Project '\(projectTitle)' soft deleted successfully")
-
-                // Dismiss after soft delete completes
-                await MainActor.run {
-                    dismiss()
-                }
-            } catch {
-                print("[PROJECT_DETAILS] ❌ Failed to soft delete project: \(error)")
-            }
-        }
-    }
-
-    // Helper to format date
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy"
-        return formatter.string(from: date)
-    }
-    
-    @State private var showingSaveNotification = false
-    @State private var notificationTimer: Timer?
-    
-    private func saveTitle() {
-        guard !editedTitle.isEmpty, editedTitle != project.title else {
-            isEditingTitle = false
-            return
-        }
-
-        // Haptic feedback on save
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
-
-        // Update locally and sync to API
-        Task {
-            do {
-                project.title = editedTitle
-                project.needsSync = true
-                try dataController.modelContext?.save()
-
-                // Sync to Supabase
-                try await dataController.syncManager.updateProjectFields(
-                    projectId: project.id,
-                    fields: ["title": .string(editedTitle)]
-                )
-
-                await MainActor.run {
-                    project.needsSync = false
-                    project.lastSyncedAt = Date()
-                    try? dataController.modelContext?.save()
-                    isEditingTitle = false
-                    showSaveNotification()
-                }
-            } catch {
-                print("❌ Failed to save title: \(error)")
-            }
-        }
-    }
-
-    private func saveNotes() {
-        // Haptic feedback on save
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
-
-        // Tutorial mode: notify note added
-        if tutorialMode {
-            NotificationCenter.default.post(
-                name: Notification.Name("TutorialNoteAdded"),
-                object: nil
-            )
-        }
-
-        // Use centralized function for immediate sync
-        Task {
-            do {
-                try await dataController.updateProjectNotes(project: project, notes: noteText)
-                await MainActor.run {
-                    showSaveNotification()
-                }
-            } catch {
-                print("❌ Failed to save notes: \(error)")
-            }
-        }
-    }
-    
-    private func showSaveNotification() {
-        // Cancel any existing timer
-        notificationTimer?.invalidate()
-        
-        // Show the notification
-        showingSaveNotification = true
-        
-        // Set a timer to hide it after 2 seconds
-        notificationTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { _ in
-            DispatchQueue.main.async {
-                showingSaveNotification = false
-            }
-        }
-        
-        // Update the original notes to match current notes after saving
-        originalNoteText = noteText
-    }
-    
-    private func checkForUnsavedChanges() {
-        // Compare current notes with original notes
-        if noteText != originalNoteText {
-            // We have unsaved changes, show the alert
-            showingUnsavedChangesAlert = true
-        } else {
-            // No changes, dismiss immediately
-            dismiss()
-        }
-    }
-    
-    // Function to add multiple photos to the project
-    private func addPhotosToProject() {
-        // Tutorial mode: notify photo added
-        if tutorialMode {
-            NotificationCenter.default.post(
-                name: Notification.Name("TutorialPhotoAdded"),
-                object: nil
-            )
-        }
-
-        // Start loading indicator
-        processingImages = true
-
-        // Debug log
-
-        Task {
-            do {
-                // Use the ImageSyncManager if available
-                if let imageSyncManager = dataController.imageSyncManager {
-                    // Process all images through the ImageSyncManager
-                    let urls = await imageSyncManager.saveImages(selectedImages, for: project)
-                    
-                    if !urls.isEmpty {
-                        // ImageSyncManager already added the images to the project
-                        // We just need to clear the UI state
-                        
-                        await MainActor.run {
-                            // Clear selected images and hide loading
-                            selectedImages.removeAll()
-                            processingImages = false
-                        }
-                    } else {
-                        await MainActor.run {
-                            processingImages = false
-                            showingNetworkError = true
-                            networkErrorMessage = "Failed to upload images to the server. Please check your network connection and try again."
-                        }
-                    }
-                } else {
-                    // Fallback to direct processing if ImageSyncManager is not available
-                    
-                    // Process each image
-                    for (_, image) in selectedImages.enumerated() {
-                        // Debug log
-                        
-                        // Compress image
-                        guard let imageData = image.jpegData(compressionQuality: 0.7) else {
-                            continue
-                        }
-                        
-                        // Generate a unique filename
-                        let timestamp = Date().timeIntervalSince1970
-                        let filename = "project_\(project.id)_\(timestamp)_\(UUID().uuidString).jpg"
-                        
-                        // Save image data to file system with the key as the URL
-                        let localURL = "local://project_images/\(filename)"
-                        
-                        // Store the image in file system
-                        let success = ImageFileManager.shared.saveImage(data: imageData, localID: localURL)
-                        if success {
-                            
-                            // Add to project's images
-                            var currentImages = project.getProjectImages()
-                            currentImages.append(localURL)
-                            
-                            await MainActor.run {
-                                project.setProjectImageURLs(currentImages)
-                                project.needsSync = true
-                            }
-                        }
-                        
-                        // Small delay for UI responsiveness
-                        if selectedImages.count > 1 {
-                            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds per image
-                        }
-                    }
-                    
-                    // Save all changes
-                    await MainActor.run {
-                        if let modelContext = dataController.modelContext {
-                            try? modelContext.save()
-                        }
-                        
-                        // Clear selected images and hide loading
-                        selectedImages.removeAll()
-                        processingImages = false
-                    }
-                }
-            } catch {
-                // Handle error
-                await MainActor.run {
-                    processingImages = false
-                }
-            }
-        }
-    }
-    
-    /// REMOVED: Photo deletion functionality as requested
-    // We're now only allowing users to add photos without deleting them
-    
-    // MARK: - Client Data Refresh
-    
-    private func refreshClientData(clientId: String, forceRefresh: Bool = false) {
-        // Skip if already refreshing
-        guard !isRefreshingClient else { 
-            return 
-        }
-        isRefreshingClient = true
-        
-        
-        Task {
-            do {
-                // Get the sync manager from data controller
-                guard let syncManager = dataController.syncManager else {
-                    isRefreshingClient = false
-                    return
-                }
-                
-                // Refresh just this one client
-                try? await syncManager.refreshSingleClient(clientId: clientId)
-                
-                
-                // Update UI on main thread
-                await MainActor.run {
-                    isRefreshingClient = false
-                }
-            } catch {
-                await MainActor.run {
-                    isRefreshingClient = false
-                }
-            }
-        }
-    }
-
-    // MARK: - Helper Functions
-
-    private func openInMaps(coordinate: CLLocationCoordinate2D?, address: String) {
-        if let coordinate = coordinate {
-            let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
-            mapItem.name = address
-            mapItem.openInMaps(launchOptions: [
-                MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
-            ])
-        } else {
-            // Fallback to address-based search
-            let searchQuery = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-            if let url = URL(string: "maps://?q=\(searchQuery)") {
-                UIApplication.shared.open(url)
-            }
-        }
-    }
-
-    @MainActor
-    private func selectAddressSuggestion(_ suggestion: MKLocalSearchCompletion) {
-        // Build full address from suggestion
-        let fullAddress = "\(suggestion.title), \(suggestion.subtitle)"
-        editedAddress = fullAddress
-
-        // Clear suggestions
-        addressSearchCompleter.clear()
-
-        // Geocode the selected address
-        Task {
-            await geocodeAddressInline(fullAddress)
-        }
-    }
-
-    @MainActor
-    private func geocodeAddressInline(_ address: String) async {
-        isGeocodingAddress = true
-
-        let geocoder = CLGeocoder()
-        do {
-            let placemarks = try await geocoder.geocodeAddressString(address)
-
-            if let location = placemarks.first?.location {
-                addressMapRegion = MKCoordinateRegion(
-                    center: location.coordinate,
-                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-                )
-            }
-        } catch {
-            print("❌ Geocoding failed: \(error.localizedDescription)")
-        }
-
-        isGeocodingAddress = false
-    }
-
-    private func saveAddress() {
-        showingAddressEditor = false
-
-        let generator = UIImpactFeedbackGenerator(style: .light)
-        generator.impactOccurred()
-
-        // Use centralized function for immediate sync
-        Task {
-            do {
-                try await dataController.updateProjectAddress(project: project, address: editedAddress)
-            } catch {
-                print("❌ Failed to save address: \(error)")
-            }
-        }
-    }
-
-    // MARK: - Task Operations
-
-    private func updateSelectedTaskStatus(to newStatus: TaskStatus) {
-        guard let task = selectedTask else { return }
-
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
-
-        // Handle project status updates before task status update
-        // If task is being reactivated and project is completed, reopen project
-        if newStatus == .active {
-            if project.status == .completed {
-                project.status = .inProgress
-                project.needsSync = true
-                Task {
-                    try? await dataController.syncManager?.updateProjectStatus(
-                        projectId: project.id,
-                        status: .inProgress,
-                        forceSync: true
-                    )
-                }
-            }
-        }
-
-        // Use centralized status update function
-        Task {
-            do {
-                try await dataController.updateTaskStatus(task: task, to: newStatus)
-
-                // Check if all tasks are complete after successful update
-                if newStatus == .completed {
-                    await MainActor.run {
-                        checkIfAllTasksComplete()
-                    }
-                }
-            } catch {
-                print("[TASK_DETAILS] ❌ Failed to update task status: \(error)")
-            }
-        }
-    }
-
-    private func saveSelectedTaskNotes() {
-        guard let task = selectedTask else { return }
-
-        // Haptic feedback on save
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
-
-        task.taskNotes = taskNotes.isEmpty ? nil : taskNotes
-        task.needsSync = true
-        try? dataController.modelContext?.save()
-
-        originalTaskNotes = taskNotes
-        showSaveNotification()
-
-        // Sync to API
-        Task {
-            await syncTaskNotesToAPI()
-        }
-    }
-
-    @MainActor
-    private func syncTaskNotesToAPI() async {
-        guard let task = selectedTask,
-              let syncManager = dataController.syncManager else { return }
-
-        do {
-            print("📤 Syncing task notes to API")
-            try await syncManager.updateTaskNotes(taskId: task.id, notes: task.taskNotes ?? "")
-            print("✅ Task notes synced successfully")
-            task.needsSync = false
-            try? dataController.modelContext?.save()
-        } catch {
-            print("❌ Failed to sync task notes: \(error)")
-        }
-    }
-
-    private func checkIfAllTasksComplete() {
-        let allTasks = project.tasks
-        let incompleteTasks = allTasks.filter { $0.status != .completed && $0.status != .cancelled }
-
-        if incompleteTasks.isEmpty && !allTasks.isEmpty {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                showingCompletionAlert = true
-            }
-        }
-    }
-
-    private func loadTaskTeamMembers() {
-        guard let company = dataController.getCurrentUserCompany() else { return }
-        taskTeamMembers = Array(company.teamMembers)
-    }
-
-    private func handleTaskScheduleUpdate(startDate: Date, endDate: Date) {
-        guard let task = selectedTask else { return }
-
-        print("🔄 Task handleScheduleUpdate called - New dates: \(startDate) to \(endDate)")
-
-        // Update the task's own date fields (merged from CalendarEvent)
-        task.updateDates(startDate: startDate, endDate: endDate)
-        task.needsSync = true
-        try? dataController.modelContext?.save()
-
-        // Task dates updated directly - SwiftData will notify observers
-    }
-
-    private func saveTaskTeamChanges() {
-        guard let task = selectedTask else { return }
-
-        let previousIds = Set(task.getTeamMemberIds())
-        let newIds = selectedTaskTeamMemberIds
-
-        if previousIds != newIds {
-            // Update task
-            task.setTeamMemberIds(Array(newIds))
-            task.needsSync = true
-
-            try? dataController.modelContext?.save()
-
-            // Show update message
-            showTaskTeamUpdateMessage = true
-
-            // Sync to Supabase
-            Task {
-                do {
-                    try await dataController.syncManager.updateTaskTeamMembers(
-                        taskId: task.id,
-                        memberIds: Array(newIds)
-                    )
-                    print("✅ Task team members synced successfully")
-                } catch {
-                    print("❌ Failed to sync task team members: \(error)")
-                }
-            }
-        }
+        Task { await notesViewModel.loadNotes() }
     }
 }
 
-// MARK: - TaskStatusChip
-
-/// Compact horizontal status chip for task status selection
-private struct TaskStatusChip: View {
-    let status: TaskStatus
-    let isSelected: Bool
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            Text(status.displayName.uppercased())
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(isSelected ? .white : status.color)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(isSelected ? status.color : Color.clear)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .strokeBorder(status.color, lineWidth: OPSStyle.Layout.Border.standard)
-                )
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-}
-
-// MARK: - AddressSearchCompleter
-
-class AddressSearchCompleter: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
-    @Published var results: [MKLocalSearchCompletion] = []
-    private let completer = MKLocalSearchCompleter()
-
-    var searchFragment: String = "" {
-        didSet {
-            if searchFragment.isEmpty {
-                results = []
-            } else {
-                completer.queryFragment = searchFragment
-            }
-        }
-    }
-
-    override init() {
-        super.init()
-        completer.delegate = self
-        completer.resultTypes = .address
-    }
-
-    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        DispatchQueue.main.async {
-            self.results = completer.results
-        }
-    }
-
-    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        print("❌ Address search completer error: \(error.localizedDescription)")
-    }
-
-    func clear() {
-        searchFragment = ""
-        results = []
-    }
-}
-
-// MARK: - AddressEditorSheet (Legacy - kept for compatibility)
-
-struct AddressEditorSheet: View {
-    @Binding var address: String
-    let onSave: () -> Void
-    let onCancel: () -> Void
-
-    @State private var region = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
-        span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-    )
-    @State private var isGeocodingAddress = false
-    @State private var isReverseGeocoding = false
-    @State private var lastUserTypedAddress: String = ""
-    @State private var lastCoordinate = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
-    @State private var isUserEditingText = false
-    @State private var debounceTask: Task<Void, Never>?
-
-    var body: some View {
-        NavigationView {
-            ZStack {
-                MapViewWithCallback(
-                    region: $region,
-                    onRegionChange: { newRegion in
-                        guard !isUserEditingText else { return }
-
-                        let newCoord = newRegion.center
-                        if abs(newCoord.latitude - lastCoordinate.latitude) > 0.001 ||
-                           abs(newCoord.longitude - lastCoordinate.longitude) > 0.001 {
-                            lastCoordinate = newCoord
-
-                            debounceTask?.cancel()
-                            debounceTask = Task {
-                                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                                if !Task.isCancelled {
-                                    await MainActor.run {
-                                        reverseGeocodeCoordinate(newCoord)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                )
-                .ignoresSafeArea()
-
-                VStack {
-                    Spacer()
-
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("ADDRESS")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                        TextField("Enter address or drag map", text: $address, onEditingChanged: { isEditing in
-                            isUserEditingText = isEditing
-                        })
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .autocorrectionDisabled(true)
-                            .padding()
-                            .background(OPSStyle.Colors.cardBackgroundDark)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .onChange(of: address) { _, newValue in
-                                if newValue != lastUserTypedAddress && isUserEditingText {
-                                    lastUserTypedAddress = newValue
-
-                                    debounceTask?.cancel()
-                                    debounceTask = Task {
-                                        try? await Task.sleep(nanoseconds: 800_000_000)
-                                        if !Task.isCancelled {
-                                            await MainActor.run {
-                                                geocodeAddress(newValue)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                        if isGeocodingAddress || isReverseGeocoding {
-                            HStack {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                                    .scaleEffect(0.8)
-                                Text(isGeocodingAddress ? "Updating map..." : "Finding address...")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                        }
-                    }
-                    .padding(20)
-                    .background(.ultraThinMaterial.opacity(0.95))
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 32)
-                }
-
-                VStack(spacing: 4) {
-                    // NOTE: Missing icon in OPSStyle - "scope" (address editor crosshair)
-                    Image(systemName: "scope")
-                        .font(.system(size: OPSStyle.Layout.IconSize.xl))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-
-                    Circle()
-                        .fill(OPSStyle.Colors.primaryAccent)
-                        .frame(width: 6, height: 6)
-                }
-            }
-            .navigationTitle("EDIT ADDRESS")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        onCancel()
-                    }
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        onSave()
-                    }
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .disabled(address.isEmpty)
-                }
-            }
-            .toolbarBackground(OPSStyle.Colors.cardBackgroundDark, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-        }
-        .onAppear {
-            lastUserTypedAddress = address
-            geocodeAddress(address)
-        }
-    }
-
-    private func geocodeAddress(_ addressString: String) {
-        guard !addressString.isEmpty else { return }
-
-        isGeocodingAddress = true
-
-        let geocoder = CLGeocoder()
-        geocoder.geocodeAddressString(addressString) { placemarks, error in
-            DispatchQueue.main.async {
-                isGeocodingAddress = false
-
-                if let placemark = placemarks?.first,
-                   let location = placemark.location {
-                    withAnimation {
-                        region.center = location.coordinate
-                    }
-                }
-            }
-        }
-    }
-
-    private func reverseGeocodeCoordinate(_ coordinate: CLLocationCoordinate2D) {
-        guard !isGeocodingAddress, !isUserEditingText else { return }
-
-        isReverseGeocoding = true
-
-        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        let geocoder = CLGeocoder()
-
-        geocoder.reverseGeocodeLocation(location) { placemarks, error in
-            DispatchQueue.main.async {
-                isReverseGeocoding = false
-
-                guard !isUserEditingText else { return }
-
-                if let placemark = placemarks?.first {
-                    var addressComponents: [String] = []
-
-                    if let subThoroughfare = placemark.subThoroughfare {
-                        addressComponents.append(subThoroughfare)
-                    }
-                    if let thoroughfare = placemark.thoroughfare {
-                        addressComponents.append(thoroughfare)
-                    }
-                    if let locality = placemark.locality {
-                        addressComponents.append(locality)
-                    }
-                    if let administrativeArea = placemark.administrativeArea {
-                        addressComponents.append(administrativeArea)
-                    }
-                    if let postalCode = placemark.postalCode {
-                        addressComponents.append(postalCode)
-                    }
-
-                    let newAddress = addressComponents.joined(separator: ", ")
-                    if !newAddress.isEmpty {
-                        address = newAddress
-                        lastUserTypedAddress = newAddress
-                    }
-                }
-            }
-        }
-    }
-}
-
-struct MapPin: Identifiable {
-    let id = UUID()
-    let coordinate: CLLocationCoordinate2D
-}
-
-struct MapViewWithCallback: UIViewRepresentable {
-    @Binding var region: MKCoordinateRegion
-    let onRegionChange: (MKCoordinateRegion) -> Void
-
-    func makeUIView(context: Context) -> MKMapView {
-        let mapView = MKMapView()
-        mapView.delegate = context.coordinator
-        mapView.setRegion(region, animated: false)
-        return mapView
-    }
-
-    func updateUIView(_ mapView: MKMapView, context: Context) {
-        if abs(mapView.region.center.latitude - region.center.latitude) > 0.001 ||
-           abs(mapView.region.center.longitude - region.center.longitude) > 0.001 {
-            mapView.setRegion(region, animated: true)
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-
-    class Coordinator: NSObject, MKMapViewDelegate {
-        var parent: MapViewWithCallback
-
-        init(_ parent: MapViewWithCallback) {
-            self.parent = parent
-        }
-
-        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
-            DispatchQueue.main.async {
-                self.parent.region = mapView.region
-                self.parent.onRegionChange(mapView.region)
-            }
-        }
-    }
-}
-
-struct ProjectDetailsView_Previews: PreviewProvider {
-    static var previews: some View {
-        // Create a sample project for preview
-        let sampleProject = Project(id: "preview-123", title: "Sample Construction Project", status: .inProgress)
-
-        // Set additional properties
-        // Client name comes from client relationship
-        sampleProject.address = "123 Main Street, Springfield, IL"
-        sampleProject.startDate = Date()
-        sampleProject.endDate = Date().addingTimeInterval(60*60*24*30) // 30 days later
-        sampleProject.notes = "This is a sample project for preview purposes."
-
-        return ProjectDetailsView(project: sampleProject)
-            .environmentObject(DataController())
-            .preferredColorScheme(.dark)
-    }
-}
-
-// Full screen photo viewer with swipe navigation
-struct FullScreenPhotoViewer: View {
-    let photos: [String]
-    let initialIndex: Int
-    let onDismiss: () -> Void
-    
-    @State private var currentIndex: Int
-    @Environment(\.colorScheme) private var colorScheme
-    
-    init(photos: [String], initialIndex: Int, onDismiss: @escaping () -> Void) {
-        self.photos = photos
-        self.initialIndex = initialIndex
-        self.onDismiss = onDismiss
-        self._currentIndex = State(initialValue: initialIndex)
-    }
-    
-    var body: some View {
-        ZStack {
-            // Background
-            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
-            
-            // Photo gallery with swipe
-            TabView(selection: $currentIndex) {
-                ForEach(0..<photos.count, id: \.self) { index in
-                    ZoomablePhotoView(url: photos[index])
-                        .tag(index)
-                }
-            }
-            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .automatic))
-            
-            // UI controls overlay
-            VStack {
-                // Top bar with close button and counter
-                HStack {
-                    Button(action: onDismiss) {
-                        Image(systemName: OPSStyle.Icons.xmark)
-                            .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .semibold))
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(12)
-                            .background(OPSStyle.Colors.background)
-                            .clipShape(Circle())
-                    }
-
-                    Spacer()
-
-                    Text("\(currentIndex + 1) of \(photos.count)")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(8)
-                        .background(OPSStyle.Colors.background)
-                        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 48)
-                
-                Spacer()
-            }
-        }
-        .statusBar(hidden: true)
-        .preferredColorScheme(.dark)
-    }
-}
-
-// Zoomable photo view for individual photos using UIKit for proper pinch-to-zoom
-struct ZoomablePhotoView: View {
-    let url: String
-    @State private var image: UIImage?
-    @State private var isLoading = true
-    @State private var showingSaveDialog = false
-    @State private var showingSaveAlert = false
-    @State private var saveAlertMessage = ""
-
-    var body: some View {
-        ZStack {
-            OPSStyle.Colors.background
-
-            if let image = image {
-                // Use UIKit-based scroll view for proper pinch-to-zoom at touch location
-                ZoomableScrollView(image: image, onLongPress: {
-                    showingSaveDialog = true
-                })
-            } else if isLoading {
-                VStack {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .scaleEffect(1.5)
-
-                    Text("Loading image...")
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .padding(.top, 10)
-                }
-            } else {
-                VStack {
-                    Image(systemName: OPSStyle.Icons.exclamationmarkTriangle)
-                        .font(.system(size: OPSStyle.Layout.IconSize.xxl))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                    Text("Failed to load image")
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .padding(.top, 10)
-                }
-            }
-        }
-        .onAppear(perform: loadImage)
-        .alert("Save Image", isPresented: $showingSaveDialog) {
-            Button("Save to Camera Roll") {
-                saveImageToPhotos()
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Would you like to save this image to your camera roll?")
-        }
-        .alert("Save Result", isPresented: $showingSaveAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(saveAlertMessage)
-        }
-    }
-    
-    private func loadImage() {
-        guard image == nil else { return }
-
-        isLoading = true
-
-        print("[ZoomablePhotoView] Loading image with URL: \(url)")
-
-        // Check if this is an asset catalog name (no URL prefix)
-        // Asset catalog names don't contain "://" or start with "//"
-        let isAssetName = !url.contains("://") && !url.hasPrefix("//")
-        print("[ZoomablePhotoView] Is asset name: \(isAssetName)")
-
-        if isAssetName {
-            // Try to load from asset catalog (demo images)
-            if let assetImage = UIImage(named: url) {
-                print("[ZoomablePhotoView] Successfully loaded from asset catalog: \(url)")
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                    self.image = assetImage
-                    // Cache in memory
-                    ImageCache.shared.set(assetImage, forKey: url)
-                }
-                return
-            } else {
-                print("[ZoomablePhotoView] Failed to load from asset catalog: \(url)")
-            }
-        }
-
-        // Normalize URL at the start for consistent caching
-        let cacheKey = url.hasPrefix("//") ? "https:" + url : url
-
-        // First check in-memory cache for quick loading
-        if let cachedImage = ImageCache.shared.get(forKey: cacheKey) {
-            DispatchQueue.main.async {
-                self.isLoading = false
-                self.image = cachedImage
-            }
-            return
-        }
-
-        // Then try to load from file system using ImageFileManager
-        if let loadedImage = ImageFileManager.shared.loadImage(localID: url) {
-            DispatchQueue.main.async {
-                self.isLoading = false
-                self.image = loadedImage
-
-                // Cache in memory for faster access next time
-                ImageCache.shared.set(loadedImage, forKey: cacheKey)
-            }
-            return
-        }
-
-        // For legacy support: try UserDefaults if not found in file system
-        if url.hasPrefix("local://") || (url.contains("opsapp.co/") && url.contains("/img/")) {
-            if let base64String = UserDefaults.standard.string(forKey: url),
-               let imageData = Data(base64Encoded: base64String),
-               let loadedImage = UIImage(data: imageData) {
-
-                // Migrate to file system for future use
-                _ = ImageFileManager.shared.saveImage(data: imageData, localID: url)
-
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                    self.image = loadedImage
-
-                    // Cache in memory
-                    ImageCache.shared.set(loadedImage, forKey: cacheKey)
-                }
-                return
-            }
-        }
-
-        // If not found locally, try to load from network
-        guard let imageURL = URL(string: cacheKey) else {
-            isLoading = false
-            return
-        }
-
-        URLSession.shared.dataTask(with: imageURL) { data, response, error in
-            DispatchQueue.main.async {
-                self.isLoading = false
-
-                if let error = error {
-                    print("Image load error: \(error.localizedDescription)")
-                    return
-                }
-
-                if let httpResponse = response as? HTTPURLResponse,
-                   !(200...299).contains(httpResponse.statusCode) {
-                    print("Image load failed with status: \(httpResponse.statusCode)")
-                    return
-                }
-
-                if let data = data, let loadedImage = UIImage(data: data) {
-                    self.image = loadedImage
-
-                    // Cache the remote image in file system
-                    _ = ImageFileManager.shared.saveImage(data: data, localID: cacheKey)
-
-                    // Also cache in memory
-                    ImageCache.shared.set(loadedImage, forKey: cacheKey)
-                }
-            }
-        }.resume()
-    }
-    
-    private func saveImageToPhotos() {
-        guard let imageToSave = image else {
-            saveAlertMessage = "No image to save"
-            showingSaveAlert = true
-            return
-        }
-        
-        UIImageWriteToSavedPhotosAlbum(imageToSave, nil, nil, nil)
-        saveAlertMessage = "Image saved to your camera roll"
-        showingSaveAlert = true
-        
-        // Provide haptic feedback
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
-        
-        saveAlertMessage = "Image saved to Photos"
-        showingSaveAlert = true
-    }
-}
-
-// MARK: - UIKit-based Zoomable Scroll View
-// Uses UIScrollView for proper pinch-to-zoom at touch location
-struct ZoomableScrollView: UIViewRepresentable {
-    let image: UIImage
-    let onLongPress: () -> Void
-
-    func makeUIView(context: Context) -> ZoomableScrollViewContainer {
-        let container = ZoomableScrollViewContainer(image: image, coordinator: context.coordinator)
-
-        // Add double-tap gesture for zoom toggle
-        let doubleTapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleDoubleTap(_:)))
-        doubleTapGesture.numberOfTapsRequired = 2
-        container.scrollView.addGestureRecognizer(doubleTapGesture)
-
-        // Add long press gesture for save dialog
-        let longPressGesture = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleLongPress(_:)))
-        container.scrollView.addGestureRecognizer(longPressGesture)
-
-        return container
-    }
-
-    func updateUIView(_ container: ZoomableScrollViewContainer, context: Context) {
-        // Update image if changed
-        if container.imageView.image !== image {
-            container.imageView.image = image
-            container.scrollView.zoomScale = 1.0
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onLongPress: onLongPress)
-    }
-
-    class Coordinator: NSObject, UIScrollViewDelegate {
-        let onLongPress: () -> Void
-        weak var container: ZoomableScrollViewContainer?
-
-        init(onLongPress: @escaping () -> Void) {
-            self.onLongPress = onLongPress
-        }
-
-        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
-            return container?.imageView
-        }
-
-        func scrollViewDidZoom(_ scrollView: UIScrollView) {
-            container?.centerImage()
-        }
-
-        @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
-            guard let container = container else { return }
-            let scrollView = container.scrollView
-
-            if scrollView.zoomScale > scrollView.minimumZoomScale {
-                // Zoom out to minimum
-                scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
-            } else {
-                // Zoom in to the tapped location
-                let location = gesture.location(in: container.imageView)
-                let zoomRect = zoomRectForScale(scale: 2.5, center: location, scrollView: scrollView)
-                scrollView.zoom(to: zoomRect, animated: true)
-            }
-        }
-
-        @objc func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
-            if gesture.state == .began {
-                onLongPress()
-            }
-        }
-
-        private func zoomRectForScale(scale: CGFloat, center: CGPoint, scrollView: UIScrollView) -> CGRect {
-            var zoomRect = CGRect.zero
-            zoomRect.size.height = scrollView.frame.size.height / scale
-            zoomRect.size.width = scrollView.frame.size.width / scale
-            zoomRect.origin.x = center.x - (zoomRect.size.width / 2.0)
-            zoomRect.origin.y = center.y - (zoomRect.size.height / 2.0)
-            return zoomRect
-        }
-    }
-}
-
-// MARK: - Zoomable Scroll View Container
-/// Custom UIView container that properly handles layout for the zoomable scroll view
-class ZoomableScrollViewContainer: UIView {
-    let scrollView: UIScrollView
-    let imageView: UIImageView
-
-    init(image: UIImage, coordinator: ZoomableScrollView.Coordinator) {
-        scrollView = UIScrollView()
-        imageView = UIImageView(image: image)
-
-        super.init(frame: .zero)
-
-        // Configure scroll view
-        scrollView.delegate = coordinator
-        scrollView.maximumZoomScale = 5.0
-        scrollView.minimumZoomScale = 1.0
-        scrollView.showsVerticalScrollIndicator = false
-        scrollView.showsHorizontalScrollIndicator = false
-        scrollView.bouncesZoom = true
-        scrollView.backgroundColor = .black
-
-        // Configure image view
-        imageView.contentMode = .scaleAspectFit
-        imageView.isUserInteractionEnabled = true
-
-        // Add views
-        addSubview(scrollView)
-        scrollView.addSubview(imageView)
-
-        // Set coordinator reference
-        coordinator.container = self
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-
-        // Update scroll view frame to match container
-        scrollView.frame = bounds
-
-        // Update image view frame to match scroll view
-        if bounds.width > 0 && bounds.height > 0 {
-            imageView.frame = bounds
-            centerImage()
-        }
-    }
-
-    func centerImage() {
-        let boundsSize = scrollView.bounds.size
-        var frameToCenter = imageView.frame
-
-        // Center horizontally
-        if frameToCenter.size.width < boundsSize.width {
-            frameToCenter.origin.x = (boundsSize.width - frameToCenter.size.width) / 2
-        } else {
-            frameToCenter.origin.x = 0
-        }
-
-        // Center vertically
-        if frameToCenter.size.height < boundsSize.height {
-            frameToCenter.origin.y = (boundsSize.height - frameToCenter.size.height) / 2
-        } else {
-            frameToCenter.origin.y = 0
-        }
-
-        imageView.frame = frameToCenter
-    }
-}
-
-// MARK: - Tutorial Section Dim Modifier
-
-/// Modifier that dims and disables a section during tutorial phases
-/// Uses opacity reduction instead of overlay to avoid visible rectangle shapes
-struct TutorialSectionDimModifier: ViewModifier {
-    let shouldDim: Bool
-    let tutorialMode: Bool
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(shouldDim && tutorialMode ? 0.5 : 1.0)
-            .allowsHitTesting(!(shouldDim && tutorialMode))
-    }
-}
-
-struct DarkLabeledContentStyle: LabeledContentStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            configuration.label
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-            
-            configuration.content
-                .font(OPSStyle.Typography.body)
-        }
-    }
-}
- 

@@ -238,7 +238,7 @@ struct AccountingDashboard: View {
             // Build client name lookup from SwiftData
             buildClientNameLookup()
         } catch {
-            loadError = error.localizedDescription
+            if !error.isCancellation { loadError = error.localizedDescription }
         }
         isLoading = false
     }

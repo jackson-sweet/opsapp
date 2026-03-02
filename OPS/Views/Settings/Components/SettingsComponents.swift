@@ -17,42 +17,38 @@ struct SettingsHeader: View {
     var editButtonText: String? = nil
     var onBackTapped: () -> Void
     var onEditTapped: (() -> Void)? = nil
-    
+
     var body: some View {
         HStack {
-            // Back button with consistent styling
+            // Back button — clean, no card background
             Button(action: {
                 onBackTapped()
             }) {
                 Image(systemName: OPSStyle.Icons.chevronLeft)
-                    .font(OPSStyle.Typography.bodyBold)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
             .frame(width: 44, height: 44)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            
+
             Spacer()
-            
-            // Title with consistent styling
+
+            // Title — centered, bodyBold matching expense form toolbar
             Text(title.uppercased())
-                .font(OPSStyle.Typography.title)
+                .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
-            
+
             Spacer()
-            
+
             // Edit button or spacer for balance
             if showEditButton {
                 Button(action: {
                     onEditTapped?()
                 }) {
-                    Text(editButtonText ?? (isEditing ? "Cancel" : "Edit"))
+                    Text((editButtonText ?? (isEditing ? "Cancel" : "Edit")).uppercased())
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
-                .frame(width: 80, height: 44)
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .frame(height: 44)
             } else {
                 // Empty spacer to balance the header
                 Spacer()
@@ -148,8 +144,12 @@ struct SettingsCard<Content: View>: View {
             content
         }
         .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
         .padding(.horizontal, 20)
     }
 }
@@ -222,20 +222,20 @@ struct SettingsButton: View {
         var textColor: Color {
             switch self {
             case .primary:
-                return .black
+                return OPSStyle.Colors.invertedText
             case .secondary:
-                return .white
+                return OPSStyle.Colors.primaryText
             case .destructive:
-                return .white
+                return OPSStyle.Colors.primaryText
             }
         }
-        
+
         var backgroundColor: Color {
             switch self {
             case .primary:
                 return OPSStyle.Colors.primaryAccent
             case .secondary:
-                return OPSStyle.Colors.cardBackgroundDark.opacity(0.6)
+                return OPSStyle.Colors.cardBackgroundDark
             case .destructive:
                 return OPSStyle.Colors.errorStatus
             }
@@ -299,11 +299,11 @@ struct SettingsField: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding()
-                        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                        .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 } else {
                     TextField(placeholder, text: $text)
@@ -311,11 +311,11 @@ struct SettingsField: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .autocorrectionDisabled(true)
                         .padding()
-                        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                        .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 }
             } else {
@@ -324,7 +324,7 @@ struct SettingsField: View {
                     .foregroundColor(text.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                    .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
         }
@@ -372,8 +372,12 @@ struct SecurityPINOption: View {
             }
             .contentShape(Rectangle())
             .padding(16)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+            .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
         }
     }
 }

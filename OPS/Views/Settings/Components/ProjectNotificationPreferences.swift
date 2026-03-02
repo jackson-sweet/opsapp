@@ -26,7 +26,7 @@ struct ProjectNotificationPreferences: View {
                 )
                 
                 Divider()
-                    .background(OPSStyle.Colors.secondaryText.opacity(0.3))
+                    .background(OPSStyle.Colors.cardBorder)
                 
                 NotificationToggleItem(
                     isOn: $notifyProjectScheduleChanges,
@@ -35,7 +35,7 @@ struct ProjectNotificationPreferences: View {
                 )
                 
                 Divider()
-                    .background(OPSStyle.Colors.secondaryText.opacity(0.3))
+                    .background(OPSStyle.Colors.cardBorder)
                 
                 NotificationToggleItem(
                     isOn: $notifyProjectCompletion,
@@ -45,8 +45,12 @@ struct ProjectNotificationPreferences: View {
             }
         }
         .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
 }
 
@@ -95,17 +99,21 @@ struct AdvanceNoticePreferences: View {
                     // Preview of selected days
                     Text("You'll be notified \(advanceNoticeDays1), \(advanceNoticeDays2), and \(advanceNoticeDays3) days before project start dates")
                         .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                         .multilineTextAlignment(.center)
                         .padding(.top, 4)
                 }
             }
         }
         .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
-    
+
     private func reminderDaySelector(dayBinding: Binding<Int>, label: String) -> some View {
         Menu {
             ForEach(dayOptions, id: \.self) { day in
@@ -129,7 +137,7 @@ struct AdvanceNoticePreferences: View {
                     .font(OPSStyle.Typography.captionBold)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                    .background(OPSStyle.Colors.cardBackground)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 

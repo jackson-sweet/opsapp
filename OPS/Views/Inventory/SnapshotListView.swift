@@ -186,9 +186,11 @@ struct SnapshotListView: View {
                     isLoading = false
                 }
             } catch {
-                await MainActor.run {
-                    errorMessage = "Failed to load: \(error.localizedDescription)"
-                    isLoading = false
+                if !error.isCancellation {
+                    await MainActor.run {
+                        errorMessage = "Failed to load: \(error.localizedDescription)"
+                        isLoading = false
+                    }
                 }
             }
         }

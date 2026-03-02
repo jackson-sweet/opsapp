@@ -11,6 +11,7 @@ enum PipelineSection: String, CaseIterable {
     case pipeline   = "PIPELINE"
     case estimates  = "ESTIMATES"
     case invoices   = "INVOICES"
+    case expenses   = "EXPENSES"
     case accounting = "ACCOUNTING"
 }
 
@@ -22,10 +23,15 @@ struct PipelineTabView: View {
             VStack(spacing: 0) {
                 AppHeader(headerType: .pipeline)
 
+                Rectangle()
+                    .frame(height: 0.5)
+                    .foregroundColor(OPSStyle.Colors.cardBorder)
+
                 SegmentedControl(selection: $selectedSection, options: [
                     (.pipeline, "PIPELINE"),
                     (.estimates, "ESTIMATES"),
                     (.invoices, "INVOICES"),
+                    (.expenses, "EXPENSES"),
                     (.accounting, "ACCOUNTING")
                 ])
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -40,6 +46,8 @@ struct PipelineTabView: View {
                         EstimatesListView()
                     case .invoices:
                         InvoicesListView()
+                    case .expenses:
+                        ExpensesListView()
                     case .accounting:
                         AccountingDashboard()
                     }

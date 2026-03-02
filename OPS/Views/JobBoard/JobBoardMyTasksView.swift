@@ -120,7 +120,7 @@ struct JobBoardMyTasksView: View {
                         label: filter.rawValue,
                         isActive: activeFilter == filter
                     ) {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(.accessibleEaseInOut(duration: 0.2)) {
                             activeFilter = filter
                         }
                     }
@@ -274,7 +274,7 @@ struct ProjectTaskGroup: View {
 
     private var groupHeader: some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(.accessibleEaseInOut(duration: 0.2)) {
                 isExpanded.toggle()
             }
         } label: {

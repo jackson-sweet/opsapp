@@ -22,18 +22,14 @@ struct ProjectActionBar: View {
 
     // State variables for various sheets and actions
     @State private var showCompleteConfirmation = false
-    // @State private var showReceiptScanner = false - Removed as part of shelving expense functionality
+    @State private var showExpenseForm = false
     @State private var showProjectDetails = false
     @State private var showImagePicker = false
     @State private var selectedImages: [UIImage] = []
     @State private var processingImage = false
     @State private var isAddingPhotos = false // Prevent duplicate additions
     
-    // Receipt scanner state - Keeping but not using (for future reference)
-    // These properties are kept but commented out as they may be needed when expense functionality is added back
-    // @State private var receiptAmount: String = ""
-    // @State private var receiptDescription: String = ""
-    // @State private var receiptImage: UIImage?
+    @StateObject private var expenseViewModel = ExpenseViewModel()
     
     var body: some View {
         // Blurred background similar to tab bar
@@ -100,10 +96,10 @@ struct ProjectActionBar: View {
                 secondaryButton: .cancel()
             )
         }
-        // Receipt Scanner Sheet - Removed as part of shelving expense functionality
-        // .sheet(isPresented: $showReceiptScanner) {
-        //     ReceiptScannerView(project: project)
-        // }
+        // Expense Form Sheet
+        .sheet(isPresented: $showExpenseForm) {
+            ExpenseFormSheet(viewModel: expenseViewModel, prefilledProjectId: project.id)
+        }
         // Project Details Sheet
         .sheet(isPresented: $showProjectDetails) {
             NavigationView {
@@ -198,8 +194,11 @@ struct ProjectActionBar: View {
         case .complete:
             // Directly mark the project as completed
             markProjectComplete()
-        // case .receipt: - Removed as part of shelving expense functionality
-        //    showReceiptScanner = true
+        case .receipt:
+            if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
+                expenseViewModel.setup(companyId: companyId)
+            }
+            showExpenseForm = true
         case .details:
             // Tutorial mode: post notification for wrapper to show inline sheet
             if tutorialMode {
@@ -378,7 +377,7 @@ struct ProjectActionBar: View {
 enum ProjectAction: CaseIterable {
     case navigate
     case complete
-    // case receipt - removed as part of shelving expense functionality
+    case receipt
     case details
     case photo
     
@@ -390,17 +389,17 @@ enum ProjectAction: CaseIterable {
         switch self {
         case .navigate: return isRouting ? "location.slash" : "location"
         case .complete: return "checkmark.circle"
-        // case .receipt: return "doc.text.viewfinder" - removed
-        case .details: return "info.circle" // Project details icon
+        case .receipt: return "doc.text.viewfinder"
+        case .details: return "info.circle"
         case .photo: return "camera"
         }
     }
-    
+
     func label(isRouting: Bool) -> String {
         switch self {
         case .navigate: return isRouting ? "Stop" : "Navigate"
         case .complete: return "Complete"
-        // case .receipt: return "Receipt" - removed
+        case .receipt: return "Receipt"
         case .details: return "Details"
         case .photo: return "Photo"
         }
@@ -487,87 +486,5 @@ private struct PulsingActionHighlight: View {
     }
 }
 
-// MARK: - Receipt Scanner View - Coming Soon
-struct ReceiptScannerView: View {
-    let project: Project
-    @Environment(\.presentationMode) var presentationMode
-    
-    var body: some View {
-        NavigationView {
-            ZStack {
-                OPSStyle.Colors.backgroundGradient
-                    .edgesIgnoringSafeArea(.all)
-                
-                // Coming soon content
-                VStack(spacing: 32) {
-                    Spacer()
-                    
-                    Image(systemName: "dollarsign.circle")
-                        .font(.system(size: 80))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6))
-
-                    Text("COMING SOON")
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(.top, 24)
-                    
-                    Text("Expense tracking will be available in the next update")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
-                    
-                    // Feature preview section
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("PLANNED FEATURES")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        
-                        ReceiptFeatureItem(icon: "camera.fill", title: "Receipt scanning")
-                        ReceiptFeatureItem(icon: "tag.fill", title: "Expense categorization")
-                        ReceiptFeatureItem(icon: "chart.bar.fill", title: "Project expense reports")
-                        ReceiptFeatureItem(icon: "arrow.up.arrow.down", title: "Sync with accounting software")
-                    }
-                    .padding(24)
-                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 20)
-                    
-                    Spacer()
-                }
-            }
-            .navigationTitle("Expense Tracking")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") {
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                }
-            }
-        }
-    }
-}
-
-// Helper view for feature items in the coming soon screen
-private struct ReceiptFeatureItem: View {
-    let icon: String
-    let title: String
-    
-    var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.system(size: OPSStyle.Layout.IconSize.md))
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                .frame(width: 24, height: 24)
-
-            Text(title)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-            
-            Spacer()
-        }
-    }
-}
+// ReceiptScannerView removed — replaced by ExpenseFormSheet
 

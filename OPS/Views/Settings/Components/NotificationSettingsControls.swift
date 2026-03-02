@@ -46,16 +46,16 @@ struct NotificationTimeWindow: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
                     .padding(.horizontal, 12)
-                    .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                    .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
-                
+
                 // End time picker
                 HStack {
                     Text("To:")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
-                    
+
                     Picker("", selection: $endHour) {
                         ForEach(hours, id: \.self) { hour in
                             Text("\(formatHour(hour))")
@@ -68,7 +68,7 @@ struct NotificationTimeWindow: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
                     .padding(.horizontal, 12)
-                    .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+                    .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
             }
@@ -76,14 +76,18 @@ struct NotificationTimeWindow: View {
             // Preview of selected time window
             Text("You will receive notifications between \(formatHour(startHour)) and \(formatHour(endHour))")
                 .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
                 .padding(.top, 4)
         }
         .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
-    
+
     private func formatHour(_ hour: Int) -> String {
         let hourString = hour == 0 ? "12" : hour > 12 ? "\(hour - 12)" : "\(hour)"
         let amPm = hour >= 12 ? "PM" : "AM"
@@ -141,8 +145,8 @@ struct NotificationPrioritySelector: View {
                             // Icon
                             ZStack {
                                 Circle()
-                                    .fill(selectedPriority == priority ? 
-                                          OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
+                                    .fill(selectedPriority == priority ?
+                                          OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackground)
                                     .frame(width: 36, height: 36)
                                 
                                 Image(systemName: priority.icon)
@@ -167,20 +171,24 @@ struct NotificationPrioritySelector: View {
                             if selectedPriority == priority {
                                 Image(systemName: OPSStyle.Icons.checkmark)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                             }
                         }
                         .padding(12)
-                        .background(selectedPriority == priority ? 
-                                    OPSStyle.Colors.primaryAccent.opacity(0.15) : OPSStyle.Colors.cardBackground.opacity(0.3))
+                        .background(selectedPriority == priority ?
+                                    OPSStyle.Colors.subtleBackground : OPSStyle.Colors.cardBackground)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
                 }
             }
         }
         .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
 }
 
@@ -241,8 +249,8 @@ struct TemporaryMuteControl: View {
                                         .font(OPSStyle.Typography.caption)
                                         .padding(.vertical, 6)
                                         .padding(.horizontal, 12)
-                                        .background(muteHours == hours ? 
-                                                    OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
+                                        .background(muteHours == hours ?
+                                                    OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackground)
                                         .foregroundColor(muteHours == hours ? OPSStyle.Colors.invertedText : OPSStyle.Colors.primaryText)
                                         .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                                 }
@@ -255,21 +263,25 @@ struct TemporaryMuteControl: View {
                         HStack {
                             Image(systemName: "bell.slash.fill")
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+
                             Text("Notifications will resume at \(formatTime(endTime))")
                                 .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                     }
                 }
             }
         }
         .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
-    
+
     private func formatTime(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .none

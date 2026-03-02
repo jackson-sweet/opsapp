@@ -46,7 +46,7 @@ struct JobBoardKanbanView: View {
                         isExpanded: expandedStatus == status,
                         projects: projects(for: status),
                         onTap: {
-                            withAnimation(.easeInOut(duration: 0.25)) {
+                            withAnimation(.accessibleEaseInOut(duration: 0.25)) {
                                 expandedStatus = expandedStatus == status ? nil : status
                             }
                         }
@@ -87,8 +87,8 @@ private struct KanbanStatusBar: View {
                         .frame(width: isExpanded
                                ? geo.size.width
                                : geo.size.width * fillFraction)
-                        .animation(.easeInOut(duration: 0.25), value: isExpanded)
-                        .animation(.easeInOut(duration: 0.25), value: fillFraction)
+                        .animation(.accessibleEaseInOut(), value: isExpanded)
+                        .animation(.accessibleEaseInOut(), value: fillFraction)
 
                     // Label + count overlay
                     HStack {

@@ -93,7 +93,7 @@ struct SettingsSearchSheet: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -198,7 +198,7 @@ struct SettingsSearchSheet: View {
         }
         .padding(.vertical, 14)
         .padding(.horizontal, 16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

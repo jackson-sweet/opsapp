@@ -72,7 +72,7 @@ class PipelineViewModel: ObservableObject {
             let dtos = try await repo.fetchAll()
             opportunities = dtos.map { $0.toModel() }
         } catch {
-            self.error = error.localizedDescription
+            if !error.isCancellation { self.error = error.localizedDescription }
         }
     }
 

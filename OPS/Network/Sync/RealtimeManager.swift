@@ -89,10 +89,11 @@ class RealtimeManager: ObservableObject {
             subscribeToTable(channel: channel, table: table, filter: "company_id=eq.\(companyId)")
         }
 
-        // Supporting tables (DTOs not yet implemented -- log only)
+        // Supporting tables
         let supportingTables = [
             "activities", "follow_ups", "notifications",
-            "project_photos", "project_notes", "site_visits"
+            "project_photos", "project_notes", "site_visits",
+            "project_photo_annotations"
         ]
         for table in supportingTables {
             subscribeToTable(channel: channel, table: table, filter: "company_id=eq.\(companyId)")
@@ -218,6 +219,25 @@ class RealtimeManager: ObservableObject {
                 }
                 try upsertSubClient(context: context, id: dto.id, model: model)
 
+            case "project_notes":
+                let dto = try record.decodeRecord(as: ProjectNoteDTO.self, decoder: decoder)
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                model.needsSync = false
+                try upsertProjectNote(context: context, id: dto.id, model: model)
+                NotificationCenter.default.post(
+                    name: .projectNoteReceived,
+                    object: nil,
+                    userInfo: ["projectId": dto.projectId]
+                )
+
+            case "project_photo_annotations":
+                let dto = try record.decodeRecord(as: PhotoAnnotationDTO.self, decoder: decoder)
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                model.needsSync = false
+                try upsertPhotoAnnotation(context: context, id: dto.id, model: model)
+
             default:
                 print("[REALTIME] Received change on \(table) (no DTO handler yet)")
             }
@@ -282,6 +302,20 @@ class RealtimeManager: ObservableObject {
 
             case "sub_clients":
                 let descriptor = FetchDescriptor<SubClient>(predicate: #Predicate { $0.id == id })
+                if let existing = try context.fetch(descriptor).first {
+                    existing.deletedAt = Date()
+                    try context.save()
+                }
+
+            case "project_notes":
+                let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == id })
+                if let existing = try context.fetch(descriptor).first {
+                    existing.deletedAt = Date()
+                    try context.save()
+                }
+
+            case "project_photo_annotations":
+                let descriptor = FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == id })
                 if let existing = try context.fetch(descriptor).first {
                     existing.deletedAt = Date()
                     try context.save()
@@ -485,16 +519,52 @@ class RealtimeManager: ObservableObject {
         try context.save()
     }
 
+    private func upsertProjectNote(context: ModelContext, id: String, model: ProjectNote) throws {
+        let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == id })
+        if let existing = try context.fetch(descriptor).first {
+            existing.content = model.content
+            existing.attachmentsJSON = model.attachmentsJSON
+            existing.mentionedUserIdsString = model.mentionedUserIdsString
+            existing.updatedAt = model.updatedAt
+            existing.deletedAt = model.deletedAt
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+        try context.save()
+    }
+
+    private func upsertPhotoAnnotation(context: ModelContext, id: String, model: PhotoAnnotation) throws {
+        let descriptor = FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == id })
+        if let existing = try context.fetch(descriptor).first {
+            existing.annotationURL = model.annotationURL
+            existing.note = model.note
+            existing.updatedAt = model.updatedAt
+            existing.deletedAt = model.deletedAt
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+        try context.save()
+    }
+
     // MARK: - Catch-Up Sync
 
     /// Placeholder for incremental catch-up after a reconnection.
-    /// Full implementation will fetch rows where updated_at > lastSyncTimestamp.
+    /// Currently a no-op — callers should fall back to CentralizedSyncManager.fullSync()
+    /// when data freshness is critical. A future implementation would fetch rows
+    /// where updated_at > lastSyncTimestamp for each subscribed table.
     func catchUpSync() async {
         guard let timestamp = lastSyncTimestamp else {
             print("[REALTIME] No last sync timestamp, full sync needed")
             return
         }
-        print("[REALTIME] Catching up since \(timestamp)")
-        // TODO: Incremental fetch from each table where updated_at > timestamp
+        print("[REALTIME] Catching up since \(timestamp) — no-op, relying on periodic full sync")
     }
 }

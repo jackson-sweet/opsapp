@@ -343,7 +343,7 @@ struct JobBoardProjectListView: View {
                 .scaleEffect(emphasisSwipeInstruction ? 1.1 : 1.0)
         }
         .scaleEffect(emphasisSwipeInstruction ? 1.05 : 1.0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: emphasisSwipeInstruction)
+        .animation(.easeInOut(duration: 0.25), value: emphasisSwipeInstruction)
     }
 
 
@@ -631,7 +631,7 @@ struct CollapsibleSection<Content: View>: View {
             .padding(.vertical, 8)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                withAnimation(.easeInOut(duration: 0.25)) {
                     isExpanded.toggle()
                 }
             }

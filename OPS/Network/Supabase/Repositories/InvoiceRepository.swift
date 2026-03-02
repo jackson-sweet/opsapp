@@ -20,7 +20,7 @@ class InvoiceRepository {
     func fetchAll() async throws -> [InvoiceDTO] {
         try await client
             .from("invoices")
-            .select("*, invoice_line_items(*), payments(*)")
+            .select("*, line_items(*), payments(*)")
             .eq("company_id", value: companyId)
             .order("created_at", ascending: false)
             .execute()
@@ -30,7 +30,7 @@ class InvoiceRepository {
     func fetchOne(_ invoiceId: String) async throws -> InvoiceDTO {
         try await client
             .from("invoices")
-            .select("*, invoice_line_items(*), payments(*)")
+            .select("*, line_items(*), payments(*)")
             .eq("id", value: invoiceId)
             .single()
             .execute()

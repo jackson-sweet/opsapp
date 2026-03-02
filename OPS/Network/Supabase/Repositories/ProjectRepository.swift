@@ -47,6 +47,18 @@ class ProjectRepository {
             .value
     }
 
+    // MARK: - Create
+
+    func create(_ dto: SupabaseProjectDTO) async throws -> SupabaseProjectDTO {
+        try await client
+            .from("projects")
+            .insert(dto)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
     // MARK: - Upsert
 
     func upsert(_ dto: SupabaseProjectDTO) async throws {

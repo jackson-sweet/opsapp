@@ -1,0 +1,427 @@
+//
+//  ProjectNotesViewModel.swift
+//  OPS
+//
+//  ViewModel for the per-project message board.
+//
+
+import SwiftUI
+import SwiftData
+
+@MainActor
+class ProjectNotesViewModel: ObservableObject {
+    @Published var notes: [ProjectNote] = []
+    @Published var newNoteText: String = ""
+    @Published var mentionSuggestions: [TeamMember] = []
+    @Published var isLoading = false
+    @Published var error: String? = nil
+    @Published var showMentionPicker = false
+    @Published var showAllTeamOption = false
+    @Published var pendingImages: [UIImage] = []
+    @Published var isUploading = false
+
+    let projectId: String
+    private var repository: ProjectNoteRepository?
+    private var companyId: String?
+    private var currentUserId: String?
+    private var allTeamMembers: [TeamMember] = []
+    private var modelContext: ModelContext?
+    private var notificationObserver: NSObjectProtocol?
+
+    init(projectId: String) {
+        self.projectId = projectId
+    }
+
+    deinit {
+        if let observer = notificationObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    func setup(companyId: String, currentUserId: String, teamMembers: [TeamMember], modelContext: ModelContext) {
+        self.companyId = companyId
+        self.currentUserId = currentUserId
+        self.allTeamMembers = teamMembers
+        self.modelContext = modelContext
+        self.repository = ProjectNoteRepository(companyId: companyId)
+
+        // Listen for realtime note updates
+        notificationObserver = NotificationCenter.default.addObserver(
+            forName: .projectNoteReceived,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self,
+                  let incomingProjectId = notification.userInfo?["projectId"] as? String,
+                  incomingProjectId == self.projectId else { return }
+            Task { @MainActor in
+                self.loadNotesFromLocal()
+            }
+        }
+    }
+
+    // MARK: - Load
+
+    func loadNotes() async {
+        guard let repo = repository else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let dtos = try await repo.fetchForProject(projectId)
+            // Upsert into SwiftData
+            if let context = modelContext {
+                for dto in dtos {
+                    let model = dto.toModel()
+                    model.lastSyncedAt = Date()
+                    model.needsSync = false
+                    let noteId = dto.id
+                    let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == noteId })
+                    if let existing = try? context.fetch(descriptor).first {
+                        existing.content = model.content
+                        existing.attachmentsJSON = model.attachmentsJSON
+                        existing.mentionedUserIdsString = model.mentionedUserIdsString
+                        existing.photoURL = model.photoURL
+                        existing.updatedAt = model.updatedAt
+                        existing.deletedAt = model.deletedAt
+                        existing.lastSyncedAt = Date()
+                    } else {
+                        context.insert(model)
+                    }
+                }
+                try? context.save()
+            }
+            loadNotesFromLocal()
+        } catch {
+            if !(error is CancellationError) {
+                self.error = error.localizedDescription
+            }
+            // Fall back to local data
+            loadNotesFromLocal()
+        }
+    }
+
+    private func loadNotesFromLocal() {
+        guard let context = modelContext else { return }
+        let pid = projectId
+        let descriptor = FetchDescriptor<ProjectNote>(
+            predicate: #Predicate { $0.projectId == pid && $0.deletedAt == nil },
+            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
+        )
+        notes = (try? context.fetch(descriptor)) ?? []
+    }
+
+    // MARK: - Pending Images
+
+    func addImage(_ image: UIImage) {
+        pendingImages.append(image)
+    }
+
+    func removeImage(at index: Int) {
+        guard pendingImages.indices.contains(index) else { return }
+        pendingImages.remove(at: index)
+    }
+
+    /// Whether the send button should be enabled (text or images present)
+    var canPost: Bool {
+        !newNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !pendingImages.isEmpty
+    }
+
+    // MARK: - Post
+
+    func postNote() async {
+        let text = newNoteText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasImages = !pendingImages.isEmpty
+        guard !text.isEmpty || hasImages,
+              let repo = repository,
+              let companyId = companyId,
+              let currentUserId = currentUserId else { return }
+
+        // Extract @mentions
+        let mentionedIds = extractMentionedUserIds(from: text)
+
+        // Upload images if any
+        var attachmentURLs: [String] = []
+        if hasImages {
+            isUploading = true
+            let imagesToUpload = pendingImages
+            do {
+                attachmentURLs = try await PresignedURLUploadService.shared.uploadNoteImages(
+                    imagesToUpload,
+                    projectId: projectId,
+                    companyId: companyId
+                )
+            } catch {
+                self.error = "Failed to upload images: \(error.localizedDescription)"
+                isUploading = false
+                return
+            }
+            isUploading = false
+        }
+
+        let noteContent = text.isEmpty ? (hasImages ? "Photo" : "") : text
+
+        let dto = CreateProjectNoteDTO(
+            projectId: projectId,
+            companyId: companyId,
+            authorId: currentUserId,
+            content: noteContent,
+            mentionedUserIds: mentionedIds,
+            attachments: attachmentURLs
+        )
+
+        // Optimistic insert
+        let optimisticNote = ProjectNote(
+            projectId: projectId,
+            companyId: companyId,
+            authorId: currentUserId,
+            content: noteContent
+        )
+        optimisticNote.mentionedUserIds = mentionedIds
+        optimisticNote.attachments = attachmentURLs
+        optimisticNote.needsSync = true
+        if let context = modelContext {
+            context.insert(optimisticNote)
+            try? context.save()
+        }
+        loadNotesFromLocal()
+        newNoteText = ""
+        pendingImages = []
+        showMentionPicker = false
+        showAllTeamOption = false
+        mentionSuggestions = []
+
+        do {
+            let created = try await repo.create(dto)
+            // Replace optimistic note with server version
+            if let context = modelContext {
+                let optimisticId = optimisticNote.id
+                let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == optimisticId })
+                if let existing = try? context.fetch(descriptor).first {
+                    context.delete(existing)
+                }
+                let serverModel = created.toModel()
+                serverModel.lastSyncedAt = Date()
+                serverModel.needsSync = false
+                context.insert(serverModel)
+                try? context.save()
+            }
+            loadNotesFromLocal()
+
+            // Send push notifications for mentions
+            await sendMentionNotifications(mentionedIds: mentionedIds, noteText: noteContent, noteId: created.id, attachmentURLs: attachmentURLs)
+        } catch {
+            if !(error is CancellationError) {
+                self.error = error.localizedDescription
+            }
+            // Revert: remove the optimistic note that failed to sync
+            if let context = modelContext {
+                let optimisticId = optimisticNote.id
+                let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == optimisticId })
+                if let orphan = try? context.fetch(descriptor).first {
+                    context.delete(orphan)
+                    try? context.save()
+                }
+            }
+            loadNotesFromLocal()
+        }
+    }
+
+    // MARK: - Delete
+
+    func deleteNote(_ note: ProjectNote) async {
+        guard let repo = repository else { return }
+
+        // Optimistic soft delete
+        note.deletedAt = Date()
+        if let context = modelContext {
+            try? context.save()
+        }
+        loadNotesFromLocal()
+
+        do {
+            try await repo.softDelete(note.id)
+        } catch {
+            // Revert on failure
+            note.deletedAt = nil
+            if let context = modelContext {
+                try? context.save()
+            }
+            loadNotesFromLocal()
+            if !(error is CancellationError) {
+                self.error = error.localizedDescription
+            }
+        }
+    }
+
+    // MARK: - Mention Handling
+
+    func handleMentionInput(_ text: String) {
+        // Find the last @ symbol and extract the partial name after it
+        guard let atRange = text.range(of: "@", options: .backwards) else {
+            showMentionPicker = false
+            showAllTeamOption = false
+            mentionSuggestions = []
+            return
+        }
+
+        let afterAt = String(text[atRange.upperBound...])
+
+        // If there's a space after the partial name, mention is complete
+        // But not if the text is a prefix of "All Team" (user still typing multi-word mention)
+        if afterAt.contains(" ") && afterAt.last == " " {
+            let partial = afterAt.trimmingCharacters(in: .whitespaces).lowercased()
+            let isPartialAllTeam = "all team".hasPrefix(partial) && partial != "all team"
+            let isPartialMemberName = allTeamMembers.contains { member in
+                let fullName = member.fullName.lowercased()
+                return fullName.hasPrefix(partial) && fullName != partial
+            }
+            if !isPartialAllTeam && !isPartialMemberName {
+                showMentionPicker = false
+                showAllTeamOption = false
+                mentionSuggestions = []
+                return
+            }
+        }
+
+        let query = afterAt.trimmingCharacters(in: .whitespaces).lowercased()
+        if query.isEmpty {
+            // Show all team members + @All when just "@" is typed
+            mentionSuggestions = allTeamMembers
+            showAllTeamOption = true
+        } else {
+            mentionSuggestions = allTeamMembers.filter {
+                $0.fullName.lowercased().contains(query) ||
+                $0.firstName.lowercased().hasPrefix(query) ||
+                $0.lastName.lowercased().hasPrefix(query)
+            }
+            showAllTeamOption = "all team".hasPrefix(query)
+        }
+        showMentionPicker = !mentionSuggestions.isEmpty || showAllTeamOption
+    }
+
+    func insertMention(_ member: TeamMember) {
+        // Replace the partial @mention with the full name
+        guard let atRange = newNoteText.range(of: "@", options: .backwards) else { return }
+        newNoteText = String(newNoteText[..<atRange.lowerBound]) + "@\(member.fullName) "
+        showMentionPicker = false
+        showAllTeamOption = false
+        mentionSuggestions = []
+    }
+
+    func insertAllTeamMention() {
+        // Replace the partial @mention with @All Team
+        guard let atRange = newNoteText.range(of: "@", options: .backwards) else { return }
+        newNoteText = String(newNoteText[..<atRange.lowerBound]) + "@All Team "
+        showMentionPicker = false
+        showAllTeamOption = false
+        mentionSuggestions = []
+    }
+
+    /// Look up author name from team members
+    func authorName(for authorId: String) -> String {
+        if let member = allTeamMembers.first(where: { $0.id == authorId }) {
+            return member.fullName
+        }
+        return "Team Member"
+    }
+
+    /// Look up author avatar URL from team members
+    func authorAvatarURL(for authorId: String) -> String? {
+        allTeamMembers.first(where: { $0.id == authorId })?.avatarURL
+    }
+
+    /// Check if the current user authored a note
+    func isOwnNote(_ note: ProjectNote) -> Bool {
+        note.authorId == currentUserId
+    }
+
+    /// Look up TeamMember for a given author ID
+    func teamMember(for authorId: String) -> TeamMember? {
+        allTeamMembers.first(where: { $0.id == authorId })
+    }
+
+    /// Count comments associated with a photo URL
+    func commentCount(forPhotoURL url: String) -> Int {
+        notes.filter { note in
+            note.photoURL == url || note.attachments.contains(url)
+        }.count
+    }
+
+    /// Update the content of an existing note
+    func updateNoteContent(_ note: ProjectNote, newContent: String) async {
+        guard let repo = repository, let context = modelContext else { return }
+        let oldContent = note.content
+        // Optimistic update
+        note.content = newContent
+        note.updatedAt = Date()
+        try? context.save()
+        loadNotesFromLocal()
+
+        do {
+            try await repo.updateContent(note.id, content: newContent)
+        } catch {
+            // Revert on failure
+            note.content = oldContent
+            try? context.save()
+            loadNotesFromLocal()
+            if !(error is CancellationError) {
+                self.error = error.localizedDescription
+            }
+        }
+    }
+
+    // MARK: - Private Helpers
+
+    private func extractMentionedUserIds(from text: String) -> [String] {
+        // @All Team means notify everyone except self
+        if text.contains("@All Team") {
+            return allTeamMembers
+                .filter { $0.id != currentUserId }
+                .map { $0.id }
+        }
+
+        var ids: [String] = []
+        for member in allTeamMembers {
+            if text.contains("@\(member.fullName)") {
+                ids.append(member.id)
+            }
+        }
+        return ids
+    }
+
+    private func sendMentionNotifications(mentionedIds: [String], noteText: String, noteId: String, attachmentURLs: [String] = []) async {
+        guard !mentionedIds.isEmpty else { return }
+
+        let authorName = currentUserId.flatMap { id in
+            allTeamMembers.first(where: { $0.id == id })?.fullName
+        } ?? "A team member"
+
+        // Get project name for notification
+        let projectName: String
+        if let context = modelContext {
+            let pid = projectId
+            let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == pid })
+            projectName = (try? context.fetch(descriptor).first?.title) ?? "a project"
+        } else {
+            projectName = "a project"
+        }
+
+        let firstImageUrl = attachmentURLs.first
+
+        for userId in mentionedIds {
+            do {
+                try await OneSignalService.shared.notifyProjectNoteMention(
+                    userId: userId,
+                    authorName: authorName,
+                    notePreview: noteText,
+                    projectName: projectName,
+                    projectId: projectId,
+                    noteId: noteId,
+                    imageUrl: firstImageUrl
+                )
+            } catch {
+                print("[PROJECT NOTES] Failed to send mention notification to \(userId): \(error)")
+            }
+        }
+    }
+}

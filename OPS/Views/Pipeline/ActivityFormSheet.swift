@@ -31,7 +31,7 @@ struct ActivityFormSheet: View {
                                 Button {
                                     selectedType = type
                                 } label: {
-                                    HStack(spacing: 6) {
+                                    HStack(spacing: OPSStyle.Layout.spacing1) {
                                         Image(systemName: type.icon)
                                             .font(OPSStyle.Typography.caption)
                                         Text(type.rawValue.uppercased().replacingOccurrences(of: "_", with: " "))

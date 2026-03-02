@@ -32,7 +32,6 @@ struct OrganizationSettingsView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header
                 SettingsHeader(
                     title: "Organization",
                     onBackTapped: { dismiss() }
@@ -50,41 +49,30 @@ struct OrganizationSettingsView: View {
                                     .padding(.horizontal, 20)
                             }
 
-                            // Navigation sections using SettingsRowCard
-                            VStack(spacing: 16) {
-                                // Organization Details
-                                Button {
-                                    showOrganizationDetails = true
-                                } label: {
-                                    SettingsRowCard(
-                                        title: "Organization Details",
-                                        description: "Company info, contact details, logo",
-                                        iconName: "building.2.fill"
-                                    )
-                                }
+                            // Grouped navigation section
+                            settingsSection(title: "ORGANIZATION") {
+                                settingsRow(
+                                    icon: "building.2.fill",
+                                    title: "Organization Details",
+                                    action: { showOrganizationDetails = true }
+                                )
 
-                                // Manage Team
-                                Button {
-                                    showManageTeam = true
-                                } label: {
-                                    SettingsRowCard(
-                                        title: "Manage Team",
-                                        description: "Edit roles, permissions, invite members",
-                                        iconName: "person.3.fill"
-                                    )
-                                }
+                                sectionDivider
 
-                                // Manage Subscription (admin only)
+                                settingsRow(
+                                    icon: "person.3.fill",
+                                    title: "Manage Team",
+                                    action: { showManageTeam = true }
+                                )
+
                                 if isCompanyAdmin {
-                                    Button {
-                                        showManageSubscription = true
-                                    } label: {
-                                        SettingsRowCard(
-                                            title: "Subscription",
-                                            description: subscriptionSummary,
-                                            iconName: "creditcard.fill"
-                                        )
-                                    }
+                                    sectionDivider
+
+                                    settingsRow(
+                                        icon: "creditcard.fill",
+                                        title: "Subscription",
+                                        action: { showManageSubscription = true }
+                                    )
                                 }
                             }
                             .padding(.horizontal, 20)
@@ -120,6 +108,62 @@ struct OrganizationSettingsView: View {
         }
     }
 
+    // MARK: - Grouped Section Builder
+
+    private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            VStack(spacing: 0) {
+                content()
+            }
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+    }
+
+    // MARK: - Row Component
+
+    private func settingsRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .frame(width: 28, alignment: .center)
+
+                Text(title)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                Spacer()
+
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Divider
+
+    private var sectionDivider: some View {
+        Rectangle()
+            .fill(OPSStyle.Colors.cardBorder)
+            .frame(height: 1)
+            .padding(.leading, 58)
+    }
+
     // MARK: - Computed Properties
 
     private var subscriptionSummary: String {
@@ -141,7 +185,7 @@ struct OrganizationSettingsView: View {
 
         parts.append("\(seatedCount)/\(company.maxSeats) seats")
 
-        return parts.joined(separator: " • ")
+        return parts.joined(separator: " \u{2022} ")
     }
 
     // MARK: - Loading View
@@ -168,7 +212,6 @@ struct OrganizationSettingsView: View {
         }
 
         Task {
-            // Try to refresh from API if connected
             if dataController.isConnected {
                 do {
                     try await dataController.forceRefreshCompany(id: companyID)
@@ -181,7 +224,6 @@ struct OrganizationSettingsView: View {
                 }
             }
 
-            // Load from local database
             let company = dataController.getCompany(id: companyID)
 
             await MainActor.run {

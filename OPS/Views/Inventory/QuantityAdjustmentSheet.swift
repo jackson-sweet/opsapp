@@ -357,12 +357,13 @@ struct QuantityAdjustmentSheet: View {
 
         Task {
             do {
-                let updates: [String: Any] = [
-                    BubbleFields.InventoryItem.quantity: currentQuantity
-                ]
+                guard let repo = dataController.inventoryRepository else {
+                    throw NSError(domain: "OPS", code: -1, userInfo: [NSLocalizedDescriptionKey: "No inventory repository available"])
+                }
+                let updates = UpdateInventoryItemDTO(quantity: currentQuantity)
                 print("[QUANTITY_ADJUST] 📤 Updating quantity for \(item.id) to \(currentQuantity)")
 
-                try await dataController.apiService.updateInventoryItem(id: item.id, updates: updates)
+                _ = try await repo.updateItem(item.id, fields: updates)
 
                 await MainActor.run {
                     item.needsSync = false

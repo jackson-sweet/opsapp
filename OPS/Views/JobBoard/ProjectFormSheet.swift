@@ -74,7 +74,6 @@ struct ProjectFormSheet: View {
     @State private var selectedStatus: Status = .rfq
     @State private var startDate: Date? = nil
     @State private var endDate: Date? = nil
-    @State private var selectedTeamMemberIds: Set<String> = []
     @State private var projectImages: [UIImage] = []
 
     // Local tasks for multiple task creation
@@ -93,29 +92,24 @@ struct ProjectFormSheet: View {
     @State private var showingImagePicker = false
     @State private var showingScheduler = false
     @State private var showingCopyFromProject = false
-    @State private var showingTeamPicker = false
     @State private var showingTaskForm = false
     @State private var editingTaskIndex: Int?
 
     // Expanded sections tracking
     @State private var isBasicInfoExpanded = true // New: for client and project name
-    @State private var isAddressExpanded = false
     @State private var isDescriptionExpanded = false
     @State private var isNotesExpanded = false
     @State private var isTasksExpanded = false
     @State private var isDatesExpanded = false
     @State private var isPhotosExpanded = false
-    @State private var isTeamMembersExpanded = false
 
     // Section ordering - tracks which sections appear first
-    @State private var sectionOrder: [OptionalSection] = [.address, .description, .notes, .tasks, .teamMembers, .photos]
+    @State private var sectionOrder: [OptionalSection] = [.description, .notes, .tasks, .photos]
 
     enum OptionalSection: CaseIterable, Hashable {
-        case address
         case description
         case notes
         case tasks
-        case teamMembers
         case photos
     }
 
@@ -267,10 +261,8 @@ struct ProjectFormSheet: View {
             _selectedClientId = State(initialValue: project.client?.id)
             _startDate = State(initialValue: project.startDate)
             _endDate = State(initialValue: project.endDate)
-            _selectedTeamMemberIds = State(initialValue: Set(project.teamMembers.map { $0.id }))
 
             // Auto-expand sections with data
-            _isAddressExpanded = State(initialValue: !(project.address ?? "").isEmpty)
             _isDescriptionExpanded = State(initialValue: !(project.projectDescription ?? "").isEmpty)
             _isNotesExpanded = State(initialValue: !(project.notes ?? "").isEmpty)
             _isDatesExpanded = State(initialValue: project.startDate != nil)
@@ -285,13 +277,11 @@ struct ProjectFormSheet: View {
                 )
             })
             _isTasksExpanded = State(initialValue: !project.tasks.isEmpty)
-            _isTeamMembersExpanded = State(initialValue: !project.teamMembers.isEmpty)
         } else if let preselectedClient = preselectedClient {
             // Pre-populate with client info when creating from client view
             _selectedClientId = State(initialValue: preselectedClient.id)
             if let billingAddress = preselectedClient.address, !billingAddress.isEmpty {
                 _address = State(initialValue: billingAddress)
-                _isAddressExpanded = State(initialValue: true)
             }
         }
     }
@@ -490,12 +480,6 @@ struct ProjectFormSheet: View {
                 populatedFields: currentlyPopulatedFields
             )
         }
-        .sheet(isPresented: $showingTeamPicker) {
-            TeamMemberPickerSheet(
-                selectedTeamMemberIds: $selectedTeamMemberIds,
-                allTeamMembers: uniqueTeamMembers
-            )
-        }
     }
 
     /// Main scrollable content
@@ -604,6 +588,9 @@ struct ProjectFormSheet: View {
                         titleField
                             .allowsHitTesting(isNameFieldEnabled)
                             .opacity(tutorialMode && !isNameFieldEnabled ? 0.5 : 1.0)
+                        addressField
+                            .allowsHitTesting(!tutorialMode)
+                            .opacity(tutorialMode ? 0.5 : 1.0)
                         statusField
                             .allowsHitTesting(!tutorialMode) // Always disabled in tutorial
                             .opacity(tutorialMode ? 0.5 : 1.0)
@@ -928,13 +915,6 @@ struct ProjectFormSheet: View {
             // In tutorial mode, all pills except ADD TASKS are disabled
             OptionalSectionPillGroup(
                 pills: [
-                    (title: "SITE ADDRESS", icon: "mappin.circle", isExpanded: isAddressExpanded,
-                     isDisabled: tutorialMode, isHighlighted: false, action: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            bringSectionToTop(.address)
-                            isAddressExpanded = true
-                        }
-                    }),
                     (title: "DESCRIPTION", icon: "text.alignleft", isExpanded: isDescriptionExpanded,
                      isDisabled: tutorialMode, isHighlighted: false, action: {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -956,13 +936,6 @@ struct ProjectFormSheet: View {
                             isTasksExpanded = true
                         }
                     }),
-                    (title: "TEAM", icon: "person.2", isExpanded: isTeamMembersExpanded,
-                     isDisabled: tutorialMode, isHighlighted: false, action: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            bringSectionToTop(.teamMembers)
-                            isTeamMembersExpanded = true
-                        }
-                    }),
                     (title: "PHOTOS", icon: "photo", isExpanded: isPhotosExpanded,
                      isDisabled: tutorialMode, isHighlighted: false, action: {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -977,11 +950,6 @@ struct ProjectFormSheet: View {
             // Expanded sections - displayed in dynamic order
             ForEach(sectionOrder, id: \.self) { section in
                 switch section {
-                case .address:
-                    if isAddressExpanded {
-                        addressSection
-                            .id(OptionalSection.address)
-                    }
                 case .description:
                     if isDescriptionExpanded {
                         descriptionSection
@@ -997,11 +965,6 @@ struct ProjectFormSheet: View {
                         tasksSection
                             .id(OptionalSection.tasks)
                     }
-                case .teamMembers:
-                    if isTeamMembersExpanded {
-                        teamMembersSection
-                            .id(OptionalSection.teamMembers)
-                    }
                 case .photos:
                     if isPhotosExpanded {
                         photosSection
@@ -1014,23 +977,15 @@ struct ProjectFormSheet: View {
 
     // MARK: - Optional Section Views
 
-    private var addressSection: some View {
-        ExpandableSection(
-            title: "SITE ADDRESS",
-            icon: "mappin.circle",
-            isExpanded: $isAddressExpanded,
-            onDelete: {
-                address = ""
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    isAddressExpanded = false
-                }
-                #if !targetEnvironment(simulator)
-                let generator = UIImpactFeedbackGenerator(style: .light)
-                generator.impactOccurred()
-                #endif
-            }
-        ) {
-            VStack(alignment: .leading, spacing: 8) {
+    private var addressField: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("SITE ADDRESS")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Spacer()
+
                 if let client = selectedClient, let billingAddress = client.address, !billingAddress.isEmpty {
                     Button(action: {
                         address = billingAddress
@@ -1043,21 +998,20 @@ struct ProjectFormSheet: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
-                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
-
-                AddressAutocompleteField(
-                    address: $address,
-                    placeholder: "Enter project address",
-                    onAddressSelected: { fullAddress, coordinates in
-                        address = fullAddress
-                        if let coords = coordinates {
-                            latitude = coords.latitude
-                            longitude = coords.longitude
-                        }
-                    }
-                )
             }
+
+            AddressAutocompleteField(
+                address: $address,
+                placeholder: "Enter project address",
+                onAddressSelected: { fullAddress, coordinates in
+                    address = fullAddress
+                    if let coords = coordinates {
+                        latitude = coords.latitude
+                        longitude = coords.longitude
+                    }
+                }
+            )
         }
     }
 
@@ -1270,72 +1224,6 @@ struct ProjectFormSheet: View {
                 localTasks.remove(at: index)
             }
         )
-    }
-
-    private var teamMembersSection: some View {
-        ExpandableSection(
-            title: "TEAM MEMBERS",
-            icon: "person.2",
-            isExpanded: $isTeamMembersExpanded,
-            onDelete: {
-                selectedTeamMemberIds.removeAll()
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    isTeamMembersExpanded = false
-                }
-                #if !targetEnvironment(simulator)
-                let generator = UIImpactFeedbackGenerator(style: .light)
-                generator.impactOccurred()
-                #endif
-            }
-        ) {
-            VStack(spacing: OPSStyle.Layout.spacing2) {
-                // Selected team members list
-                if !selectedTeamMemberIds.isEmpty {
-                    ForEach(uniqueTeamMembers.filter { selectedTeamMemberIds.contains($0.id) }, id: \.id) { member in
-                        HStack(spacing: OPSStyle.Layout.spacing2) {
-                            Circle()
-                                .fill(OPSStyle.Colors.primaryAccent.opacity(0.3))
-                                .frame(width: 28, height: 28)
-                                .overlay(
-                                    Text("\(member.firstName.prefix(1))\(member.lastName.prefix(1))")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                )
-
-                            Text("\(member.firstName) \(member.lastName)")
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-
-                            Spacer()
-
-                            Button {
-                                selectedTeamMemberIds.remove(member.id)
-                            } label: {
-                                Image(systemName: OPSStyle.Icons.xmarkCircleFill)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            }
-                        }
-                        .padding(.vertical, OPSStyle.Layout.spacing1)
-                    }
-                }
-
-                // Add members button
-                Button {
-                    showingTeamPicker = true
-                } label: {
-                    HStack {
-                        Image(systemName: "plus.circle")
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                        Text(selectedTeamMemberIds.isEmpty ? "ADD TEAM MEMBERS" : "EDIT TEAM")
-                            .font(OPSStyle.Typography.captionBold)
-                    }
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, OPSStyle.Layout.spacing2)
-                }
-            }
-        }
     }
 
     private var photosSection: some View {
@@ -1605,9 +1493,6 @@ struct ProjectFormSheet: View {
 
         if let addressValue = copiedData["address"] as? String {
             address = addressValue
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                isAddressExpanded = true
-            }
         }
 
         if let descriptionValue = copiedData["description"] as? String {
@@ -1767,13 +1652,10 @@ struct ProjectFormSheet: View {
         project.allDay = true
         project.needsSync = true
 
-        // Gather all unique team member IDs from all tasks
-        let taskTeamMemberIds = Set(localTasks.flatMap { task in
+        // Gather all unique team member IDs from all tasks (project team = union of task teams)
+        let allTeamMemberIds = Set(localTasks.flatMap { task in
             task.teamMemberIds
         })
-
-        // Combine with project-level selected team members
-        let allTeamMemberIds = selectedTeamMemberIds.union(taskTeamMemberIds)
 
         let members = allTeamMembers.filter { allTeamMemberIds.contains($0.id) }
         project.teamMembers = Array(members.map { member in
@@ -1967,13 +1849,10 @@ struct ProjectFormSheet: View {
             project.endDate = endDate
             project.needsSync = true
 
-            // Gather all unique team member IDs from all tasks
-            let taskTeamMemberIds = Set(localTasks.flatMap { task in
+            // Gather all unique team member IDs from all tasks (project team = union of task teams)
+            let allTeamMemberIds = Set(localTasks.flatMap { task in
                 task.teamMemberIds
             })
-
-            // Combine with project-level selected team members
-            let allTeamMemberIds = selectedTeamMemberIds.union(taskTeamMemberIds)
 
             let members = allTeamMembers.filter { allTeamMemberIds.contains($0.id) }
             project.teamMembers = Array(members.map { member in

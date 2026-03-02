@@ -37,12 +37,16 @@ struct SchedulingTypeExplanationView: View {
                         .padding(OPSStyle.Layout.spacing3)
                         .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        )
 
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: OPSStyle.Icons.calendar)
                                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
 
                                 Text("PROJECT-BASED SCHEDULING")
                                     .font(OPSStyle.Typography.bodyBold)
@@ -50,7 +54,7 @@ struct SchedulingTypeExplanationView: View {
                             }
 
                             Divider()
-                                .background(OPSStyle.Colors.secondaryText.opacity(0.2))
+                                .background(OPSStyle.Colors.cardBorder)
 
                             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 Text("BEST FOR:")
@@ -64,7 +68,7 @@ struct SchedulingTypeExplanationView: View {
                             }
 
                             Divider()
-                                .background(OPSStyle.Colors.secondaryText.opacity(0.2))
+                                .background(OPSStyle.Colors.cardBorder)
 
                             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 Text("HOW IT WORKS:")
@@ -78,7 +82,7 @@ struct SchedulingTypeExplanationView: View {
                             }
 
                             Divider()
-                                .background(OPSStyle.Colors.secondaryText.opacity(0.2))
+                                .background(OPSStyle.Colors.cardBorder)
 
                             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 Text("EXAMPLE:")
@@ -95,12 +99,16 @@ struct SchedulingTypeExplanationView: View {
                         .padding(OPSStyle.Layout.spacing3)
                         .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        )
 
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: OPSStyle.Icons.checklist)
                                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
 
                                 Text("TASK-BASED SCHEDULING")
                                     .font(OPSStyle.Typography.bodyBold)
@@ -108,7 +116,7 @@ struct SchedulingTypeExplanationView: View {
                             }
 
                             Divider()
-                                .background(OPSStyle.Colors.secondaryText.opacity(0.2))
+                                .background(OPSStyle.Colors.cardBorder)
 
                             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 Text("BEST FOR:")
@@ -122,7 +130,7 @@ struct SchedulingTypeExplanationView: View {
                             }
 
                             Divider()
-                                .background(OPSStyle.Colors.secondaryText.opacity(0.2))
+                                .background(OPSStyle.Colors.cardBorder)
 
                             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 Text("HOW IT WORKS:")
@@ -136,7 +144,7 @@ struct SchedulingTypeExplanationView: View {
                             }
 
                             Divider()
-                                .background(OPSStyle.Colors.secondaryText.opacity(0.2))
+                                .background(OPSStyle.Colors.cardBorder)
 
                             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                                 Text("EXAMPLE:")
@@ -153,12 +161,16 @@ struct SchedulingTypeExplanationView: View {
                         .padding(OPSStyle.Layout.spacing3)
                         .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        )
 
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: "lightbulb.fill")
                                     .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
 
                                 Text("CHOOSING YOUR APPROACH")
                                     .font(OPSStyle.Typography.bodyBold)
@@ -171,11 +183,11 @@ struct SchedulingTypeExplanationView: View {
                                 .lineSpacing(4)
                         }
                         .padding(OPSStyle.Layout.spacing3)
-                        .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
+                        .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                     }
                     .padding(OPSStyle.Layout.spacing3)
@@ -193,7 +205,7 @@ struct BulletPoint: View {
         HStack(alignment: .top, spacing: 8) {
             Text("•")
                 .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
 
             Text(text)
                 .font(OPSStyle.Typography.body)

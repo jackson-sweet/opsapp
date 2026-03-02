@@ -57,11 +57,11 @@ struct ReportIssueView: View {
                                     .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                     .padding()
-                                    .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
                             .padding(.horizontal, 20)
@@ -75,7 +75,7 @@ struct ReportIssueView: View {
                                 
                                 ZStack(alignment: .topLeading) {
                                     ZStack {
-                                        OPSStyle.Colors.cardBackgroundDark.opacity(0.6)
+                                        OPSStyle.Colors.cardBackgroundDark
                                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                                         
                                         TextEditor(text: $issueDescription)
@@ -88,14 +88,14 @@ struct ReportIssueView: View {
                                     .padding(12)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
-                                    
-                                    
+
+
                                     if issueDescription.isEmpty {
                                         Text("Please describe the issue you're experiencing, including steps to reproduce if possible...")
                                             .font(OPSStyle.Typography.body)
-                                            .foregroundColor(OPSStyle.Colors.tertiaryText.opacity(0.6))
+                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 16)
                                             .allowsHitTesting(false)
@@ -109,7 +109,7 @@ struct ReportIssueView: View {
                                 HStack {
                                     if isSubmitting {
                                         ProgressView()
-                                            .tint(.black)
+                                            .tint(OPSStyle.Colors.invertedText)
                                     } else {
                                         Text("SUBMIT REPORT")
                                             .font(OPSStyle.Typography.bodyBold)

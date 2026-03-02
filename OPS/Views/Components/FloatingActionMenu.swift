@@ -19,6 +19,12 @@ struct FloatingActionMenu: View {
     @State private var showingCreateTaskType = false
     @State private var showingCreateTask = false
     @State private var showingCreateInventoryItem = false
+    @State private var showingCreateExpense = false
+    @State private var showingCreateEstimate = false
+    @State private var showingCreateLead = false
+    @StateObject private var expenseViewModel = ExpenseViewModel()
+    @StateObject private var estimateViewModel = EstimateViewModel()
+    @StateObject private var pipelineViewModel = PipelineViewModel()
 
     // Parameters to determine which tab we're on
     let currentTab: Int
@@ -83,9 +89,9 @@ struct FloatingActionMenu: View {
                                         showingCreateTaskType = true
                                     }
                                 )
-                                .offset(x: -10) // Center 48pt icon over 64pt main button
+                                .offset(x: -10)
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(OPSStyle.Animation.standard.delay(0.8), value: showCreateMenu)
+                                .animation(OPSStyle.Animation.standard.delay(0.9), value: showCreateMenu)
                                 .opacity(tutorialMode ? 0.4 : 1.0)
                                 .allowsHitTesting(!tutorialMode)
 
@@ -98,9 +104,9 @@ struct FloatingActionMenu: View {
                                         showingCreateTask = true
                                     }
                                 )
-                                .offset(x: -10) // Center 48pt icon over 64pt main button
+                                .offset(x: -10)
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(OPSStyle.Animation.standard.delay(0.6), value: showCreateMenu)
+                                .animation(OPSStyle.Animation.standard.delay(0.75), value: showCreateMenu)
                                 .opacity(tutorialMode ? 0.4 : 1.0)
                                 .allowsHitTesting(!tutorialMode)
 
@@ -111,7 +117,6 @@ struct FloatingActionMenu: View {
                                     action: {
                                         showCreateMenu = false
                                         if tutorialMode {
-                                            // In tutorial mode, post notification for wrapper to handle
                                             NotificationCenter.default.post(
                                                 name: Notification.Name("TutorialCreateProjectTapped"),
                                                 object: nil
@@ -121,9 +126,9 @@ struct FloatingActionMenu: View {
                                         }
                                     }
                                 )
-                                .offset(x: -10) // Center 48pt icon over 64pt main button
+                                .offset(x: -10)
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(OPSStyle.Animation.standard.delay(0.4), value: showCreateMenu)
+                                .animation(OPSStyle.Animation.standard.delay(0.6), value: showCreateMenu)
 
                                 // Create Client - disabled in tutorial mode
                                 FloatingActionItem(
@@ -134,9 +139,63 @@ struct FloatingActionMenu: View {
                                         showingCreateClient = true
                                     }
                                 )
-                                .offset(x: -10) // Center 48pt icon over 64pt main button
+                                .offset(x: -10)
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(OPSStyle.Animation.standard.delay(0.2), value: showCreateMenu)
+                                .animation(OPSStyle.Animation.standard.delay(0.45), value: showCreateMenu)
+                                .opacity(tutorialMode ? 0.4 : 1.0)
+                                .allowsHitTesting(!tutorialMode)
+
+                                // New Estimate - disabled in tutorial mode
+                                FloatingActionItem(
+                                    icon: OPSStyle.Icons.estimateDoc,
+                                    label: "New Estimate",
+                                    action: {
+                                        showCreateMenu = false
+                                        if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
+                                            estimateViewModel.setup(companyId: companyId)
+                                        }
+                                        showingCreateEstimate = true
+                                    }
+                                )
+                                .offset(x: -10)
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                                .animation(OPSStyle.Animation.standard.delay(0.3), value: showCreateMenu)
+                                .opacity(tutorialMode ? 0.4 : 1.0)
+                                .allowsHitTesting(!tutorialMode)
+
+                                // New Lead - disabled in tutorial mode
+                                FloatingActionItem(
+                                    icon: OPSStyle.Icons.pipelineChart,
+                                    label: "New Lead",
+                                    action: {
+                                        showCreateMenu = false
+                                        if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
+                                            pipelineViewModel.setup(companyId: companyId)
+                                        }
+                                        showingCreateLead = true
+                                    }
+                                )
+                                .offset(x: -10)
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                                .animation(OPSStyle.Animation.standard.delay(0.15), value: showCreateMenu)
+                                .opacity(tutorialMode ? 0.4 : 1.0)
+                                .allowsHitTesting(!tutorialMode)
+
+                                // Add Expense - disabled in tutorial mode
+                                FloatingActionItem(
+                                    icon: OPSStyle.Icons.invoiceReceipt,
+                                    label: "Add Expense",
+                                    action: {
+                                        showCreateMenu = false
+                                        if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
+                                            expenseViewModel.setup(companyId: companyId)
+                                        }
+                                        showingCreateExpense = true
+                                    }
+                                )
+                                .offset(x: -10)
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                                .animation(OPSStyle.Animation.standard.delay(0.0), value: showCreateMenu)
                                 .opacity(tutorialMode ? 0.4 : 1.0)
                                 .allowsHitTesting(!tutorialMode)
                             }
@@ -201,6 +260,15 @@ struct FloatingActionMenu: View {
         }
         .sheet(isPresented: $showingCreateInventoryItem) {
             InventoryFormSheet(item: nil)
+        }
+        .sheet(isPresented: $showingCreateExpense) {
+            ExpenseFormSheet(viewModel: expenseViewModel)
+        }
+        .sheet(isPresented: $showingCreateEstimate) {
+            EstimateFormSheet(viewModel: estimateViewModel)
+        }
+        .sheet(isPresented: $showingCreateLead) {
+            OpportunityFormSheet(viewModel: pipelineViewModel)
         }
     }
 }

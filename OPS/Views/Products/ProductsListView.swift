@@ -69,7 +69,7 @@ struct ProductsListView: View {
                     }
                 }
                 .padding(OPSStyle.Layout.spacing2)
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+                .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -204,7 +204,7 @@ struct ProductsListView: View {
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+            .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -218,11 +218,15 @@ struct ProductsListView: View {
         Text(type.rawValue)
             .font(OPSStyle.Typography.smallCaption)
             .fontWeight(.medium)
-            .foregroundColor(OPSStyle.Colors.primaryAccent)
-            .padding(.horizontal, OPSStyle.Layout.spacing1 + 2)
-            .padding(.vertical, 2)
-            .background(OPSStyle.Colors.primaryAccent.opacity(0.15))
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+            .foregroundColor(OPSStyle.Colors.secondaryText)
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
+            .padding(.vertical, OPSStyle.Layout.spacing1)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
     }
 
     private func filterChip(_ filter: ProductFilter) -> some View {
@@ -233,18 +237,18 @@ struct ProductsListView: View {
                 .foregroundColor(
                     selectedFilter == filter ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText
                 )
-                .padding(.horizontal, OPSStyle.Layout.spacing2 + 2)
-                .padding(.vertical, OPSStyle.Layout.spacing1 + 2)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
                 .background(
                     selectedFilter == filter
-                    ? OPSStyle.Colors.primaryAccent.opacity(0.2)
-                    : OPSStyle.Colors.cardBackgroundDark.opacity(0.6)
+                    ? OPSStyle.Colors.cardBackground
+                    : OPSStyle.Colors.cardBackgroundDark
                 )
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                         .stroke(
-                            selectedFilter == filter ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                            selectedFilter == filter ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder,
                             lineWidth: OPSStyle.Layout.Border.standard
                         )
                 )
@@ -281,7 +285,7 @@ struct ProductsListView: View {
             let dtos = try await repo.fetchAll()
             products = dtos.map { $0.toModel() }
         } catch {
-            self.error = error.localizedDescription
+            if !error.isCancellation { self.error = error.localizedDescription }
         }
     }
 

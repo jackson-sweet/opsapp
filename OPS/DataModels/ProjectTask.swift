@@ -11,19 +11,17 @@ import SwiftUI
 
 /// Status enum for tasks - simplified 3-state system
 enum TaskStatus: String, Codable, CaseIterable {
-    case booked = "booked"
-    case inProgress = "in_progress"
+    case active = "active"
     case completed = "completed"
     case cancelled = "cancelled"
 
-    // Custom decoder to handle legacy title-case values
+    // Custom decoder to handle legacy values
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)
 
         switch rawValue {
-        case "Scheduled", "Booked": self = .booked
-        case "In Progress": self = .inProgress
+        case "Scheduled", "Booked", "booked", "In Progress", "in_progress": self = .active
         case "Completed": self = .completed
         case "Cancelled": self = .cancelled
         default:
@@ -40,8 +38,7 @@ enum TaskStatus: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .booked: return "Booked"
-        case .inProgress: return "In Progress"
+        case .active: return "Active"
         case .completed: return "Completed"
         case .cancelled: return "Cancelled"
         }

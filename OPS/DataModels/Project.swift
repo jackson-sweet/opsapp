@@ -358,7 +358,7 @@ final class Project: Identifiable {
             return status
         }
         
-        // If any task is active, project is in progress
+        // If any task is booked or in progress, project is in progress
         if tasks.contains(where: { $0.status == .active }) {
             return .inProgress
         }

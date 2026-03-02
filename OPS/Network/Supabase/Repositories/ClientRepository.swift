@@ -49,6 +49,18 @@ class ClientRepository {
             .value
     }
 
+    // MARK: - Create Client
+
+    func create(_ dto: SupabaseClientDTO) async throws -> SupabaseClientDTO {
+        try await client
+            .from("clients")
+            .insert(dto)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
     // MARK: - Upsert Client
 
     func upsert(_ dto: SupabaseClientDTO) async throws {

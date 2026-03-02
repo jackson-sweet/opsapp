@@ -91,7 +91,7 @@ struct WhatsNewView: View {
                                 HStack {
                                     Image(systemName: OPSStyle.Icons.envelopeFill)
                                         .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
                                     
                                     Text("Send Feature Request")
                                         .font(OPSStyle.Typography.bodyBold)
@@ -107,7 +107,7 @@ struct WhatsNewView: View {
                                 .background(Color.clear)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
@@ -201,7 +201,7 @@ struct FeatureCategorySection: View {
                     // Category icon
                     Image(systemName: category.icon)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                         .frame(width: 30)
                     
                     Text(category.name.uppercased())
@@ -259,11 +259,11 @@ struct FeatureCard: View {
     var statusColor: Color {
         switch feature.status {
         case .inDevelopment:
-            return OPSStyle.Colors.primaryAccent
+            return OPSStyle.Colors.primaryText
         case .comingSoon:
-            return OPSStyle.Colors.primaryAccent
-        case .planned:
             return OPSStyle.Colors.secondaryText
+        case .planned:
+            return OPSStyle.Colors.tertiaryText
         }
     }
     
@@ -277,7 +277,7 @@ struct FeatureCard: View {
                 
                 Image(systemName: feature.icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             
             // Content
@@ -315,17 +315,17 @@ struct FeatureCard: View {
                             Text("+1")
                                 .font(OPSStyle.Typography.caption)
                         }
-                        .foregroundColor(hasVoted ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(hasVoted ? OPSStyle.Colors.successStatus : OPSStyle.Colors.secondaryText)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(
-                            hasVoted ? OPSStyle.Colors.successStatus.opacity(0.2) : OPSStyle.Colors.primaryAccent.opacity(0.2)
+                            hasVoted ? OPSStyle.Colors.successStatus.opacity(0.2) : OPSStyle.Colors.cardBackgroundDark
                         )
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .stroke(
-                                    hasVoted ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent,
+                                    hasVoted ? OPSStyle.Colors.successStatus : OPSStyle.Colors.cardBorder,
                                     lineWidth: OPSStyle.Layout.Border.standard
                                 )
                         )
@@ -336,8 +336,12 @@ struct FeatureCard: View {
             }
         }
         .padding(12)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
 }
 

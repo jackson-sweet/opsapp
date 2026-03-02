@@ -24,7 +24,8 @@ struct HomeView: View {
     
     // No map region state needed - ProjectMapView manages internally
     @State private var todaysScheduledTasks: [ProjectTask] = []
-    @State private var todaysProjects: [Project] = [] // Keep for map display
+    @State private var todaysProjects: [Project] = [] // Keep for carousel display
+    @State private var allProjects: [Project] = [] // All projects for map "All" filter
     @State private var selectedEventIndex = 0
     @State private var showStartConfirmation = false
     @State private var isLoading = true
@@ -44,6 +45,7 @@ struct HomeView: View {
         HomeContentView(
             todaysScheduledTasks: todaysScheduledTasks,
             todaysProjects: todaysProjects,
+            allProjects: allProjects,
             selectedEventIndex: $selectedEventIndex,
             showStartConfirmation: $showStartConfirmation,
             selectedProject: $selectedProject,
@@ -270,11 +272,16 @@ struct HomeView: View {
                 }
             }
 
+            // Also load all projects (no date filter) for the map's "All" mode
+            var everyProject = dataController.getProjectsForCurrentUser(for: nil)
+            if tutorialMode {
+                everyProject = everyProject.filter { $0.id.hasPrefix("DEMO_") }
+            }
+
             await MainActor.run {
                 self.todaysScheduledTasks = scheduledTasks
                 self.todaysProjects = uniqueProjects
-
-                // No manual map region calculation needed - ProjectMapView handles all zoom automatically
+                self.allProjects = everyProject
 
                 // Setup active task if needed
                 if let activeProjectID = appState.activeProjectID,

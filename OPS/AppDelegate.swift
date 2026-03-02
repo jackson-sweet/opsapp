@@ -241,6 +241,15 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 object: nil,
                 userInfo: [:]
             )
+        case "projectNotes":
+            // Deep link to project details (notes tab) when a mention notification is tapped
+            if let projectId = projectId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenProjectDetails"),
+                    object: nil,
+                    userInfo: ["projectId": projectId]
+                )
+            }
         default:
             print("[PUSH] Unknown screen: \(screen)")
         }
@@ -266,6 +275,15 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 )
             } else if let projectId = projectId {
                 // Fallback to project details if no taskId
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenProjectDetails"),
+                    object: nil,
+                    userInfo: ["projectId": projectId]
+                )
+            }
+        case "projectNoteMention":
+            // Someone @mentioned the user in a project note - open project details
+            if let projectId = projectId {
                 NotificationCenter.default.post(
                     name: Notification.Name("OpenProjectDetails"),
                     object: nil,

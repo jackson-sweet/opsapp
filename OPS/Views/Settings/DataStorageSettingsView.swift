@@ -10,22 +10,22 @@ import SwiftUI
 struct DataStorageSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
-    
+
     // Sync and data preferences
     @AppStorage("syncOnLaunch") private var syncOnLaunch = true
     @AppStorage("backgroundSyncEnabled") private var backgroundSyncEnabled = true
     @AppStorage("imageCacheEnabled") private var imageCacheEnabled = true
     @AppStorage("maxStorageSize") private var maxStorageSize = 500 // MB
     @AppStorage("historicalDataMonths") private var historicalDataMonths = 6 // Months of historical data to sync
-    
+
     @State private var estimatedStorageUsed: Double = 0
     @State private var isCalculatingStorage = false
-    
+
     var body: some View {
         ZStack {
             // Background
             OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
-            
+
             VStack(spacing: 0) {
                 // Header
                 SettingsHeader(
@@ -34,16 +34,16 @@ struct DataStorageSettingsView: View {
                         dismiss()
                     }
                 )
-                
+
                 ScrollView {
                     VStack(spacing: 24) {
                         // Synchronization Settings
-                        SectionCard(
-                            icon: "arrow.triangle.2.circlepath",
-                            title: "Synchronization",
-                            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-                        ) {
-                                    VStack(spacing: 0) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("SYNCHRONIZATION")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                            VStack(spacing: 0) {
                                 SettingsToggle(
                                     title: "Sync on App Launch",
                                     description: "Get data from online when app starts",
@@ -51,7 +51,7 @@ struct DataStorageSettingsView: View {
                                 )
 
                                 Divider()
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .background(OPSStyle.Colors.cardBorder)
                                     .padding(.vertical, 8)
 
                                 SettingsToggle(
@@ -61,7 +61,7 @@ struct DataStorageSettingsView: View {
                                 )
 
                                 Divider()
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .background(OPSStyle.Colors.cardBorder)
                                     .padding(.vertical, 8)
 
                                 VStack(alignment: .leading, spacing: 8) {
@@ -136,32 +136,39 @@ struct DataStorageSettingsView: View {
                                 }
                                 .padding(16)
                             }
+                            .padding(16)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            )
                         }
                         .padding(.horizontal, 20)
 
                         // Storage Settings
-                        SectionCard(
-                            icon: "externaldrive",
-                            title: "Storage",
-                            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-                        ) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("STORAGE")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+
                             VStack(spacing: 0) {
                                 SettingsToggle(
                                     title: "Cache Project Images",
                                     description: "Store project images on device, so you can see them even when no internet connection",
                                     isOn: $imageCacheEnabled
                                 )
-                                
+
                                 Divider()
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .background(OPSStyle.Colors.cardBorder)
                                     .padding(.vertical, 8)
-                                
+
                                 // Storage Meter
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Storage Usage")
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
-                                    
+
                                     // Storage bar
                                     GeometryReader { geometry in
                                         ZStack(alignment: .leading) {
@@ -170,21 +177,21 @@ struct DataStorageSettingsView: View {
                                                 .fill(OPSStyle.Colors.cardBackground)
                                                 .frame(height: 8)
                                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                                            
+
                                             // Usage
                                             Rectangle()
                                                 .fill(OPSStyle.Colors.primaryAccent)
-                                                .frame(width: maxStorageSize == -1 ? 
+                                                .frame(width: maxStorageSize == -1 ?
                                                       // For infinite storage, show a small relative usage
-                                                      geometry.size.width * CGFloat(min(estimatedStorageUsed / 10000, 0.1)) : 
+                                                      geometry.size.width * CGFloat(min(estimatedStorageUsed / 10000, 0.1)) :
                                                       // For limited storage, show percent used
-                                                      geometry.size.width * CGFloat(min(maxStorageSize == 0 ? 1.0 : estimatedStorageUsed / Double(maxStorageSize), 1.0)), 
+                                                      geometry.size.width * CGFloat(min(maxStorageSize == 0 ? 1.0 : estimatedStorageUsed / Double(maxStorageSize), 1.0)),
                                                       height: 8)
                                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                                         }
                                     }
                                     .frame(height: 8)
-                                    
+
                                     // Usage labels
                                     HStack {
                                         if isCalculatingStorage {
@@ -196,9 +203,9 @@ struct DataStorageSettingsView: View {
                                                 .font(OPSStyle.Typography.smallCaption)
                                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                         }
-                                        
+
                                         Spacer()
-                                        
+
                                         if maxStorageSize == -1 {
                                             Text("Unlimited storage")
                                                 .font(OPSStyle.Typography.smallCaption)
@@ -215,28 +222,28 @@ struct DataStorageSettingsView: View {
                                     }
                                 }
                                 .padding(16)
-                                
+
                                 Divider()
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .background(OPSStyle.Colors.cardBorder)
                                     .padding(.vertical, 8)
-                                
+
                                 // Storage limit slider
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Storage Limit")
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
-                                    
+
                                     VStack(spacing: 8) {
                                         // Storage options: 0, 250, 500, 1000, 2500, 5000, unlimited (-1)
                                         let storageOptions = [0, 250, 500, 1000, 2500, 5000, -1]
                                         let sliderSteps = Double(storageOptions.count - 1)
-                                        
+
                                         ZStack(alignment: .center) {
                                             // Tick marks for each snap point
                                             GeometryReader { geometry in
                                                 ForEach(0..<storageOptions.count, id: \.self) { index in
                                                     Rectangle()
-                                                        .fill(OPSStyle.Colors.secondaryText.opacity(0.3))
+                                                        .fill(OPSStyle.Colors.cardBorder)
                                                         .frame(width: 1, height: 12)
                                                         .position(
                                                             x: geometry.size.width * CGFloat(index) / CGFloat(storageOptions.count - 1),
@@ -245,7 +252,7 @@ struct DataStorageSettingsView: View {
                                                 }
                                             }
                                             .frame(height: 12)
-                                            
+
                                             Slider(value: Binding(
                                                 get: {
                                                     // Convert storage value to slider position (0-6)
@@ -265,21 +272,21 @@ struct DataStorageSettingsView: View {
                                             ), in: 0...sliderSteps, step: 1)
                                             .accentColor(OPSStyle.Colors.primaryAccent)
                                         }
-                                        
+
                                         // Snap point markers - evenly spaced
                                         HStack(alignment: .center, spacing: 0) {
                                             ForEach(0..<storageOptions.count, id: \.self) { index in
                                                 if index > 0 {
                                                     Spacer(minLength: 0)
                                                 }
-                                                
+
                                                 Text(formatStorageLabel(storageOptions[index]))
                                                     .font(OPSStyle.Typography.smallCaption)
                                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                                     .frame(width: index == 0 || index == storageOptions.count - 1 ? 20 : 40)
                                                     .lineLimit(1)
                                                     .minimumScaleFactor(0.8)
-                                                
+
                                                 if index == 0 {
                                                     Spacer(minLength: 0)
                                                 }
@@ -288,7 +295,7 @@ struct DataStorageSettingsView: View {
                                         .padding(.horizontal, 8)
                                         .frame(height: 20)
                                     }
-                                    
+
                                     HStack {
                                         Spacer()
                                         Text(formatStorageSize(maxStorageSize))
@@ -296,7 +303,7 @@ struct DataStorageSettingsView: View {
                                             .foregroundColor(OPSStyle.Colors.primaryText)
                                             .frame(width: 80)
                                     }
-                                    
+
                                     // Message for no local storage or infinite storage
                                     if maxStorageSize == 0 {
                                         Text("No local data storage. This requires constant network connectivity.")
@@ -312,33 +319,50 @@ struct DataStorageSettingsView: View {
                                 }
                                 .padding(16)
                             }
+                            .padding(16)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            )
                         }
                         .padding(.horizontal, 20)
 
                         // Clear data buttons
-                        SectionCard(
-                            icon: "trash.circle",
-                            title: "Data Management"
-                        ) {
-                            VStack(spacing: 16) {
-                            SettingsButton(
-                                title: "Clear Image Cache",
-                                icon: OPSStyle.Icons.photo,
-                                style: .secondary,
-                                action: {
-                                    clearImageCache()
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("DATA MANAGEMENT")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                            VStack(spacing: 0) {
+                                VStack(spacing: 16) {
+                                    SettingsButton(
+                                        title: "Clear Image Cache",
+                                        icon: OPSStyle.Icons.photo,
+                                        style: .secondary,
+                                        action: {
+                                            clearImageCache()
+                                        }
+                                    )
+
+                                    SettingsButton(
+                                        title: "Clear All Offline Data",
+                                        icon: OPSStyle.Icons.trash,
+                                        style: .destructive,
+                                        action: {
+                                            clearAllOfflineData()
+                                        }
+                                    )
                                 }
-                            )
-                            
-                            SettingsButton(
-                                title: "Clear All Offline Data",
-                                icon: OPSStyle.Icons.trash,
-                                style: .destructive,
-                                action: {
-                                    clearAllOfflineData()
-                                }
-                            )
                             }
+                            .padding(16)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            )
                         }
                         .padding(.horizontal, 20)
                     }
@@ -351,7 +375,7 @@ struct DataStorageSettingsView: View {
             calculateStorageUsage()
         }
     }
-    
+
     private func formatMonthsLabel(_ months: Int) -> String {
         if months == -1 {
             return "All"
@@ -396,7 +420,7 @@ struct DataStorageSettingsView: View {
             return "\(size) MB"
         }
     }
-    
+
     private func formatStorageLabel(_ size: Int) -> String {
         if size == -1 {
             return "∞"
@@ -413,11 +437,11 @@ struct DataStorageSettingsView: View {
             return "\(size)"
         }
     }
-    
+
     private func calculateStorageUsage() {
         // Simulate calculation of storage
         isCalculatingStorage = true
-        
+
         // In a real app, you would use FileManager to calculate actual usage
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             // This is a placeholder - real implementation would calculate actual usage
@@ -434,7 +458,7 @@ struct DataStorageSettingsView: View {
             isCalculatingStorage = false
         }
     }
-    
+
     private func clearImageCache() {
         // Simulate clearing the image cache
         // In a real app, you would use ImageCache to clear the cache
@@ -443,15 +467,15 @@ struct DataStorageSettingsView: View {
             estimatedStorageUsed *= 0.6
         }
     }
-    
+
     private func clearAllOfflineData() {
         // Simulate clearing all offline data
         // In a real app, you would use DataController to clear the database
         estimatedStorageUsed = 0
-        
+
         // Display notification to user
         // This would trigger a toast or notification in a real app
-        
+
         // For the purpose of this demo, we'll simply recalculate storage after a delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             calculateStorageUsage()

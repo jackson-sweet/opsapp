@@ -631,6 +631,9 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         // Forward the notification to our publisher
         notificationSubject.send(notification)
 
+        // Notify observers that a new notification arrived (for in-app badge refresh)
+        NotificationCenter.default.post(name: .pushNotificationReceived, object: nil)
+
         // Show the notification alert, play sound, and update badge
         completionHandler([.banner, .sound, .badge])
     }
@@ -1461,4 +1464,6 @@ extension Notification.Name {
     static let openTeamMemberDetails = Notification.Name("OpenTeamMemberDetails")
     static let scheduleAccepted = Notification.Name("ScheduleAccepted")
     static let scheduleDeclined = Notification.Name("ScheduleDeclined")
+    static let projectNoteReceived = Notification.Name("projectNoteReceived")
+    static let pushNotificationReceived = Notification.Name("pushNotificationReceived")
 }

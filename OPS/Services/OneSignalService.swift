@@ -35,13 +35,15 @@ class OneSignalService {
         userId: String,
         title: String,
         body: String,
-        data: [String: Any]? = nil
+        data: [String: Any]? = nil,
+        imageUrl: String? = nil
     ) async throws {
         try await sendViaOpsWeb(
             recipientUserIds: [userId],
             title: title,
             body: body,
-            data: data
+            data: data,
+            imageUrl: imageUrl
         )
     }
 
@@ -50,14 +52,16 @@ class OneSignalService {
         userIds: [String],
         title: String,
         body: String,
-        data: [String: Any]? = nil
+        data: [String: Any]? = nil,
+        imageUrl: String? = nil
     ) async throws {
         guard !userIds.isEmpty else { return }
         try await sendViaOpsWeb(
             recipientUserIds: userIds,
             title: title,
             body: body,
-            data: data
+            data: data,
+            imageUrl: imageUrl
         )
     }
 
@@ -203,6 +207,37 @@ class OneSignalService {
         print("[ONESIGNAL SERVICE] Project assignment notification sent to user: \(userId)")
     }
 
+    /// Notify a user they've been mentioned in a project note
+    func notifyProjectNoteMention(
+        userId: String,
+        authorName: String,
+        notePreview: String,
+        projectName: String,
+        projectId: String,
+        noteId: String,
+        imageUrl: String? = nil
+    ) async throws {
+        if userId == UserDefaults.standard.string(forKey: "currentUserId") {
+            print("[ONESIGNAL SERVICE] Skipping self-notification for note mention")
+            return
+        }
+
+        let preview = notePreview.count > 80 ? String(notePreview.prefix(80)) + "..." : notePreview
+        try await sendToUser(
+            userId: userId,
+            title: "\(authorName) mentioned you",
+            body: "\"\(preview)\" on \(projectName)",
+            data: [
+                "type": "projectNoteMention",
+                "projectId": projectId,
+                "noteId": noteId,
+                "screen": "projectNotes"
+            ],
+            imageUrl: imageUrl
+        )
+        print("[ONESIGNAL SERVICE] Note mention notification sent to user: \(userId)")
+    }
+
     // MARK: - Private Implementation
 
     /// Send notification via ops-web backend route
@@ -210,7 +245,8 @@ class OneSignalService {
         recipientUserIds: [String],
         title: String,
         body: String,
-        data: [String: Any]? = nil
+        data: [String: Any]? = nil,
+        imageUrl: String? = nil
     ) async throws {
         let session: Session
         do {
@@ -237,6 +273,10 @@ class OneSignalService {
 
         if let data = data {
             payload["data"] = data
+        }
+
+        if let imageUrl = imageUrl {
+            payload["imageUrl"] = imageUrl
         }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)

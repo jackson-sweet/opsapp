@@ -20,9 +20,6 @@ struct TaskDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @Query private var users: [User]
     
-    @State private var taskNotes: String
-    @State private var originalTaskNotes: String
-    @State private var showingUnsavedChangesAlert = false
     @State private var showingSaveNotification = false
     @State private var notificationTimer: Timer?
     @State private var showingClientContact = false
@@ -37,15 +34,11 @@ struct TaskDetailsView: View {
     @State private var showingProjectCompletionAlert = false
     @State private var showingScheduler = false
     @State private var refreshTrigger = false  // Toggle to force view refresh
-    @State private var isNotesExpanded = false
     @State private var showingDeleteConfirmation = false
 
     init(task: ProjectTask, project: Project) {
         self._task = State(initialValue: task)
         self.project = project
-        let notes = task.taskNotes ?? ""
-        _taskNotes = State(initialValue: notes)
-        _originalTaskNotes = State(initialValue: notes)
     }
     
     var body: some View {
@@ -79,7 +72,7 @@ struct TaskDetailsView: View {
 
                         // Done button
                         Button("Done") {
-                            checkForUnsavedChanges()
+                            dismiss()
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
@@ -191,38 +184,14 @@ struct TaskDetailsView: View {
                 ContactDetailView(user: selectedMember)
                     .presentationDragIndicator(.visible)
                     .presentationDetents([.medium, .large])
+                    .environmentObject(dataController)
             }
         }
         .overlay(saveNotificationOverlay)
-        .confirmationDialog(
-            "Unsaved Changes",
-            isPresented: $showingUnsavedChangesAlert,
-            titleVisibility: .visible
-        ) {
-            Button("Save Changes", role: .none) {
-                saveTaskNotes()
-                dismiss()
-            }
-            
-            Button("Discard Changes", role: .destructive) {
-                dismiss()
-            }
-            
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("You have unsaved changes to your notes. Would you like to save them before leaving?")
-        }
         .sheet(isPresented: $showingProjectDetails) {
             ProjectDetailsView(project: project)
                 .environmentObject(dataController)
                 .environmentObject(appState)
-        }
-        .sheet(isPresented: $showingTeamMemberDetails) {
-            if let member = selectedTeamMember {
-                ContactDetailView(user: member)
-                    .presentationDragIndicator(.visible)
-                    .environmentObject(dataController)
-            }
         }
         .sheet(isPresented: $showingClientContact) {
             // Pass the actual Client object if available, otherwise create a temporary one
@@ -262,9 +231,6 @@ struct TaskDetailsView: View {
             )
             .environmentObject(dataController)
         }
-        .onAppear {
-            logTaskTeamMemberData()
-        }
         .onDisappear {
             notificationTimer?.invalidate()
             notificationTimer = nil
@@ -303,13 +269,17 @@ struct TaskDetailsView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
-                // Map view
+                // Map view — same Mapbox dark style + segmented-ring pin as main map
                 MiniMapView(
                     coordinate: project.coordinate,
-                    address: project.address ?? ""
-                ) {
-                    openInMaps()
-                }
+                    address: project.address ?? "",
+                    onTap: { openInMaps() },
+                    projectName: project.title,
+                    status: project.status,
+                    taskColorHexes: project.tasks
+                        .filter { $0.deletedAt == nil && $0.status == .active }
+                        .map { $0.effectiveColor }
+                )
                 .frame(height: 180)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
@@ -331,8 +301,6 @@ struct TaskDetailsView: View {
                 // Dates field
                 datesField
 
-                // Notes field
-                notesField
             }
         }
         .padding(.horizontal)
@@ -473,17 +441,6 @@ struct TaskDetailsView: View {
         }
     }
 
-    private var notesField: some View {
-        NotesDisplayField(
-            title: "Task Notes",
-            notes: task.taskNotes ?? "",
-            isExpanded: $isNotesExpanded,
-            editedNotes: $taskNotes,
-            canEdit: canModify,
-            onSave: saveTaskNotes
-        )
-    }
-    
     // MARK: - Team Section
 
     private var teamSection: some View {
@@ -657,9 +614,6 @@ struct TaskDetailsView: View {
 
             // View Project pill - centered
             Button(action: {
-                if taskNotes != originalTaskNotes {
-                    saveTaskNotes()
-                }
                 showingProjectDetails = true
             }) {
                 VStack(spacing: 4) {
@@ -693,15 +647,8 @@ struct TaskDetailsView: View {
 
     private func navigationPill(caption: String, label: String, icon: String, iconPosition: IconPosition, task newTask: ProjectTask) -> some View {
         Button(action: {
-            if taskNotes != originalTaskNotes {
-                saveTaskNotes()
-            }
-
             withAnimation(OPSStyle.Animation.standard) {
                 self.task = newTask
-                let notes = newTask.taskNotes ?? ""
-                self.taskNotes = notes
-                self.originalTaskNotes = notes
                 loadTaskTeamMembers()
             }
         }) {
@@ -1061,47 +1008,6 @@ struct TaskDetailsView: View {
             return TaskStatus.allCases
         } else {
             return [.active, .completed]
-        }
-    }
-    
-    private func checkForUnsavedChanges() {
-        if taskNotes != originalTaskNotes {
-            showingUnsavedChangesAlert = true
-        } else {
-            dismiss()
-        }
-    }
-    
-    private func saveTaskNotes() {
-        // Haptic feedback on save
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
-
-        task.taskNotes = taskNotes.isEmpty ? nil : taskNotes
-        task.needsSync = true
-        try? dataController.modelContext?.save()
-
-        originalTaskNotes = taskNotes
-        showSaveNotification()
-
-        // Sync to API
-        Task {
-            await syncTaskNotesToAPI()
-        }
-    }
-    
-    @MainActor
-    private func syncTaskNotesToAPI() async {
-        guard let syncManager = dataController.syncManager else { return }
-        
-        do {
-            print("📤 Syncing task notes to API")
-            try await syncManager.updateTaskNotes(taskId: task.id, notes: task.taskNotes ?? "")
-            print("✅ Task notes synced successfully")
-            task.needsSync = false
-            try? dataController.modelContext?.save()
-        } catch {
-            print("❌ Failed to sync task notes: \(error)")
         }
     }
     

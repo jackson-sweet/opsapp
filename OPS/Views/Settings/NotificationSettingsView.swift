@@ -12,12 +12,12 @@ struct NotificationSettingsView: View {
     @EnvironmentObject private var notificationManager: NotificationManager
     @EnvironmentObject private var dataController: DataController
     @Environment(\.dismiss) private var dismiss
-    
+
     // Project notification preferences
     @AppStorage("notifyProjectAssignment") private var notifyProjectAssignment = true
     @AppStorage("notifyProjectScheduleChanges") private var notifyProjectScheduleChanges = true
     @AppStorage("notifyProjectCompletion") private var notifyProjectCompletion = true
-    
+
     // Advance notice settings
     @AppStorage("notifyAdvanceNotice") private var notifyProjectAdvance = true
     @AppStorage("advanceNoticeDays1") private var advanceNoticeDays1 = 1
@@ -38,7 +38,7 @@ struct NotificationSettingsView: View {
     @AppStorage("isMuted") private var isMuted = false
     @AppStorage("muteUntil") private var muteUntil: Double = 0  // Timestamp
     @State private var muteHours: Int = 1
-    
+
     // Computed property for the notification time
     private var notificationTime: Date {
         get {
@@ -53,14 +53,14 @@ struct NotificationSettingsView: View {
             advanceNoticeMinute = components.minute ?? 0
         }
     }
-    
+
     // Computed property for reminder summary text
     private var reminderSummaryText: String {
         var activeDays: [Int] = []
-        
+
         // Always include first day
         activeDays.append(advanceNoticeDays1)
-        
+
         // Include second and third if not "None" (0)
         if advanceNoticeDays2 > 0 {
             activeDays.append(advanceNoticeDays2)
@@ -68,7 +68,7 @@ struct NotificationSettingsView: View {
         if advanceNoticeDays3 > 0 {
             activeDays.append(advanceNoticeDays3)
         }
-        
+
         // Format the days
         let dayText: String
         switch activeDays.count {
@@ -81,20 +81,20 @@ struct NotificationSettingsView: View {
         default:
             dayText = "No reminders set"
         }
-        
+
         // Format time for display
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         let timeString = formatter.string(from: notificationTime)
-        
+
         return "\(dayText) at \(timeString)"
     }
-    
+
     var body: some View {
         ZStack {
             // Background
             OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
-            
+
             VStack(spacing: 0) {
                 // Header
                 SettingsHeader(
@@ -102,59 +102,38 @@ struct NotificationSettingsView: View {
                     onBackTapped: { dismiss() }
                 )
                 .padding(.bottom, 24)
-                
+
                 ScrollView {
                     VStack(spacing: 24) {
                         // Permission Status Card
                         notificationStatusCard
-                            .padding(20)
-                        
+
                         // Project Notifications Section
-                        SectionCard(
-                            icon: "bell.badge",
-                            title: "Project Updates",
-                            contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-                        ) {
+                        settingsSection(title: "PROJECT UPDATES") {
                             projectNotificationSettings
                         }
-                        .padding(.horizontal, 20)
-                        
+
                         // Advance Notice Section
-                        SectionCard(
-                            icon: "clock.badge",
-                            title: "Advance Reminders"
-                        ) {
+                        settingsSection(title: "ADVANCE REMINDERS") {
                             advanceNoticeSettings
                         }
-                        .padding(.horizontal, 20)
 
                         // Test Notification Section
-                        SectionCard(
-                            icon: "bell.circle",
-                            title: "Test Notifications"
-                        ) {
+                        settingsSection(title: "TEST NOTIFICATIONS") {
                             testNotificationCard
                         }
-                        .padding(.horizontal, 20)
 
-                        // MARK: - Do Not Disturb Section
-                        SectionCard(
-                            icon: "moon.fill",
-                            title: "Do Not Disturb"
-                        ) {
+                        // Do Not Disturb Section
+                        settingsSection(title: "DO NOT DISTURB") {
                             doNotDisturbSettings
                         }
-                        .padding(.horizontal, 20)
 
-                        // MARK: - Temporary Mute Section
-                        SectionCard(
-                            icon: "bell.slash",
-                            title: "Temporary Mute"
-                        ) {
+                        // Temporary Mute Section
+                        settingsSection(title: "TEMPORARY MUTE") {
                             temporaryMuteSettings
                         }
-                        .padding(.horizontal, 20)
                     }
+                    .padding(.horizontal, 20)
                     .padding(.bottom, 40)
                 }
             }
@@ -166,42 +145,62 @@ struct NotificationSettingsView: View {
             checkMuteExpiration()
         }
     }
-    
+
+    // MARK: - Gold Standard Helpers
+
+    private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            VStack(spacing: 0) {
+                content()
+            }
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+    }
+
     // MARK: - Components
-    
+
     private var notificationStatusCard: some View {
         HStack(spacing: 16) {
             // Status Icon
             ZStack {
                 Circle()
-                    .fill(notificationManager.isNotificationsEnabled ? 
-                          OPSStyle.Colors.successStatus.opacity(0.2) : 
+                    .fill(notificationManager.isNotificationsEnabled ?
+                          OPSStyle.Colors.successStatus.opacity(0.2) :
                           OPSStyle.Colors.errorStatus.opacity(0.2))
                     .frame(width: 48, height: 48)
-                
+
                 Image(systemName: notificationManager.isNotificationsEnabled ?
                       OPSStyle.Icons.bellFill : "bell.slash.fill")
                     .font(OPSStyle.Typography.headingLarge)
-                    .foregroundColor(notificationManager.isNotificationsEnabled ? 
-                                   OPSStyle.Colors.successStatus : 
+                    .foregroundColor(notificationManager.isNotificationsEnabled ?
+                                   OPSStyle.Colors.successStatus :
                                    OPSStyle.Colors.errorStatus)
             }
-            
+
             // Status Text
             VStack(alignment: .leading, spacing: 4) {
                 Text(notificationManager.isNotificationsEnabled ?
                      "NOTIFICATIONS ENABLED" : "NOTIFICATIONS DISABLED")
                     .font(OPSStyle.Typography.cardTitle)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                
+
                 Text(notificationManager.isNotificationsEnabled ?
                      "Stay updated on projects" : "Enable to receive updates")
                     .font(OPSStyle.Typography.cardBody)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            
+
             Spacer()
-            
+
             // Action Button
             Button {
                 if notificationManager.isNotificationsEnabled {
@@ -212,16 +211,16 @@ struct NotificationSettingsView: View {
             } label: {
                 Text(notificationManager.isNotificationsEnabled ? "MANAGE" : "ENABLE")
                     .font(OPSStyle.Typography.button)
-                    .foregroundColor(notificationManager.isNotificationsEnabled ? 
-                                   OPSStyle.Colors.primaryText : .black)
+                    .foregroundColor(notificationManager.isNotificationsEnabled ?
+                                   OPSStyle.Colors.primaryText : OPSStyle.Colors.invertedText)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(notificationManager.isNotificationsEnabled ? 
+                    .background(notificationManager.isNotificationsEnabled ?
                                 Color.clear : OPSStyle.Colors.primaryText)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(notificationManager.isNotificationsEnabled ? 
-                                  OPSStyle.Colors.primaryText : Color.clear, 
+                            .stroke(notificationManager.isNotificationsEnabled ?
+                                  OPSStyle.Colors.primaryText : Color.clear,
                                   lineWidth: OPSStyle.Layout.Border.standard)
                     )
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -230,8 +229,12 @@ struct NotificationSettingsView: View {
         .padding(24)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
-    
+
     private var projectNotificationSettings: some View {
         VStack(spacing: 0) {
             // Assignment Notifications
@@ -240,10 +243,11 @@ struct NotificationSettingsView: View {
                 description: "Get notified when assigned to new projects",
                 isOn: $notifyProjectAssignment
             )
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
 
             Divider()
                 .background(OPSStyle.Colors.cardBorder)
-                .padding(.vertical, 8)
 
             // Schedule Changes
             SettingsToggle(
@@ -251,10 +255,11 @@ struct NotificationSettingsView: View {
                 description: "Receive alerts when project dates change",
                 isOn: $notifyProjectScheduleChanges
             )
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
 
             Divider()
                 .background(OPSStyle.Colors.cardBorder)
-                .padding(.vertical, 8)
 
             // Completion Notifications
             SettingsToggle(
@@ -262,17 +267,21 @@ struct NotificationSettingsView: View {
                 description: "Be notified when projects are marked complete",
                 isOn: $notifyProjectCompletion
             )
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
         }
     }
-    
+
     private var advanceNoticeSettings: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 0) {
             // Master Toggle
             SettingsToggle(
                 title: "Enable Advance Reminders",
                 description: "Get notified before projects start",
                 isOn: $notifyProjectAdvance
             )
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
             .onChange(of: notifyProjectAdvance) { _, newValue in
                 if newValue {
                     // Enabled - schedule notifications
@@ -289,7 +298,6 @@ struct NotificationSettingsView: View {
             if notifyProjectAdvance {
                 Divider()
                     .background(OPSStyle.Colors.cardBorder)
-                    .padding(.vertical, 8)
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text("REMINDER SCHEDULE")
@@ -313,14 +321,15 @@ struct NotificationSettingsView: View {
 
                     Text(reminderSummaryText)
                         .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 8)
                 }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
 
                 Divider()
                     .background(OPSStyle.Colors.cardBorder)
-                    .padding(.vertical, 8)
 
                 // Time Picker
                 VStack(alignment: .leading, spacing: 12) {
@@ -353,10 +362,12 @@ struct NotificationSettingsView: View {
                         .frame(height: 36)
                     }
                 }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
             }
         }
     }
-    
+
     private var testNotificationCard: some View {
         VStack(spacing: 16) {
             Text("Send a test to verify settings")
@@ -385,24 +396,27 @@ struct NotificationSettingsView: View {
             .disabled(!notificationManager.isNotificationsEnabled)
             .opacity(notificationManager.isNotificationsEnabled ? 1.0 : 0.5)
         }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
     }
-    
+
     // MARK: - Do Not Disturb Settings
 
     private var doNotDisturbSettings: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 0) {
             // Enable toggle
             SettingsToggle(
                 title: "Quiet Hours",
                 description: "Silence notifications during set hours",
                 isOn: $quietHoursEnabled
             )
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
 
             // Time window (only show if enabled)
             if quietHoursEnabled {
                 Divider()
                     .background(OPSStyle.Colors.cardBorder)
-                    .padding(.vertical, 8)
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text("QUIET HOURS")
@@ -484,9 +498,11 @@ struct NotificationSettingsView: View {
                     // Summary text
                     Text("Notifications silenced \(formatHour(quietHoursStart)) - \(formatHour(quietHoursEnd))")
                         .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                         .padding(.top, 4)
                 }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
             }
         }
     }
@@ -494,7 +510,7 @@ struct NotificationSettingsView: View {
     // MARK: - Temporary Mute Settings
 
     private var temporaryMuteSettings: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Mute All Notifications")
@@ -521,11 +537,12 @@ struct NotificationSettingsView: View {
                         }
                     }
             }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
 
             if isMuted {
                 Divider()
                     .background(OPSStyle.Colors.cardBorder)
-                    .padding(.vertical, 8)
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text("MUTE DURATION")
@@ -544,7 +561,7 @@ struct NotificationSettingsView: View {
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 12)
                                     .background(muteHours == hours ?
-                                                OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackground)
+                                                OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackground)
                                     .foregroundColor(muteHours == hours ? OPSStyle.Colors.invertedText : OPSStyle.Colors.primaryText)
                                     .cornerRadius(OPSStyle.Layout.largeCornerRadius)
                             }
@@ -566,6 +583,8 @@ struct NotificationSettingsView: View {
                         .padding(.top, 4)
                     }
                 }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
             }
         }
     }
@@ -618,15 +637,15 @@ struct DaySelector: View {
     @Binding var value: Int
     let label: String
     let allowNone: Bool
-    
+
     private let dayOptions = [1, 2, 3, 5, 7, 14]
-    
+
     init(value: Binding<Int>, label: String, allowNone: Bool = false) {
         self._value = value
         self.label = label
         self.allowNone = allowNone
     }
-    
+
     var body: some View {
         Menu {
             if allowNone {
@@ -639,10 +658,10 @@ struct DaySelector: View {
                         Text("None")
                     }
                 }
-                
+
                 Divider()
             }
-            
+
             ForEach(dayOptions, id: \.self) { day in
                 Button {
                     value = day
@@ -659,7 +678,7 @@ struct DaySelector: View {
                 Text(label.uppercased())
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                
+
                 HStack(spacing: 4) {
                     if value == 0 {
                         Text("NONE")
@@ -669,12 +688,12 @@ struct DaySelector: View {
                         Text("\(value)")
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                        
+
                         Text("DAYS")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
-                    
+
                     Image(systemName: OPSStyle.Icons.chevronDown)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)

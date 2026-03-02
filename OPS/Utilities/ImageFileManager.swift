@@ -96,6 +96,12 @@ class ImageFileManager {
         return imagesDirectory.appendingPathComponent(filename)
     }
     
+    /// Lightweight file existence check (no image decode)
+    func imageExists(localID: String) -> Bool {
+        guard let fileURL = getFileURL(for: localID) else { return false }
+        return FileManager.default.fileExists(atPath: fileURL.path)
+    }
+
     /// Save image data to file system
     func saveImage(data: Data, localID: String) -> Bool {
         guard let fileURL = getFileURL(for: localID) else {

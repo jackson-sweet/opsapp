@@ -21,10 +21,6 @@ struct MarkLostSheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-                Text("MARK AS LOST")
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-
                 Text("This will move \(opportunity.contactName) to the Lost stage. Please provide a reason.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -58,6 +54,8 @@ struct MarkLostSheet: View {
             }
             .padding(OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.background.ignoresSafeArea())
+            .navigationTitle("MARK AS LOST")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("CANCEL") { dismiss() }

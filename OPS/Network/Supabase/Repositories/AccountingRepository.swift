@@ -21,7 +21,7 @@ class AccountingRepository {
     func fetchAllInvoices() async throws -> [InvoiceDTO] {
         try await client
             .from("invoices")
-            .select("*, invoice_line_items(*), payments(*)")
+            .select("*, payments(*)")
             .eq("company_id", value: companyId)
             .order("created_at", ascending: false)
             .execute()

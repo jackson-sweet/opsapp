@@ -499,7 +499,7 @@ struct InventorySettingsView: View {
                     // Empty state
                     VStack(spacing: OPSStyle.Layout.spacing2) {
                         Image(systemName: "tag")
-                            .font(.system(size: 24))
+                            .font(.system(size: OPSStyle.Layout.IconSize.lg))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                         Text("No tags configured")
@@ -614,24 +614,31 @@ struct InventorySettingsView: View {
         modelContext.insert(newTag)
 
         Task {
-            do {
-                let dto = InventoryTagDTO(
-                    id: newId,
-                    name: newTag.name,
-                    warningThreshold: warning,
-                    criticalThreshold: critical,
-                    company: companyId
-                )
-                let created = try await dataController.apiService.createTag(dto)
-
+            if let repo = dataController.inventoryRepository {
+                do {
+                    let dto = CreateInventoryTagDTO(
+                        companyId: companyId,
+                        name: newTag.name,
+                        warningThreshold: warning,
+                        criticalThreshold: critical
+                    )
+                    let created = try await repo.createTag(dto)
+                    await MainActor.run {
+                        newTag.id = created.id
+                        newTag.needsSync = false
+                        newTag.lastSyncedAt = Date()
+                        try? modelContext.save()
+                    }
+                } catch {
+                    print("[TAG] Failed to create: \(error)")
+                    await MainActor.run {
+                        try? modelContext.save()
+                    }
+                }
+            } else {
                 await MainActor.run {
-                    newTag.id = created.id
-                    newTag.needsSync = false
-                    newTag.lastSyncedAt = Date()
                     try? modelContext.save()
                 }
-            } catch {
-                print("[TAG] Failed to create: \(error)")
             }
         }
     }
@@ -643,17 +650,29 @@ struct InventorySettingsView: View {
         tag.needsSync = true
 
         Task {
-            do {
-                let updates = InventoryTagDTO.dictionaryFrom(tag)
-                try await dataController.apiService.updateTag(id: tag.id, updates: updates)
-
+            if let repo = dataController.inventoryRepository {
+                do {
+                    let dto = UpdateInventoryTagDTO(
+                        name: tag.name,
+                        warningThreshold: warning,
+                        criticalThreshold: critical
+                    )
+                    _ = try await repo.updateTag(tag.id, fields: dto)
+                    await MainActor.run {
+                        tag.needsSync = false
+                        tag.lastSyncedAt = Date()
+                        try? modelContext.save()
+                    }
+                } catch {
+                    print("[TAG] Failed to update: \(error)")
+                    await MainActor.run {
+                        try? modelContext.save()
+                    }
+                }
+            } else {
                 await MainActor.run {
-                    tag.needsSync = false
-                    tag.lastSyncedAt = Date()
                     try? modelContext.save()
                 }
-            } catch {
-                print("[TAG] Failed to update: \(error)")
             }
         }
     }
@@ -663,15 +682,24 @@ struct InventorySettingsView: View {
         tag.needsSync = true
 
         Task {
-            do {
-                try await dataController.apiService.deleteTag(id: tag.id)
-
+            if let repo = dataController.inventoryRepository {
+                do {
+                    try await repo.softDeleteTag(tag.id)
+                    await MainActor.run {
+                        tag.needsSync = false
+                        tag.lastSyncedAt = Date()
+                        try? modelContext.save()
+                    }
+                } catch {
+                    print("[TAG] Failed to delete: \(error)")
+                    await MainActor.run {
+                        try? modelContext.save()
+                    }
+                }
+            } else {
                 await MainActor.run {
-                    tag.needsSync = false
                     try? modelContext.save()
                 }
-            } catch {
-                print("[TAG] Failed to delete: \(error)")
             }
         }
     }
@@ -822,31 +850,35 @@ struct InventorySettingsView: View {
         modelContext.insert(newUnit)
 
         Task {
-            do {
-                let dto = InventoryUnitDTO(
-                    id: newUnit.id,
-                    display: trimmedName,
-                    company: companyId,
-                    isDefault: false,
-                    sortOrder: newUnit.sortOrder,
-                    createdDate: nil,
-                    modifiedDate: nil
-                )
-
-                let createdDTO = try await dataController.apiService.createInventoryUnit(dto)
-
-                await MainActor.run {
-                    newUnit.id = createdDTO.id
-                    newUnit.needsSync = false
-                    newUnit.lastSyncedAt = Date()
-                    try? modelContext.save()
-
-                    newUnitName = ""
-                    isAdding = false
+            if let repo = dataController.inventoryRepository {
+                do {
+                    let dto = CreateInventoryUnitDTO(
+                        companyId: companyId,
+                        display: trimmedName,
+                        isDefault: false,
+                        sortOrder: newUnit.sortOrder
+                    )
+                    let created = try await repo.createUnit(dto)
+                    await MainActor.run {
+                        newUnit.id = created.id
+                        newUnit.needsSync = false
+                        newUnit.lastSyncedAt = Date()
+                        try? modelContext.save()
+                        newUnitName = ""
+                        isAdding = false
+                    }
+                } catch {
+                    await MainActor.run {
+                        errorMessage = "Failed to create unit: \(error.localizedDescription)"
+                        try? modelContext.save()
+                        newUnitName = ""
+                        isAdding = false
+                    }
                 }
-            } catch {
+            } else {
                 await MainActor.run {
-                    errorMessage = "Failed to create unit: \(error.localizedDescription)"
+                    try? modelContext.save()
+                    newUnitName = ""
                     isAdding = false
                 }
             }
@@ -864,16 +896,24 @@ struct InventorySettingsView: View {
         unit.needsSync = true
 
         Task {
-            do {
-                try await dataController.apiService.deleteInventoryUnit(id: unit.id)
+            if let repo = dataController.inventoryRepository {
+                do {
+                    try await repo.softDeleteUnit(unit.id)
+                    await MainActor.run {
+                        unit.needsSync = false
+                        unit.lastSyncedAt = Date()
+                        try? modelContext.save()
+                    }
+                } catch {
+                    await MainActor.run {
+                        unit.deletedAt = nil
+                        unit.needsSync = false
+                        errorMessage = "Failed to delete: \(error.localizedDescription)"
+                    }
+                }
+            } else {
                 await MainActor.run {
                     try? modelContext.save()
-                }
-            } catch {
-                await MainActor.run {
-                    unit.deletedAt = nil
-                    unit.needsSync = false
-                    errorMessage = "Failed to delete: \(error.localizedDescription)"
                 }
             }
         }
@@ -910,11 +950,32 @@ struct InventorySettingsView: View {
 
         Task {
             do {
-                _ = try await dataController.apiService.createFullSnapshot(
-                    companyId: companyId,
-                    userId: dataController.currentUser?.id,
+                print("[SNAPSHOT] Manual snapshot requested with \(items.count) items")
+
+                guard let repo = dataController.inventoryRepository else {
+                    throw NSError(domain: "OPS", code: -1, userInfo: [NSLocalizedDescriptionKey: "No inventory repository available"])
+                }
+
+                // Build snapshot items from current inventory
+                let snapshotItems = items.map { item in
+                    CreateInventorySnapshotItemDTO(
+                        snapshotId: "", // will be set by repo
+                        originalItemId: item.id,
+                        name: item.name,
+                        quantity: item.quantity,
+                        unitDisplay: item.unit?.display,
+                        sku: item.sku,
+                        tagsString: item.tagNames.joined(separator: ", "),
+                        description: item.itemDescription
+                    )
+                }
+
+                let userId = dataController.currentUser?.id
+                _ = try await repo.createFullSnapshot(
+                    userId: userId,
                     isAutomatic: false,
-                    items: items
+                    items: snapshotItems,
+                    notes: nil
                 )
 
                 // Update last snapshot date
@@ -926,7 +987,6 @@ struct InventorySettingsView: View {
                     isCreatingSnapshot = false
                     snapshotSuccess = true
 
-                    // Reset success state after delay
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                         snapshotSuccess = false
                     }

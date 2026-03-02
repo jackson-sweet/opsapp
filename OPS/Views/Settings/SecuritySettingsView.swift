@@ -18,16 +18,16 @@ struct SecuritySettingsView: View {
     @State private var passwordResetSuccess = false
     @State private var passwordResetInProgress = false
     @State private var developerModeActivated = false
-    
+
     private var pinManager: SimplePINManager {
         dataController.simplePINManager
     }
-    
+
     var body: some View {
         ZStack {
             // Background
             OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
-            
+
             VStack(spacing: 0) {
                 // Header
                 SettingsHeader(
@@ -36,71 +36,89 @@ struct SecuritySettingsView: View {
                         dismiss()
                     }
                 )
-                
+
                 ScrollView {
                     VStack(spacing: 24) {
-                        // Security section
-                        SectionCard(
-                            icon: "lock.shield",
-                            title: "App Access"
-                        ) {
-                            VStack(spacing: 16) {
-                            
-                            // PIN toggle
-                            HStack {
-                                VStack(alignment: .leading){
-                                    Text("LOCK IT DOWN")
-                                        .font(OPSStyle.Typography.cardTitle)
-                                    Text("Require PIN on App Launch")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                }
-                                Spacer()
-                                
-                                Toggle("", isOn: Binding(
-                                    get: { pinManager.hasPINEnabled },
-                                    set: { enabled in
-                                        if enabled {
-                                            showPINSetup = true
-                                        } else {
-                                            pinManager.removePIN()
-                                        }
+                        // App Access section
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("APP ACCESS")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                            VStack(spacing: 0) {
+                                VStack(spacing: 16) {
+
+                                // PIN toggle
+                                HStack {
+                                    VStack(alignment: .leading){
+                                        Text("LOCK IT DOWN")
+                                            .font(OPSStyle.Typography.cardTitle)
+                                        Text("Require PIN on App Launch")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
                                     }
-                                ))
-                                .tint(OPSStyle.Colors.primaryAccent)
-                            }
-                            .padding(20)
-                            .background(Color(OPSStyle.Colors.cardBackgroundDark))
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            
-                            if pinManager.hasPINEnabled {
-                                Button(action: { showPINSetup = true }) {
-                                    Text("CHANGE PIN")
-                                        .font(OPSStyle.Typography.button)
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    Spacer()
+
+                                    Toggle("", isOn: Binding(
+                                        get: { pinManager.hasPINEnabled },
+                                        set: { enabled in
+                                            if enabled {
+                                                showPINSetup = true
+                                            } else {
+                                                pinManager.removePIN()
+                                            }
+                                        }
+                                    ))
+                                    .tint(OPSStyle.Colors.primaryAccent)
                                 }
-                                .padding(.horizontal, 20)
+                                .padding(16)
+
+                                if pinManager.hasPINEnabled {
+                                    Button(action: { showPINSetup = true }) {
+                                        Text("CHANGE PIN")
+                                            .font(OPSStyle.Typography.button)
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    }
+                                    .padding(.horizontal, 20)
+                                }
+                                }
                             }
-                            }
+                            .padding(16)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            )
                         }
                         .padding(.horizontal, 20)
 
                         // Account Security section
-                        SectionCard(
-                            icon: "person.badge.shield.checkmark",
-                            title: "Account Security"
-                        ) {
-                            VStack(spacing: 16) {
-                            // Reset Password button
-                            SettingsCategoryButton(
-                                title: "Reset Password",
-                                description: "Change your account password",
-                                icon: "lock.shield",
-                                action: {
-                                    showResetPasswordSheet = true
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("ACCOUNT SECURITY")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                            VStack(spacing: 0) {
+                                VStack(spacing: 16) {
+                                // Reset Password button
+                                SettingsCategoryButton(
+                                    title: "Reset Password",
+                                    description: "Change your account password",
+                                    icon: "lock.shield",
+                                    action: {
+                                        showResetPasswordSheet = true
+                                    }
+                                )
                                 }
-                            )
                             }
+                            .padding(16)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            )
                         }
                         .padding(.horizontal, 20)
                     }
@@ -124,19 +142,19 @@ struct SecuritySettingsView: View {
                 }
         }
     }
-    
+
     // Password reset sheet view
     private var resetPasswordSheet: some View {
         ZStack {
             OPSStyle.Colors.backgroundGradient
                 .edgesIgnoringSafeArea(.all)
-            
+
             VStack(spacing: 24) {
                 Text("Reset Password")
                     .font(OPSStyle.Typography.title)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.top, 24)
-                
+
                 if !passwordResetSuccess {
                     VStack(spacing: 16) {
                         Text("Enter your email address to receive a password reset link.")
@@ -145,12 +163,12 @@ struct SecuritySettingsView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 20)
                             .padding(.bottom, 8)
-                        
+
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Email Address")
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
+
                             TextField("Enter email address", text: $resetEmail)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -159,12 +177,12 @@ struct SecuritySettingsView: View {
                                 .disableAutocorrection(true)
                                 .padding()
                                 .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
-                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
-                            
+
                             // Show developer mode button when secret phrase is entered
                             // Check directly without onChange
                             if resetEmail.lowercased() == "railmetwice" {
@@ -192,7 +210,7 @@ struct SecuritySettingsView: View {
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, 12)
                                             .background(
-                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                                     .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                                             )
                                         }
@@ -203,7 +221,7 @@ struct SecuritySettingsView: View {
                             }
                         }
                         .padding(.horizontal, 20)
-                        
+
                         if let error = passwordResetError {
                             Text(error)
                                 .font(OPSStyle.Typography.smallCaption)
@@ -212,9 +230,9 @@ struct SecuritySettingsView: View {
                                 .padding(.horizontal, 20)
                                 .padding(.top, 8)
                         }
-                        
+
                         Spacer()
-                        
+
                         HStack(spacing: 16) {
                             Button(action: {
                                 resetPasswordFields()
@@ -226,19 +244,19 @@ struct SecuritySettingsView: View {
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 16)
                                     .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                             }
-                            
+
                             Button(action: {
                                 requestPasswordReset()
                             }) {
                                 if passwordResetInProgress {
                                     ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .black))
+                                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 16)
                                         .background(OPSStyle.Colors.primaryAccent)
-                                        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 } else {
                                     Text("Send Reset Link")
                                         .font(OPSStyle.Typography.button)
@@ -246,7 +264,7 @@ struct SecuritySettingsView: View {
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 16)
                                         .background(OPSStyle.Colors.primaryAccent)
-                                        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                                 }
                             }
                             .disabled(!isEmailValid || passwordResetInProgress)
@@ -261,19 +279,19 @@ struct SecuritySettingsView: View {
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                             .foregroundColor(developerModeActivated ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.successStatus)
                             .padding(.bottom, 8)
-                        
+
                         Text(developerModeActivated ? "Developer Mode Activated!" : "Reset Link Sent!")
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                        
+
                         Text(developerModeActivated ? "You now have access to debug features." : "Check your email for instructions on how to reset your password.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 20)
-                        
+
                         Spacer()
-                        
+
                         Button(action: {
                             showResetPasswordSheet = false
                         }) {
@@ -283,7 +301,7 @@ struct SecuritySettingsView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
                                 .background(OPSStyle.Colors.primaryAccent)
-                                .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
                         .padding(.horizontal, 20)
                         .padding(.bottom, 40)
@@ -293,36 +311,36 @@ struct SecuritySettingsView: View {
             .padding(.vertical, 20)
         }
     }
-    
+
     // Email validation
     private var isEmailValid: Bool {
         let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
         let emailPredicate = NSPredicate(format: "SELF MATCHES %@", emailRegex)
         return !resetEmail.isEmpty && emailPredicate.evaluate(with: resetEmail)
     }
-    
+
     // Request password reset function
     private func requestPasswordReset() {
         passwordResetError = nil
         passwordResetInProgress = true
-        
+
         if resetEmail.isEmpty, let userEmail = dataController.currentUser?.email {
             resetEmail = userEmail
         }
-        
+
         guard isEmailValid else {
             passwordResetError = "Please enter a valid email address"
             passwordResetInProgress = false
             return
         }
-        
-        
+
+
         Task {
             let (success, errorMessage) = await dataController.requestPasswordReset(email: resetEmail)
-            
+
             await MainActor.run {
                 passwordResetInProgress = false
-                
+
                 if success {
                     passwordResetSuccess = true
                 } else {
@@ -331,7 +349,7 @@ struct SecuritySettingsView: View {
             }
         }
     }
-    
+
     // Reset password fields
     private func resetPasswordFields() {
         resetEmail = ""
@@ -340,22 +358,22 @@ struct SecuritySettingsView: View {
         passwordResetInProgress = false
         developerModeActivated = false
     }
-    
+
     // Activate developer mode
     private func activateDeveloperMode() {
-        
+
         // Activate developer mode
         UserDefaults.standard.set(true, forKey: "developerModeEnabled")
         UserDefaults.standard.synchronize() // Force sync
-        
+
         developerModeActivated = true
         passwordResetSuccess = true
-        
-        
+
+
         // Auto-dismiss after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             showResetPasswordSheet = false
-            
+
             // Show an alert or notification that developer mode is active
         }
     }
@@ -368,29 +386,38 @@ struct PINSetupSheet: View {
     @State private var confirmedPIN = ""
     @State private var showConfirmation = false
     @State private var errorMessage = ""
-    
+
     var body: some View {
         NavigationStack {
             ZStack {
                 OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
-                
+
                 VStack(spacing: 24) {
                     if !showConfirmation {
                         // Enter new PIN
                         Text("ENTER NEW 4-DIGIT PIN")
                             .font(OPSStyle.Typography.title)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                        
+
                         SecureField("", text: $enteredPIN)
                             .keyboardType(.numberPad)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .multilineTextAlignment(.center)
+                            .padding()
                             .frame(width: 200)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            )
                             .onChange(of: enteredPIN) { _, newValue in
                                 if newValue.count > 4 {
                                     enteredPIN = String(newValue.prefix(4))
                                 }
                             }
-                        
+
                         Button("NEXT") {
                             if enteredPIN.count == 4 {
                                 showConfirmation = true
@@ -407,17 +434,26 @@ struct PINSetupSheet: View {
                         Text("CONFIRM PIN")
                             .font(OPSStyle.Typography.title)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                        
+
                         SecureField("", text: $confirmedPIN)
                             .keyboardType(.numberPad)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .multilineTextAlignment(.center)
+                            .padding()
                             .frame(width: 200)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            )
                             .onChange(of: confirmedPIN) { _, newValue in
                                 if newValue.count > 4 {
                                     confirmedPIN = String(newValue.prefix(4))
                                 }
                             }
-                        
+
                         HStack(spacing: 16) {
                             Button("BACK") {
                                 showConfirmation = false
@@ -426,7 +462,7 @@ struct PINSetupSheet: View {
                             }
                             .buttonStyle(OPSButtonStyle.Secondary())
                             .font(OPSStyle.Typography.body)
-                            
+
                             Button("SAVE") {
                                 if confirmedPIN == enteredPIN {
                                     pinManager.setPIN(enteredPIN)
@@ -441,7 +477,7 @@ struct PINSetupSheet: View {
                             .disabled(confirmedPIN.count != 4)
                         }
                     }
-                    
+
                     if !errorMessage.isEmpty {
                         Text(errorMessage)
                             .font(OPSStyle.Typography.caption)
@@ -450,12 +486,14 @@ struct PINSetupSheet: View {
                 }
                 .padding()
             }
-            .navigationBarItems(
-                trailing: Button("Cancel") {
-                    isPresented = false
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Cancel") {
+                        isPresented = false
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-            )
+            }
         }
     }
 }

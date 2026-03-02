@@ -144,7 +144,7 @@ struct JobBoardView: View {
                     }
                     .id(selectedSection)
                     .transition(slideTransition)
-                    .animation(.easeInOut(duration: 0.2), value: selectedSection)
+                    .animation(.accessibleEaseInOut(duration: 0.2), value: selectedSection)
                     .onChange(of: selectedSection) { oldValue, newSection in
                         previousSection = oldValue
                         // Track section changes within Job Board
@@ -267,7 +267,7 @@ struct JobBoardSectionSelector: View {
             ForEach(sections, id: \.self) { section in
                 Button(action: {
                     guard !tutorialMode else { return }
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(.accessibleEaseInOut(duration: 0.2)) {
                         selectedSection = section
                     }
                 }) {

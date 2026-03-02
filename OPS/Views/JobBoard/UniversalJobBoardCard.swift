@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import Supabase
 
 enum JobBoardCardType {
     case project(Project)
@@ -320,6 +321,10 @@ struct UniversalJobBoardCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 metadataRow
+
+                if case .project(let project) = cardType, project.status == .inProgress {
+                    taskProgressPips(project: project)
+                }
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
             .padding(OPSStyle.Layout.spacing3)
@@ -719,6 +724,32 @@ struct UniversalJobBoardCard: View {
             onConfirm: deleteItem
         )
         .customAlert($customAlert)
+    }
+
+    @ViewBuilder
+    private func taskProgressPips(project: Project) -> some View {
+        let activeTasks = project.tasks.filter { $0.status == .active }
+        let completedTasks = project.tasks.filter { $0.status == .completed }
+        let totalTasks = activeTasks.count + completedTasks.count
+        if totalTasks > 0 {
+            let maxPips = 8
+            if totalTasks <= maxPips {
+                HStack(spacing: 3) {
+                    ForEach(0..<totalTasks, id: \.self) { i in
+                        Circle()
+                            .fill(i < completedTasks.count
+                                  ? OPSStyle.Colors.successStatus
+                                  : OPSStyle.Colors.cardBorder)
+                            .frame(width: 6, height: 6)
+                    }
+                    Spacer()
+                }
+            } else {
+                Text("\(activeTasks.count) tasks remaining")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+        }
     }
 
     @ViewBuilder

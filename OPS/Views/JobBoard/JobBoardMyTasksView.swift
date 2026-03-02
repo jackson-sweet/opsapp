@@ -24,6 +24,8 @@ struct JobBoardMyTasksView: View {
     @EnvironmentObject private var dataController: DataController
     @Query private var allProjects: [Project]
     @State private var activeFilter: MyTasksFilter = .all
+    @State private var isLoading: Bool = false
+    @State private var loadError: Bool = false
 
     // Projects where the current user is a team member
     private var assignedProjects: [Project] {
@@ -39,7 +41,6 @@ struct JobBoardMyTasksView: View {
         guard let userId = dataController.currentUser?.id else { return [] }
         return assignedProjects.flatMap { project in
             project.tasks.filter { task in
-                // Include task if it explicitly assigns this user OR has no team members set
                 let taskMemberIds = task.getTeamMemberIds()
                 return taskMemberIds.isEmpty || taskMemberIds.contains(userId)
             }
@@ -74,7 +75,6 @@ struct JobBoardMyTasksView: View {
             }
             map[project.id]!.tasks.append(task)
         }
-        // Sort tasks within each group by startDate ascending, then by displayTitle
         return map.values
             .map { group in
                 let sorted = group.tasks.sorted { a, b in
@@ -92,18 +92,21 @@ struct JobBoardMyTasksView: View {
 
     // Empty-state message for the current filter
     private var emptyMessage: String {
-        switch activeFilter {
-        case .all:       return "No active tasks assigned to you"
-        case .today:     return "No tasks scheduled for today"
-        case .upcoming:  return "No upcoming tasks scheduled"
-        case .completed: return "No completed tasks"
-        }
+        activeFilter == .all
+            ? "No tasks assigned to you"
+            : "No \(activeFilter.rawValue) tasks"
     }
 
     var body: some View {
         VStack(spacing: 0) {
             filterChips
-            taskList
+            if isLoading {
+                skeletonRows
+            } else if loadError {
+                errorState
+            } else {
+                taskList
+            }
         }
     }
 
@@ -113,7 +116,7 @@ struct JobBoardMyTasksView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(MyTasksFilter.allCases, id: \.self) { filter in
-                    FilterChip(
+                    TaskFilterChip(
                         label: filter.rawValue,
                         isActive: activeFilter == filter
                     ) {
@@ -141,10 +144,12 @@ struct JobBoardMyTasksView: View {
                         ProjectTaskGroup(project: group.project, tasks: group.tasks)
                     }
                 }
-                .padding(.bottom, 100) // clearance for floating tab bar / FAB
+                .padding(.bottom, 100)
             }
         }
     }
+
+    // MARK: - Empty State
 
     private var emptyState: some View {
         VStack(spacing: 12) {
@@ -161,11 +166,66 @@ struct JobBoardMyTasksView: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 24)
     }
+
+    // MARK: - Loading State
+
+    private var skeletonRows: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                // Simulate 2 project groups with 3 skeleton rows each
+                ForEach(0..<2, id: \.self) { _ in
+                    // Group header placeholder
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .frame(height: 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                    // Row placeholders
+                    ForEach(0..<3, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .fill(OPSStyle.Colors.cardBackgroundDark)
+                            .frame(height: 60)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 4)
+                    }
+                }
+            }
+            .padding(.bottom, 100)
+        }
+    }
+
+    // MARK: - Error State
+
+    private var errorState: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Text("Couldn't load tasks")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            Button("Retry") {
+                retryLoad()
+            }
+            .font(OPSStyle.Typography.captionBold)
+            .foregroundColor(OPSStyle.Colors.primaryAccent)
+            .frame(minWidth: 44, minHeight: 44)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func retryLoad() {
+        loadError = false
+        isLoading = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            isLoading = false
+        }
+    }
 }
 
 // MARK: - Filter Chip
 
-private struct FilterChip: View {
+private struct TaskFilterChip: View {
     let label: String
     let isActive: Bool
     let action: () -> Void
@@ -174,12 +234,12 @@ private struct FilterChip: View {
         Button(action: action) {
             Text(label)
                 .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(isActive ? OPSStyle.Colors.background : OPSStyle.Colors.secondaryText)
+                .foregroundColor(isActive ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(isActive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
+                        .fill(isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)

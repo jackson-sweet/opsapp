@@ -264,17 +264,15 @@ struct UniversalJobBoardCard: View {
                 projectCardContent
                     .offset(x: swipeOffset)
                     .opacity(isChangingStatus ? 0 : 1)
-                    .if(canSwipeInAnyDirection) { view in
-                        view.simultaneousGesture(
-                            DragGesture(minimumDistance: 20)
-                                .onChanged { value in
-                                    handleSwipeChanged(value: value, cardWidth: geometry.size.width)
-                                }
-                                .onEnded { value in
-                                    handleSwipeEnded(value: value, cardWidth: geometry.size.width)
-                                }
-                        )
-                    }
+                    .directionalDrag(
+                        isEnabled: canSwipeInAnyDirection,
+                        onChanged: { translation in
+                            handleSwipeChangedWidth(translation, cardWidth: geometry.size.width)
+                        },
+                        onEnded: { translation in
+                            handleSwipeEndedWidth(translation, cardWidth: geometry.size.width)
+                        }
+                    )
 
                 if isChangingStatus, let confirmingStatus = confirmingStatus, let direction = confirmingDirection {
                     RevealedStatusCard(status: confirmingStatus, direction: direction)
@@ -545,17 +543,15 @@ struct UniversalJobBoardCard: View {
                 taskCardContent
                     .offset(x: swipeOffset)
                     .opacity(isChangingStatus ? 0 : 1)
-                    .if(canSwipeInAnyDirection) { view in
-                        view.simultaneousGesture(
-                            DragGesture(minimumDistance: 20)
-                                .onChanged { value in
-                                    handleSwipeChanged(value: value, cardWidth: geometry.size.width)
-                                }
-                                .onEnded { value in
-                                    handleSwipeEnded(value: value, cardWidth: geometry.size.width)
-                                }
-                        )
-                    }
+                    .directionalDrag(
+                        isEnabled: canSwipeInAnyDirection,
+                        onChanged: { translation in
+                            handleSwipeChangedWidth(translation, cardWidth: geometry.size.width)
+                        },
+                        onEnded: { translation in
+                            handleSwipeEndedWidth(translation, cardWidth: geometry.size.width)
+                        }
+                    )
 
                 if isChangingStatus, let confirmingStatus = confirmingStatus, let direction = confirmingDirection {
                     RevealedStatusCard(status: confirmingStatus, direction: direction)
@@ -1443,6 +1439,103 @@ struct UniversalJobBoardCard: View {
             break
         }
     }
+
+    // MARK: - CGFloat-based handlers used by DirectionalDragModifier
+
+    /// Called by directionalDrag modifier; axis discrimination is handled upstream.
+    private func handleSwipeChangedWidth(_ translationWidth: CGFloat, cardWidth: CGFloat) {
+        guard !isChangingStatus else { return }
+
+        let direction: SwipeDirection = translationWidth > 0 ? .right : .left
+
+        // Tutorial mode: During projectListSwipe, ONLY allow right swipe (to complete project)
+        if tutorialMode && tutorialPhase == .projectListSwipe {
+            if direction == .left {
+                if !showingWrongSwipeHint {
+                    showingWrongSwipeHint = true
+                    TutorialHaptics.error()
+                    NotificationCenter.default.post(name: Notification.Name("TutorialWrongAction"), object: nil)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        withAnimation {
+                            self.showingWrongSwipeHint = false
+                        }
+                    }
+                }
+                return
+            }
+        }
+
+        guard canSwipe(direction: direction) else { return }
+
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+            swipeOffset = translationWidth
+        }
+
+        let swipePercentage = abs(swipeOffset) / cardWidth
+        if swipePercentage >= 0.4 && !hasTriggeredHaptic {
+            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+            impactFeedback.impactOccurred()
+            hasTriggeredHaptic = true
+        }
+    }
+
+    /// Called by directionalDrag modifier; axis discrimination is handled upstream.
+    private func handleSwipeEndedWidth(_ translationWidth: CGFloat, cardWidth: CGFloat) {
+        guard !isChangingStatus else { return }
+
+        let swipePercentage = abs(translationWidth) / cardWidth
+        let direction: SwipeDirection = translationWidth > 0 ? .right : .left
+
+        // Tutorial mode: Block left swipe during projectListSwipe
+        if tutorialMode && tutorialPhase == .projectListSwipe && direction == .left {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                swipeOffset = 0
+            }
+            hasTriggeredHaptic = false
+            return
+        }
+
+        if swipePercentage >= 0.4, canSwipe(direction: direction), let targetStatus = getTargetStatus(direction: direction) {
+            confirmingStatus = targetStatus
+            confirmingDirection = direction
+            isChangingStatus = true
+
+            if tutorialMode {
+                if case .project(let project) = cardType {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("ProjectStatusChanged"),
+                        object: nil,
+                        userInfo: ["projectId": project.id, "newStatus": targetStatus]
+                    )
+                }
+            }
+
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.85)) {
+                swipeOffset = 0
+            }
+
+            let flashDelay: Double = tutorialMode ? 0.05 : 0.15
+            DispatchQueue.main.asyncAfter(deadline: .now() + flashDelay) {
+                performStatusChange(to: targetStatus)
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    withAnimation(.spring(response: 0.2, dampingFraction: 0.85)) {
+                        isChangingStatus = false
+                        confirmingStatus = nil
+                        confirmingDirection = nil
+                    }
+                    hasTriggeredHaptic = false
+                }
+            }
+        } else {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                swipeOffset = 0
+            }
+            hasTriggeredHaptic = false
+        }
+    }
+
+    // MARK: - Legacy DragGesture.Value handlers (retained, no longer attached to gesture)
 
     private func handleSwipeChanged(value: DragGesture.Value, cardWidth: CGFloat) {
         guard !isChangingStatus else { return }

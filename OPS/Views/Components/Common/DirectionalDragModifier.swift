@@ -15,10 +15,11 @@ struct DirectionalDragModifier: ViewModifier {
     var onEnded: ((CGFloat) -> Void)?
 
     @GestureState private var dragState: DragAxisState = .undecided
+    @State private var committedHorizontal: Bool = false
 
     private let threshold: CGFloat = 10
 
-    enum DragAxisState {
+    enum DragAxisState: Equatable {
         case undecided
         case horizontal
         case vertical
@@ -32,23 +33,28 @@ struct DirectionalDragModifier: ViewModifier {
     private var horizontalGesture: some Gesture {
         DragGesture(minimumDistance: 1, coordinateSpace: .local)
             .updating($dragState) { value, state, _ in
-                guard state != .vertical else { return }
                 let t = value.translation
-                if state == .undecided {
+                switch state {
+                case .undecided:
                     guard abs(t.width) > threshold || abs(t.height) > threshold else { return }
-                    state = abs(t.width) > abs(t.height) ? .horizontal : .vertical
-                }
-                if state == .horizontal {
+                    if abs(t.width) > abs(t.height) {
+                        state = .horizontal
+                        DispatchQueue.main.async { committedHorizontal = true }
+                        onChanged?(t.width)
+                    } else {
+                        state = .vertical
+                    }
+                case .horizontal:
                     onChanged?(t.width)
+                case .vertical:
+                    break
                 }
             }
             .onEnded { value in
-                // Only fire onEnded if gesture was horizontal
-                // We infer this from the final translation ratio
-                let t = value.translation
-                if abs(t.width) > abs(t.height) {
-                    onEnded?(t.width)
+                if committedHorizontal {
+                    onEnded?(value.translation.width)
                 }
+                committedHorizontal = false
             }
     }
 }

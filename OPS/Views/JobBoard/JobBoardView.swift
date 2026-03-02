@@ -44,6 +44,10 @@ struct JobBoardView: View {
         return dataController.currentUser?.role == .admin
     }
 
+    private var sections: [JobBoardSection] {
+        visibleSections(for: dataController.currentUser)
+    }
+
     private var slideTransition: AnyTransition {
         let currentIndex = JobBoardSection.allCases.firstIndex(of: selectedSection) ?? 0
         let previousIndex = JobBoardSection.allCases.firstIndex(of: previousSection) ?? 0
@@ -72,52 +76,27 @@ struct JobBoardView: View {
 
                 VStack(spacing: 0) {
 
-                    // Section selector (hidden for field crew)
-                    if !isFieldCrew {
-                        JobBoardSectionSelector(sections: visibleSections(for: dataController.currentUser), selectedSection: $selectedSection)
-                            .padding(.top, 70) // Account for header
+                    // Section selector — shown whenever the role has more than one section
+                    if sections.count > 1 {
+                        JobBoardSectionSelector(sections: sections, selectedSection: $selectedSection)
+                            .padding(.top, 70)
                             .onChange(of: selectedSection) { oldValue, newValue in
                                 previousSection = oldValue
                                 searchText = ""
                             }
                             .onChange(of: tutorialPhase) { oldPhase, newPhase in
-                                // Animate tab switch when entering step 12 (projectListStatusDemo)
                                 if tutorialMode && newPhase == .projectListStatusDemo {
-                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
                                         selectedSection = .projects
                                     }
                                 }
                             }
                             .padding(.horizontal, 16)
-                            // Grey out during drag step to prevent navigation away
                             .opacity(tutorialMode && tutorialPhase == .dragToAccepted ? 0.4 : 1.0)
                             .allowsHitTesting(!(tutorialMode && tutorialPhase == .dragToAccepted))
                     } else {
-                        // Add spacing for field crew to account for header
                         Spacer()
                             .frame(height: 70)
-                    }
-
-                    // Universal search bar (hidden during tutorial)
-                    if !tutorialMode {
-                    UniversalSearchBar(
-                        section: selectedSection,
-                        searchText: $searchText,
-                        showingFilters: $showingFilters,
-                        onFilterTap: {
-                            switch selectedSection {
-                            case .projects:
-                                showingProjectFilterSheet = true
-                            case .tasks:
-                                showingTaskFilterSheet = true
-                            default:
-                                break
-                            }
-                        }
-                    )
-                    .padding(.top, 12)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
                     }
 
                     // Main content with slide transitions
@@ -133,6 +112,15 @@ struct JobBoardView: View {
                             .padding(.horizontal, 16)
                         } else {
                             switch selectedSection {
+                            case .myTasks:
+                                JobBoardMyTasksView()
+                            case .myProjects:
+                                JobBoardProjectListView(
+                                    searchText: searchText,
+                                    showingFilters: $showingFilters,
+                                    showingFilterSheet: $showingProjectFilterSheet
+                                )
+                                .padding(.horizontal, 16)
                             case .projects:
                                 JobBoardProjectListView(
                                     searchText: searchText,
@@ -147,16 +135,29 @@ struct JobBoardView: View {
                                     showingFilterSheet: $showingTaskFilterSheet
                                 )
                                 .padding(.horizontal, 16)
-                            default:
-                                EmptyView()
+                            case .kanban:
+                                JobBoardKanbanView()
+                            case .pipeline:
+                                PipelineView()
                             }
                         }
                     }
                     .id(selectedSection)
                     .transition(slideTransition)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.85), value: selectedSection)
-                    .onChange(of: selectedSection) { oldValue, newValue in
+                    .animation(.easeInOut(duration: 0.2), value: selectedSection)
+                    .onChange(of: selectedSection) { oldValue, newSection in
                         previousSection = oldValue
+                        // Track section changes within Job Board
+                        let screenName: ScreenName? = {
+                            switch newSection {
+                            case .projects, .myProjects: return .jobBoardProjects
+                            case .tasks, .myTasks:       return .jobBoardTasks
+                            default: return nil
+                            }
+                        }()
+                        if let screenName = screenName {
+                            AnalyticsManager.shared.trackScreenView(screenName: screenName, screenClass: "JobBoardView")
+                        }
                     }
                     .task {
                         // Client preloading no longer needed — @Query is filtered at DB level
@@ -165,22 +166,13 @@ struct JobBoardView: View {
                         selectedSection = defaultSection(for: dataController.currentUser)
                         AnalyticsManager.shared.trackScreenView(screenName: .jobBoard, screenClass: "JobBoardView")
                     }
-                    .onChange(of: selectedSection) { _, newSection in
-                        // Track section changes within Job Board
-                        let screenName: ScreenName? = {
-                            switch newSection {
-                            case .projects: return .jobBoardProjects
-                            case .tasks: return .jobBoardTasks
-                            default: return nil
-                            }
-                        }()
-                        if let screenName = screenName {
-                            AnalyticsManager.shared.trackScreenView(screenName: screenName, screenClass: "JobBoardView")
-                        }
-                    }
 
                 }
 
+            }
+            .sheet(isPresented: $appState.showingJobBoardSearch) {
+                UniversalSearchSheet()
+                    .environmentObject(dataController)
             }
         }
 

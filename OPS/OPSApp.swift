@@ -53,7 +53,8 @@ struct OPSApp: App {
             Product.self,
             SiteVisit.self,
             ProjectNote.self,
-            PhotoAnnotation.self
+            PhotoAnnotation.self,
+            CalendarUserEvent.self
         ])
         
         let modelConfiguration = ModelConfiguration(

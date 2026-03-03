@@ -12,7 +12,8 @@ struct EstimateDetailView: View {
     @ObservedObject var viewModel: EstimateViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var showEditSheet = false
-    @State private var showConvertConfirm = false
+    @State private var showConvertOptions = false
+    @State private var showProgressInvoice = false
     @State private var showOverflowMenu = false
 
     private var lineItems: [EstimateLineItem] {
@@ -57,20 +58,35 @@ struct EstimateDetailView: View {
                 }
             }
             if estimate.status == .approved {
-                Button("Convert to Invoice") { showConvertConfirm = true }
+                Button("Convert to Invoice") { showConvertOptions = true }
             }
             Button("Cancel", role: .cancel) {}
         }
-        .confirmationDialog("Convert to Invoice?", isPresented: $showConvertConfirm) {
-            Button("Convert to Invoice") {
+        .confirmationDialog("Convert to Invoice", isPresented: $showConvertOptions) {
+            Button("Invoice Full Amount") {
                 Task {
                     await viewModel.convertToInvoice(estimate)
                     dismiss()
                 }
             }
+            Button("Progress Invoice") {
+                showProgressInvoice = true
+            }
             Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will create an invoice from this estimate. This action cannot be undone.")
+        }
+        .sheet(isPresented: $showProgressInvoice) {
+            ProgressInvoiceSheet(
+                estimate: estimate,
+                lineItems: viewModel.lineItems(for: estimate.id),
+                onCreateInvoice: { selections in
+                    Task {
+                        await viewModel.createProgressInvoice(
+                            from: estimate,
+                            lineItemSelections: selections
+                        )
+                    }
+                }
+            )
         }
         .sheet(isPresented: $showEditSheet) {
             EstimateFormSheet(viewModel: viewModel, editing: estimate)
@@ -279,7 +295,7 @@ struct EstimateDetailView: View {
                 .opsPrimaryButtonStyle()
 
             case .approved:
-                Button("CONVERT TO INVOICE") { showConvertConfirm = true }
+                Button("CONVERT TO INVOICE") { showConvertOptions = true }
                     .opsPrimaryButtonStyle()
 
             default:

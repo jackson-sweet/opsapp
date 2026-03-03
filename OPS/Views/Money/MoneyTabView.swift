@@ -139,11 +139,11 @@ struct MoneyTabView: View {
         Group {
             switch selectedSection {
             case .estimates:
-                EstimatesListView()
+                EstimatesListView(embedded: true)
             case .invoices:
-                InvoicesListView()
+                InvoicesListView(embedded: true)
             case .expenses:
-                ExpensesListView()
+                ExpensesListView(embedded: true)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

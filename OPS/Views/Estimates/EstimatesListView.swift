@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct EstimatesListView: View {
+    var embedded: Bool = false
+
     @StateObject private var viewModel = EstimateViewModel()
     @EnvironmentObject private var dataController: DataController
     @State private var showNewEstimateSheet = false
@@ -18,7 +20,9 @@ struct EstimatesListView: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            OPSStyle.Colors.background.ignoresSafeArea()
+            if !embedded {
+                OPSStyle.Colors.background.ignoresSafeArea()
+            }
 
             VStack(spacing: 0) {
                 // Search + filter

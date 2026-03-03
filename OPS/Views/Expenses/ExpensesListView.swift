@@ -9,6 +9,8 @@ import SwiftUI
 import SwiftData
 
 struct ExpensesListView: View {
+    var embedded: Bool = false
+
     @StateObject private var viewModel = ExpenseViewModel()
     @EnvironmentObject private var dataController: DataController
     @Query private var allProjects: [Project]
@@ -26,7 +28,9 @@ struct ExpensesListView: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            OPSStyle.Colors.background.ignoresSafeArea()
+            if !embedded {
+                OPSStyle.Colors.background.ignoresSafeArea()
+            }
 
             VStack(spacing: 0) {
                 // Search + filter

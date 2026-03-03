@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct InvoicesListView: View {
+    var embedded: Bool = false
+
     @StateObject private var viewModel = InvoiceViewModel()
     @EnvironmentObject private var dataController: DataController
 
@@ -93,7 +95,7 @@ struct InvoicesListView: View {
                 .refreshable { await viewModel.loadInvoices() }
             }
         }
-        .background(OPSStyle.Colors.background)
+        .background(embedded ? Color.clear : OPSStyle.Colors.background)
         .navigationDestination(item: $selectedInvoice) { invoice in
             InvoiceDetailView(invoice: invoice, viewModel: viewModel)
         }

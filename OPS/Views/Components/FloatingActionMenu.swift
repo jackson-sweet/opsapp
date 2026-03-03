@@ -253,7 +253,7 @@ struct FloatingActionMenu: View {
                 .onTapGesture {
                     // In tutorial mode, don't allow closing menu by tapping background
                     guard !tutorialMode else { return }
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(OPSStyle.Animation.fast) {
                         showCreateMenu = false
                     }
                 }
@@ -300,9 +300,33 @@ struct FloatingActionMenu: View {
                                             }
                                         }
                                     }
+                                    .scrollTargetLayout()
                                     .padding(.bottom, 16)
+                                    .padding(.top, 8)
                                 }
-                                .frame(maxHeight: UIScreen.main.bounds.height * 0.55)
+                                .frame(maxHeight: 320)
+                                .scrollTargetBehavior(.viewAligned)
+                                // Edge fade mask — items dissolve at top and bottom
+                                .mask(
+                                    VStack(spacing: 0) {
+                                        LinearGradient(
+                                            colors: [.clear, .black],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
+                                        .frame(height: 40)
+                                        Color.black
+                                        LinearGradient(
+                                            colors: [.black, .clear],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
+                                        .frame(height: 40)
+                                    }
+                                )
+                                .transition(
+                                    .opacity.combined(with: .scale(scale: 0.8, anchor: .bottomTrailing))
+                                )
                             }
 
                             // Main plus button
@@ -320,8 +344,14 @@ struct FloatingActionMenu: View {
                                         object: nil
                                     )
                                 }
-                                withAnimation(OPSStyle.Animation.standard) {
-                                    showCreateMenu.toggle()
+                                if showCreateMenu {
+                                    withAnimation(OPSStyle.Animation.fast) {
+                                        showCreateMenu = false
+                                    }
+                                } else {
+                                    withAnimation(OPSStyle.Animation.spring) {
+                                        showCreateMenu = true
+                                    }
                                 }
                             }) {
                                 Image(systemName: "plus")
@@ -400,7 +430,10 @@ struct FloatingActionMenu: View {
     private func fabMenuItemView(item: FABMenuItem) -> some View {
         let isDisabledByTutorial = tutorialMode && item.disabledInTutorial
 
-        Button(action: item.action) {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            item.action()
+        }) {
             HStack(spacing: 12) {
                 Text(item.label.uppercased())
                     .font(OPSStyle.Typography.bodyBold)

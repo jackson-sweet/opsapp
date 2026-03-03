@@ -134,8 +134,6 @@ struct JobBoardView: View {
                                 .padding(.horizontal, 16)
                             case .kanban:
                                 JobBoardKanbanView()
-                            case .pipeline:
-                                PipelineView()
                             }
                         }
                     }
@@ -219,7 +217,6 @@ enum JobBoardSection: String, CaseIterable {
     case projects   = "PROJECTS"
     case tasks      = "TASKS"
     case kanban     = "KANBAN"
-    case pipeline   = "PIPELINE"
 
     var icon: String {
         switch self {
@@ -228,7 +225,6 @@ enum JobBoardSection: String, CaseIterable {
         case .projects:   return OPSStyle.Icons.project
         case .tasks:      return OPSStyle.Icons.task
         case .kanban:     return "chart.bar.fill"
-        case .pipeline:   return OPSStyle.Icons.pipelineChart
         }
     }
 }
@@ -243,12 +239,7 @@ func visibleSections(for user: User?) -> [JobBoardSection] {
         return [.myTasks, .myProjects]
     }
 
-    // Full access — optionally include pipeline
-    var sections: [JobBoardSection] = [.projects, .tasks, .kanban]
-    if store.can("pipeline.view") {
-        sections.append(.pipeline)
-    }
-    return sections
+    return [.projects, .tasks, .kanban]
 }
 
 /// Returns the default landing section based on permissions

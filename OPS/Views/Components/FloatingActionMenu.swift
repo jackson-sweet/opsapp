@@ -44,7 +44,6 @@ struct FloatingActionMenu: View {
     @State private var showingCreateInventoryItem = false
     @State private var showingCreateExpense = false
     @State private var showingCreateEstimate = false
-    @State private var showingCreateLead = false
 
     // Sheet presentation states — new for Money group
     @State private var showingCreateInvoice = false
@@ -53,7 +52,6 @@ struct FloatingActionMenu: View {
     // View models
     @StateObject private var expenseViewModel = ExpenseViewModel()
     @StateObject private var estimateViewModel = EstimateViewModel()
-    @StateObject private var pipelineViewModel = PipelineViewModel()
 
     // Parameters to determine which tab we're on
     let currentTab: Int
@@ -400,9 +398,6 @@ struct FloatingActionMenu: View {
         }
         .sheet(isPresented: $showingCreateEstimate) {
             EstimateFormSheet(viewModel: estimateViewModel)
-        }
-        .sheet(isPresented: $showingCreateLead) {
-            OpportunityFormSheet(viewModel: pipelineViewModel)
         }
         // TODO: Wire up when InvoiceFormSheet is implemented
         // .sheet(isPresented: $showingCreateInvoice) {

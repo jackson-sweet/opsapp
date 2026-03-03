@@ -21,23 +21,41 @@ struct ProgressInvoiceSheet: View {
 
     let estimate: Estimate
     let lineItems: [EstimateLineItem]
-    let onCreateInvoice: ([(lineItemId: String, percentage: Double)]) -> Void
+    let onCreateInvoice: ([(lineItemId: String, percentage: Double)]) async -> Bool
 
     @Environment(\.dismiss) private var dismiss
 
     @State private var selections: [String: LineItemSelection] = [:]
+    @State private var isCreating: Bool = false
 
     // MARK: - Computed
 
-    private var invoiceTotal: Double {
+    /// Preview total — matches RPC math: pro-rate from lineTotal when available,
+    /// otherwise pro-rate quantity then multiply by unitPrice with discount.
+    private var invoiceSubtotal: Double {
         lineItems.reduce(0.0) { total, item in
-            guard let sel = selections[item.id], sel.isSelected else { return total }
-            return total + (item.lineTotal * sel.percentage / 100.0)
+            guard let sel = selections[item.id], sel.isSelected, sel.percentage > 0 else { return total }
+            let pct = sel.percentage / 100.0
+            if item.lineTotal != 0 {
+                // Pro-rate the stored line total (includes discount)
+                return total + (item.lineTotal * pct).rounded(toPlaces: 2)
+            } else {
+                let proQty = (item.quantity * pct).rounded(toPlaces: 4)
+                return total + (proQty * item.unitPrice).rounded(toPlaces: 2)
+            }
         }
     }
 
+    private var estimatedTax: Double {
+        (invoiceSubtotal * estimate.taxRate / 100.0).rounded(toPlaces: 2)
+    }
+
+    private var invoiceTotal: Double {
+        invoiceSubtotal + estimatedTax
+    }
+
     private var hasSelections: Bool {
-        selections.values.contains { $0.isSelected }
+        selections.values.contains { $0.isSelected && $0.percentage > 0 }
     }
 
     private static let currencyFormatter: NumberFormatter = {
@@ -59,7 +77,7 @@ struct ProgressInvoiceSheet: View {
                         instructionBanner
                         lineItemsList
                         // Bottom padding so footer doesn't cover last row
-                        Color.clear.frame(height: 120)
+                        Color.clear.frame(height: 140)
                     }
                 }
 
@@ -80,8 +98,10 @@ struct ProgressInvoiceSheet: View {
                     }
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .disabled(isCreating)
                 }
             }
+            .allowsHitTesting(!isCreating)
         }
         .onAppear {
             initializeSelections()
@@ -210,10 +230,10 @@ struct ProgressInvoiceSheet: View {
 
                 // Percentage stepper buttons
                 HStack(spacing: OPSStyle.Layout.spacing2) {
-                    // Decrease by 10
+                    // Decrease by 10 (min 10%)
                     Button {
                         let current = selections[item.id]?.percentage ?? 100.0
-                        selections[item.id]?.percentage = max(0, current - 10)
+                        selections[item.id]?.percentage = max(10, current - 10)
                     } label: {
                         Image(systemName: OPSStyle.Icons.minus)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
@@ -228,7 +248,7 @@ struct ProgressInvoiceSheet: View {
                     }
                     .buttonStyle(PlainButtonStyle())
 
-                    // Percentage display / text field
+                    // Percentage display
                     HStack(spacing: 2) {
                         Text(percentageString(binding.wrappedValue))
                             .font(OPSStyle.Typography.bodyBold)
@@ -279,7 +299,33 @@ struct ProgressInvoiceSheet: View {
             Divider()
                 .background(OPSStyle.Colors.cardBorder)
 
-            VStack(spacing: OPSStyle.Layout.spacing2_5) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                // Subtotal row
+                HStack {
+                    Text("SUBTOTAL")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Spacer()
+                    Text(formatted(invoiceSubtotal))
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .monospacedDigit()
+                }
+
+                // Tax row (only show if tax rate > 0)
+                if estimate.taxRate > 0 {
+                    HStack {
+                        Text("TAX (\(percentageString(estimate.taxRate))%)")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        Spacer()
+                        Text(formatted(estimatedTax))
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .monospacedDigit()
+                    }
+                }
+
                 // Total row
                 HStack {
                     Text("INVOICE TOTAL")
@@ -302,29 +348,35 @@ struct ProgressInvoiceSheet: View {
                 Button {
                     createInvoice()
                 } label: {
-                    Text("CREATE INVOICE")
-                        .font(OPSStyle.Typography.button)
-                        .foregroundColor(invoiceTotal > 0 ? .white : OPSStyle.Colors.tertiaryText)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: OPSStyle.Layout.touchTargetStandard)
-                        .background(
-                            invoiceTotal > 0
-                                ? OPSStyle.Colors.primaryAccent
-                                : OPSStyle.Colors.cardBackgroundDark
-                        )
-                        .cornerRadius(OPSStyle.Layout.buttonRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                .stroke(
-                                    invoiceTotal > 0
-                                        ? Color.clear
-                                        : OPSStyle.Colors.inputFieldBorder,
-                                    lineWidth: OPSStyle.Layout.Border.standard
-                                )
-                        )
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        if isCreating {
+                            ProgressView()
+                                .tint(.white)
+                        }
+                        Text(isCreating ? "CREATING..." : "CREATE INVOICE")
+                            .font(OPSStyle.Typography.button)
+                            .foregroundColor(hasSelections ? .white : OPSStyle.Colors.tertiaryText)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: OPSStyle.Layout.touchTargetStandard)
+                    .background(
+                        hasSelections && !isCreating
+                            ? OPSStyle.Colors.primaryAccent
+                            : OPSStyle.Colors.cardBackgroundDark
+                    )
+                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                            .stroke(
+                                hasSelections && !isCreating
+                                    ? Color.clear
+                                    : OPSStyle.Colors.inputFieldBorder,
+                                lineWidth: OPSStyle.Layout.Border.standard
+                            )
+                    )
                 }
                 .buttonStyle(PlainButtonStyle())
-                .disabled(invoiceTotal <= 0)
+                .disabled(!hasSelections || isCreating)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.top, OPSStyle.Layout.spacing2_5)
@@ -354,14 +406,20 @@ struct ProgressInvoiceSheet: View {
     }
 
     private func createInvoice() {
+        isCreating = true
         let result = lineItems.compactMap { item -> (lineItemId: String, percentage: Double)? in
             guard let sel = selections[item.id], sel.isSelected, sel.percentage > 0 else {
                 return nil
             }
             return (lineItemId: item.id, percentage: sel.percentage)
         }
-        onCreateInvoice(result)
-        dismiss()
+        Task {
+            let success = await onCreateInvoice(result)
+            if !success {
+                isCreating = false
+            }
+            // On success, parent dismisses the sheet.
+        }
     }
 
     private func formatted(_ value: Double) -> String {
@@ -371,5 +429,14 @@ struct ProgressInvoiceSheet: View {
     private func percentageString(_ value: Double) -> String {
         let int = Int(value.rounded())
         return "\(int)"
+    }
+}
+
+// MARK: - Double Rounding Helper
+
+private extension Double {
+    func rounded(toPlaces places: Int) -> Double {
+        let multiplier = pow(10.0, Double(places))
+        return (self * multiplier).rounded() / multiplier
     }
 }

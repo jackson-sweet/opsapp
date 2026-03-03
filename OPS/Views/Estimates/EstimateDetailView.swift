@@ -79,15 +79,14 @@ struct EstimateDetailView: View {
                 estimate: estimate,
                 lineItems: viewModel.lineItems(for: estimate.id),
                 onCreateInvoice: { selections in
-                    Task {
-                        let success = await viewModel.createProgressInvoice(
-                            from: estimate,
-                            lineItemSelections: selections
-                        )
-                        if success {
-                            showProgressInvoice = false
-                        }
+                    let success = await viewModel.createProgressInvoice(
+                        from: estimate,
+                        lineItemSelections: selections
+                    )
+                    if success {
+                        showProgressInvoice = false
                     }
+                    return success
                 }
             )
         }

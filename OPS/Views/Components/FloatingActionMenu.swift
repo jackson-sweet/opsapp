@@ -2,11 +2,31 @@
 //  FloatingActionMenu.swift
 //  OPS
 //
-//  Reusable floating action button menu for creating projects, tasks, clients, and task types
-//  Only visible to Office Crew and Admin roles
+//  Reusable floating action button with universal grouped menu for creating
+//  projects, tasks, clients, estimates, expenses, invoices, payments, events, and time off.
+//  Only visible to Office Crew and Admin roles.
 //
 
 import SwiftUI
+
+// MARK: - FAB Menu Data Models
+
+/// A single item in the FAB menu
+private struct FABMenuItem: Identifiable {
+    let id = UUID()
+    let icon: String
+    let label: String
+    let permission: String?  // nil means always visible
+    let disabledInTutorial: Bool
+    let action: () -> Void
+}
+
+/// A group of related menu items with a header
+private struct FABMenuGroup: Identifiable {
+    let id = UUID()
+    let title: String
+    let items: [FABMenuItem]
+}
 
 struct FloatingActionMenu: View {
     @EnvironmentObject private var dataController: DataController
@@ -15,6 +35,8 @@ struct FloatingActionMenu: View {
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
     @State private var showCreateMenu = false
+
+    // Sheet presentation states — existing
     @State private var showingCreateProject = false
     @State private var showingCreateClient = false
     @State private var showingCreateTaskType = false
@@ -23,6 +45,12 @@ struct FloatingActionMenu: View {
     @State private var showingCreateExpense = false
     @State private var showingCreateEstimate = false
     @State private var showingCreateLead = false
+
+    // Sheet presentation states — new for Money group
+    @State private var showingCreateInvoice = false
+    @State private var showingRecordPayment = false
+
+    // View models
     @StateObject private var expenseViewModel = ExpenseViewModel()
     @StateObject private var estimateViewModel = EstimateViewModel()
     @StateObject private var pipelineViewModel = PipelineViewModel()
@@ -55,6 +83,161 @@ struct FloatingActionMenu: View {
         tutorialMode && (tutorialPhase == .fabTap || showCreateMenu)
     }
 
+    // MARK: - Menu Groups
+
+    /// Build the universal grouped menu items
+    private var menuGroups: [FABMenuGroup] {
+        [
+            // Group 1: Work
+            FABMenuGroup(title: "WORK", items: [
+                FABMenuItem(
+                    icon: OPSStyle.Icons.addProject,
+                    label: "New Project",
+                    permission: "projects.create",
+                    disabledInTutorial: false,
+                    action: {
+                        showCreateMenu = false
+                        if tutorialMode {
+                            NotificationCenter.default.post(
+                                name: Notification.Name("TutorialCreateProjectTapped"),
+                                object: nil
+                            )
+                        } else {
+                            showingCreateProject = true
+                        }
+                    }
+                ),
+                FABMenuItem(
+                    icon: OPSStyle.Icons.task,
+                    label: "New Task",
+                    permission: "tasks.create",
+                    disabledInTutorial: true,
+                    action: {
+                        showCreateMenu = false
+                        showingCreateTask = true
+                    }
+                ),
+                FABMenuItem(
+                    icon: OPSStyle.Icons.client,
+                    label: "New Client",
+                    permission: "clients.create",
+                    disabledInTutorial: true,
+                    action: {
+                        showCreateMenu = false
+                        showingCreateClient = true
+                    }
+                ),
+                FABMenuItem(
+                    icon: OPSStyle.Icons.taskType,
+                    label: "New Task Type",
+                    permission: "tasks.create",
+                    disabledInTutorial: true,
+                    action: {
+                        showCreateMenu = false
+                        showingCreateTaskType = true
+                    }
+                ),
+            ]),
+
+            // Group 2: Money
+            FABMenuGroup(title: "MONEY", items: [
+                FABMenuItem(
+                    icon: OPSStyle.Icons.estimateDoc,
+                    label: "New Estimate",
+                    permission: "estimates.create",
+                    disabledInTutorial: true,
+                    action: {
+                        showCreateMenu = false
+                        if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
+                            estimateViewModel.setup(companyId: companyId)
+                        }
+                        showingCreateEstimate = true
+                    }
+                ),
+                FABMenuItem(
+                    icon: OPSStyle.Icons.invoiceReceipt,
+                    label: "New Invoice",
+                    permission: "estimates.create",
+                    disabledInTutorial: true,
+                    action: {
+                        showCreateMenu = false
+                        showingCreateInvoice = true
+                    }
+                ),
+                FABMenuItem(
+                    icon: OPSStyle.Icons.banknoteFill,
+                    label: "New Payment",
+                    permission: "expenses.create",
+                    disabledInTutorial: true,
+                    action: {
+                        showCreateMenu = false
+                        showingRecordPayment = true
+                    }
+                ),
+                FABMenuItem(
+                    icon: OPSStyle.Icons.expense,
+                    label: "New Expense",
+                    permission: "expenses.create",
+                    disabledInTutorial: true,
+                    action: {
+                        showCreateMenu = false
+                        if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
+                            expenseViewModel.setup(companyId: companyId)
+                        }
+                        showingCreateExpense = true
+                    }
+                ),
+            ]),
+
+            // Group 3: Scheduling
+            FABMenuGroup(title: "SCHEDULING", items: [
+                FABMenuItem(
+                    icon: "clock.badge.questionmark",
+                    label: "New Time Off",
+                    permission: nil,
+                    disabledInTutorial: true,
+                    action: {
+                        showCreateMenu = false
+                        NotificationCenter.default.post(
+                            name: Notification.Name("ShowTimeOffRequestSheet"),
+                            object: nil
+                        )
+                    }
+                ),
+                FABMenuItem(
+                    icon: "calendar.badge.plus",
+                    label: "New Event",
+                    permission: nil,
+                    disabledInTutorial: true,
+                    action: {
+                        showCreateMenu = false
+                        NotificationCenter.default.post(
+                            name: Notification.Name("ShowPersonalEventSheet"),
+                            object: nil
+                        )
+                    }
+                ),
+            ]),
+        ]
+    }
+
+    /// Filter groups to only include items the user has permission for,
+    /// and exclude empty groups.
+    private var visibleGroups: [FABMenuGroup] {
+        menuGroups.compactMap { group in
+            let visibleItems = group.items.filter { item in
+                if let permission = item.permission {
+                    return permissionStore.can(permission)
+                }
+                return true
+            }
+            guard !visibleItems.isEmpty else { return nil }
+            return FABMenuGroup(title: group.title, items: visibleItems)
+        }
+    }
+
+    // MARK: - Body
+
     var body: some View {
         ZStack {
             // Dimmed overlay when menu is open
@@ -75,7 +258,6 @@ struct FloatingActionMenu: View {
                     }
                 }
             }
-            
 
             if canShowFAB {
                 VStack {
@@ -83,180 +265,47 @@ struct FloatingActionMenu: View {
                     HStack {
                         Spacer()
 
-                        VStack(alignment: .trailing, spacing: 24) {
-                            // Floating menu items (shown when expanded)
+                        VStack(alignment: .trailing, spacing: 0) {
+                            // Grouped menu items (shown when expanded)
                             if showCreateMenu {
-                                // Schedule tab: Request Time Off
-                                if isScheduleTab {
-                                    FloatingActionItem(
-                                        icon: "clock.badge.questionmark",
-                                        label: "Request Time Off",
-                                        action: {
-                                            showCreateMenu = false
-                                            NotificationCenter.default.post(
-                                                name: Notification.Name("ShowTimeOffRequestSheet"),
-                                                object: nil
-                                            )
-                                        }
-                                    )
-                                    .offset(x: -10)
-                                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                                    .animation(OPSStyle.Animation.standard.delay(1.05), value: showCreateMenu)
+                                ScrollView(.vertical, showsIndicators: false) {
+                                    VStack(alignment: .trailing, spacing: 12) {
+                                        ForEach(Array(visibleGroups.enumerated()), id: \.element.id) { groupIndex, group in
+                                            // Group divider (between groups, not before first)
+                                            if groupIndex > 0 {
+                                                Rectangle()
+                                                    .fill(OPSStyle.Colors.separator)
+                                                    .frame(width: 180, height: 1)
+                                                    .padding(.vertical, 4)
+                                            }
 
-                                    // Schedule tab: Personal Event
-                                    FloatingActionItem(
-                                        icon: "calendar.badge.plus",
-                                        label: "Personal Event",
-                                        action: {
-                                            showCreateMenu = false
-                                            NotificationCenter.default.post(
-                                                name: Notification.Name("ShowPersonalEventSheet"),
-                                                object: nil
-                                            )
-                                        }
-                                    )
-                                    .offset(x: -10)
-                                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                                    .animation(OPSStyle.Animation.standard.delay(0.90), value: showCreateMenu)
-                                }
+                                            // Group header
+                                            Text(group.title)
+                                                .font(OPSStyle.Typography.captionBold)
+                                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                                .padding(.trailing, 4)
 
-                                // Permission-gated menu items
-                                if permissionStore.can("tasks.create") {
-                                    // New Task Type - disabled in tutorial mode
-                                    FloatingActionItem(
-                                        icon: OPSStyle.Icons.taskType,
-                                        label: "New Task Type",
-                                        action: {
-                                            showCreateMenu = false
-                                            showingCreateTaskType = true
-                                        }
-                                    )
-                                    .offset(x: -10)
-                                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                                    .animation(OPSStyle.Animation.standard.delay(0.9), value: showCreateMenu)
-                                    .opacity(tutorialMode ? 0.4 : 1.0)
-                                    .allowsHitTesting(!tutorialMode)
-                                }
+                                            // Group items
+                                            ForEach(Array(group.items.enumerated()), id: \.element.id) { itemIndex, item in
+                                                let flatIndex = flatItemIndex(groupIndex: groupIndex, itemIndex: itemIndex)
+                                                let delay = Double(flatIndex) * 0.05
 
-                                if permissionStore.can("tasks.create") {
-                                    // Create Task - disabled in tutorial mode
-                                    FloatingActionItem(
-                                        icon: OPSStyle.Icons.task,
-                                        label: "Create Task",
-                                        action: {
-                                            showCreateMenu = false
-                                            showingCreateTask = true
-                                        }
-                                    )
-                                    .offset(x: -10)
-                                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                                    .animation(OPSStyle.Animation.standard.delay(0.75), value: showCreateMenu)
-                                    .opacity(tutorialMode ? 0.4 : 1.0)
-                                    .allowsHitTesting(!tutorialMode)
-                                }
-
-                                if permissionStore.can("projects.create") {
-                                    // Create Project - always enabled
-                                    FloatingActionItem(
-                                        icon: OPSStyle.Icons.project,
-                                        label: "Create Project",
-                                        action: {
-                                            showCreateMenu = false
-                                            if tutorialMode {
-                                                NotificationCenter.default.post(
-                                                    name: Notification.Name("TutorialCreateProjectTapped"),
-                                                    object: nil
-                                                )
-                                            } else {
-                                                showingCreateProject = true
+                                                fabMenuItemView(item: item)
+                                                    .offset(x: -10)
+                                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                                                    .animation(
+                                                        OPSStyle.Animation.standard.delay(delay),
+                                                        value: showCreateMenu
+                                                    )
                                             }
                                         }
-                                    )
-                                    .offset(x: -10)
-                                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                                    .animation(OPSStyle.Animation.standard.delay(0.6), value: showCreateMenu)
+                                    }
+                                    .padding(.bottom, 16)
                                 }
-
-                                if permissionStore.can("clients.create") {
-                                    // Create Client - disabled in tutorial mode
-                                    FloatingActionItem(
-                                        icon: OPSStyle.Icons.client,
-                                        label: "Create Client",
-                                        action: {
-                                            showCreateMenu = false
-                                            showingCreateClient = true
-                                        }
-                                    )
-                                    .offset(x: -10)
-                                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                                    .animation(OPSStyle.Animation.standard.delay(0.45), value: showCreateMenu)
-                                    .opacity(tutorialMode ? 0.4 : 1.0)
-                                    .allowsHitTesting(!tutorialMode)
-                                }
-
-                                if permissionStore.can("estimates.create") {
-                                    // New Estimate - disabled in tutorial mode
-                                    FloatingActionItem(
-                                        icon: OPSStyle.Icons.estimateDoc,
-                                        label: "New Estimate",
-                                        action: {
-                                            showCreateMenu = false
-                                            if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
-                                                estimateViewModel.setup(companyId: companyId)
-                                            }
-                                            showingCreateEstimate = true
-                                        }
-                                    )
-                                    .offset(x: -10)
-                                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                                    .animation(OPSStyle.Animation.standard.delay(0.3), value: showCreateMenu)
-                                    .opacity(tutorialMode ? 0.4 : 1.0)
-                                    .allowsHitTesting(!tutorialMode)
-                                }
-
-                                if permissionStore.can("pipeline.manage") {
-                                    // New Lead - disabled in tutorial mode
-                                    FloatingActionItem(
-                                        icon: OPSStyle.Icons.pipelineChart,
-                                        label: "New Lead",
-                                        action: {
-                                            showCreateMenu = false
-                                            if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
-                                                pipelineViewModel.setup(companyId: companyId)
-                                            }
-                                            showingCreateLead = true
-                                        }
-                                    )
-                                    .offset(x: -10)
-                                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                                    .animation(OPSStyle.Animation.standard.delay(0.15), value: showCreateMenu)
-                                    .opacity(tutorialMode ? 0.4 : 1.0)
-                                    .allowsHitTesting(!tutorialMode)
-                                }
-
-                                if permissionStore.can("expenses.create") {
-                                    // Add Expense - disabled in tutorial mode
-                                    FloatingActionItem(
-                                        icon: OPSStyle.Icons.invoiceReceipt,
-                                        label: "Add Expense",
-                                        action: {
-                                            showCreateMenu = false
-                                            if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
-                                                expenseViewModel.setup(companyId: companyId)
-                                            }
-                                            showingCreateExpense = true
-                                        }
-                                    )
-                                    .offset(x: -10)
-                                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                                    .animation(OPSStyle.Animation.standard.delay(0.0), value: showCreateMenu)
-                                    .opacity(tutorialMode ? 0.4 : 1.0)
-                                    .allowsHitTesting(!tutorialMode)
-                                }
+                                .frame(maxHeight: UIScreen.main.bounds.height * 0.55)
                             }
 
                             // Main plus button
-                            // In tutorial fabTap phase: FAB is disabled and greyed out
                             Button(action: {
                                 // On inventory tab, directly show inventory form
                                 if isInventoryTab {
@@ -325,6 +374,51 @@ struct FloatingActionMenu: View {
         .sheet(isPresented: $showingCreateLead) {
             OpportunityFormSheet(viewModel: pipelineViewModel)
         }
+        // TODO: Wire up when InvoiceFormSheet is implemented
+        // .sheet(isPresented: $showingCreateInvoice) {
+        //     InvoiceFormSheet()
+        // }
+        // TODO: Wire up when RecordPaymentSheet is implemented
+        // .sheet(isPresented: $showingRecordPayment) {
+        //     RecordPaymentSheet()
+        // }
+    }
+
+    // MARK: - Helpers
+
+    /// Calculate a flat index across all groups for staggered animation delays
+    private func flatItemIndex(groupIndex: Int, itemIndex: Int) -> Int {
+        var count = 0
+        for g in 0..<groupIndex {
+            count += visibleGroups[g].items.count
+        }
+        return count + itemIndex
+    }
+
+    /// Render a single FAB menu item row
+    @ViewBuilder
+    private func fabMenuItemView(item: FABMenuItem) -> some View {
+        let isDisabledByTutorial = tutorialMode && item.disabledInTutorial
+
+        Button(action: item.action) {
+            HStack(spacing: 12) {
+                Text(item.label.uppercased())
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                Image(systemName: item.icon)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .frame(width: 48, height: 48)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+            }
+        }
+        .opacity(isDisabledByTutorial ? 0.4 : 1.0)
+        .allowsHitTesting(!isDisabledByTutorial)
     }
 }
-

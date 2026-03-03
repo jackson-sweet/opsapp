@@ -36,6 +36,7 @@ struct SettingsView: View {
     @State private var showReportIssue = false
     @State private var showDeveloperDashboard = false
     @State private var showAllPhotosGallery = false
+    @State private var showPermissions = false
 
     // Role checks
     private var isAdmin: Bool {
@@ -164,6 +165,18 @@ struct SettingsView: View {
                     categoryIcon: "hammer.circle",
                     keywords: ["task", "types", "project", "defaults", "scheduling"],
                     destination: AnyView(ProjectSettingsView().environmentObject(dataController))
+                )
+            )
+        }
+
+        if isAdmin {
+            items.append(
+                SearchableSettingItem(
+                    title: "Permissions",
+                    categoryTitle: "Business",
+                    categoryIcon: "person.badge.key.fill",
+                    keywords: ["permissions", "roles", "access", "rbac", "admin", "override"],
+                    destination: AnyView(PermissionsManagementView().environmentObject(dataController).environmentObject(permissionStore))
                 )
             )
         }
@@ -303,6 +316,16 @@ struct SettingsView: View {
                                             icon: "hammer.circle",
                                             title: "Project Settings",
                                             action: { showProjectSettings = true }
+                                        )
+                                    }
+
+                                    if isAdmin {
+                                        sectionDivider
+
+                                        settingsRow(
+                                            icon: "person.badge.key.fill",
+                                            title: "Permissions",
+                                            action: { showPermissions = true }
                                         )
                                     }
                                 }
@@ -467,6 +490,13 @@ struct SettingsView: View {
                 AllPhotosGalleryView()
                     .environmentObject(dataController)
                     .environmentObject(appState)
+            }
+        }
+        .fullScreenCover(isPresented: $showPermissions) {
+            NavigationStack {
+                PermissionsManagementView()
+                    .environmentObject(dataController)
+                    .environmentObject(permissionStore)
             }
         }
         .onChange(of: showDeveloperDashboard) { _, isShowing in

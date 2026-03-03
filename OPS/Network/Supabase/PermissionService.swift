@@ -33,6 +33,12 @@ private struct RolePermissionRow: Decodable {
     let scope: String
 }
 
+private struct OverrideRow: Decodable {
+    let permission: String
+    let scope: String?
+    let granted: Bool
+}
+
 enum PermissionService {
 
     enum PermissionError: LocalizedError {
@@ -96,6 +102,22 @@ enum PermissionService {
         var permissionMap: [String: String] = [:]
         for row in permissionRows {
             permissionMap[row.permission] = row.scope
+        }
+
+        // 4. Fetch user-level overrides (graceful degradation if table doesn't exist yet)
+        let overrides = try? await client
+            .from("user_permission_overrides")
+            .select("permission, scope, granted")
+            .eq("user_id", value: userId)
+            .execute()
+            .value as [OverrideRow]
+
+        for override in (overrides ?? []) {
+            if override.granted, let scope = override.scope {
+                permissionMap[override.permission] = scope
+            } else if !override.granted {
+                permissionMap.removeValue(forKey: override.permission)
+            }
         }
 
         return PermissionPayload(

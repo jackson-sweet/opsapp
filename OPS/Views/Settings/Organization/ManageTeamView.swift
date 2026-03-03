@@ -27,6 +27,7 @@ struct ManageTeamView: View {
     @State private var inviteSentCount = 0
     @State private var memberToView: User? = nil
     @State private var showSeatManagement = false
+    @State private var permissionsMember: User?
 
     private var company: Company? {
         dataController.getCurrentUserCompany()
@@ -211,6 +212,10 @@ struct ManageTeamView: View {
                 .environmentObject(dataController)
                 .environmentObject(subscriptionManager)
         }
+        .sheet(item: $permissionsMember) { member in
+            UserPermissionDetailView(member: member, companyId: company?.id ?? "")
+                .environmentObject(dataController)
+        }
         .alert("Remove Team Member", isPresented: $showRemoveConfirmation) {
             Button("Cancel", role: .cancel) {
                 memberToRemove = nil
@@ -273,7 +278,7 @@ struct ManageTeamView: View {
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         }
 
-                        if member.isCompanyAdmin {
+                        if member.role == .admin {
                             Text("ADMIN")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -331,6 +336,12 @@ struct ManageTeamView: View {
                             showEditSheet = true
                         }) {
                             Label("Edit Role", systemImage: "pencil")
+                        }
+
+                        Button(action: {
+                            permissionsMember = member
+                        }) {
+                            Label("Manage Permissions", systemImage: "person.badge.key")
                         }
 
                         Divider()
@@ -400,8 +411,8 @@ struct ManageTeamView: View {
                 // Sort: current user first, then admins, then alphabetical
                 if user1.id == dataController.currentUser?.id { return true }
                 if user2.id == dataController.currentUser?.id { return false }
-                if user1.isCompanyAdmin && !user2.isCompanyAdmin { return true }
-                if !user1.isCompanyAdmin && user2.isCompanyAdmin { return false }
+                if user1.role == .admin && user2.role != .admin { return true }
+                if user1.role != .admin && user2.role == .admin { return false }
                 return user1.firstName < user2.firstName
             }
 
@@ -428,6 +439,15 @@ struct ManageTeamView: View {
                 userId: member.id,
                 fields: ["employee_type": .string(employeeTypeValue)]
             )
+
+            // Also write to user_roles table
+            do {
+                let roleId = try await PermissionAdminService.resolveRoleId(for: newRole)
+                try await PermissionAdminService.assignUserRole(userId: member.id, roleId: roleId)
+                print("[MANAGE_TEAM] Also assigned user_roles: \(roleId)")
+            } catch {
+                print("[MANAGE_TEAM] Warning: Failed to update user_roles: \(error)")
+            }
 
             // Update local model
             await MainActor.run {

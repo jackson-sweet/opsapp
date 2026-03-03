@@ -10,6 +10,7 @@ import SwiftUI
 struct ManageSubscriptionView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var showSeatManagement = false
@@ -30,7 +31,7 @@ struct ManageSubscriptionView: View {
     }
 
     private var isCompanyAdmin: Bool {
-        dataController.currentUser?.isCompanyAdmin == true || dataController.currentUser?.role == .admin
+        permissionStore.can("settings.billing")
     }
 
     var body: some View {

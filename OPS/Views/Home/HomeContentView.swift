@@ -31,6 +31,7 @@ struct HomeContentView: View {
     // Location manager to track authorization status
     @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
 
     // Tutorial environment
     @Environment(\.tutorialMode) private var tutorialMode
@@ -283,8 +284,8 @@ struct HomeContentView: View {
                             // EXPLICITLY ensure we don't start the project by turning off confirmation
                             showStartConfirmation = false
 
-                            // Check user role - if admin or office crew, open edit mode, otherwise show details
-                            if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
+                            // Check permission - if user can edit projects, open edit mode, otherwise show details
+                            if permissionStore.can("projects.edit") {
                                 projectToEdit = project
                                 showingEditProject = true
                             } else {

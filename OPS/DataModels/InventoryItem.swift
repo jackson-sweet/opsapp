@@ -199,15 +199,12 @@ final class InventoryItem: Identifiable {
 
     /// Check if user can edit this item
     func canEdit(user: User) -> Bool {
-        // Admin and office crew can always edit
-        // Field crew can edit if they have inventory access
-        return user.role == .admin || user.role == .officeCrew || user.inventoryAccess
+        return PermissionStore.shared.can("inventory.manage")
     }
 
     /// Check if user can delete this item
     func canDelete(user: User) -> Bool {
-        // Only admin and office crew can delete
-        return user.role == .admin || user.role == .officeCrew
+        return PermissionStore.shared.can("inventory.manage")
     }
 
     /// Add a tag to this item

@@ -34,7 +34,7 @@ struct CalendarDaySelector: View {
                     .matchedGeometryEffect(id: "calendarContainer", in: calendarNamespace)
             }
         }
-        .animation(.spring(response: 0.45, dampingFraction: 0.78), value: viewModel.isMonthExpanded)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.isMonthExpanded)
     }
 
     private var weekView: some View {
@@ -65,7 +65,7 @@ struct CalendarDaySelector: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .offset(x: isTransitioning ? transitionOffset : dragOffset)
                     .opacity(isTransitioning ? Double(1.0 - abs(transitionOffset) / geometry.size.width) : 1.0)
-                    .animation(.interactiveSpring(response: 0.15, dampingFraction: 0.9), value: dragOffset)
+                    .animation(.interactiveSpring(response: 0.2, dampingFraction: 0.85), value: dragOffset)
                 }
                 .clipped() // Prevent content from going outside safe area
                 .gesture(
@@ -91,7 +91,7 @@ struct CalendarDaySelector: View {
                                 navigateToWeek(offset: 1, screenWidth: geometry.size.width)
                             } else {
                                 // Not enough to trigger week change, snap back
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
                                     dragOffset = 0
                                     isDragging = false
                                 }
@@ -124,8 +124,8 @@ struct CalendarDaySelector: View {
         cellsVisible = Array(repeating: false, count: 7)
         // Stagger each column in
         for i in 0..<7 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.04) {
-                withAnimation(.easeOut(duration: 0.18)) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.025) {
+                withAnimation(.easeOut(duration: 0.12)) {
                     cellsVisible[i] = true
                 }
             }
@@ -152,33 +152,33 @@ struct CalendarDaySelector: View {
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.prepare()
 
-        // Start rolling animation
+        // Smooth single-phase animation: slide out, update data, slide in
         isTransitioning = true
-        let slideDirection: CGFloat = offset > 0 ? -1 : 1 // Slide opposite to swipe direction
+        let slideDirection: CGFloat = offset > 0 ? -1 : 1
 
-        // First phase: slide current week out
-        withAnimation(OPSStyle.Animation.faster) {
-            transitionOffset = slideDirection * screenWidth * 0.5
+        // Slide current week out
+        withAnimation(.easeIn(duration: 0.15)) {
+            transitionOffset = slideDirection * screenWidth * 0.4
             dragOffset = 0
             isDragging = false
         }
 
-        // Update the date mid-animation
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(120))
+            try? await Task.sleep(for: .milliseconds(150))
+
+            // Update data while off-screen
             viewModel.selectDate(newWeekStart, userInitiated: false)
             impactFeedback.impactOccurred()
 
-            // Reset position for incoming slide — no animation to snap instantly
-            transitionOffset = -slideDirection * screenWidth * 0.3
+            // Position new week just off-screen on the opposite side
+            transitionOffset = -slideDirection * screenWidth * 0.25
 
-            // Second phase: slide new week in smoothly
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            // Slide new week in
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.88)) {
                 transitionOffset = 0
             }
 
-            // Clean up after animation completes
-            try? await Task.sleep(for: .milliseconds(300))
+            try? await Task.sleep(for: .milliseconds(250))
             isTransitioning = false
         }
     }

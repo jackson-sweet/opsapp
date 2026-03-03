@@ -68,8 +68,7 @@ final class InventoryTag: Identifiable {
 
     /// Check if user can edit this tag
     func canEdit(user: User) -> Bool {
-        // Only admin and office crew can manage tags
-        return user.role == .admin || user.role == .officeCrew
+        return PermissionStore.shared.can("inventory.manage")
     }
 
     private func formatThreshold(_ value: Double) -> String {

@@ -75,9 +75,8 @@ class CalendarViewModel: ObservableObject {
     
     // Check if current user should see team member filter
     var shouldShowTeamMemberFilter: Bool {
-        guard let dataController = dataController,
-              let user = dataController.currentUser else { return false }
-        return user.role == .admin || user.role == .officeCrew
+        guard dataController != nil else { return false }
+        return PermissionStore.shared.can("calendar.view", requiredScope: "all")
     }
     
     // Load team members for filtering

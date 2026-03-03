@@ -384,8 +384,8 @@ class SubscriptionManager: ObservableObject {
               let company = dataController.getCurrentUserCompany() else {
             throw SubscriptionError.noCompany
         }
-        
-        guard isUserAdmin else {
+
+        guard PermissionStore.shared.can("settings.billing") else {
             throw SubscriptionError.notAuthorized
         }
         
@@ -438,8 +438,8 @@ class SubscriptionManager: ObservableObject {
               let company = dataController.getCurrentUserCompany() else {
             throw SubscriptionError.noCompany
         }
-        
-        guard isUserAdmin else {
+
+        guard PermissionStore.shared.can("settings.billing") else {
             throw SubscriptionError.notAuthorized
         }
         

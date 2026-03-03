@@ -11,6 +11,7 @@ import SwiftUI
 struct FloatingActionMenu: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
     @State private var showCreateMenu = false
@@ -40,10 +41,12 @@ struct FloatingActionMenu: View {
     private var canShowFAB: Bool {
         guard dataController.currentUser != nil else { return false }
         if appState.isInventorySelectionMode { return false }
-        // All roles can access the schedule tab FAB (personal events + time off)
         if isScheduleTab { return true }
-        guard let user = dataController.currentUser else { return false }
-        return user.role == .admin || user.role == .officeCrew
+        return permissionStore.can("projects.create")
+            || permissionStore.can("tasks.create")
+            || permissionStore.can("clients.create")
+            || permissionStore.can("estimates.create")
+            || permissionStore.can("expenses.create")
     }
 
     /// In tutorial mode, FAB is disabled during fabTap phase or when menu is open
@@ -117,10 +120,8 @@ struct FloatingActionMenu: View {
                                     .animation(OPSStyle.Animation.standard.delay(0.90), value: showCreateMenu)
                                 }
 
-                                // Admin / office crew items only
-                                if let user = dataController.currentUser,
-                                   user.role == .admin || user.role == .officeCrew {
-
+                                // Permission-gated menu items
+                                if permissionStore.can("tasks.create") {
                                     // New Task Type - disabled in tutorial mode
                                     FloatingActionItem(
                                         icon: OPSStyle.Icons.taskType,
@@ -135,7 +136,9 @@ struct FloatingActionMenu: View {
                                     .animation(OPSStyle.Animation.standard.delay(0.9), value: showCreateMenu)
                                     .opacity(tutorialMode ? 0.4 : 1.0)
                                     .allowsHitTesting(!tutorialMode)
+                                }
 
+                                if permissionStore.can("tasks.create") {
                                     // Create Task - disabled in tutorial mode
                                     FloatingActionItem(
                                         icon: OPSStyle.Icons.task,
@@ -150,7 +153,9 @@ struct FloatingActionMenu: View {
                                     .animation(OPSStyle.Animation.standard.delay(0.75), value: showCreateMenu)
                                     .opacity(tutorialMode ? 0.4 : 1.0)
                                     .allowsHitTesting(!tutorialMode)
+                                }
 
+                                if permissionStore.can("projects.create") {
                                     // Create Project - always enabled
                                     FloatingActionItem(
                                         icon: OPSStyle.Icons.project,
@@ -170,7 +175,9 @@ struct FloatingActionMenu: View {
                                     .offset(x: -10)
                                     .transition(.move(edge: .trailing).combined(with: .opacity))
                                     .animation(OPSStyle.Animation.standard.delay(0.6), value: showCreateMenu)
+                                }
 
+                                if permissionStore.can("clients.create") {
                                     // Create Client - disabled in tutorial mode
                                     FloatingActionItem(
                                         icon: OPSStyle.Icons.client,
@@ -185,7 +192,9 @@ struct FloatingActionMenu: View {
                                     .animation(OPSStyle.Animation.standard.delay(0.45), value: showCreateMenu)
                                     .opacity(tutorialMode ? 0.4 : 1.0)
                                     .allowsHitTesting(!tutorialMode)
+                                }
 
+                                if permissionStore.can("estimates.create") {
                                     // New Estimate - disabled in tutorial mode
                                     FloatingActionItem(
                                         icon: OPSStyle.Icons.estimateDoc,
@@ -203,7 +212,9 @@ struct FloatingActionMenu: View {
                                     .animation(OPSStyle.Animation.standard.delay(0.3), value: showCreateMenu)
                                     .opacity(tutorialMode ? 0.4 : 1.0)
                                     .allowsHitTesting(!tutorialMode)
+                                }
 
+                                if permissionStore.can("pipeline.manage") {
                                     // New Lead - disabled in tutorial mode
                                     FloatingActionItem(
                                         icon: OPSStyle.Icons.pipelineChart,
@@ -221,7 +232,9 @@ struct FloatingActionMenu: View {
                                     .animation(OPSStyle.Animation.standard.delay(0.15), value: showCreateMenu)
                                     .opacity(tutorialMode ? 0.4 : 1.0)
                                     .allowsHitTesting(!tutorialMode)
+                                }
 
+                                if permissionStore.can("expenses.create") {
                                     // Add Expense - disabled in tutorial mode
                                     FloatingActionItem(
                                         icon: OPSStyle.Icons.invoiceReceipt,
@@ -239,8 +252,7 @@ struct FloatingActionMenu: View {
                                     .animation(OPSStyle.Animation.standard.delay(0.0), value: showCreateMenu)
                                     .opacity(tutorialMode ? 0.4 : 1.0)
                                     .allowsHitTesting(!tutorialMode)
-
-                                } // end admin/office items
+                                }
                             }
 
                             // Main plus button

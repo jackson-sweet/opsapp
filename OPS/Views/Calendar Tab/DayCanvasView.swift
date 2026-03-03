@@ -121,7 +121,7 @@ struct DayPageView: View {
                             .offset(y: isAnimating ? 0 : 14)
                             .animation(
                                 UIAccessibility.isReduceMotionEnabled ? .none :
-                                    .easeOut(duration: 0.22).delay(Double(index) * 0.06),
+                                    .easeOut(duration: 0.16).delay(Double(index) * 0.04),
                                 value: isAnimating
                             )
                         }
@@ -155,7 +155,7 @@ struct DayPageView: View {
                                 .offset(y: isAnimating ? 0 : 14)
                                 .animation(
                                     UIAccessibility.isReduceMotionEnabled ? .none :
-                                        .easeOut(duration: 0.22).delay(Double(newTasks.count + index) * 0.06),
+                                        .easeOut(duration: 0.16).delay(Double(newTasks.count + index) * 0.04),
                                     value: isAnimating
                                 )
                             }

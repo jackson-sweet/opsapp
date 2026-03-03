@@ -12,6 +12,7 @@ import Foundation
 struct SettingsView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var permissionStore: PermissionStore
     @State private var showLogoutConfirmation = false
     @State private var showingSearchSheet = false
     @State private var isRestartingTutorial = false
@@ -38,16 +39,15 @@ struct SettingsView: View {
 
     // Role checks
     private var isAdmin: Bool {
-        dataController.currentUser?.role == .admin
+        permissionStore.can("settings.company")
     }
 
     private var isAdminOrOffice: Bool {
-        let role = dataController.currentUser?.role
-        return role == .admin || role == .officeCrew
+        permissionStore.can("team.view")
     }
 
     private var hasPipelineAccess: Bool {
-        dataController.currentUser?.specialPermissions.contains("pipeline") ?? false
+        permissionStore.can("pipeline.view")
     }
 
     private var shouldShowDeveloperOptions: Bool {

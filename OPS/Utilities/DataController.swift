@@ -37,6 +37,9 @@ class DataController: ObservableObject {
 
     // Global app state for external views to access
     var appState: AppState?
+
+    /// Permission store reference — set from OPSApp on launch
+    var permissionStore: PermissionStore?
     
     // MARK: - Dependencies
     let authManager: AuthManager
@@ -343,9 +346,14 @@ class DataController: ObservableObject {
                     )
                     
                     let users = try context.fetch(descriptor)
-                    
+
                     if let user = users.first {
                         self.currentUser = user
+
+                        // Fetch permissions (will use cache if offline)
+                        Task {
+                            await self.permissionStore?.fetchPermissions(userId: user.id)
+                        }
 
                         // Link user to OneSignal for push notifications
                         NotificationManager.shared.linkUserToOneSignal()
@@ -391,6 +399,11 @@ class DataController: ObservableObject {
 
                 if let user = users.first {
                     self.currentUser = user
+
+                    // Fetch permissions (will use cache if offline)
+                    Task {
+                        await self.permissionStore?.fetchPermissions(userId: user.id)
+                    }
 
                     NotificationManager.shared.linkUserToOneSignal()
                     Task { await OneSignalService.shared.configure() }
@@ -646,6 +659,10 @@ class DataController: ObservableObject {
             // If syncManager couldn't fetch, try local
             if let existingUser = existingUsers.first {
                 self.currentUser = existingUser
+                // Fetch permissions (will use cache if offline)
+                Task {
+                    await self.permissionStore?.fetchPermissions(userId: existingUser.id)
+                }
             } else {
                 throw NSError(domain: "DataController", code: 2,
                               userInfo: [NSLocalizedDescriptionKey: "Failed to fetch user"])
@@ -657,6 +674,9 @@ class DataController: ObservableObject {
 
         // Update app state with the current user
         self.currentUser = user
+
+        // Fetch permissions from Supabase
+        await self.permissionStore?.fetchPermissions(userId: user.id)
 
         // Store user type in UserDefaults for onboarding flow
         if let userType = user.userType {
@@ -805,6 +825,9 @@ class DataController: ObservableObject {
 
         // Reset subscription manager state to prevent lockout screen from showing after logout
         SubscriptionManager.shared.resetForLogout()
+
+        // Clear permissions
+        permissionStore?.clearPermissions()
 
         // First, clear the current user reference to prevent views from accessing it
         self.currentUser = nil
@@ -1337,7 +1360,7 @@ class DataController: ObservableObject {
             
             // Finally filter by user assignment if needed
             // Admin and Office Crew users see all projects
-            if let user = user, user.role != .admin && user.role != .officeCrew {
+            if let user = user, !PermissionStore.shared.hasFullAccess("projects.view") {
                 filteredProjects = filteredProjects.filter { project in
                     // Check both relationship and ID string for belt-and-suspenders reliability
                     return project.teamMembers.contains(where: { $0.id == user.id }) || project.getTeamMemberIds().contains(user.id)
@@ -1359,7 +1382,7 @@ class DataController: ObservableObject {
         guard let user = currentUser else { return [] }
         
         // For Admin and Office Crew, pass nil to see all company projects
-        if user.role == .admin || user.role == .officeCrew {
+        if PermissionStore.shared.hasFullAccess("projects.view") {
             return getProjects(for: date, assignedTo: nil)
         } else {
             // For Field Crew, pass the user to filter by assignment
@@ -1467,8 +1490,8 @@ class DataController: ObservableObject {
                     return false
                 }
 
-                // For Admin and Office Crew, show all company tasks
-                if user.role == .admin || user.role == .officeCrew {
+                // For users with full task access, show all company tasks
+                if PermissionStore.shared.hasFullAccess("tasks.view") {
                     return task.companyId == user.companyId
                 } else {
                     // For Field Crew, only show tasks they're assigned to
@@ -1507,7 +1530,7 @@ class DataController: ObservableObject {
                 guard let taskStartDate = task.startDate else { return false }
                 if taskStartDate < startDate { return false }
 
-                if user.role == .admin || user.role == .officeCrew {
+                if PermissionStore.shared.hasFullAccess("tasks.view") {
                     return task.companyId == user.companyId
                 } else {
                     let taskTeamMemberIds = task.getTeamMemberIds()
@@ -1912,7 +1935,7 @@ class DataController: ObservableObject {
             // Filter projects based on user role
             let filteredProjects: [Project]
             
-            if user.role == .fieldCrew {
+            if !PermissionStore.shared.hasFullAccess("projects.view") {
                 // Field crew only see projects they're assigned to
                 filteredProjects = allProjects.filter { project in
                     project.getTeamMemberIds().contains(userId) || 
@@ -3396,7 +3419,7 @@ class DataController: ObservableObject {
     func checkForUnassignedEmployeeRoles() async -> [UnassignedUser] {
         // Only check for admin or office crew
         guard let user = currentUser,
-              user.role == .admin || user.role == .officeCrew else {
+              PermissionStore.shared.can("team.manage") else {
             print("[UNASSIGNED_ROLES] Skipping check - user is not admin/office crew")
             return []
         }

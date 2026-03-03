@@ -18,6 +18,7 @@ struct TaskDetailsView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Query private var users: [User]
     
     @State private var showingSaveNotification = false
@@ -158,8 +159,8 @@ struct TaskDetailsView: View {
                         // Navigation cards
                         navigationSection
 
-                        // Delete task section (admin/office only)
-                        if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
+                        // Delete task section (permission-gated)
+                        if permissionStore.can("tasks.delete") {
                             deleteTaskSection
                         }
 
@@ -361,7 +362,7 @@ struct TaskDetailsView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             Button(action: {
-                if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
+                if permissionStore.can("tasks.edit") {
                     showingScheduler = true
                 }
             }) {
@@ -394,8 +395,8 @@ struct TaskDetailsView: View {
 
                         Spacer()
 
-                        // Chevron indicator for admin/office crew
-                        if dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew {
+                        // Chevron indicator for users with edit permission
+                        if permissionStore.can("tasks.edit") {
                             Image(systemName: OPSStyle.Icons.chevronRight)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -437,7 +438,7 @@ struct TaskDetailsView: View {
             }
             .buttonStyle(PlainButtonStyle())
             .id(refreshTrigger)
-            .allowsHitTesting(dataController.currentUser?.role == .admin || dataController.currentUser?.role == .officeCrew)
+            .allowsHitTesting(permissionStore.can("tasks.edit"))
         }
     }
 
@@ -1004,7 +1005,7 @@ struct TaskDetailsView: View {
             return [.active, .completed]
         }
 
-        if currentUser.role == .admin || currentUser.role == .officeCrew {
+        if permissionStore.can("tasks.change_status") {
             return TaskStatus.allCases
         } else {
             return [.active, .completed]
@@ -1069,8 +1070,7 @@ struct TaskDetailsView: View {
     }
     
     private var canModify: Bool {
-        guard let user = dataController.currentUser else { return false }
-        return user.role == .admin || user.role == .officeCrew
+        permissionStore.can("tasks.edit")
     }
 
     private func formatDateRange(_ start: Date, _ end: Date) -> String {

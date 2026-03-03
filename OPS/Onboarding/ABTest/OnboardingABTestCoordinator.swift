@@ -45,6 +45,12 @@ struct OnboardingABTestCoordinator: View {
     @State private var textOpacity: Double = 0
     @State private var buttonOpacity: Double = 0
 
+    // Hero slideshow state
+    @State private var currentHeroIndex: Int = 0
+    @State private var heroOpacity: Double = 0
+    private let heroImages = ["hero_1", "hero_2", "hero_3", "hero_4", "hero_5", "hero_6"]
+    private let heroTimer = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
+
     var body: some View {
         ZStack {
             OPSStyle.Colors.background
@@ -77,7 +83,8 @@ struct OnboardingABTestCoordinator: View {
                     onComplete: { code in
                         crewCode = code
                         withAnimation { flowStep = .crewCode }
-                    }
+                    },
+                    onShowLogin: onShowLogin
                 )
                 .transition(.opacity)
 
@@ -126,8 +133,31 @@ struct OnboardingABTestCoordinator: View {
 
     private var splashView: some View {
         ZStack {
-            OPSStyle.Colors.background
-                .ignoresSafeArea()
+            // Hero image slideshow background
+            ZStack {
+                ForEach(0..<heroImages.count, id: \.self) { index in
+                    Image(heroImages[index])
+                        .resizable()
+                        .scaledToFill()
+                        .ignoresSafeArea()
+                        .opacity(index == currentHeroIndex ? heroOpacity : 0)
+                        .animation(.easeInOut(duration: 1.0), value: currentHeroIndex)
+                }
+            }
+            .ignoresSafeArea()
+
+            // Dark gradient overlay for readability
+            LinearGradient(
+                stops: [
+                    .init(color: Color.black.opacity(0.3), location: 0),
+                    .init(color: Color.black.opacity(0.7), location: 0.4),
+                    .init(color: Color.black.opacity(0.95), location: 0.75),
+                    .init(color: Color.black, location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
 
             VStack {
                 Spacer()
@@ -194,6 +224,16 @@ struct OnboardingABTestCoordinator: View {
         }
         .onAppear {
             startSplashAnimations()
+            // Start hero slideshow
+            withAnimation(.easeIn(duration: 1.0)) {
+                heroOpacity = 1.0
+            }
+        }
+        .onReceive(heroTimer) { _ in
+            guard flowStep == .splash else { return }
+            withAnimation(.easeInOut(duration: 1.0)) {
+                currentHeroIndex = (currentHeroIndex + 1) % heroImages.count
+            }
         }
     }
 

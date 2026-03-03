@@ -11,6 +11,7 @@ import Supabase
 struct ManageTeamView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var teamMembers: [User] = []
@@ -36,7 +37,7 @@ struct ManageTeamView: View {
     }
 
     private var isCompanyAdmin: Bool {
-        dataController.currentUser?.isCompanyAdmin == true || dataController.currentUser?.role == .admin
+        permissionStore.can("team.manage")
     }
 
     private var filteredMembers: [User] {

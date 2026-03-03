@@ -9,6 +9,7 @@ import SwiftUI
 
 struct OrganizationDetailsView: View {
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var isLoading = true
@@ -53,7 +54,7 @@ struct OrganizationDetailsView: View {
     }
 
     private var isCompanyAdmin: Bool {
-        dataController.currentUser?.isCompanyAdmin == true || dataController.currentUser?.role == .admin
+        permissionStore.can("settings.company")
     }
 
     var body: some View {

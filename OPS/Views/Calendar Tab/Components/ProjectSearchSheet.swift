@@ -13,6 +13,7 @@ struct ProjectSearchSheet: View {
     let onProjectSelected: (Project) -> Void
     
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var permissionStore: PermissionStore
     @State private var searchText = ""
     @State private var allProjects: [Project] = []
     @State private var isLoading = true
@@ -706,7 +707,7 @@ struct ProjectSearchSheet: View {
                 let projects = dataController.getAllProjects()
                 
                 // Filter based on user role
-                if currentUser.role == .fieldCrew {
+                if !permissionStore.hasFullAccess("projects.view") {
                     // Field crew can only see projects they're assigned to
                     allProjects = projects.filter { project in
                         project.getTeamMemberIds().contains(currentUser.id)

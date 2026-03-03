@@ -207,7 +207,7 @@ final class ProjectTask {
     
     /// Check if user can edit this task
     func canEdit(user: User) -> Bool {
-        return user.role == .admin || user.role == .officeCrew
+        return PermissionStore.shared.can("tasks.edit")
     }
     
     /// Check if user can update status

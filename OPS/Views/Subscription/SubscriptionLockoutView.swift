@@ -11,6 +11,7 @@ import SwiftUI
 struct SubscriptionLockoutView: View {
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
     
     @State private var showPlanSelection = false
@@ -42,7 +43,7 @@ struct SubscriptionLockoutView: View {
                 headerView
                     .padding(.top, 60)
                 
-                if showSeatManagement && subscriptionManager.isUserAdmin {
+                if showSeatManagement && permissionStore.can("settings.billing") {
                     // Seat management state
                     inlineSeatManagementView
                         .padding(.top, 32)
@@ -53,7 +54,7 @@ struct SubscriptionLockoutView: View {
                     Spacer()
                     
                     // Content based on user type
-                    if subscriptionManager.isUserAdmin {
+                    if permissionStore.can("settings.billing") {
                         adminContent
                     } else {
                         nonAdminContent
@@ -100,7 +101,7 @@ struct SubscriptionLockoutView: View {
     }
     
     private var headerSubtitle: String {
-        if subscriptionManager.isUserAdmin {
+        if permissionStore.can("settings.billing") {
             if !subscriptionManager.userHasSeat && subscriptionManager.subscriptionStatus == .active {
                 return "Admin Seat Required"
             }

@@ -11,6 +11,7 @@ struct AppSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var permissionStore: PermissionStore
     @State private var showMapSettings = false
     @State private var showDataSettings = false
     @State private var showSecuritySettings = false
@@ -65,21 +66,20 @@ struct AppSettingsView: View {
                         }
 
                         // MANAGEMENT section (admin/office only)
-                        if let user = dataController.currentUser,
-                           (user.role == .admin || user.role == .officeCrew) {
+                        if permissionStore.can("team.manage") || permissionStore.can("settings.company") {
                             settingsSection(title: "MANAGEMENT") {
                                 settingsRow(icon: "hammer.circle", title: "Project Settings") {
                                     showProjectSettings = true
                                 }
 
-                                if user.inventoryAccess {
+                                if permissionStore.can("inventory.view") {
                                     sectionDivider
                                     settingsRow(icon: "shippingbox", title: "Inventory Settings") {
                                         showInventorySettings = true
                                     }
                                 }
                             }
-                        } else if let user = dataController.currentUser, user.inventoryAccess {
+                        } else if permissionStore.can("inventory.view") {
                             // Field crew with inventory access
                             settingsSection(title: "MANAGEMENT") {
                                 settingsRow(icon: "shippingbox", title: "Inventory Settings") {

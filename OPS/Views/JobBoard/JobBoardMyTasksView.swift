@@ -63,29 +63,16 @@ struct JobBoardMyTasksView: View {
         }
     }
 
-    // Tasks grouped by project, sorted by project title
-    private var groupedTasks: [(project: Project, tasks: [ProjectTask])] {
-        var map: [String: (project: Project, tasks: [ProjectTask])] = [:]
-        for task in filteredTasks {
-            guard let project = task.project else { continue }
-            if map[project.id] == nil {
-                map[project.id] = (project: project, tasks: [])
+    // All tasks sorted by scheduled date, then by title
+    private var sortedTasks: [ProjectTask] {
+        filteredTasks.sorted { a, b in
+            switch (a.startDate, b.startDate) {
+            case let (aDate?, bDate?): return aDate < bDate
+            case (nil, _?):            return false
+            case (_?, nil):            return true
+            case (nil, nil):           return a.displayTitle < b.displayTitle
             }
-            map[project.id]!.tasks.append(task)
         }
-        return map.values
-            .map { group in
-                let sorted = group.tasks.sorted { a, b in
-                    switch (a.startDate, b.startDate) {
-                    case let (aDate?, bDate?): return aDate < bDate
-                    case (nil, _?):            return false
-                    case (_?, nil):            return true
-                    case (nil, nil):           return a.displayTitle < b.displayTitle
-                    }
-                }
-                return (project: group.project, tasks: sorted)
-            }
-            .sorted { $0.project.title < $1.project.title }
     }
 
     // Empty-state message for the current filter
@@ -133,15 +120,16 @@ struct JobBoardMyTasksView: View {
 
     @ViewBuilder
     private var taskList: some View {
-        if groupedTasks.isEmpty {
+        if sortedTasks.isEmpty {
             emptyState
         } else {
             ScrollView {
-                LazyVStack(spacing: 0, pinnedViews: []) {
-                    ForEach(groupedTasks, id: \.project.id) { group in
-                        ProjectTaskGroup(project: group.project, tasks: group.tasks)
+                LazyVStack(spacing: 0) {
+                    ForEach(sortedTasks) { task in
+                        UniversalJobBoardCard(cardType: .task(task))
                     }
                 }
+                .padding(.horizontal, 16)
                 .padding(.bottom, 100)
             }
         }
@@ -169,23 +157,12 @@ struct JobBoardMyTasksView: View {
     private var skeletonRows: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                // Simulate 2 project groups with 3 skeleton rows each
-                ForEach(0..<2, id: \.self) { _ in
-                    // Group header placeholder
+                ForEach(0..<6, id: \.self) { _ in
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .fill(OPSStyle.Colors.cardBackgroundDark)
-                        .frame(height: 16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(height: 60)
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                    // Row placeholders
-                    ForEach(0..<3, id: \.self) { _ in
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(OPSStyle.Colors.cardBackgroundDark)
-                            .frame(height: 60)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 4)
-                    }
+                        .padding(.vertical, 4)
                 }
             }
             .padding(.bottom, 100)

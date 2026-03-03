@@ -16,6 +16,7 @@ struct MinimalSignupView: View {
     @EnvironmentObject var dataController: DataController
     let variant: OnboardingVariant
     let onComplete: (String) -> Void  // passes crew code
+    var onShowLogin: (() -> Void)?    // navigate to login for existing users
 
     @State private var email = ""
     @State private var password = ""
@@ -216,6 +217,17 @@ struct MinimalSignupView: View {
                         )
                     }
                     .disabled(isLoading)
+
+                    // "I already have an account" link
+                    if let onShowLogin = onShowLogin {
+                        Button(action: onShowLogin) {
+                            Text("I ALREADY HAVE AN ACCOUNT")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .frame(minWidth: 44, minHeight: 44)
+                        }
+                        .padding(.top, 8)
+                    }
 
                     Spacer().frame(height: 20)
                 }

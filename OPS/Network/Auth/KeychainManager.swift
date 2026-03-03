@@ -133,8 +133,32 @@ class KeychainManager {
         let account = "userId"
         delete(account: account)
     }
-    
-    
+
+    // MARK: - Permissions Cache
+
+    /// Store permission data blob in Keychain
+    func storePermissions(_ jsonData: Data) {
+        let account = "permissions_cache"
+        let base64String = jsonData.base64EncodedString()
+        save(value: base64String, account: account)
+    }
+
+    /// Retrieve permission data blob from Keychain
+    func retrievePermissions() -> Data? {
+        let account = "permissions_cache"
+        guard let base64String = retrieve(account: account),
+              let data = Data(base64Encoded: base64String) else {
+            return nil
+        }
+        return data
+    }
+
+    /// Delete permission data from Keychain
+    func deletePermissions() {
+        let account = "permissions_cache"
+        delete(account: account)
+    }
+
     // MARK: - Private Keychain Methods
     
     /// Save a string value to Keychain

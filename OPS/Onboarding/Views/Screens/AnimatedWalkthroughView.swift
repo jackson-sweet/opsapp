@@ -10,6 +10,7 @@ import SwiftUI
 struct AnimatedWalkthroughView: View {
     let onComplete: () -> Void
     @State private var currentPage = 0
+    @State private var buttonVisible = false
 
     private let screens: [(icon: String, headline: String, body: String)] = [
         (
@@ -54,51 +55,56 @@ struct AnimatedWalkthroughView: View {
                         WalkthroughPageView(
                             icon: screens[index].icon,
                             headline: screens[index].headline,
-                            bodyText: screens[index].body
+                            bodyText: screens[index].body,
+                            pageIndex: index
                         )
                         .tag(index)
                     }
                 }
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
 
-                // Custom page indicator dots
-                HStack(spacing: 8) {
+                // Custom page indicator — animated bars instead of dots
+                HStack(spacing: 6) {
                     ForEach(0..<screens.count, id: \.self) { index in
-                        Circle()
-                            .fill(index == currentPage ? Color.white : OPSStyle.Colors.tertiaryText)
-                            .frame(width: 8, height: 8)
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(index == currentPage ? Color.white : OPSStyle.Colors.tertiaryText.opacity(0.4))
+                            .frame(width: index == currentPage ? 24 : 8, height: 4)
+                            .animation(.easeOut(duration: 0.25), value: currentPage)
                     }
                 }
                 .padding(.bottom, 24)
 
                 // GET STARTED button on last screen
-                if currentPage == 2 {
-                    Button(action: { onComplete() }) {
+                Button(action: { onComplete() }) {
+                    HStack {
                         Text("GET STARTED")
                             .font(OPSStyle.Typography.button)
                             .foregroundColor(OPSStyle.Colors.invertedText)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: OPSStyle.Layout.touchTargetStandard)
-                            .background(OPSStyle.Colors.primaryText)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                HStack {
-                                    Spacer()
-                                    Image(systemName: "arrow.right")
-                                        .foregroundColor(OPSStyle.Colors.invertedText)
-                                        .font(OPSStyle.Typography.caption.weight(.semibold))
-                                        .padding(.trailing, 20)
-                                }
-                            )
+
+                        Spacer()
+
+                        Image(systemName: "arrow.right")
+                            .foregroundColor(OPSStyle.Colors.invertedText)
+                            .font(OPSStyle.Typography.caption.weight(.semibold))
                     }
-                    .padding(.horizontal, 40)
-                    .padding(.bottom, 32)
-                    .transition(.opacity)
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: OPSStyle.Layout.touchTargetStandard)
+                    .background(OPSStyle.Colors.primaryText)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 32)
+                .opacity(buttonVisible ? 1 : 0)
+                .offset(y: buttonVisible ? 0 : 12)
+                .animation(.easeOut(duration: 0.3), value: buttonVisible)
             }
         }
         .onChange(of: currentPage) { _, newIndex in
             AnalyticsManager.shared.trackWalkthroughScreenViewed(screenIndex: newIndex)
+            withAnimation {
+                buttonVisible = newIndex == screens.count - 1
+            }
         }
     }
 }
@@ -109,49 +115,95 @@ private struct WalkthroughPageView: View {
     let icon: String
     let headline: String
     let bodyText: String
+    let pageIndex: Int
 
-    @State private var iconScale: CGFloat = 0
-    @State private var contentOpacity: Double = 0
+    @State private var iconScale: CGFloat = 0.6
+    @State private var iconOpacity: Double = 0
+    @State private var headlineOffset: CGFloat = 20
+    @State private var headlineOpacity: Double = 0
+    @State private var bodyOffset: CGFloat = 20
+    @State private var bodyOpacity: Double = 0
+    @State private var ringScale: CGFloat = 0.5
+    @State private var ringOpacity: Double = 0
 
     var body: some View {
-        VStack(spacing: 32) {
+        VStack(spacing: 0) {
             Spacer()
 
-            // Animated icon
-            Image(systemName: icon)
-                .font(.system(size: 80))
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .scaleEffect(iconScale)
+            // Icon with accent ring
+            ZStack {
+                // Subtle ring behind icon
+                Circle()
+                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.15), lineWidth: 1.5)
+                    .frame(width: 140, height: 140)
+                    .scaleEffect(ringScale)
+                    .opacity(ringOpacity)
+
+                Image(systemName: icon)
+                    .font(.system(size: 64, weight: .light))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .scaleEffect(iconScale)
+                    .opacity(iconOpacity)
+            }
+            .padding(.bottom, 40)
 
             // Headline
             Text(headline)
-                .font(OPSStyle.Typography.title)
+                .font(.custom("Mohave-Bold", size: 28))
                 .foregroundColor(OPSStyle.Colors.primaryText)
+                .tracking(2)
                 .multilineTextAlignment(.center)
-                .opacity(contentOpacity)
+                .offset(y: headlineOffset)
+                .opacity(headlineOpacity)
+                .padding(.bottom, 16)
 
             // Body
             Text(bodyText)
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .multilineTextAlignment(.center)
-                .lineSpacing(4)
-                .padding(.horizontal, 40)
-                .opacity(contentOpacity)
+                .lineSpacing(6)
+                .padding(.horizontal, 44)
+                .offset(y: bodyOffset)
+                .opacity(bodyOpacity)
 
             Spacer()
         }
         .onAppear {
-            // Reset state for fresh animation each time page appears
-            iconScale = 0
-            contentOpacity = 0
+            animateIn()
+        }
+    }
 
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
-                iconScale = 1
-            }
-            withAnimation(.easeIn(duration: 0.4).delay(0.3)) {
-                contentOpacity = 1
-            }
+    private func animateIn() {
+        // Reset
+        iconScale = 0.6
+        iconOpacity = 0
+        headlineOffset = 20
+        headlineOpacity = 0
+        bodyOffset = 20
+        bodyOpacity = 0
+        ringScale = 0.5
+        ringOpacity = 0
+
+        // Staggered entrance: ring → icon → headline → body
+        withAnimation(.easeOut(duration: 0.4)) {
+            ringScale = 1.0
+            ringOpacity = 1.0
+        }
+
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.75).delay(0.1)) {
+            iconScale = 1.0
+            iconOpacity = 1.0
+        }
+
+        withAnimation(.easeOut(duration: 0.35).delay(0.25)) {
+            headlineOffset = 0
+            headlineOpacity = 1.0
+        }
+
+        withAnimation(.easeOut(duration: 0.35).delay(0.35)) {
+            bodyOffset = 0
+            bodyOpacity = 1.0
         }
     }
 }

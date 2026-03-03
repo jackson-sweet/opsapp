@@ -16,13 +16,13 @@ struct CalendarEventCard: View {
     let dayPosition: DayPosition
     let onTap: () -> Void
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @State private var showingReschedule = false
     @State private var showingQuickActions = false
     @State private var showingStatusPicker = false
 
     private var canModify: Bool {
-        guard let user = dataController.currentUser else { return false }
-        return user.role == .admin || user.role == .officeCrew
+        permissionStore.can("calendar.edit")
     }
 
     init(task: ProjectTask, isFirst: Bool, isOngoing: Bool = false,

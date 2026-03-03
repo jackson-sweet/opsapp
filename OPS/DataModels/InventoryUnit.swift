@@ -48,8 +48,7 @@ final class InventoryUnit: Identifiable {
 
     /// Check if user can edit this unit
     func canEdit(user: User) -> Bool {
-        // Only admin and office crew can manage inventory units
-        return user.role == .admin || user.role == .officeCrew
+        return PermissionStore.shared.can("inventory.manage")
     }
 
     /// Check if this unit can be deleted

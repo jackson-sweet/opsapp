@@ -11,6 +11,7 @@ import SwiftData
 struct JobBoardView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
     @State private var selectedSection: JobBoardSection = .projects
@@ -37,11 +38,11 @@ struct JobBoardView: View {
 
     // Permission checks
     private var isFieldCrew: Bool {
-        return dataController.currentUser?.role == .fieldCrew
+        return !permissionStore.can("job_board.manage_sections")
     }
 
     private var isAdmin: Bool {
-        return dataController.currentUser?.role == .admin
+        return permissionStore.can("job_board.manage_sections")
     }
 
     private var sections: [JobBoardSection] {
@@ -66,20 +67,19 @@ struct JobBoardView: View {
     }
 
     var body: some View {
-        
-            ZStack (alignment: .top) {
+
+            ZStack {
                 // Background
                 OPSStyle.Colors.background
                     .ignoresSafeArea()
 
-                AppHeader(headerType: .jobBoard)
-
                 VStack(spacing: 0) {
+                    AppHeader(headerType: .jobBoard)
+                        .padding(.bottom, 8)
 
                     // Section selector — shown whenever the role has more than one section
                     if sections.count > 1 {
                         JobBoardSectionSelector(sections: sections, selectedSection: $selectedSection)
-                            .padding(.top, 70)
                             .onChange(of: selectedSection) { oldValue, newValue in
                                 previousSection = oldValue
                                 searchText = ""
@@ -94,9 +94,6 @@ struct JobBoardView: View {
                             .padding(.horizontal, 16)
                             .opacity(tutorialMode && tutorialPhase == .dragToAccepted ? 0.4 : 1.0)
                             .allowsHitTesting(!(tutorialMode && tutorialPhase == .dragToAccepted))
-                    } else {
-                        Spacer()
-                            .frame(height: 70)
                     }
 
                     // Main content with slide transitions
@@ -236,24 +233,28 @@ enum JobBoardSection: String, CaseIterable {
     }
 }
 
-/// Returns the ordered sections visible to a given user role
+/// Returns the ordered sections visible based on permissions
 func visibleSections(for user: User?) -> [JobBoardSection] {
-    guard let user = user else { return [.projects] }
-    switch user.role {
-    case .fieldCrew:
+    guard user != nil else { return [.projects] }
+    let store = PermissionStore.shared
+
+    if !store.can("job_board.manage_sections") {
+        // Limited access (field crew equivalent)
         return [.myTasks, .myProjects]
-    case .officeCrew:
-        return [.projects, .tasks, .kanban]
-    case .admin:
-        let hasPipeline = user.specialPermissions.contains("pipeline")
-        return hasPipeline ? [.projects, .tasks, .kanban, .pipeline] : [.projects, .tasks, .kanban]
     }
+
+    // Full access — optionally include pipeline
+    var sections: [JobBoardSection] = [.projects, .tasks, .kanban]
+    if store.can("pipeline.view") {
+        sections.append(.pipeline)
+    }
+    return sections
 }
 
-/// Returns the default landing section for a given user role
+/// Returns the default landing section based on permissions
 func defaultSection(for user: User?) -> JobBoardSection {
-    guard let user = user else { return .projects }
-    return user.role == .fieldCrew ? .myTasks : .projects
+    guard user != nil else { return .projects }
+    return PermissionStore.shared.can("job_board.manage_sections") ? .projects : .myTasks
 }
 
 // MARK: - Section Selector

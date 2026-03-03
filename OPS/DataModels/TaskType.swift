@@ -54,8 +54,7 @@ final class TaskType: Identifiable {
     
     /// Check if user can edit this task type
     func canEdit(user: User) -> Bool {
-        // Only admin and office crew can manage task types
-        return user.role == .admin || user.role == .officeCrew
+        return PermissionStore.shared.can("tasks.create")
     }
     
     /// Check if this task type can be deleted

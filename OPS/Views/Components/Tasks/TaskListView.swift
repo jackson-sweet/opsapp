@@ -15,12 +15,12 @@ struct TaskListView: View {
     var onTaskSelected: ((ProjectTask) -> Void)? = nil  // Callback for task selection
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var permissionStore: PermissionStore
     @State private var showingTaskForm = false
     @State private var showingSchedulingModeAlert = false
 
     private var canModify: Bool {
-        guard let user = dataController.currentUser else { return false }
-        return user.role == .admin || user.role == .officeCrew
+        permissionStore.can("tasks.edit")
     }
 
     var body: some View {
@@ -114,6 +114,7 @@ struct TaskRow: View {
     let isLast: Bool
     let onTap: () -> Void
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Query private var users: [User]
     @State private var showingActions = false
     @State private var showingStatusPicker = false
@@ -122,8 +123,7 @@ struct TaskRow: View {
     @State private var showingDeleteConfirmation = false
 
     private var canModify: Bool {
-        guard let user = dataController.currentUser else { return false }
-        return user.role == .admin || user.role == .officeCrew
+        permissionStore.can("tasks.edit")
     }
 
     private var teamMemberCount: Int {

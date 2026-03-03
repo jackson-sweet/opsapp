@@ -11,19 +11,20 @@ import SwiftData
 
 struct UniversalSearchSheet: View {
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
     @Query private var allProjects: [Project]
     @FocusState private var searchFocused: Bool
     @State private var query: String = ""
 
-    // specialPermissions is [String] on User
+    // Permission-based pipeline access
     private var hasPipelineAccess: Bool {
-        dataController.currentUser?.specialPermissions.contains("pipeline") ?? false
+        permissionStore.can("pipeline.view")
     }
 
-    // role is UserRole enum with .fieldCrew case
+    // Permission-based restricted access (field crew equivalent)
     private var isFieldCrew: Bool {
-        dataController.currentUser?.role == .fieldCrew
+        !permissionStore.hasFullAccess("projects.view")
     }
 
     // Field crew see only projects they are assigned to.

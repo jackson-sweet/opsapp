@@ -18,11 +18,11 @@ struct SubClientListView: View {
     @State private var expandedSubClientId: String? = nil
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var dataController: DataController
-    
-    // Check if current user can add sub-contacts (admin or office crew only)
+    @EnvironmentObject private var permissionStore: PermissionStore
+
+    // Check if current user can add sub-contacts
     private var canAddSubContacts: Bool {
-        guard let currentUser = dataController.currentUser else { return false }
-        return currentUser.role == .admin || currentUser.role == .officeCrew
+        permissionStore.can("clients.edit")
     }
     
     var body: some View {
@@ -146,11 +146,11 @@ struct SubClientRow: View {
     @State private var showingAddToExistingContact = false
     @State private var showingDeleteConfirmation = false
     @EnvironmentObject private var dataController: DataController
-    
-    // Check if current user can edit sub-contacts (admin or office crew only)
+    @EnvironmentObject private var permissionStore: PermissionStore
+
+    // Check if current user can edit sub-contacts
     private var canEditSubContacts: Bool {
-        guard let currentUser = dataController.currentUser else { return false }
-        return currentUser.role == .admin || currentUser.role == .officeCrew
+        permissionStore.can("clients.edit")
     }
     
     var body: some View {

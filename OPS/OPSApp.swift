@@ -24,6 +24,7 @@ struct OPSApp: App {
     @StateObject private var notificationManager = NotificationManager.shared
     @StateObject private var subscriptionManager = SubscriptionManager.shared
     @StateObject private var variantManager = OnboardingVariantManager.shared
+    @StateObject private var permissionStore = PermissionStore.shared
 
     // Create the model container for SwiftData
     var sharedModelContainer: ModelContainer = {
@@ -78,6 +79,7 @@ struct OPSApp: App {
                 .environmentObject(notificationManager)
                 .environmentObject(subscriptionManager)
                 .environmentObject(variantManager)
+                .environmentObject(permissionStore)
                 .onAppear {
                     // Check if this is a fresh install
                     if !UserDefaults.standard.bool(forKey: "has_launched_before") {
@@ -97,6 +99,10 @@ struct OPSApp: App {
                     // Set the model context in the data controller
                     let context = sharedModelContainer.mainContext
                     dataController.setModelContext(context)
+
+                    // Wire permission store and load cached permissions
+                    dataController.permissionStore = permissionStore
+                    permissionStore.loadCachedPermissions()
                     
                     // Initialize SubscriptionManager with DataController
                     subscriptionManager.setDataController(dataController)
@@ -145,6 +151,17 @@ struct OPSApp: App {
                         await performActiveChecks()
                     }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: ConnectivityMonitor.connectivityChangedNotification)) { notification in
+                    // Refresh permissions when connectivity is restored
+                    if let connectionType = notification.userInfo?["connectionType"] as? ConnectivityMonitor.ConnectionType,
+                       connectionType != .none,
+                       permissionStore.isCacheStale(),
+                       let userId = dataController.currentUser?.id {
+                        Task {
+                            await permissionStore.fetchPermissions(userId: userId)
+                        }
+                    }
+                }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didRegisterForRemoteNotificationsWithDeviceTokenNotification)) { notification in
                     // Handle the device token when registered
                     if let deviceToken = notification.userInfo?["deviceToken"] as? Data {
@@ -159,6 +176,12 @@ struct OPSApp: App {
     @MainActor
     private func performActiveChecks() async {
         print("[APP_ACTIVE] 🏥 App became active - running subscription check...")
+
+        // Refresh permissions if stale
+        if permissionStore.isCacheStale(),
+           let userId = dataController.currentUser?.id {
+            await permissionStore.fetchPermissions(userId: userId)
+        }
 
         // CRITICAL: Always run subscription check regardless of data health
         // Subscription check has its own guards and handles missing data gracefully
@@ -260,7 +283,8 @@ private func clearAllAuthenticationData() {
     keychainManager.deleteUserId()
     keychainManager.deleteUsername()
     keychainManager.deletePassword()
-    
+    keychainManager.deletePermissions()
+
     // Clear all authentication-related UserDefaults
     let authKeys = [
         "is_authenticated",

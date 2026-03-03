@@ -20,6 +20,7 @@ struct UniversalJobBoardCard: View {
     var disableSwipe: Bool = false  // When true, disables swipe gestures (useful in sheets where scrolling is needed)
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.modelContext) private var modelContext
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
@@ -49,12 +50,11 @@ struct UniversalJobBoardCard: View {
     @State private var showingWrongSwipeHint = false
 
     private var isFieldCrew: Bool {
-        dataController.currentUser?.role == .fieldCrew
+        !permissionStore.hasFullAccess("projects.view")
     }
 
     private var canModify: Bool {
-        guard let user = dataController.currentUser else { return false }
-        return user.role == .admin || user.role == .officeCrew
+        permissionStore.can("projects.edit")
     }
 
     var body: some View {

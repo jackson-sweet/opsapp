@@ -67,11 +67,25 @@ struct MainTabView: View {
         permissionStore.can("pipeline.view")
     }
 
-    // Computed tab indices that adapt based on role
+    // Computed tab indices that adapt based on visible tabs (pipeline + inventory)
     private var pipelineTabIndex: Int? { hasPipelineAccess ? 1 : nil }
-    private var jobBoardTabIndex: Int { hasPipelineAccess ? 2 : 1 }
-    private var scheduleTabIndex: Int { hasPipelineAccess ? 3 : 2 }
-    private var settingsTabIndex: Int { hasPipelineAccess ? 4 : 3 }
+    private var jobBoardTabIndex: Int {
+        var idx = 1
+        if hasPipelineAccess { idx += 1 }
+        return idx
+    }
+    private var inventoryTabIndex: Int? {
+        guard hasInventoryAccess else { return nil }
+        return jobBoardTabIndex + 1
+    }
+    private var scheduleTabIndex: Int {
+        var idx = jobBoardTabIndex + 1
+        if hasInventoryAccess { idx += 1 }
+        return idx
+    }
+    private var settingsTabIndex: Int {
+        return scheduleTabIndex + 1
+    }
 
     // Dynamic tabs based on user role
     private var tabs: [TabItem] {
@@ -81,7 +95,7 @@ struct MainTabView: View {
 
         // Add Pipeline tab for admin/office crew only
         if hasPipelineAccess {
-            baseTabs.append(TabItem(iconName: OPSStyle.Icons.pipelineChart))
+            baseTabs.append(TabItem(iconName: "chart.line.uptrend.xyaxis"))
         }
 
         // Add Job Board tab for all users (admin, office crew, and field crew)
@@ -137,13 +151,15 @@ struct MainTabView: View {
 
             // Content views with transition - each complete view slides as a unit
             ZStack {
-                // Tab content — indices adapt based on role (Pipeline tab for admin/office only)
+                // Tab content — indices adapt based on role and permissions
                 if selectedTab == 0 {
                     HomeView()
                 } else if selectedTab == pipelineTabIndex {
-                    PipelineTabView()
+                    MoneyTabView()
                 } else if selectedTab == jobBoardTabIndex {
                     JobBoardView()
+                } else if selectedTab == inventoryTabIndex {
+                    InventoryView()
                 } else if selectedTab == scheduleTabIndex {
                     ScheduleView()
                 } else if selectedTab == settingsTabIndex {
@@ -192,8 +208,8 @@ struct MainTabView: View {
             FloatingActionMenu(currentTab: selectedTab, hasInventoryAccess: hasInventoryAccess, isScheduleTab: selectedTab == scheduleTabIndex)
                 .environmentObject(dataController)
                 .environmentObject(appState)
-                .opacity(!isSettingsTab && !isPipelineTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects ? 1 : 0)
-                .allowsHitTesting(!isSettingsTab && !isPipelineTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects)
+                .opacity(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects ? 1 : 0)
+                .allowsHitTesting(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects)
                 .animation(OPSStyle.Animation.fast, value: isSettingsTab)
                 .animation(OPSStyle.Animation.fast, value: dataController.isPerformingInitialSync)
                 .animation(OPSStyle.Animation.fast, value: appState.isLoadingProjects)

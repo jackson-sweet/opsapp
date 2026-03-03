@@ -102,4 +102,32 @@ class EstimateRepository {
             .execute()
             .value
     }
+
+    /// Create a progress invoice from selected line items at specified percentages.
+    /// Estimate stays approved (not converted) — multiple progress invoices are allowed.
+    func createProgressInvoice(estimateId: String, lineItemSelections: [(lineItemId: String, percentage: Double)]) async throws -> String {
+        struct Params: Encodable {
+            let p_estimate_id: String
+            let p_line_item_selections: [Selection]
+
+            struct Selection: Encodable {
+                let line_item_id: String
+                let percentage: Double
+            }
+        }
+
+        let params = Params(
+            p_estimate_id: estimateId,
+            p_line_item_selections: lineItemSelections.map {
+                Params.Selection(line_item_id: $0.lineItemId, percentage: $0.percentage)
+            }
+        )
+
+        let invoiceId: String = try await client
+            .rpc("create_progress_invoice", params: params)
+            .execute()
+            .value
+
+        return invoiceId
+    }
 }

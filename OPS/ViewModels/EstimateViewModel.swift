@@ -170,6 +170,19 @@ class EstimateViewModel: ObservableObject {
         }
     }
 
+    /// Create an invoice from selected line items at specified percentages.
+    /// Requires a backend RPC (e.g. `create_progress_invoice`) that does not yet exist.
+    /// Once the RPC is available, wire it through EstimateRepository.
+    func createProgressInvoice(
+        from estimate: Estimate,
+        lineItemSelections: [(lineItemId: String, percentage: Double)]
+    ) async {
+        // TODO: Implement once backend RPC is available.
+        // The RPC should accept: estimate_id, [(line_item_id, percentage)]
+        // and handle invoice_number generation, balance_due calc, and line item creation.
+        self.error = "Progress invoicing is not yet available. Use full invoice conversion."
+    }
+
     private func updateStatus(_ estimate: Estimate, to status: EstimateStatus) async {
         guard let repo = repository else { return }
         let originalStatus = estimate.status

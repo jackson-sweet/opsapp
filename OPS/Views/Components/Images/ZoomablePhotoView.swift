@@ -23,56 +23,7 @@ struct ZoomablePhotoView: View {
             OPSStyle.Colors.background
 
             if let image = image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .scaleEffect(scale)
-                    .offset(offset)
-                    .gesture(
-                        SimultaneousGesture(
-                            MagnificationGesture()
-                                .onChanged { value in
-                                    let newScale = lastScale * value
-                                    scale = min(max(newScale, 1), 5)
-                                }
-                                .onEnded { _ in
-                                    lastScale = scale
-                                    if scale <= 1 {
-                                        withAnimation(OPSStyle.Animation.fast) {
-                                            scale = 1
-                                            lastScale = 1
-                                            offset = .zero
-                                            lastOffset = .zero
-                                        }
-                                    }
-                                },
-                            DragGesture()
-                                .onChanged { value in
-                                    if scale > 1 {
-                                        offset = CGSize(
-                                            width: lastOffset.width + value.translation.width,
-                                            height: lastOffset.height + value.translation.height
-                                        )
-                                    }
-                                }
-                                .onEnded { _ in
-                                    lastOffset = offset
-                                }
-                        )
-                    )
-                    .onTapGesture(count: 2) {
-                        withAnimation(OPSStyle.Animation.fast) {
-                            if scale > 1 {
-                                scale = 1
-                                lastScale = 1
-                                offset = .zero
-                                lastOffset = .zero
-                            } else {
-                                scale = 2
-                                lastScale = 2
-                            }
-                        }
-                    }
+                imageContent(image)
             } else if isLoading {
                 ProgressView()
                     .tint(OPSStyle.Colors.secondaryText)
@@ -84,6 +35,76 @@ struct ZoomablePhotoView: View {
         }
         .onAppear { loadImage() }
     }
+
+    // MARK: - Image Content
+
+    @ViewBuilder
+    private func imageContent(_ uiImage: UIImage) -> some View {
+        let base = Image(uiImage: uiImage)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .scaleEffect(scale)
+            .offset(offset)
+            .onTapGesture(count: 2) {
+                withAnimation(OPSStyle.Animation.fast) {
+                    if scale > 1 {
+                        scale = 1
+                        lastScale = 1
+                        offset = .zero
+                        lastOffset = .zero
+                    } else {
+                        scale = 2
+                        lastScale = 2
+                    }
+                }
+            }
+
+        if scale > 1 {
+            // Zoomed in: attach both pinch and drag.
+            // Drag is needed for panning. This will block TabView swiping,
+            // which is correct — when zoomed, panning takes priority.
+            base.gesture(
+                SimultaneousGesture(
+                    magnifyGesture,
+                    DragGesture()
+                        .onChanged { value in
+                            offset = CGSize(
+                                width: lastOffset.width + value.translation.width,
+                                height: lastOffset.height + value.translation.height
+                            )
+                        }
+                        .onEnded { _ in
+                            lastOffset = offset
+                        }
+                )
+            )
+        } else {
+            // Normal zoom: only pinch gesture.
+            // No DragGesture so TabView receives swipes for page changes.
+            base.gesture(magnifyGesture)
+        }
+    }
+
+    private var magnifyGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                let newScale = lastScale * value
+                scale = min(max(newScale, 1), 5)
+            }
+            .onEnded { _ in
+                lastScale = scale
+                if scale <= 1 {
+                    withAnimation(OPSStyle.Animation.fast) {
+                        scale = 1
+                        lastScale = 1
+                        offset = .zero
+                        lastOffset = .zero
+                    }
+                }
+            }
+    }
+
+    // MARK: - Image Loading
 
     private func loadImage() {
         isLoading = true

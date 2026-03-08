@@ -171,6 +171,51 @@ class ClientRepository {
             .eq("id", value: id)
             .execute()
     }
+
+    // MARK: - Update SubClient
+
+    func updateSubClient(
+        subClientId: String,
+        name: String?,
+        title: String?,
+        email: String?,
+        phone: String?,
+        address: String?
+    ) async throws {
+        struct SubClientUpdate: Codable {
+            let name: String?
+            let title: String?
+            let email: String?
+            let phone_number: String?
+            let address: String?
+            let updated_at: String
+        }
+        let payload = SubClientUpdate(
+            name: name,
+            title: title,
+            email: email,
+            phone_number: phone,
+            address: address,
+            updated_at: isoNow()
+        )
+        try await client
+            .from("sub_clients")
+            .update(payload)
+            .eq("id", value: subClientId)
+            .execute()
+    }
+
+    // MARK: - Update Client Fields (generic)
+
+    func updateFields(_ clientId: String, fields: [String: AnyJSON]) async throws {
+        var payload = fields
+        payload["updated_at"] = .string(isoNow())
+        try await client
+            .from("clients")
+            .update(payload)
+            .eq("id", value: clientId)
+            .execute()
+    }
 }
 
 // MARK: - ISO8601 Helpers

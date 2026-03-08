@@ -73,6 +73,31 @@ class CompanyRepository {
             .execute()
     }
 
+    /// Generic field update accepting AnyJSON values directly.
+    func updateFields(companyId: String, fields: [String: AnyJSON]) async throws {
+        var payload = fields
+        payload["updated_at"] = .string(isoNow())
+        try await client
+            .from("companies")
+            .update(payload)
+            .eq("id", value: companyId)
+            .execute()
+    }
+
+    /// Soft-delete a company by setting deleted_at.
+    func softDelete(companyId: String) async throws {
+        struct SoftDelete: Codable {
+            let deleted_at: String
+            let updated_at: String
+        }
+        let payload = SoftDelete(deleted_at: isoNow(), updated_at: isoNow())
+        try await client
+            .from("companies")
+            .update(payload)
+            .eq("id", value: companyId)
+            .execute()
+    }
+
     /// Replaces the seated_employee_ids array for a company.
     func updateSeatedEmployees(companyId: String, userIds: [String]) async throws {
         struct SeatedEmployeesUpdate: Codable {

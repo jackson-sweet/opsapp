@@ -14,18 +14,6 @@ import SwiftData
 import Combine
 import Supabase
 
-// MARK: - Sync Error
-
-enum SyncError: Error {
-    case notConnected
-    case alreadySyncing
-    case missingUserId
-    case missingCompanyId
-    case apiError(Error)
-    case dataCorruption
-    case unauthorized
-}
-
 @MainActor
 class SupabaseSyncManager: ObservableObject {
 
@@ -213,7 +201,7 @@ class SupabaseSyncManager: ObservableObject {
         }
     }
 
-    /// Background refresh - Lightweight sync of changed data
+    /// Background refresh - Push pending outbound changes, then pull inbound updates
     func syncBackgroundRefresh() async throws {
         guard !syncInProgress else { return }
         guard isConnected else { return }
@@ -224,6 +212,10 @@ class SupabaseSyncManager: ObservableObject {
         print("[SUPABASE_SYNC_BG] Background refresh...")
 
         do {
+            // Push outbound first — clear any pending local changes
+            await pushPendingOutbound()
+
+            // Then pull inbound updates
             try await syncProjects(sinceDate: lastSyncDate)
             try await syncTasks(sinceDate: lastSyncDate)
 
@@ -232,6 +224,90 @@ class SupabaseSyncManager: ObservableObject {
         } catch {
             print("[SUPABASE_SYNC_BG] Refresh failed: \(error)")
             throw error
+        }
+    }
+
+    /// Push all locally-modified items (needsSync == true) to Supabase
+    private func pushPendingOutbound() async {
+        let isoFormatter = ISO8601DateFormatter()
+
+        // Push pending projects
+        do {
+            let descriptor = FetchDescriptor<Project>(
+                predicate: #Predicate<Project> { $0.needsSync == true }
+            )
+            let pendingProjects = try modelContext.fetch(descriptor)
+            for project in pendingProjects {
+                do {
+                    var fields: [String: AnyJSON] = [
+                        "title": .string(project.title),
+                        "status": .string(project.status.rawValue),
+                    ]
+                    if let address = project.address { fields["address"] = .string(address) }
+                    if let notes = project.notes { fields["notes"] = .string(notes) }
+                    if let desc = project.projectDescription { fields["description"] = .string(desc) }
+                    if let clientId = project.clientId { fields["client_id"] = .string(clientId) }
+                    if let startDate = project.startDate { fields["start_date"] = .string(isoFormatter.string(from: startDate)) }
+                    if let endDate = project.endDate { fields["end_date"] = .string(isoFormatter.string(from: endDate)) }
+                    if let deletedAt = project.deletedAt { fields["deleted_at"] = .string(isoFormatter.string(from: deletedAt)) }
+                    let memberIds = project.getTeamMemberIds()
+                    fields["team_member_ids"] = .array(memberIds.map { AnyJSON.string($0) })
+
+                    try await projectRepo?.updateFields(project.id, fields: fields)
+                    project.needsSync = false
+                    project.lastSyncedAt = Date()
+                    print("[SUPABASE_SYNC_BG] Pushed pending project: \(project.title)")
+                } catch {
+                    print("[SUPABASE_SYNC_BG] Failed to push project \(project.id): \(error)")
+                }
+            }
+            if !pendingProjects.isEmpty { try modelContext.save() }
+        } catch {
+            print("[SUPABASE_SYNC_BG] Failed to fetch pending projects: \(error)")
+        }
+
+        // Push pending tasks
+        do {
+            let descriptor = FetchDescriptor<ProjectTask>(
+                predicate: #Predicate<ProjectTask> { $0.needsSync == true }
+            )
+            let pendingTasks = try modelContext.fetch(descriptor)
+            for task in pendingTasks {
+                do {
+                    var fields: [String: AnyJSON] = [
+                        "status": .string(task.status.rawValue),
+                    ]
+                    if let notes = task.taskNotes { fields["task_notes"] = .string(notes) }
+                    if let customTitle = task.customTitle { fields["custom_title"] = .string(customTitle) }
+                    if !task.taskColor.isEmpty { fields["task_color"] = .string(task.taskColor) }
+                    if let deletedAt = task.deletedAt { fields["deleted_at"] = .string(isoFormatter.string(from: deletedAt)) }
+                    let memberIds = task.getTeamMemberIds()
+                    fields["team_member_ids"] = .array(memberIds.map { AnyJSON.string($0) })
+
+                    try await taskRepo?.updateFields(task.id, fields: fields)
+                    task.needsSync = false
+                    task.lastSyncedAt = Date()
+                    print("[SUPABASE_SYNC_BG] Pushed pending task: \(task.id)")
+                } catch {
+                    print("[SUPABASE_SYNC_BG] Failed to push task \(task.id): \(error)")
+                }
+            }
+            if !pendingTasks.isEmpty { try modelContext.save() }
+        } catch {
+            print("[SUPABASE_SYNC_BG] Failed to fetch pending tasks: \(error)")
+        }
+
+        // Push pending users
+        do {
+            let descriptor = FetchDescriptor<User>(
+                predicate: #Predicate<User> { $0.needsSync == true }
+            )
+            let pendingUsers = try modelContext.fetch(descriptor)
+            for user in pendingUsers {
+                await syncUser(user)
+            }
+        } catch {
+            print("[SUPABASE_SYNC_BG] Failed to fetch pending users: \(error)")
         }
     }
 
@@ -375,7 +451,6 @@ class SupabaseSyncManager: ObservableObject {
             // Override role based on admin list
             if adminIds.contains(dto.id) {
                 user.role = .admin
-                user.isCompanyAdmin = true
             }
             try upsertUser(user)
         }
@@ -1158,7 +1233,7 @@ class SupabaseSyncManager: ObservableObject {
             existing.userColor = model.userColor
             existing.role = model.role
             existing.userType = model.userType
-            existing.isCompanyAdmin = model.isCompanyAdmin
+
             existing.hasCompletedAppOnboarding = model.hasCompletedAppOnboarding
             existing.hasCompletedAppTutorial = model.hasCompletedAppTutorial
             existing.devPermission = model.devPermission
@@ -1244,6 +1319,7 @@ class SupabaseSyncManager: ObservableObject {
             existing.icon = model.icon
             existing.isDefault = model.isDefault
             existing.displayOrder = model.displayOrder
+            existing.dependenciesJSON = model.dependenciesJSON
             existing.deletedAt = model.deletedAt
             existing.lastSyncedAt = Date()
             existing.needsSync = false
@@ -1309,6 +1385,9 @@ class SupabaseSyncManager: ObservableObject {
             existing.teamMemberIdsString = model.teamMemberIdsString
             existing.sourceLineItemId = model.sourceLineItemId
             existing.sourceEstimateId = model.sourceEstimateId
+            existing.dependencyOverridesJSON = model.dependencyOverridesJSON
+            existing.startTime = model.startTime
+            existing.endTime = model.endTime
             existing.deletedAt = model.deletedAt
             existing.lastSyncedAt = Date()
             if !existing.needsSync {

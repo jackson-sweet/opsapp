@@ -83,7 +83,7 @@ final class InboundProcessor {
 
         // Link relationships after all entities are pulled
         print("[InboundProcessor] Linking relationships...")
-        try linkAllRelationships(context: context)
+        linkAllRelationships(context: context)
 
         onProgress?(.projectTask, 1.0)
         print("[InboundProcessor] ======== FULL SYNC COMPLETED ========")
@@ -108,7 +108,7 @@ final class InboundProcessor {
         }
 
         // Re-link relationships after pulling updates
-        try linkAllRelationships(context: context)
+        linkAllRelationships(context: context)
 
         print("[InboundProcessor] ======== DELTA SYNC COMPLETED ========")
     }
@@ -616,44 +616,75 @@ final class InboundProcessor {
 
     /// Link SwiftData relationships after all entities have been pulled.
     /// Ported from SupabaseSyncManager.linkAllRelationships().
-    private func linkAllRelationships(context: ModelContext) throws {
+    private func linkAllRelationships(context: ModelContext) {
         print("[InboundProcessor] Linking all relationships...")
 
-        let projects = try context.fetch(FetchDescriptor<Project>())
-        let tasks = try context.fetch(FetchDescriptor<ProjectTask>())
-        let clients = try context.fetch(FetchDescriptor<Client>())
-        let taskTypes = try context.fetch(FetchDescriptor<TaskType>())
-        let users = try context.fetch(FetchDescriptor<User>())
+        let projects: [Project]
+        let tasks: [ProjectTask]
+        let clients: [Client]
+        let taskTypes: [TaskType]
+        let users: [User]
+        do {
+            projects = try context.fetch(FetchDescriptor<Project>())
+            tasks = try context.fetch(FetchDescriptor<ProjectTask>())
+            clients = try context.fetch(FetchDescriptor<Client>())
+            taskTypes = try context.fetch(FetchDescriptor<TaskType>())
+            users = try context.fetch(FetchDescriptor<User>())
+        } catch {
+            print("[InboundProcessor] ⚠️ Failed to fetch entities for linking: \(error)")
+            return
+        }
 
-        // Build lookup dictionaries
-        let clientById = Dictionary(uniqueKeysWithValues: clients.map { ($0.id, $0) })
-        let taskTypeById = Dictionary(uniqueKeysWithValues: taskTypes.map { ($0.id, $0) })
-        let userById = Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
-        let projectById = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0) })
+        // Build lookup dictionaries — use last-wins to safely handle duplicates
+        var clientById: [String: Client] = [:]
+        for c in clients { clientById[c.id] = c }
+        var taskTypeById: [String: TaskType] = [:]
+        for t in taskTypes { taskTypeById[t.id] = t }
+        var userById: [String: User] = [:]
+        for u in users { userById[u.id] = u }
+        var projectById: [String: Project] = [:]
+        for p in projects { projectById[p.id] = p }
 
         // Link projects to clients and team members
         for project in projects {
             if let clientId = project.clientId, let client = clientById[clientId] {
-                project.client = client
+                if project.client?.id != clientId {
+                    project.client = client
+                }
             }
             let memberIds = project.getTeamMemberIds()
-            project.teamMembers = memberIds.compactMap { userById[$0] }
+            let members = memberIds.compactMap { userById[$0] }
+            if Set(project.teamMembers.map(\.id)) != Set(members.map(\.id)) {
+                project.teamMembers = members
+            }
         }
 
         // Link tasks to projects, task types, and team members
         for task in tasks {
             if let project = projectById[task.projectId] {
-                task.project = project
+                if task.project?.id != project.id {
+                    task.project = project
+                }
             }
             if let taskType = taskTypeById[task.taskTypeId] {
-                task.taskType = taskType
+                if task.taskType?.id != taskType.id {
+                    task.taskType = taskType
+                }
             }
             let memberIds = task.getTeamMemberIds()
-            task.teamMembers = memberIds.compactMap { userById[$0] }
+            let members = memberIds.compactMap { userById[$0] }
+            if Set(task.teamMembers.map(\.id)) != Set(members.map(\.id)) {
+                task.teamMembers = members
+            }
         }
 
-        try context.save()
-        print("[InboundProcessor] Relationships linked")
+        do {
+            try context.save()
+            print("[InboundProcessor] Relationships linked")
+        } catch {
+            print("[InboundProcessor] ⚠️ Relationship linking save failed: \(error) — rolling back")
+            context.rollback()
+        }
     }
 
     // MARK: - Helpers

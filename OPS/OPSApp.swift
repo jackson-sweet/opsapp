@@ -55,7 +55,12 @@ struct OPSApp: App {
             SiteVisit.self,
             ProjectNote.self,
             PhotoAnnotation.self,
-            CalendarUserEvent.self
+            CalendarUserEvent.self,
+            // Offline-first sync models
+            TimeEntry.self,
+            SignatureCapture.self,
+            FormSubmission.self,
+            LocalPhoto.self
         ])
         
         let modelConfiguration = ModelConfiguration(

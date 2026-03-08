@@ -25,6 +25,8 @@ struct AppHeader: View {
     var onRefreshTapped: (() -> Void)? = nil
     var onFilterTapped: (() -> Void)? = nil
     var onMonthTapped: (() -> Void)? = nil
+    var onScopeToggled: (() -> Void)? = nil
+    var isScopeAll: Bool = true
     var hasActiveFilters: Bool = false
     var filterCount: Int = 0
     
@@ -65,15 +67,11 @@ struct AppHeader: View {
                             // Show subscription badge if relevant
                             if let status = company.subscriptionStatus,
                                let statusEnum = SubscriptionStatus(rawValue: status) {
-                                Text("•")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                
                                 HStack(spacing: 4) {
                                     Circle()
                                         .fill(statusColor(for: statusEnum))
                                         .frame(width: 6, height: 6)
-                                    
+
                                     Text(statusText(for: statusEnum))
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(statusColor(for: statusEnum))
@@ -85,7 +83,7 @@ struct AppHeader: View {
                 
                 Spacer()
 
-                // User avatar with notification bell overlay — tap opens notifications
+                // User avatar with sync indicator and notification bell overlay
                 Button(action: {
                     appState.showingNotifications = true
                 }) {
@@ -107,6 +105,24 @@ struct AppHeader: View {
                                 Circle()
                                     .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
                                 )
+                        }
+
+                        // Sync ring animation — rotating arc when actively syncing
+                        if dataController.syncEngine.isSyncing {
+                            SyncRingView()
+                                .frame(width: 52, height: 52)
+                        }
+
+                        // Pending offline badge — amber dot when operations are queued
+                        if !dataController.syncEngine.isSyncing && dataController.syncEngine.pendingOperationCount > 0 {
+                            Circle()
+                                .fill(OPSStyle.Colors.warningStatus)
+                                .frame(width: 10, height: 10)
+                                .overlay(
+                                    Circle()
+                                        .stroke(OPSStyle.Colors.background, lineWidth: 1.5)
+                                )
+                                .offset(x: 18, y: -18)
                         }
 
                         // Bell icon — bottom-left of avatar
@@ -194,83 +210,96 @@ struct AppHeader: View {
                 
                 Spacer()
                 
-                // Search, filter and refresh buttons for schedule view
-                if headerType == .schedule {
-                    HStack(spacing: 8) {
-                        // Calendar/month toggle button
-                        if let onMonthTapped = onMonthTapped {
-                            Button(action: onMonthTapped) {
-                                Image(systemName: "calendar")
-                                    .font(.system(size: 18, weight: .light))
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .frame(width: 36, height: 36)
-                            }
+                // Action buttons — schedule and job board
+                HStack(spacing: 8) {
+                    // Calendar/month toggle button (schedule only)
+                    if headerType == .schedule, let onMonthTapped = onMonthTapped {
+                        Button(action: onMonthTapped) {
+                            Image(systemName: "calendar")
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .frame(width: 44, height: 44)
+                                .background(OPSStyle.Colors.cardBackground)
+                                .clipShape(Circle())
                         }
+                        .buttonStyle(PlainButtonStyle())
+                    }
 
-                        // Filter button
-                        if let onFilterTapped = onFilterTapped {
-                            Button(action: onFilterTapped) {
-                                ZStack {
-                                    Image(systemName: hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
-                                        .frame(width: 44, height: 44)
-                                        .background(OPSStyle.Colors.cardBackground)
+                    // Filter button (schedule only)
+                    if headerType == .schedule, let onFilterTapped = onFilterTapped {
+                        Button(action: onFilterTapped) {
+                            ZStack {
+                                Image(systemName: hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(hasActiveFilters ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                                    .frame(width: 44, height: 44)
+                                    .background(OPSStyle.Colors.cardBackground)
+                                    .clipShape(Circle())
+
+                                // Show filter count badge if filters are active
+                                if hasActiveFilters && filterCount > 0 {
+                                    Text("\(filterCount)")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .padding(4)
+                                        .background(OPSStyle.Colors.primaryAccent)
                                         .clipShape(Circle())
-                                    
-                                    // Show filter count badge if filters are active
-                                    if hasActiveFilters && filterCount > 0 {
-                                        Text("\(filterCount)")
-                                            .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
-                                            .padding(4)
-                                            .background(OPSStyle.Colors.primaryAccent)
-                                            .clipShape(Circle())
-                                            .offset(x: 14, y: -14)
-                                    }
+                                        .offset(x: 14, y: -14)
                                 }
                             }
                         }
-                        
-                        // Refresh button
-                        if let onRefreshTapped = onRefreshTapped {
-                            Button(action: onRefreshTapped) {
-                                Image(systemName: "arrow.clockwise")
+                        .buttonStyle(PlainButtonStyle())
+                    }
+
+                    // ALL/MINE scope toggle (schedule only)
+                    if headerType == .schedule, let onScopeToggled = onScopeToggled {
+                        Button(action: onScopeToggled) {
+                            ZStack {
+                                Image(systemName: isScopeAll ? "person.2" : "person")
                                     .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .foregroundColor(isScopeAll ? OPSStyle.Colors.primaryText : OPSStyle.Colors.primaryAccent)
                                     .frame(width: 44, height: 44)
                                     .background(OPSStyle.Colors.cardBackground)
                                     .clipShape(Circle())
+
+                                // Indicator dot when MINE is selected
+                                if !isScopeAll {
+                                    Circle()
+                                        .fill(OPSStyle.Colors.primaryAccent)
+                                        .frame(width: 8, height: 8)
+                                        .offset(x: 14, y: -14)
+                                }
                             }
                         }
-                        
-                        // Search button
-                        if let onSearchTapped = onSearchTapped {
-                            Button(action: onSearchTapped) {
-                                Image(systemName: "magnifyingglass")
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .frame(width: 44, height: 44)
-                                    .background(OPSStyle.Colors.cardBackground)
-                                    .clipShape(Circle())
-                            }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+
+                    // Search button (schedule and job board)
+                    if headerType == .schedule, let onSearchTapped = onSearchTapped {
+                        Button(action: onSearchTapped) {
+                            Image(systemName: "magnifyingglass")
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .frame(width: 44, height: 44)
+                                .background(OPSStyle.Colors.cardBackground)
+                                .clipShape(Circle())
                         }
+                        .buttonStyle(PlainButtonStyle())
                     }
-                }
-                
-                // Search button — Job Board only
-                if headerType == .jobBoard {
-                    Button(action: {
-                        appState.showingJobBoardSearch = true
-                    }) {
-                        Image(systemName: "magnifyingglass")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .frame(width: 44, height: 44)
-                            .background(OPSStyle.Colors.cardBackground)
-                            .clipShape(Circle())
+
+                    if headerType == .jobBoard {
+                        Button(action: {
+                            appState.showingJobBoardSearch = true
+                        }) {
+                            Image(systemName: "magnifyingglass")
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .frame(width: 44, height: 44)
+                                .background(OPSStyle.Colors.cardBackground)
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
-                    .buttonStyle(PlainButtonStyle())
                 }
 
             }
@@ -354,6 +383,7 @@ struct AppHeader: View {
     }
     
     
+    // MARK: - Unused (retained for legacy)
     // Version and actions view at the bottom
     private var versionAndActionsView: some View {
         VStack(spacing: 16) {
@@ -424,5 +454,30 @@ struct AppHeader: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 16)
         }
+    }
+}
+
+// MARK: - Sync Ring Animation
+
+/// Rotating arc overlay shown around the avatar when sync is in progress.
+struct SyncRingView: View {
+    @State private var rotation: Double = 0
+
+    var body: some View {
+        Circle()
+            .trim(from: 0, to: 0.3)
+            .stroke(
+                OPSStyle.Colors.primaryAccent,
+                style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+            )
+            .rotationEffect(.degrees(rotation))
+            .onAppear {
+                withAnimation(
+                    .linear(duration: 1.2)
+                    .repeatForever(autoreverses: false)
+                ) {
+                    rotation = 360
+                }
+            }
     }
 }

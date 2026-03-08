@@ -23,10 +23,23 @@ struct NotificationListView: View {
             if isLoading {
                 ProgressView()
                     .tint(OPSStyle.Colors.primaryAccent)
-            } else if notifications.isEmpty {
-                emptyState
             } else {
-                notificationList
+                ScrollView {
+                    VStack(spacing: 0) {
+                        userInfoHeader
+
+                        // Sync status section — shows pending/failed operations
+                        SyncStatusSection()
+                            .environmentObject(dataController)
+
+                        if notifications.isEmpty {
+                            emptyState
+                                .padding(.top, 60)
+                        } else {
+                            notificationListContent
+                        }
+                    }
+                }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -83,20 +96,72 @@ struct NotificationListView: View {
         }
     }
 
+    // MARK: - User Info Header
+
+    private var userInfoHeader: some View {
+        Group {
+            if let user = dataController.currentUser {
+                VStack(spacing: 12) {
+                    // Initials circle
+                    Circle()
+                        .fill(OPSStyle.Colors.primaryAccent.opacity(0.2))
+                        .frame(width: 56, height: 56)
+                        .overlay(
+                            Text(String(user.firstName.prefix(1)) + String(user.lastName.prefix(1)))
+                                .font(Font.custom("Kosugi-Regular", size: 18))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        )
+
+                    // Name
+                    Text("\(user.firstName) \(user.lastName)")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    // Email
+                    if let email = user.email, !email.isEmpty {
+                        Text(email)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+
+                    // Role badge
+                    Text(user.role.displayName.uppercased())
+                        .font(OPSStyle.Typography.smallCaption)
+                        .tracking(0.5)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                        .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
+                        .cornerRadius(OPSStyle.Layout.buttonRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                        )
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .background(OPSStyle.Colors.cardBackgroundDark)
+
+                Rectangle()
+                    .fill(OPSStyle.Colors.cardBorder)
+                    .frame(height: 1)
+            }
+        }
+    }
+
     // MARK: - Notification List
 
-    private var notificationList: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(notifications) { notification in
-                    notificationRow(notification)
+    private var notificationListContent: some View {
+        LazyVStack(spacing: 0) {
+            ForEach(notifications) { notification in
+                notificationRow(notification)
 
-                    if notification.id != notifications.last?.id {
-                        Rectangle()
-                            .fill(OPSStyle.Colors.cardBorderSubtle)
-                            .frame(height: 1)
-                            .padding(.leading, 56)
-                    }
+                if notification.id != notifications.last?.id {
+                    Rectangle()
+                        .fill(OPSStyle.Colors.cardBorderSubtle)
+                        .frame(height: 1)
+                        .padding(.leading, 56)
                 }
             }
         }

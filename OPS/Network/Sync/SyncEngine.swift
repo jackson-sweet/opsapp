@@ -245,18 +245,19 @@ final class SyncEngine {
         hasError = false
         statusText = "Syncing…"
 
-        do {
-            // Push local changes first, then pull server changes
-            await pushPending()
-            await pullDelta()
-
-            statusText = "Synced"
-            hasError = false
+        defer {
+            syncInProgress = false
+            isSyncing = false
+            refreshPendingCount()
         }
 
-        syncInProgress = false
-        isSyncing = false
-        refreshPendingCount()
+        // Push local changes first, then pull server changes
+        await pushPending()
+        await pullDelta()
+
+        if !hasError {
+            statusText = "Synced"
+        }
     }
 
     /// Performs a full sync of all entities in dependency order.
@@ -279,34 +280,43 @@ final class SyncEngine {
         hasError = false
         statusText = "Performing full sync…"
 
+        defer {
+            isPerformingInitialSync = false
+            syncInProgress = false
+            isSyncing = false
+            refreshPendingCount()
+        }
+
         // Pull all entities via InboundProcessor
+        guard let ctx = modelContext else { return }
         do {
             try await inboundProcessor?.fullSync(
-                context: modelContext!,
-                onProgress: { [weak self] entityType, progress in
+                context: ctx,
+                onProgress: { [weak self] entityType, _ in
                     self?.statusText = "Syncing \(entityType.rawValue)…"
                 }
             )
         } catch {
             print("[SYNC_ENGINE] Full sync pull error: \(error)")
             hasError = true
+            if case .authExpired = classifySyncError(error) {
+                NotificationCenter.default.post(name: .syncAuthExpired, object: nil)
+                return
+            }
         }
 
-        // Update all timestamps
-        let now = Date()
-        for entityType in SyncEntityType.allCases {
-            setLastSyncTimestamp(now, for: entityType)
+        // Update all timestamps on success
+        if !hasError {
+            let now = Date()
+            for entityType in SyncEntityType.allCases {
+                setLastSyncTimestamp(now, for: entityType)
+            }
         }
 
         // Push any pending local operations
         await pushPending()
 
-        statusText = "Full sync complete"
-        isPerformingInitialSync = false
-        syncInProgress = false
-        isSyncing = false
-        refreshPendingCount()
-
+        statusText = hasError ? "Sync error" : "Full sync complete"
         print("[SYNC_ENGINE] Full sync complete")
     }
 
@@ -369,6 +379,9 @@ final class SyncEngine {
             print("[SYNC_ENGINE] pullDelta error: \(error)")
             hasError = true
             statusText = "Sync error"
+            if case .authExpired = classifySyncError(error) {
+                NotificationCenter.default.post(name: .syncAuthExpired, object: nil)
+            }
         }
     }
 
@@ -415,6 +428,14 @@ final class SyncEngine {
     func setLastSyncTimestamp(_ date: Date, for entityType: SyncEntityType) {
         let key = "sync.lastPull.\(entityType.rawValue)"
         UserDefaults.standard.set(date, forKey: key)
+    }
+
+    /// Clears all stored sync timestamps. Used on logout or full reset.
+    func clearAllTimestamps() {
+        for entityType in SyncEntityType.allCases {
+            let key = "sync.lastPull.\(entityType.rawValue)"
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 
     // MARK: - Operation Queries

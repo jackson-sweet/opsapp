@@ -251,9 +251,22 @@ final class OutboundProcessor {
 
         } catch {
             let classified = classifySyncError(error)
-            operation.retryCount += 1
             operation.lastError = classified.localizedDescription
 
+            // Auth errors: don't retry, post notification for re-authentication
+            if case .authExpired = classified {
+                operation.status = "failed"
+                print("[OutboundProcessor] Auth expired — stopping sync for \(operation.entityType) \(operation.entityId)")
+                await MainActor.run {
+                    NotificationCenter.default.post(
+                        name: .syncAuthExpired,
+                        object: nil
+                    )
+                }
+                throw error
+            }
+
+            operation.retryCount += 1
             if operation.retryCount >= maxRetries {
                 operation.status = "failed"
                 print("[OutboundProcessor] Permanently failed \(operation.entityType) \(operation.entityId) after \(operation.retryCount) retries")

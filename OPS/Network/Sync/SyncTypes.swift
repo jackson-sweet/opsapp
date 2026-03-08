@@ -264,3 +264,11 @@ func classifySyncError(_ error: Error) -> SyncError {
 
     return .unknown(underlying: error)
 }
+
+// MARK: - Notification Names
+
+extension Notification.Name {
+    /// Posted when a sync operation detects expired authentication.
+    /// DataController should observe this and trigger re-authentication.
+    static let syncAuthExpired = Notification.Name("syncAuthExpired")
+}

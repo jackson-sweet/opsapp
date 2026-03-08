@@ -1663,7 +1663,7 @@ struct ProjectFormSheet: View {
                 id: member.id,
                 firstName: member.firstName,
                 lastName: member.lastName,
-                role: UserRole(rawValue: member.role.lowercased()) ?? .fieldCrew,
+                role: UserRole(rawValue: member.role.lowercased()) ?? .crew,
                 companyId: project.companyId
             )
             user.email = member.email
@@ -1694,10 +1694,9 @@ struct ProjectFormSheet: View {
 
         var savedOffline = false
 
-        do {
-            // Sync project to Supabase
-            let isoFormatter = ISO8601DateFormatter()
-            let dto = SupabaseProjectDTO(
+        // Build DTO outside do block so catch blocks can access it
+        let isoFormatter = ISO8601DateFormatter()
+        let dto = SupabaseProjectDTO(
                 id: project.id,
                 bubbleId: nil,
                 companyId: companyId,
@@ -1719,6 +1718,7 @@ struct ProjectFormSheet: View {
                 deletedAt: nil
             )
 
+        do {
             if let syncManager = dataController.syncManager {
                 let _ = try await syncManager.createProject(dto: dto)
                 print("[PROJECT_CREATE] ✅ Project synced to Supabase: \(project.id)")
@@ -1732,6 +1732,10 @@ struct ProjectFormSheet: View {
                 project.needsSync = true
                 await MainActor.run {
                     try? modelContext.save()
+                }
+                // Queue for SyncEngine push
+                await MainActor.run {
+                    recordProjectSyncOperation(project: project, dto: dto)
                 }
             }
 
@@ -1787,6 +1791,11 @@ struct ProjectFormSheet: View {
             savedOffline = true
             print("[PROJECT_CREATE] ⏱️ Network timeout - project saved offline")
 
+            // Queue for SyncEngine push
+            await MainActor.run {
+                recordProjectSyncOperation(project: project, dto: dto)
+            }
+
             // Create tasks offline with local project ID
             if !localTasks.isEmpty {
                 print("[PROJECT_CREATE] Creating \(localTasks.count) task(s) offline with local project ID")
@@ -1797,6 +1806,11 @@ struct ProjectFormSheet: View {
         } catch let error as URLError {
             savedOffline = true
             print("[PROJECT_CREATE] ❌ Network error - project saved offline: \(error)")
+
+            // Queue for SyncEngine push
+            await MainActor.run {
+                recordProjectSyncOperation(project: project, dto: dto)
+            }
 
             // Create tasks offline with local project ID
             if !localTasks.isEmpty {
@@ -1860,7 +1874,7 @@ struct ProjectFormSheet: View {
                     id: member.id,
                     firstName: member.firstName,
                     lastName: member.lastName,
-                    role: UserRole(rawValue: member.role.lowercased()) ?? .fieldCrew,
+                    role: UserRole(rawValue: member.role.lowercased()) ?? .crew,
                     companyId: project.companyId
                 )
                 user.email = member.email
@@ -1912,7 +1926,7 @@ struct ProjectFormSheet: View {
                     id: member.id,
                     firstName: member.firstName,
                     lastName: member.lastName,
-                    role: UserRole(rawValue: member.role.lowercased()) ?? .fieldCrew,
+                    role: UserRole(rawValue: member.role.lowercased()) ?? .crew,
                     companyId: companyId
                 )
                 user.email = member.email
@@ -1960,6 +1974,9 @@ struct ProjectFormSheet: View {
                     }
                     return 1
                 }(),
+                dependencyOverrides: nil,
+                startTime: nil,
+                endTime: nil,
                 deletedAt: nil
             )
 
@@ -2031,6 +2048,25 @@ struct ProjectFormSheet: View {
         print("[TASK_CREATE] ✅ Task creation complete")
     }
 
+    /// Records a SyncOperation for offline project creation so OutboundProcessor can push it later.
+    @MainActor
+    private func recordProjectSyncOperation(project: Project, dto: SupabaseProjectDTO) {
+        // Encode DTO to dictionary for SyncOperation payload
+        guard let jsonData = try? JSONEncoder().encode(dto),
+              let dict = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            print("[PROJECT_CREATE] ⚠️ Failed to encode project DTO for sync operation")
+            return
+        }
+        dataController.syncEngine.recordOperation(
+            entityType: .project,
+            entityId: project.id,
+            operationType: "create",
+            changedFields: dict,
+            priority: 0
+        )
+        print("[PROJECT_CREATE] 📋 SyncOperation queued for offline project: \(project.id)")
+    }
+
     /// Creates a task locally without API sync (for tutorial mode)
     private func createTaskLocally(for project: Project, localTask: LocalTask) async {
         guard let companyId = dataController.currentUser?.companyId else {
@@ -2070,7 +2106,7 @@ struct ProjectFormSheet: View {
                     id: member.id,
                     firstName: member.firstName,
                     lastName: member.lastName,
-                    role: UserRole(rawValue: member.role.lowercased()) ?? .fieldCrew,
+                    role: UserRole(rawValue: member.role.lowercased()) ?? .crew,
                     companyId: companyId
                 )
                 user.email = member.email

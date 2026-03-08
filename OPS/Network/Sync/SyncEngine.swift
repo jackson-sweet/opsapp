@@ -92,6 +92,23 @@ final class SyncEngine {
             }
         }
 
+        // Listen for connectivity changes to manage realtime disconnect/reconnect
+        NotificationCenter.default.addObserver(
+            forName: ConnectivityManager.connectivityChangedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if self.connectivity?.shouldAttemptSync == true {
+                    // Connectivity restored — realtime will auto-reconnect via startListening
+                } else {
+                    // Connectivity lost — mark realtime as disconnected for catch-up tracking
+                    self.realtimeProcessor?.handleDisconnect()
+                }
+            }
+        }
+
         // Refresh the pending count on configure
         refreshPendingCount()
 

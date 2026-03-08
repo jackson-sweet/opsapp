@@ -108,8 +108,9 @@ struct OPSApp: App {
                     let context = sharedModelContainer.mainContext
                     dataController.setModelContext(context)
 
-                    // Register background sync tasks
-                    dataController.syncEngine.registerBackgroundTasks()
+                    // Register background sync tasks (syncEngine may not be initialized yet
+                    // since setModelContext kicks off async init — guard against nil)
+                    dataController.syncEngine?.registerBackgroundTasks()
 
                     // Wire permission store and load cached permissions
                     dataController.permissionStore = permissionStore
@@ -184,21 +185,21 @@ struct OPSApp: App {
                     case .active:
                         // Trigger sync when app comes to foreground
                         Task {
-                            await dataController.syncEngine.triggerSync()
+                            await dataController.syncEngine?.triggerSync()
                             // Start realtime if authenticated
                             if dataController.isAuthenticated,
                                let companyId = dataController.currentUser?.companyId,
                                !companyId.isEmpty {
-                                await dataController.syncEngine.startRealtime(companyId: companyId)
+                                await dataController.syncEngine?.startRealtime(companyId: companyId)
                             }
                         }
                     case .background:
                         // Schedule background sync tasks
-                        dataController.syncEngine.scheduleBackgroundSync()
+                        dataController.syncEngine?.scheduleBackgroundSync()
                         // Stop realtime after delay
                         Task {
                             try? await Task.sleep(nanoseconds: 30_000_000_000) // 30 seconds
-                            await dataController.syncEngine.stopRealtime()
+                            await dataController.syncEngine?.stopRealtime()
                         }
                     case .inactive:
                         break
@@ -206,11 +207,13 @@ struct OPSApp: App {
                         break
                     }
                 }
-                .onReceive(NotificationCenter.default.publisher(for: ConnectivityManager.connectivityChangedNotification)) { notification in
+                .onReceive(NotificationCenter.default.publisher(for: ConnectivityManager.connectivityChangedNotification)) { _ in
                     // Trigger sync on connectivity change via new engine
-                    if dataController.connectivity.shouldAttemptSync && dataController.isAuthenticated {
+                    if let connectivity = dataController.connectivity,
+                       connectivity.shouldAttemptSync,
+                       dataController.isAuthenticated {
                         Task {
-                            await dataController.syncEngine.triggerSync()
+                            await dataController.syncEngine?.triggerSync()
                         }
                     }
                 }

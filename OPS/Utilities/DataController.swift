@@ -213,6 +213,7 @@ class DataController: ObservableObject {
             self.connectivity = ConnectivityManager()
         }
         syncEngine.configure(modelContext: modelContext, connectivity: connectivity)
+        syncEngine.registerBackgroundTasks()
 
         // Immediately check for pending images after initialization
         if isConnected {

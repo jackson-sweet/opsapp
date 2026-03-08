@@ -21,12 +21,29 @@ final class SyncOperation {
     var status: String = "pending"
     var lastError: String?
 
+    // Rollback support
+    var previousValues: Data?
+
+    // Priority & scheduling
+    var priority: Int = 1  // 0 = immediate, 1 = normal, 2 = low
+    var requiresWiFi: Bool = false
+
+    // Dependency tracking
+    var dependsOnId: String?
+
+    // Completion timestamps
+    var completedAt: Date?
+    var serverConfirmedAt: Date?
+
     init(
         entityType: String,
         entityId: String,
         operationType: String,
         payload: Data,
-        changedFields: [String]
+        changedFields: [String],
+        previousValues: Data? = nil,
+        priority: Int = 1,
+        dependsOnId: String? = nil
     ) {
         self.id = UUID()
         self.entityType = entityType
@@ -35,6 +52,9 @@ final class SyncOperation {
         self.payload = payload
         self.changedFields = changedFields.joined(separator: ",")
         self.createdAt = Date()
+        self.previousValues = previousValues
+        self.priority = priority
+        self.dependsOnId = dependsOnId
     }
 
     func getChangedFields() -> [String] {
@@ -46,4 +66,7 @@ final class SyncOperation {
     var isFailed: Bool { status == "failed" }
     var isCompleted: Bool { status == "completed" }
     var canRetry: Bool { retryCount < 5 }
+
+    /// Exponential backoff delay capped at 60 seconds
+    var backoffDelay: TimeInterval { min(pow(2.0, Double(retryCount)), 60.0) }
 }

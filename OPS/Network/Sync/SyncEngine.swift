@@ -35,11 +35,13 @@ final class SyncEngine {
     /// Retry interval in seconds for the periodic sync timer.
     private let retryInterval: TimeInterval = 180
 
-    // MARK: - Processor Stubs
-    // These will be replaced with real processor references once
-    // OutboundProcessor, InboundProcessor, etc. are created.
-    // private var outboundProcessor: OutboundProcessor?
-    // private var inboundProcessor: InboundProcessor?
+    // MARK: - Processors
+
+    private var outboundProcessor: OutboundProcessor?
+    private var inboundProcessor: InboundProcessor?
+    private var photoProcessor: PhotoProcessor?
+    private var realtimeProcessor: RealtimeProcessor?
+    private var backgroundScheduler: BackgroundSyncScheduler?
 
     // MARK: - Lifecycle
 
@@ -52,10 +54,43 @@ final class SyncEngine {
     // MARK: - Configuration
 
     /// Stores references to the model context and connectivity manager,
-    /// and starts the periodic retry timer.
+    /// initializes all processors, and starts the periodic retry timer.
     func configure(modelContext: ModelContext, connectivity: ConnectivityManager) {
         self.modelContext = modelContext
         self.connectivity = connectivity
+
+        // Initialize processors
+        self.outboundProcessor = OutboundProcessor()
+        self.inboundProcessor = InboundProcessor()
+        self.photoProcessor = PhotoProcessor()
+        self.realtimeProcessor = RealtimeProcessor()
+
+        // Initialize background scheduler
+        let scheduler = BackgroundSyncScheduler()
+        scheduler.onRefreshTask = { [weak self] in
+            await self?.pushPending()
+        }
+        scheduler.onProcessingTask = { [weak self] in
+            await self?.triggerSync()
+            await self?.photoProcessor?.processUploadQueue(
+                context: modelContext,
+                connectivity: connectivity
+            )
+            self?.cleanupCompletedOperations()
+        }
+        self.backgroundScheduler = scheduler
+
+        // Listen for realtime catch-up notifications
+        NotificationCenter.default.addObserver(
+            forName: .realtimeNeedsCatchUp,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let disconnectedAt = notification.userInfo?["disconnectedAt"] as? Date else { return }
+            Task { @MainActor [weak self] in
+                await self?.deltaSyncSince(disconnectedAt)
+            }
+        }
 
         // Refresh the pending count on configure
         refreshPendingCount()
@@ -64,6 +99,34 @@ final class SyncEngine {
         startRetryTimer()
 
         print("[SYNC_ENGINE] Configured with modelContext and connectivity")
+    }
+
+    /// Starts Realtime subscriptions for the given company.
+    func startRealtime(companyId: String) async {
+        guard let modelContext else { return }
+        await realtimeProcessor?.startListening(companyId: companyId, context: modelContext)
+    }
+
+    /// Stops Realtime subscriptions.
+    func stopRealtime() async {
+        await realtimeProcessor?.stopListening()
+    }
+
+    /// Registers BGTaskScheduler tasks. Call from AppDelegate.
+    func registerBackgroundTasks() {
+        backgroundScheduler?.registerTasks()
+    }
+
+    /// Schedules background sync tasks. Call when app enters background.
+    func scheduleBackgroundSync() {
+        backgroundScheduler?.scheduleRefresh()
+        backgroundScheduler?.scheduleProcessing()
+    }
+
+    /// Processes the photo upload queue.
+    func processPhotoUploads() async {
+        guard let modelContext, let connectivity else { return }
+        await photoProcessor?.processUploadQueue(context: modelContext, connectivity: connectivity)
     }
 
     // MARK: - Operation Log
@@ -216,13 +279,23 @@ final class SyncEngine {
         hasError = false
         statusText = "Performing full sync…"
 
-        // Pull all entity types in dependency order (lowest syncPriority first)
-        let orderedTypes = SyncEntityType.allCases.sorted { $0.syncPriority < $1.syncPriority }
+        // Pull all entities via InboundProcessor
+        do {
+            try await inboundProcessor?.fullSync(
+                context: modelContext!,
+                onProgress: { [weak self] entityType, progress in
+                    self?.statusText = "Syncing \(entityType.rawValue)…"
+                }
+            )
+        } catch {
+            print("[SYNC_ENGINE] Full sync pull error: \(error)")
+            hasError = true
+        }
 
-        for entityType in orderedTypes {
-            statusText = "Syncing \(entityType.rawValue)…"
-            print("[SYNC_ENGINE] Full sync — pulling \(entityType.rawValue)")
-            // Stub: will delegate to InboundProcessor per entity type
+        // Update all timestamps
+        let now = Date()
+        for entityType in SyncEntityType.allCases {
+            setLastSyncTimestamp(now, for: entityType)
         }
 
         // Push any pending local operations
@@ -237,9 +310,13 @@ final class SyncEngine {
         print("[SYNC_ENGINE] Full sync complete")
     }
 
-    /// Pushes all pending local operations to the server.
-    /// Stub implementation — will delegate to OutboundProcessor.
+    /// Pushes all pending local operations to the server via OutboundProcessor.
     func pushPending() async {
+        guard let modelContext, let connectivity else {
+            print("[SYNC_ENGINE] Cannot push — not configured")
+            return
+        }
+
         let pending = getPendingOperations()
         guard !pending.isEmpty else {
             print("[SYNC_ENGINE] No pending operations to push")
@@ -249,25 +326,79 @@ final class SyncEngine {
         print("[SYNC_ENGINE] pushPending — \(pending.count) operation(s) to push")
         statusText = "Pushing \(pending.count) change(s)…"
 
-        // TODO: Delegate to OutboundProcessor once it exists.
-        // For now, just log each operation.
-        for op in pending {
-            print("[SYNC_ENGINE]   → \(op.operationType) \(op.entityType) [\(op.entityId)]")
-        }
+        await outboundProcessor?.processPendingOperations(
+            context: modelContext,
+            connectivity: connectivity
+        )
+
+        refreshPendingCount()
     }
 
-    /// Pulls delta changes from the server since the last sync timestamp.
-    /// Stub implementation — will delegate to InboundProcessor.
+    /// Pulls delta changes from the server since the last sync timestamp via InboundProcessor.
     func pullDelta() async {
+        guard let modelContext else {
+            print("[SYNC_ENGINE] Cannot pull — not configured")
+            return
+        }
+
         print("[SYNC_ENGINE] pullDelta — checking for server changes")
         statusText = "Checking for updates…"
 
-        // TODO: Delegate to InboundProcessor once it exists.
-        // For now, just log.
+        // Build timestamps dictionary from stored values
+        var sinceTimestamps: [SyncEntityType: Date] = [:]
         for entityType in SyncEntityType.allCases {
-            let lastPull = lastSyncTimestamp(for: entityType)
-            let since = lastPull?.description ?? "never"
-            print("[SYNC_ENGINE]   → \(entityType.rawValue) last pull: \(since)")
+            if let ts = lastSyncTimestamp(for: entityType) {
+                sinceTimestamps[entityType] = ts
+            }
+        }
+
+        do {
+            try await inboundProcessor?.deltaSync(
+                context: modelContext,
+                since: sinceTimestamps
+            )
+
+            // Update all timestamps on success
+            let now = Date()
+            for entityType in SyncEntityType.allCases {
+                if sinceTimestamps[entityType] != nil {
+                    setLastSyncTimestamp(now, for: entityType)
+                }
+            }
+        } catch {
+            print("[SYNC_ENGINE] pullDelta error: \(error)")
+            hasError = true
+            statusText = "Sync error"
+        }
+    }
+
+    /// Pulls delta changes from a specific timestamp (used for Realtime catch-up).
+    private func deltaSyncSince(_ date: Date) async {
+        guard let modelContext else { return }
+
+        print("[SYNC_ENGINE] Catch-up delta sync from \(date)")
+        statusText = "Catching up…"
+
+        // Build timestamps dictionary with the same date for all entity types
+        var sinceTimestamps: [SyncEntityType: Date] = [:]
+        for entityType in SyncEntityType.allCases {
+            sinceTimestamps[entityType] = date
+        }
+
+        do {
+            try await inboundProcessor?.deltaSync(
+                context: modelContext,
+                since: sinceTimestamps
+            )
+
+            // Update timestamps
+            let now = Date()
+            for entityType in SyncEntityType.allCases {
+                setLastSyncTimestamp(now, for: entityType)
+            }
+            statusText = "Synced"
+        } catch {
+            print("[SYNC_ENGINE] Catch-up delta error: \(error)")
         }
     }
 

@@ -57,7 +57,9 @@ class DataController: ObservableObject {
     var syncManager: SupabaseSyncManager!
     var imageSyncManager: ImageSyncManager!
 
-    /// New sync engine (offline-first)
+    /// New sync engine (offline-first) — initialized in setModelContext,
+    /// configured in initializeSyncManager. Safe to call methods before
+    /// configure (they guard on modelContext and return early).
     private(set) var syncEngine: SyncEngine!
     private(set) var connectivity: ConnectivityManager!
 
@@ -162,6 +164,15 @@ class DataController: ObservableObject {
     func setModelContext(_ context: ModelContext) {
         self.modelContext = context
 
+        // Create sync engine and connectivity eagerly so they're never nil.
+        // configure() is called later in initializeSyncManager() once auth is verified.
+        if self.syncEngine == nil {
+            self.syncEngine = SyncEngine()
+        }
+        if self.connectivity == nil {
+            self.connectivity = ConnectivityManager()
+        }
+
         // Set up in proper sequence to avoid race conditions
         Task {
             // First clean up any duplicate users that might exist
@@ -205,13 +216,7 @@ class DataController: ObservableObject {
             connectivityMonitor: connectivityMonitor
         )
 
-        // Initialize and configure the new sync engine
-        if self.syncEngine == nil {
-            self.syncEngine = SyncEngine()
-        }
-        if self.connectivity == nil {
-            self.connectivity = ConnectivityManager()
-        }
+        // Configure the sync engine (already created eagerly)
         syncEngine.configure(modelContext: modelContext, connectivity: connectivity)
         syncEngine.registerBackgroundTasks()
 

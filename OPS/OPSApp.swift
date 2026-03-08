@@ -19,6 +19,9 @@ struct OPSApp: App {
         MapboxConfig.configure()
     }
     
+    // Observe scene phase for app lifecycle events
+    @Environment(\.scenePhase) private var scenePhase
+
     // Setup shared instances for app-wide use
     @StateObject private var dataController = DataController()
     @StateObject private var notificationManager = NotificationManager.shared
@@ -105,6 +108,9 @@ struct OPSApp: App {
                     let context = sharedModelContainer.mainContext
                     dataController.setModelContext(context)
 
+                    // Register background sync tasks
+                    dataController.syncEngine.registerBackgroundTasks()
+
                     // Wire permission store and load cached permissions
                     dataController.permissionStore = permissionStore
                     permissionStore.loadCachedPermissions()
@@ -171,6 +177,41 @@ struct OPSApp: App {
                     // Handle the device token when registered
                     if let deviceToken = notification.userInfo?["deviceToken"] as? Data {
                         notificationManager.handleDeviceTokenRegistration(deviceToken: deviceToken)
+                    }
+                }
+                .onChange(of: scenePhase) { oldPhase, newPhase in
+                    switch newPhase {
+                    case .active:
+                        // Trigger sync when app comes to foreground
+                        Task {
+                            await dataController.syncEngine.triggerSync()
+                            // Start realtime if authenticated
+                            if dataController.isAuthenticated,
+                               let companyId = dataController.currentUser?.companyId,
+                               !companyId.isEmpty {
+                                await dataController.syncEngine.startRealtime(companyId: companyId)
+                            }
+                        }
+                    case .background:
+                        // Schedule background sync tasks
+                        dataController.syncEngine.scheduleBackgroundSync()
+                        // Stop realtime after delay
+                        Task {
+                            try? await Task.sleep(nanoseconds: 30_000_000_000) // 30 seconds
+                            await dataController.syncEngine.stopRealtime()
+                        }
+                    case .inactive:
+                        break
+                    @unknown default:
+                        break
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: ConnectivityManager.connectivityChangedNotification)) { notification in
+                    // Trigger sync on connectivity change via new engine
+                    if dataController.connectivity.shouldAttemptSync && dataController.isAuthenticated {
+                        Task {
+                            await dataController.syncEngine.triggerSync()
+                        }
                     }
                 }
         }

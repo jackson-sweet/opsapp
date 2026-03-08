@@ -34,6 +34,7 @@ class DataController: ObservableObject {
     @Published var syncStatusMessage = "" // Console-style sync status messages
     @Published var scheduledTasksDidChange = false // Toggle to refresh calendar views
     private var hasCompletedInitialConnectionCheck = false // Track if we've done initial setup
+    private var lastSyncRestoredAlertTime: Date? // Cooldown to prevent repeated banners
 
     // Global app state for external views to access
     var appState: AppState?
@@ -55,6 +56,10 @@ class DataController: ObservableObject {
     // MARK: - Public Access
     var syncManager: SupabaseSyncManager!
     var imageSyncManager: ImageSyncManager!
+
+    /// New sync engine (offline-first)
+    private(set) var syncEngine: SyncEngine!
+    private(set) var connectivity: ConnectivityManager!
 
     /// Convenience accessor for inventory operations via Supabase
     var inventoryRepository: InventoryRepository? {
@@ -107,7 +112,7 @@ class DataController: ObservableObject {
                 // (but don't show the alert - this is initial load, not a reconnection)
                 if isConnected && isAuthenticated {
                     print("[SYNC] 🚀 App startup with \(pendingSyncCount) pending items - triggering sync")
-                    syncManager?.triggerBackgroundSync()
+                    await syncEngine.triggerSync()
                 }
             }
 
@@ -134,15 +139,19 @@ class DataController: ObservableObject {
                         // 1. We've completed initial setup (not first load)
                         // 2. We were actually disconnected before
                         // 3. We have pending syncs
-                        if self.hasCompletedInitialConnectionCheck && wasDisconnected && self.hasPendingSyncs {
+                        // 4. At least 60s since last alert (prevent rapid flashing)
+                        let cooldownElapsed = self.lastSyncRestoredAlertTime == nil ||
+                            Date().timeIntervalSince(self.lastSyncRestoredAlertTime!) > 60
+                        if self.hasCompletedInitialConnectionCheck && wasDisconnected && self.hasPendingSyncs && cooldownElapsed {
                             print("[SYNC] 🔄 Connection restored with \(self.pendingSyncCount) pending items - showing alert")
                             self.showSyncRestoredAlert = true
+                            self.lastSyncRestoredAlertTime = Date()
                         } else {
                             print("[SYNC] 🔄 Connection active - triggering background sync (no alert)")
                         }
 
-                        // Trigger background sync
-                        self.syncManager?.triggerBackgroundSync()
+                        // Trigger sync via SyncEngine
+                        await self.syncEngine.triggerSync()
                     }
                 }
             }
@@ -195,14 +204,23 @@ class DataController: ObservableObject {
             modelContext: modelContext,
             connectivityMonitor: connectivityMonitor
         )
-        
+
+        // Initialize and configure the new sync engine
+        if self.syncEngine == nil {
+            self.syncEngine = SyncEngine()
+        }
+        if self.connectivity == nil {
+            self.connectivity = ConnectivityManager()
+        }
+        syncEngine.configure(modelContext: modelContext, connectivity: connectivity)
+
         // Immediately check for pending images after initialization
         if isConnected {
             Task {
                 await imageSyncManager?.syncPendingImages()
             }
         }
-        
+
         // Listen for sync state changes
         self.syncManager.syncStatePublisher
             .receive(on: RunLoop.main)
@@ -232,23 +250,17 @@ class DataController: ObservableObject {
         print("[APP_LAUNCH_SYNC] - isConnected: \(isConnected)")
         print("[APP_LAUNCH_SYNC] - isAuthenticated: \(isAuthenticated)")
         print("[APP_LAUNCH_SYNC] - currentUser: \(currentUser != nil ? currentUser!.fullName : "nil")")
-        print("[APP_LAUNCH_SYNC] - syncManager: \(syncManager != nil ? "available" : "nil")")
+        print("[APP_LAUNCH_SYNC] - syncEngine: available")
 
         Task {
             // Always trigger full sync on app launch if authenticated
             if isConnected && isAuthenticated {
-                if let syncManager = syncManager {
-                    print("[APP_LAUNCH_SYNC] ✅ Triggering FULL SYNC (syncAll)")
-                    await syncManager.triggerBackgroundSync(forceProjectSync: true)
-                    print("[APP_LAUNCH_SYNC] ✅ Full sync completed")
-                } else {
-                    print("[APP_LAUNCH_SYNC] ❌ Cannot sync - syncManager is nil")
-                }
+                print("[APP_LAUNCH_SYNC] ✅ Triggering FULL SYNC via SyncEngine")
+                await syncEngine.fullSync()
+                print("[APP_LAUNCH_SYNC] ✅ Full sync completed")
 
-                // Then sync pending images
-                if let imageSyncManager = imageSyncManager {
-                    await imageSyncManager.syncPendingImages()
-                }
+                // Then process pending photo uploads
+                await syncEngine.processPhotoUploads()
             } else {
                 print("[APP_LAUNCH_SYNC] ⚠️ Skipping sync - not connected or not authenticated")
             }
@@ -474,7 +486,7 @@ class DataController: ObservableObject {
                 }
 
                 // Return true because login succeeded, even if onboarding is needed
-                // LoginView will check onboarding status separately
+                // LandingView will check onboarding status separately
                 return true
             } else {
                 return false
@@ -719,7 +731,7 @@ class DataController: ObservableObject {
         }
 
         // Only set isAuthenticated if user has completed onboarding
-        // This ensures LoginView can show onboarding overlay if needed
+        // This ensures LandingView can show onboarding overlay if needed
         if user.hasCompletedAppOnboarding {
             self.isAuthenticated = true
         } else {
@@ -1281,7 +1293,7 @@ class DataController: ObservableObject {
                             id: memberId,
                             firstName: "Team Member",
                             lastName: "#\(memberId.suffix(4))",
-                            role: .fieldCrew,
+                            role: .crew,
                             companyId: project.companyId
                         )
 
@@ -1299,7 +1311,7 @@ class DataController: ObservableObject {
                         id: memberId,
                         firstName: "Team Member",
                         lastName: "#\(memberId.suffix(4))",
-                        role: .fieldCrew,
+                        role: .crew,
                         companyId: project.companyId
                     )
 
@@ -1396,22 +1408,9 @@ class DataController: ObservableObject {
             return
         }
 
-        guard let syncManager = syncManager else {
-            return
-        }
-
-        guard let companyId = currentUser?.companyId else {
-            return
-        }
-
-        print("[MANUAL_SYNC] 🔄 Starting comprehensive manual sync...")
-
-        do {
-            try await syncManager.manualFullSync(companyId: companyId)
-            print("[MANUAL_SYNC] ✅ Manual sync completed")
-        } catch {
-            print("[MANUAL_SYNC] ❌ Manual sync failed: \(error)")
-        }
+        print("[MANUAL_SYNC] 🔄 Starting comprehensive manual sync via SyncEngine...")
+        await syncEngine.fullSync()
+        print("[MANUAL_SYNC] ✅ Manual sync completed")
     }
     
     // MARK: - Scheduled Task Methods
@@ -1475,16 +1474,18 @@ class DataController: ObservableObject {
 
         do {
             let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+            let calendar = Calendar.current
+            let dayStart = calendar.startOfDay(for: date)
 
             let filteredTasks = allTasks.filter { task in
                 guard task.deletedAt == nil else { return false }
                 guard let taskStart = task.startDate else { return false }
                 let taskEnd = task.endDate ?? taskStart
-                let calendar = Calendar.current
 
-                // Check if date falls within task's start-to-end range
-                let isActiveOnDate = calendar.compare(taskStart, to: date, toGranularity: .day) != .orderedDescending
-                    && calendar.compare(taskEnd, to: date, toGranularity: .day) != .orderedAscending
+                // Normalize to start-of-day to avoid time-component mismatches
+                let taskStartDay = calendar.startOfDay(for: taskStart)
+                let taskEndDay = calendar.startOfDay(for: taskEnd)
+                let isActiveOnDate = taskStartDay <= dayStart && taskEndDay >= dayStart
 
                 if !isActiveOnDate {
                     return false
@@ -1510,6 +1511,79 @@ class DataController: ObservableObject {
                     }
                     return true
                 }
+            }
+
+            return filteredTasks.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
+        } catch {
+            return []
+        }
+    }
+
+    /// Get ALL scheduled tasks for a date (company-wide, no user filter)
+    func getScheduledTasksForCompany(for date: Date) -> [ProjectTask] {
+        guard let user = currentUser else { return [] }
+        guard let context = modelContext else { return [] }
+
+        do {
+            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+            let calendar = Calendar.current
+            let dayStart = calendar.startOfDay(for: date)
+
+            let filteredTasks = allTasks.filter { task in
+                guard task.deletedAt == nil else { return false }
+                guard task.companyId == user.companyId else { return false }
+                guard let taskStart = task.startDate else { return false }
+                let taskEnd = task.endDate ?? taskStart
+
+                // Normalize to start-of-day to avoid time-component mismatches
+                let taskStartDay = calendar.startOfDay(for: taskStart)
+                let taskEndDay = calendar.startOfDay(for: taskEnd)
+                return taskStartDay <= dayStart && taskEndDay >= dayStart
+            }
+
+            return filteredTasks.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
+        } catch {
+            return []
+        }
+    }
+
+    /// Get scheduled tasks for a specific team member on a date
+    func getScheduledTasksForMember(for date: Date, memberId: String) -> [ProjectTask] {
+        guard let user = currentUser else { return [] }
+        guard let context = modelContext else { return [] }
+
+        do {
+            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+            let calendar = Calendar.current
+            let dayStart = calendar.startOfDay(for: date)
+
+            let filteredTasks = allTasks.filter { task in
+                guard task.deletedAt == nil else { return false }
+                guard task.companyId == user.companyId else { return false }
+                guard let taskStart = task.startDate else { return false }
+                let taskEnd = task.endDate ?? taskStart
+
+                // Normalize to start-of-day to avoid time-component mismatches
+                let taskStartDay = calendar.startOfDay(for: taskStart)
+                let taskEndDay = calendar.startOfDay(for: taskEnd)
+                let isActiveOnDate = taskStartDay <= dayStart && taskEndDay >= dayStart
+
+                if !isActiveOnDate { return false }
+
+                // Check if member is assigned to this task or its project
+                let taskTeamMemberIds = task.getTeamMemberIds()
+                let isAssigned = taskTeamMemberIds.contains(memberId)
+                    || task.teamMembers.contains(where: { $0.id == memberId })
+
+                if isAssigned { return true }
+
+                // Also check project assignment
+                if let project = task.project {
+                    let projectTeamMemberIds = project.getTeamMemberIds()
+                    return projectTeamMemberIds.contains(memberId)
+                        || project.teamMembers.contains(where: { $0.id == memberId })
+                }
+                return false
             }
 
             return filteredTasks.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
@@ -1805,7 +1879,7 @@ class DataController: ObservableObject {
     func forceSync() {
         guard isConnected, isAuthenticated else { return }
         Task {
-            await syncManager?.triggerBackgroundSync()
+            await syncEngine.triggerSync()
         }
     }
     
@@ -1821,18 +1895,21 @@ class DataController: ObservableObject {
                          userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
         }
 
-        // syncManager handles fetch, convert, and upsert
-        let _ = try await syncManager.fetchCompany(id: id)
+        // Use SyncEngine fullSync to refresh all data including company
+        await syncEngine.fullSync()
     }
     
     func appDidBecomeActive() {
         if isConnected && isAuthenticated {
             forceSync()
+            Task { await syncEngine.triggerSync() }
         }
     }
-    
+
     func appDidEnterBackground() {
-        // Handled by SyncManager
+        Task { @MainActor in
+            syncEngine.scheduleBackgroundSync()
+        }
     }
     
     // MARK: - Settings View Methods
@@ -1868,9 +1945,9 @@ class DataController: ObservableObject {
             } else if isRunningInPreview {
                 // Return sample team members ONLY for SwiftUI previews
                 let sampleUsers: [User] = [
-                    createSampleUser(id: "1", firstName: "John", lastName: "Doe", role: .fieldCrew, companyId: companyId),
-                    createSampleUser(id: "2", firstName: "Jane", lastName: "Smith", role: .officeCrew, companyId: companyId),
-                    createSampleUser(id: "3", firstName: "Michael", lastName: "Johnson", role: .fieldCrew, companyId: companyId)
+                    createSampleUser(id: "1", firstName: "John", lastName: "Doe", role: .crew, companyId: companyId),
+                    createSampleUser(id: "2", firstName: "Jane", lastName: "Smith", role: .office, companyId: companyId),
+                    createSampleUser(id: "3", firstName: "Michael", lastName: "Johnson", role: .crew, companyId: companyId)
                 ]
                 return sampleUsers
             } else {
@@ -2086,6 +2163,8 @@ class DataController: ObservableObject {
 
         let projectTitle = project.title
         let deletionDate = Date()
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
 
         print("[DELETE_PROJECT] 🗑️ Soft deleting project '\(projectTitle)' (setting deletedAt)")
 
@@ -2097,14 +2176,27 @@ class DataController: ObservableObject {
         for task in project.tasks where task.deletedAt == nil {
             task.deletedAt = deletionDate
             task.needsSync = true
+
+            // Record delete for each cascaded task
+            syncEngine.recordOperation(
+                entityType: .projectTask,
+                entityId: task.id,
+                operationType: "delete",
+                changedFields: ["deleted_at": formatter.string(from: deletionDate)]
+            )
         }
 
         // Save changes locally
         try modelContext.save()
         print("[DELETE_PROJECT] ✅ Project '\(projectTitle)' soft deleted locally")
 
-        // Trigger background sync to push changes to server
-        syncManager?.triggerBackgroundSync()
+        // Record for async sync
+        syncEngine.recordOperation(
+            entityType: .project,
+            entityId: project.id,
+            operationType: "delete",
+            changedFields: ["deleted_at": formatter.string(from: deletionDate)]
+        )
     }
 
     /// Delete a task from both Supabase and local storage
@@ -2121,23 +2213,41 @@ class DataController: ObservableObject {
         let taskId = task.id
         let project = task.project
 
-        // STEP 1: Delete task from Supabase
-        try await syncManager.deleteTask(taskId: taskId)
+        // Record delete for async sync before removing locally
+        syncEngine.recordOperation(
+            entityType: .projectTask,
+            entityId: taskId,
+            operationType: "delete",
+            changedFields: ["id": taskId]
+        )
 
-        // STEP 3: Delete from local SwiftData
+        // Delete from local SwiftData
         modelContext.delete(task)
         try modelContext.save()
 
-        // STEP 4: Update project dates (automatically computed from remaining tasks)
+        // Update project dates (automatically computed from remaining tasks)
         if updateProject, let project = project {
             try modelContext.save()
 
-            // Sync updated computed dates to Supabase
-            try await syncManager.updateProjectDates(
-                projectId: project.id,
-                startDate: project.computedStartDate,
-                endDate: project.computedEndDate
-            )
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime]
+
+            var dateFields: [String: Any] = [:]
+            if let startDate = project.computedStartDate {
+                dateFields["start_date"] = formatter.string(from: startDate)
+            }
+            if let endDate = project.computedEndDate {
+                dateFields["end_date"] = formatter.string(from: endDate)
+            }
+
+            if !dateFields.isEmpty {
+                syncEngine.recordOperation(
+                    entityType: .project,
+                    entityId: project.id,
+                    operationType: "update",
+                    changedFields: dateFields
+                )
+            }
         }
     }
 
@@ -2151,10 +2261,17 @@ class DataController: ObservableObject {
             throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
 
-        // STEP 1: Delete client from Supabase
-        try await syncManager.deleteClient(clientId: client.id)
+        let clientId = client.id
 
-        // STEP 2: Delete client from local SwiftData
+        // Record delete for async sync
+        syncEngine.recordOperation(
+            entityType: .client,
+            entityId: clientId,
+            operationType: "delete",
+            changedFields: ["id": clientId]
+        )
+
+        // Delete client from local SwiftData
         modelContext.delete(client)
         try modelContext.save()
     }
@@ -2171,26 +2288,32 @@ class DataController: ObservableObject {
             throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
 
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+
         print("[RESCHEDULE_PROJECT] 📅 Rescheduling project: \(project.title)")
         print("[RESCHEDULE_PROJECT] Old dates: \(project.startDate?.description ?? "nil") - \(project.endDate?.description ?? "nil")")
         print("[RESCHEDULE_PROJECT] New dates: \(startDate.description) - \(endDate.description)")
 
-        // STEP 1: Update project dates
+        // Apply locally
         project.startDate = startDate
         project.endDate = endDate
         project.needsSync = true
 
-        // STEP 2: Save locally
         try modelContext.save()
         print("[RESCHEDULE_PROJECT] ✅ Changes saved locally")
 
-        // STEP 3: Update dates in Supabase
-        try await syncManager.updateProjectDates(
-            projectId: project.id,
-            startDate: startDate,
-            endDate: endDate
+        // Record for async sync
+        syncEngine.recordOperation(
+            entityType: .project,
+            entityId: project.id,
+            operationType: "update",
+            changedFields: [
+                "start_date": formatter.string(from: startDate),
+                "end_date": formatter.string(from: endDate)
+            ]
         )
-        print("[RESCHEDULE_PROJECT] ✅ Project dates updated in Supabase")
+        print("[RESCHEDULE_PROJECT] ✅ Project reschedule recorded for sync")
     }
 
     // We're removing the ability to update profile images for now
@@ -2357,59 +2480,13 @@ class DataController: ObservableObject {
     /// Check for pending syncs and update published properties
     @MainActor
     func checkPendingSyncs() async {
-        guard let context = modelContext else {
-            hasPendingSyncs = false
-            pendingSyncCount = 0
-            stopPendingSyncRetryTimer()
-            return
-        }
-
-        var count = 0
-
-        // Count pending projects
-        do {
-            let projectDescriptor = FetchDescriptor<Project>(
-                predicate: #Predicate<Project> { $0.needsSync == true }
-            )
-            count += try context.fetchCount(projectDescriptor)
-        } catch {
-            print("[SYNC] ⚠️ Failed to count pending projects: \(error)")
-        }
-
-        // Count pending tasks
-        do {
-            let taskDescriptor = FetchDescriptor<ProjectTask>(
-                predicate: #Predicate<ProjectTask> { $0.needsSync == true }
-            )
-            count += try context.fetchCount(taskDescriptor)
-        } catch {
-            print("[SYNC] ⚠️ Failed to count pending tasks: \(error)")
-        }
-
-        // Count pending users
-        do {
-            let userDescriptor = FetchDescriptor<User>(
-                predicate: #Predicate<User> { $0.needsSync == true }
-            )
-            count += try context.fetchCount(userDescriptor)
-        } catch {
-            print("[SYNC] ⚠️ Failed to count pending users: \(error)")
-        }
-
+        let count = syncEngine.pendingOperationCount
         pendingSyncCount = count
         hasPendingSyncs = count > 0
-
-        if count > 0 {
-            print("[SYNC] 📊 Found \(count) items pending sync")
-            // Start retry timer if we have pending syncs
-            startPendingSyncRetryTimer()
-        } else {
-            // Stop retry timer if no pending syncs
-            stopPendingSyncRetryTimer()
-        }
     }
 
     /// Start the periodic retry timer for pending syncs
+    /// SyncEngine has its own retry timer; this just triggers a sync cycle.
     @MainActor
     private func startPendingSyncRetryTimer() {
         // Don't create multiple timers
@@ -2422,10 +2499,9 @@ class DataController: ObservableObject {
 
             Task { @MainActor in
                 if self.hasPendingSyncs && self.isConnected && self.isAuthenticated {
-                    print("[SYNC] ⏱️ Retry timer triggered - attempting to sync \(self.pendingSyncCount) pending items")
-                    self.syncManager?.triggerBackgroundSync()
+                    print("[SYNC] ⏱️ Retry timer triggered - attempting sync via SyncEngine")
+                    await self.syncEngine.triggerSync()
                 } else if !self.hasPendingSyncs {
-                    // Stop timer if no pending syncs
                     self.stopPendingSyncRetryTimer()
                 }
             }
@@ -2460,7 +2536,7 @@ class DataController: ObservableObject {
         }
 
         print("[SYNC] 🚀 Item added to queue - triggering immediate sync attempt...")
-        syncManager?.triggerBackgroundSync()
+        Task { await syncEngine.triggerSync() }
     }
 
     /// Mark an item for sync and immediately attempt to sync if connected
@@ -2477,7 +2553,7 @@ class DataController: ObservableObject {
         // Immediately attempt sync if connected
         if isConnected && isAuthenticated {
             print("[SYNC] 🚀 Item marked for sync - attempting immediate sync...")
-            syncManager?.triggerBackgroundSync()
+            Task { await syncEngine.triggerSync() }
         } else {
             print("[SYNC] ⚠️ Item marked for sync - will sync when connection is restored")
         }
@@ -2499,6 +2575,8 @@ class DataController: ObservableObject {
     ///   - itemDescription: Brief description of the item (e.g., "task abc123 to Completed")
     ///   - localUpdate: Closure that performs the local database update
     ///   - syncToAPI: Closure that syncs to server (called only if connected)
+    /// - Note: Deprecated — use syncEngine.recordOperation() instead.
+    @available(*, deprecated, message: "Use syncEngine.recordOperation() instead of performSyncedOperation")
     @MainActor
     func performSyncedOperation<T>(
         item: T,
@@ -2555,8 +2633,8 @@ class DataController: ObservableObject {
             print("[\(operationName)] 🔄 [LAYER 2] Queueing for background sync")
             print("[\(operationName)] 📴 Last error: \(lastError?.localizedDescription ?? "unknown")")
 
-            // Trigger background sync to handle this later
-            syncManager?.triggerBackgroundSync()
+            // Trigger sync via SyncEngine to handle this later
+            Task { await syncEngine.triggerSync() }
 
             // DON'T throw - the operation succeeded locally and will sync in background
             // This ensures the user isn't blocked by network issues
@@ -2569,8 +2647,8 @@ class DataController: ObservableObject {
             print("[\(operationName)] 🔄 [LAYER 2] Will sync when connection is restored")
             print("[\(operationName)] 📊 Total pending syncs: \(pendingSyncCount)")
 
-            // Trigger background sync
-            syncManager?.triggerBackgroundSync()
+            // Trigger sync via SyncEngine
+            Task { await syncEngine.triggerSync() }
         }
     }
 
@@ -2587,19 +2665,17 @@ class DataController: ObservableObject {
         let oldStatus = task.status
         let project = task.project
 
-        try await performSyncedOperation(
-            item: task,
-            operationName: "UPDATE_TASK_STATUS",
-            itemDescription: "Updating task \(task.id) to status: \(newStatus.rawValue)",
-            localUpdate: {
-                task.status = newStatus
-                task.needsSync = true
-            },
-            syncToAPI: {
-                try await self.syncManager.updateTaskStatus(taskId: task.id, status: newStatus)
-                task.needsSync = false
-                task.lastSyncedAt = Date()
-            }
+        // Apply locally
+        task.status = newStatus
+        task.needsSync = true
+        try? modelContext?.save()
+
+        // Record for async sync
+        syncEngine.recordOperation(
+            entityType: .projectTask,
+            entityId: task.id,
+            operationType: "update",
+            changedFields: ["status": newStatus.rawValue]
         )
 
         // Track task status change for analytics
@@ -2636,6 +2712,11 @@ class DataController: ObservableObject {
                     }
                     print("[TASK_STATUS] 📬 Task completion notification queued for \(projectTeamMemberIds.count) project team members")
                 }
+            }
+
+            // Send dependency completion notifications
+            Task {
+                await sendDependencyCompletionNotifications(for: task)
             }
         }
 
@@ -2729,19 +2810,17 @@ class DataController: ObservableObject {
         // Capture previous status to detect completion
         let previousStatus = project.status
 
-        try await performSyncedOperation(
-            item: project,
-            operationName: "UPDATE_PROJECT_STATUS",
-            itemDescription: "Updating project \(project.id) to status: \(newStatus.rawValue)",
-            localUpdate: {
-                project.status = newStatus
-                project.needsSync = true
-            },
-            syncToAPI: {
-                try await self.syncManager.updateProjectStatus(projectId: project.id, status: newStatus)
-                project.needsSync = false
-                project.lastSyncedAt = Date()
-            }
+        // Apply locally
+        project.status = newStatus
+        project.needsSync = true
+        try? modelContext?.save()
+
+        // Record for async sync
+        syncEngine.recordOperation(
+            entityType: .project,
+            entityId: project.id,
+            operationType: "update",
+            changedFields: ["status": newStatus.rawValue]
         )
 
         // Track project status change for analytics
@@ -2780,31 +2859,32 @@ class DataController: ObservableObject {
         let previousStartDate = task.startDate
         let previousEndDate = task.endDate
 
-        try await performSyncedOperation(
-            item: task,
-            operationName: "UPDATE_TASK_SCHEDULE",
-            itemDescription: "Updating task \(task.id) schedule",
-            localUpdate: {
-                task.startDate = startDate
-                task.endDate = endDate
-                let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
-                task.duration = daysDiff + 1
-                task.needsSync = true
-            },
-            syncToAPI: {
-                let formatter = ISO8601DateFormatter()
-                formatter.formatOptions = [.withInternetDateTime]
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
 
-                let fields: [String: AnyJSON] = [
-                    "start_date": .string(formatter.string(from: startDate)),
-                    "end_date": .string(formatter.string(from: endDate)),
-                    "duration": .integer(task.duration)
-                ]
+        // Apply locally
+        task.startDate = startDate
+        task.endDate = endDate
+        let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
+        task.duration = daysDiff + 1
+        task.needsSync = true
+        try? modelContext?.save()
 
-                try await self.syncManager.updateTaskFields(taskId: task.id, fields: fields)
-                task.needsSync = false
-                task.lastSyncedAt = Date()
-            }
+        // Notify calendar views to refresh immediately
+        DispatchQueue.main.async { [weak self] in
+            self?.scheduledTasksDidChange.toggle()
+        }
+
+        // Record for async sync
+        syncEngine.recordOperation(
+            entityType: .projectTask,
+            entityId: task.id,
+            operationType: "update",
+            changedFields: [
+                "start_date": formatter.string(from: startDate),
+                "end_date": formatter.string(from: endDate),
+                "duration": task.duration
+            ]
         )
 
         // Send schedule change notification if dates actually changed
@@ -2834,6 +2914,162 @@ class DataController: ObservableObject {
                 try await recalculateTaskIndices(for: project)
             } catch {
                 print("[UPDATE_TASK_SCHEDULE] ⚠️ Failed to recalculate task indices: \(error)")
+            }
+        }
+    }
+
+    // MARK: - Push & Cascade Scheduling
+
+    /// Get all active tasks for a project (excludes soft-deleted)
+    func getTasksForProject(_ projectId: String) -> [ProjectTask] {
+        guard let ctx = modelContext else { return [] }
+        let predicate = #Predicate<ProjectTask> { task in
+            task.projectId == projectId && task.deletedAt == nil
+        }
+        let descriptor = FetchDescriptor<ProjectTask>(predicate: predicate, sortBy: [SortDescriptor(\.displayOrder)])
+        return (try? ctx.fetch(descriptor)) ?? []
+    }
+
+    /// Push a single task by N days (no cascade).
+    @MainActor
+    func pushTask(_ task: ProjectTask, byDays days: Int, skipWeekends: Bool? = nil) async throws {
+        let skip = skipWeekends ?? (getCurrentCompany()?.skipWeekendsInAutoSchedule ?? false)
+        let result = SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: skip)
+        try await updateTaskSchedule(task: task, startDate: result.newStart, endDate: result.newEnd)
+    }
+
+    /// Push a task by N days and cascade to all dependent tasks.
+    /// Returns the cascade result so UI can show preview / enable undo.
+    @MainActor
+    @discardableResult
+    func pushTaskWithCascade(_ task: ProjectTask, byDays days: Int) async throws -> SchedulingEngine.CascadeResult {
+        let skip = getCurrentCompany()?.skipWeekendsInAutoSchedule ?? false
+        let calendar = Calendar.current
+
+        guard let start = task.startDate else {
+            throw SchedulingError.noStartDate
+        }
+
+        var newStart = calendar.date(byAdding: .day, value: days, to: start)!
+        if skip { newStart = SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: true).newStart }
+        let newEnd = calendar.date(byAdding: .day, value: max(task.duration - 1, 0), to: newStart)!
+
+        let projectTasks = getTasksForProject(task.projectId)
+
+        let cascade = SchedulingEngine.calculateCascade(
+            pushedTaskId: task.id,
+            newStartDate: newStart,
+            newEndDate: newEnd,
+            allProjectTasks: projectTasks,
+            skipWeekends: skip
+        )
+
+        // Apply the pushed task's new dates
+        try await updateTaskSchedule(task: task, startDate: newStart, endDate: newEnd)
+
+        // Apply cascade changes
+        for change in cascade.changes {
+            if let affectedTask = projectTasks.first(where: { $0.id == change.id }) {
+                try await updateTaskSchedule(task: affectedTask, startDate: change.newStartDate, endDate: change.newEndDate)
+            }
+        }
+
+        return cascade
+    }
+
+    /// Undo a cascade by restoring previous dates.
+    @MainActor
+    func undoCascade(_ cascade: SchedulingEngine.CascadeResult, originalTaskId: String, originalStart: Date, originalEnd: Date) async throws {
+        guard let ctx = modelContext else { return }
+        // Find the project from the original task
+        let predicate = #Predicate<ProjectTask> { $0.id == originalTaskId }
+        let descriptor = FetchDescriptor<ProjectTask>(predicate: predicate)
+        guard let originalTask = try ctx.fetch(descriptor).first else { return }
+
+        // Restore original task
+        try await updateTaskSchedule(task: originalTask, startDate: originalStart, endDate: originalEnd)
+
+        // Restore cascaded tasks
+        let projectTasks = getTasksForProject(originalTask.projectId)
+        for change in cascade.changes {
+            if let task = projectTasks.first(where: { $0.id == change.id }),
+               let oldStart = change.oldStartDate,
+               let oldEnd = change.oldEndDate {
+                try await updateTaskSchedule(task: task, startDate: oldStart, endDate: oldEnd)
+            }
+        }
+    }
+
+    /// Auto-schedule all unscheduled tasks in a project.
+    @MainActor
+    func autoScheduleProject(_ project: Project, anchorDate: Date) async throws -> SchedulingEngine.AutoScheduleResult {
+        let skip = getCurrentCompany()?.skipWeekendsInAutoSchedule ?? false
+        let allTasks = getTasksForProject(project.id)
+        let unscheduled = allTasks.filter { $0.startDate == nil || $0.endDate == nil }
+
+        let result = SchedulingEngine.autoSchedule(
+            unscheduledTasks: unscheduled,
+            allProjectTasks: allTasks,
+            anchorDate: anchorDate,
+            skipWeekends: skip
+        )
+
+        for placement in result.placements {
+            if let task = unscheduled.first(where: { $0.id == placement.id }) {
+                try await updateTaskSchedule(task: task, startDate: placement.startDate, endDate: placement.endDate)
+            }
+        }
+
+        return result
+    }
+
+    /// Get the current company for the logged-in user.
+    private func getCurrentCompany() -> Company? {
+        guard let ctx = modelContext, let companyId = currentUser?.companyId else { return nil }
+        let predicate = #Predicate<Company> { $0.id == companyId }
+        let descriptor = FetchDescriptor<Company>(predicate: predicate)
+        return try? ctx.fetch(descriptor).first
+    }
+
+    /// Send notifications to dependent task teams when a task is completed
+    @MainActor
+    private func sendDependencyCompletionNotifications(for completedTask: ProjectTask) async {
+        let projectTasks = getTasksForProject(completedTask.projectId)
+
+        for dependentTask in projectTasks {
+            guard dependentTask.effectiveDependencies.contains(where: { $0.dependsOnTaskTypeId == completedTask.taskTypeId }) else { continue }
+
+            let recipientIds = dependentTask.teamMemberIdsString
+                .split(separator: ",")
+                .map(String.init)
+                .filter { !$0.isEmpty }
+
+            guard !recipientIds.isEmpty else { continue }
+
+            let projectTitle = dependentTask.project?.title ?? "Project"
+
+            do {
+                try await OneSignalService.shared.notifyDependencyCompleted(
+                    completedTaskTitle: completedTask.displayTitle,
+                    dependentTaskTitle: dependentTask.displayTitle,
+                    projectTitle: projectTitle,
+                    recipientUserIds: recipientIds,
+                    projectId: dependentTask.projectId,
+                    dependentTaskId: dependentTask.id
+                )
+                print("[TASK_STATUS] 📬 Dependency notification sent for \(dependentTask.displayTitle)")
+            } catch {
+                print("[TASK_STATUS] ⚠️ Failed to send dependency notification: \(error)")
+            }
+        }
+    }
+
+    enum SchedulingError: Error, LocalizedError {
+        case noStartDate
+
+        var errorDescription: String? {
+            switch self {
+            case .noStartDate: return "Task has no start date to push from"
             }
         }
     }
@@ -2894,23 +3130,19 @@ class DataController: ObservableObject {
         // Save changes locally
         try modelContext?.save()
 
-        // Sync taskIndex to Supabase for all changed tasks
+        // Record task index updates for async sync
         if !tasksToSync.isEmpty {
-            print("[TASK_INDEX] 🔄 Syncing \(tasksToSync.count) task indices to Supabase...")
+            print("[TASK_INDEX] 🔄 Recording \(tasksToSync.count) task index updates for sync...")
             for (task, index) in tasksToSync {
-                do {
-                    let fields: [String: AnyJSON] = ["task_index": .integer(index)]
-                    try await syncManager.updateTaskFields(taskId: task.id, fields: fields)
-                    task.needsSync = false
-                    task.lastSyncedAt = Date()
-                    print("[TASK_INDEX]   ✅ Synced taskIndex=\(index) for task '\(task.displayTitle)'")
-                } catch {
-                    print("[TASK_INDEX]   ⚠️ Failed to sync taskIndex for task '\(task.displayTitle)': \(error)")
-                    // Keep needsSync = true for background sync to retry
-                }
+                syncEngine.recordOperation(
+                    entityType: .projectTask,
+                    entityId: task.id,
+                    operationType: "update",
+                    changedFields: ["task_index": index]
+                )
+                print("[TASK_INDEX]   ✅ Recorded taskIndex=\(index) for task '\(task.displayTitle)'")
             }
-            try modelContext?.save()
-            print("[TASK_INDEX] ✅ Supabase sync complete")
+            print("[TASK_INDEX] ✅ Task index updates recorded for sync")
         }
     }
 
@@ -2941,24 +3173,19 @@ class DataController: ObservableObject {
         let teamMemberUsers = fetchUsersById(Array(newMemberIds))
         print("[UPDATE_TASK_TEAM] Fetched \(teamMemberUsers.count) User objects from database")
 
-        try await performSyncedOperation(
-            item: task,
-            operationName: "UPDATE_TASK_TEAM",
-            itemDescription: "Updating task \(task.id) team members",
-            localUpdate: {
-                // Update task team member IDs string
-                task.setTeamMemberIds(memberIds)
-                // Update task team members relationship array
-                task.teamMembers = teamMemberUsers
-                task.needsSync = true
-                print("[UPDATE_TASK_TEAM] ✅ Task local state updated (IDs string + relationship)")
-            },
-            syncToAPI: {
-                try await self.syncManager.updateTaskTeamMembers(taskId: task.id, memberIds: memberIds)
-                task.needsSync = false
-                task.lastSyncedAt = Date()
-                print("[UPDATE_TASK_TEAM] ✅ Task team synced to Supabase")
-            }
+        // Apply locally
+        task.setTeamMemberIds(memberIds)
+        task.teamMembers = teamMemberUsers
+        task.needsSync = true
+        try? modelContext?.save()
+        print("[UPDATE_TASK_TEAM] ✅ Task local state updated (IDs string + relationship)")
+
+        // Record for async sync
+        syncEngine.recordOperation(
+            entityType: .projectTask,
+            entityId: task.id,
+            operationType: "update",
+            changedFields: ["team_member_ids": memberIds.joined(separator: ",")]
         )
 
         // Send push notifications to newly added team members
@@ -3047,19 +3274,17 @@ class DataController: ObservableObject {
     /// Update project team members - SINGLE SOURCE OF TRUTH
     @MainActor
     func updateProjectTeamMembers(project: Project, memberIds: [String]) async throws {
-        try await performSyncedOperation(
-            item: project,
-            operationName: "UPDATE_PROJECT_TEAM",
-            itemDescription: "Updating project \(project.id) team members",
-            localUpdate: {
-                project.setTeamMemberIds(memberIds)
-                project.needsSync = true
-            },
-            syncToAPI: {
-                try await self.syncManager.updateProjectTeamMembers(projectId: project.id, memberIds: memberIds)
-                project.needsSync = false
-                project.lastSyncedAt = Date()
-            }
+        // Apply locally
+        project.setTeamMemberIds(memberIds)
+        project.needsSync = true
+        try? modelContext?.save()
+
+        // Record for async sync
+        syncEngine.recordOperation(
+            entityType: .project,
+            entityId: project.id,
+            operationType: "update",
+            changedFields: ["team_member_ids": memberIds.joined(separator: ",")]
         )
     }
 
@@ -3068,24 +3293,23 @@ class DataController: ObservableObject {
     /// Update client - SINGLE SOURCE OF TRUTH
     @MainActor
     func updateClient(client: Client) async throws {
-        try await performSyncedOperation(
-            item: client,
-            operationName: "UPDATE_CLIENT",
-            itemDescription: "Updating client \(client.id)",
-            localUpdate: {
-                client.needsSync = true
-            },
-            syncToAPI: {
-                try await self.syncManager.updateClient(
-                    clientId: client.id,
-                    name: client.name,
-                    email: client.email,
-                    phone: client.phoneNumber,
-                    address: client.address
-                )
-                client.needsSync = false
-                client.lastSyncedAt = Date()
-            }
+        // Apply locally
+        client.needsSync = true
+        try? modelContext?.save()
+
+        // Record for async sync
+        var changedFields: [String: Any] = [
+            "name": client.name
+        ]
+        if let email = client.email { changedFields["email"] = email }
+        if let phone = client.phoneNumber { changedFields["phone"] = phone }
+        if let address = client.address { changedFields["address"] = address }
+
+        syncEngine.recordOperation(
+            entityType: .client,
+            entityId: client.id,
+            operationType: "update",
+            changedFields: changedFields
         )
     }
 
@@ -3094,19 +3318,17 @@ class DataController: ObservableObject {
     /// Update project notes - SINGLE SOURCE OF TRUTH
     @MainActor
     func updateProjectNotes(project: Project, notes: String) async throws {
-        try await performSyncedOperation(
-            item: project,
-            operationName: "UPDATE_PROJECT_NOTES",
-            itemDescription: "Updating project \(project.id) notes",
-            localUpdate: {
-                project.notes = notes
-                project.needsSync = true
-            },
-            syncToAPI: {
-                try await self.syncManager.updateProjectNotes(projectId: project.id, notes: notes)
-                project.needsSync = false
-                project.lastSyncedAt = Date()
-            }
+        // Apply locally
+        project.notes = notes
+        project.needsSync = true
+        try? modelContext?.save()
+
+        // Record for async sync
+        syncEngine.recordOperation(
+            entityType: .project,
+            entityId: project.id,
+            operationType: "update",
+            changedFields: ["notes": notes]
         )
     }
 
@@ -3114,43 +3336,50 @@ class DataController: ObservableObject {
     /// Supports both setting dates (when non-nil) and clearing dates (when nil)
     @MainActor
     func updateProjectDates(project: Project, startDate: Date?, endDate: Date?, clearDates: Bool = false) async throws {
-        try await performSyncedOperation(
-            item: project,
-            operationName: "UPDATE_PROJECT_DATES",
-            itemDescription: startDate == nil ? "Clearing project \(project.id) dates" : "Updating project \(project.id) dates",
-            localUpdate: {
-                project.startDate = startDate
-                project.endDate = endDate
-                project.needsSync = true
-            },
-            syncToAPI: {
-                try await self.syncManager.updateProjectDates(
-                    projectId: project.id,
-                    startDate: startDate,
-                    endDate: endDate
-                )
-                project.needsSync = false
-                project.lastSyncedAt = Date()
-            }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+
+        // Apply locally
+        project.startDate = startDate
+        project.endDate = endDate
+        project.needsSync = true
+        try? modelContext?.save()
+
+        // Record for async sync
+        var changedFields: [String: Any] = [:]
+        if let startDate = startDate {
+            changedFields["start_date"] = formatter.string(from: startDate)
+        } else {
+            changedFields["start_date"] = ""
+        }
+        if let endDate = endDate {
+            changedFields["end_date"] = formatter.string(from: endDate)
+        } else {
+            changedFields["end_date"] = ""
+        }
+
+        syncEngine.recordOperation(
+            entityType: .project,
+            entityId: project.id,
+            operationType: "update",
+            changedFields: changedFields
         )
     }
 
     /// Update project address - SINGLE SOURCE OF TRUTH
     @MainActor
     func updateProjectAddress(project: Project, address: String) async throws {
-        try await performSyncedOperation(
-            item: project,
-            operationName: "UPDATE_PROJECT_ADDRESS",
-            itemDescription: "Updating project \(project.id) address",
-            localUpdate: {
-                project.address = address
-                project.needsSync = true
-            },
-            syncToAPI: {
-                try await self.syncManager.updateProjectAddress(projectId: project.id, address: address)
-                project.needsSync = false
-                project.lastSyncedAt = Date()
-            }
+        // Apply locally
+        project.address = address
+        project.needsSync = true
+        try? modelContext?.save()
+
+        // Record for async sync
+        syncEngine.recordOperation(
+            entityType: .project,
+            entityId: project.id,
+            operationType: "update",
+            changedFields: ["address": address]
         )
     }
 
@@ -3159,50 +3388,52 @@ class DataController: ObservableObject {
     /// Create task - SINGLE SOURCE OF TRUTH
     @MainActor
     func createTask(task: ProjectTask) async throws {
-        try await performSyncedOperation(
-            item: task,
-            operationName: "CREATE_TASK",
-            itemDescription: "Creating task for project \(task.projectId)",
-            localUpdate: {
-                self.modelContext?.insert(task)
-                task.needsSync = true
-            },
-            syncToAPI: {
-                // TODO: Convert ProjectTask to SupabaseProjectTaskDTO for creation
-                // For now, trigger background sync which will pick up the needsSync flag
-                self.syncManager?.triggerBackgroundSync()
-                task.needsSync = false
-                task.lastSyncedAt = Date()
-            }
+        // Apply locally
+        modelContext?.insert(task)
+        task.needsSync = true
+        try? modelContext?.save()
+
+        // Record for async sync
+        var changedFields: [String: Any] = [
+            "id": task.id,
+            "project_id": task.projectId,
+            "status": task.status.rawValue
+        ]
+        if let notes = task.taskNotes { changedFields["task_notes"] = notes }
+        if !task.taskTypeId.isEmpty { changedFields["task_type_id"] = task.taskTypeId }
+
+        syncEngine.recordOperation(
+            entityType: .projectTask,
+            entityId: task.id,
+            operationType: "create",
+            changedFields: changedFields
         )
     }
 
     /// Update task - SINGLE SOURCE OF TRUTH
     @MainActor
     func updateTask(task: ProjectTask) async throws {
-        try await performSyncedOperation(
-            item: task,
-            operationName: "UPDATE_TASK",
-            itemDescription: "Updating task \(task.id)",
-            localUpdate: {
-                task.needsSync = true
-            },
-            syncToAPI: {
-                // Convert task properties to update dictionary
-                var fields: [String: AnyJSON] = [:]
-                if let notes = task.taskNotes {
-                    fields["task_notes"] = .string(notes)
-                }
-                fields["status"] = .string(task.status.rawValue)
+        // Apply locally
+        task.needsSync = true
+        try? modelContext?.save()
 
-                try await self.syncManager.updateTaskFields(taskId: task.id, fields: fields)
+        // Record for async sync
+        var changedFields: [String: Any] = [
+            "status": task.status.rawValue
+        ]
+        if let notes = task.taskNotes {
+            changedFields["task_notes"] = notes
+        }
+        let teamMemberIds = task.getTeamMemberIds()
+        if !teamMemberIds.isEmpty {
+            changedFields["team_member_ids"] = teamMemberIds.joined(separator: ",")
+        }
 
-                // Also update team members separately
-                try await self.syncManager.updateTaskTeamMembers(taskId: task.id, memberIds: task.getTeamMemberIds())
-
-                task.needsSync = false
-                task.lastSyncedAt = Date()
-            }
+        syncEngine.recordOperation(
+            entityType: .projectTask,
+            entityId: task.id,
+            operationType: "update",
+            changedFields: changedFields
         )
     }
 
@@ -3263,12 +3494,15 @@ class DataController: ObservableObject {
             user.profileImageURL = s3URL
             try? modelContext?.save()
 
-            // 4. Update Supabase with S3 URL
-            try await syncManager.updateUserFields(userId: user.id, fields: [
-                "profile_image_url": .string(s3URL)
-            ])
+            // 4. Record for async sync
+            syncEngine.recordOperation(
+                entityType: .user,
+                entityId: user.id,
+                operationType: "update",
+                changedFields: ["profile_image_url": s3URL]
+            )
 
-            print("[PROFILE_IMAGE] ✅ Updated Supabase with S3 URL")
+            print("[PROFILE_IMAGE] ✅ Recorded profile image URL update for sync")
             return s3URL
 
         } catch {
@@ -3288,16 +3522,13 @@ class DataController: ObservableObject {
         user.profileImageData = nil
         try? modelContext?.save()
 
-        // Clear from Supabase
-        do {
-            try await syncManager.updateUserFields(userId: user.id, fields: [
-                "profile_image_url": .string("")
-            ])
-            print("[PROFILE_IMAGE] ✅ Profile image deleted from Supabase")
-        } catch {
-            print("[PROFILE_IMAGE] ⚠️ Failed to delete from Supabase: \(error)")
-            // Local deletion succeeded, Supabase update will retry on next sync
-        }
+        // Record for async sync
+        syncEngine.recordOperation(
+            entityType: .user,
+            entityId: user.id,
+            operationType: "update",
+            changedFields: ["profile_image_url": ""]
+        )
 
         print("[PROFILE_IMAGE] ✅ Profile image deleted")
     }
@@ -3351,12 +3582,15 @@ class DataController: ObservableObject {
             company.logoURL = s3URL
             try? modelContext?.save()
 
-            // 4. Update Supabase with S3 URL
-            try await syncManager.updateCompanyFields(companyId: company.id, fields: [
-                "logo_url": s3URL
-            ])
+            // 4. Record for async sync
+            syncEngine.recordOperation(
+                entityType: .company,
+                entityId: company.id,
+                operationType: "update",
+                changedFields: ["logo_url": s3URL]
+            )
 
-            print("[COMPANY_LOGO] ✅ Updated Supabase with S3 URL")
+            print("[COMPANY_LOGO] ✅ Recorded logo URL update for sync")
             return s3URL
 
         } catch {
@@ -3376,16 +3610,13 @@ class DataController: ObservableObject {
         company.logoData = nil
         try? modelContext?.save()
 
-        // Clear from Supabase
-        do {
-            try await syncManager.updateCompanyFields(companyId: company.id, fields: [
-                "logo_url": ""
-            ])
-            print("[COMPANY_LOGO] ✅ Logo deleted from Supabase")
-        } catch {
-            print("[COMPANY_LOGO] ⚠️ Failed to delete from Supabase: \(error)")
-            // Local deletion succeeded, Supabase update will retry on next sync
-        }
+        // Record for async sync
+        syncEngine.recordOperation(
+            entityType: .company,
+            entityId: company.id,
+            operationType: "update",
+            changedFields: ["logo_url": ""]
+        )
 
         print("[COMPANY_LOGO] ✅ Company logo deleted")
     }
@@ -3393,21 +3624,19 @@ class DataController: ObservableObject {
     // MARK: - Company Default Project Color
 
     /// Update the company's default project color in both local database and server
+    @MainActor
     func updateCompanyDefaultProjectColor(companyId: String, color: String) async throws {
         print("[COMPANY_COLOR] Updating default project color to: \(color)")
 
-        // Update in Supabase
-        do {
-            try await syncManager.updateCompanyFields(companyId: companyId, fields: [
-                "default_project_color": color
-            ])
-            print("[COMPANY_COLOR] ✅ Default project color updated in Supabase")
-        } catch {
-            print("[COMPANY_COLOR] ⚠️ Failed to update in Supabase: \(error)")
-            throw error
-        }
+        // Record for async sync
+        syncEngine.recordOperation(
+            entityType: .company,
+            entityId: companyId,
+            operationType: "update",
+            changedFields: ["default_project_color": color]
+        )
 
-        print("[COMPANY_COLOR] ✅ Default project color updated successfully")
+        print("[COMPANY_COLOR] ✅ Default project color update recorded for sync")
     }
 
     // MARK: - Unassigned Employee Roles Check
@@ -3453,7 +3682,7 @@ class DataController: ObservableObject {
 
             // Filter for users with default role (no assigned employee type) excluding current user
             let unassignedLocalUsers = companyUsers.filter { localUser in
-                localUser.role == .fieldCrew && localUser.id != user.id
+                localUser.role == .crew && localUser.id != user.id
             }
 
             print("[UNASSIGNED_ROLES] Found \(unassignedLocalUsers.count) users without assigned role")

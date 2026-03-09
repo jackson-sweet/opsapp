@@ -158,11 +158,12 @@ private extension InvoiceStatus {
         case .paid:            return OPSStyle.Colors.successStatus
         case .pastDue:         return OPSStyle.Colors.errorStatus
         case .void:            return OPSStyle.Colors.tertiaryText
+        case .writtenOff:      return OPSStyle.Colors.tertiaryText
         }
     }
 
     var isTerminal: Bool {
-        self == .paid || self == .void
+        self == .paid || self == .void || self == .writtenOff
     }
 }
 

@@ -35,11 +35,13 @@ enum InvoiceStatus: String, Codable, CaseIterable {
     case paid            = "paid"
     case pastDue         = "past_due"
     case void            = "void"
+    case writtenOff      = "written_off"
 
     var displayName: String {
         switch self {
         case .awaitingPayment: return "AWAITING"
         case .partiallyPaid:   return "PARTIAL"
+        case .writtenOff:      return "WRITTEN OFF"
         default:               return rawValue.uppercased()
         }
     }

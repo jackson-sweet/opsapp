@@ -23,6 +23,7 @@ enum NotificationCategory: String {
     case projectUpdate = "PROJECT_UPDATE_NOTIFICATION"
     case projectCompletion = "PROJECT_COMPLETION_NOTIFICATION"
     case projectAdvance = "PROJECT_ADVANCE_NOTIFICATION"
+    case projectPaymentReview = "PROJECT_PAYMENT_REVIEW_NOTIFICATION"
 }
 
 /// Notification actions that can be taken on notifications
@@ -186,7 +187,19 @@ class NotificationManager: NSObject, ObservableObject {
             intentIdentifiers: [],
             options: []
         )
-        
+
+        let reviewAction = UNNotificationAction(
+            identifier: "REVIEW_PROJECTS",
+            title: "Review Now",
+            options: [.foreground]
+        )
+        let paymentReviewCategory = UNNotificationCategory(
+            identifier: NotificationCategory.projectPaymentReview.rawValue,
+            actions: [reviewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
         // Register all categories
         notificationCenter.setNotificationCategories([
             projectCategory,
@@ -196,7 +209,8 @@ class NotificationManager: NSObject, ObservableObject {
             projectAssignmentCategory,
             projectUpdateCategory,
             projectCompletionCategory,
-            projectAdvanceCategory
+            projectAdvanceCategory,
+            paymentReviewCategory
         ])
     }
     

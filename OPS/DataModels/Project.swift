@@ -18,6 +18,7 @@ final class Project: Identifiable {
     var longitude: Double?
     var startDate: Date?
     var endDate: Date?
+    var completedAt: Date?
     var duration: Int? // Duration in days from API
     var status: Status
     var notes: String?

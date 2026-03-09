@@ -381,6 +381,13 @@ struct InvoiceDetailView: View {
                     .fontWeight(.semibold)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Spacer()
+
+            case .writtenOff:
+                Text("WRITTEN OFF")
+                    .font(OPSStyle.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Spacer()
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -404,6 +411,7 @@ private extension InvoiceStatus {
         case .paid:            return OPSStyle.Colors.successStatus
         case .pastDue:         return OPSStyle.Colors.errorStatus
         case .void:            return OPSStyle.Colors.tertiaryText
+        case .writtenOff:      return OPSStyle.Colors.tertiaryText
         }
     }
 }

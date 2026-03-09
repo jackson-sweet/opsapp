@@ -56,6 +56,14 @@ final class Company {
     
     // Default color for project-level calendar events (hex)
     var defaultProjectColor: String = "#9CA3AF"  // Light grey default
+
+    // Scheduling preferences
+    var preciseSchedulingEnabled: Bool = false   // Enable time-of-day scheduling for tasks
+    var skipWeekendsInAutoSchedule: Bool = true  // Auto-scheduler skips weekends when laying out tasks
+
+    var overdueReviewThresholdDays: Int = 14
+    var overdueReminderFrequencyDays: Int = 7
+    var matchInvoicePaymentTerms: Bool = false
     
     // Flag to track if team members have been synced
     var teamMembersSynced: Bool = false

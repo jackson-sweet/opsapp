@@ -85,13 +85,13 @@ class AppMessageService {
             let response: [AppMessageDTO] = try await SupabaseService.shared.client
                 .from("app_messages")
                 .select()
-                .eq("active", value: true)
                 .order("created_at", ascending: false)
-                .limit(1)
+                .limit(5)
                 .execute()
                 .value
 
-            return response.first
+            // Filter for active messages client-side (column may not exist in all environments)
+            return response.first(where: { $0.active == true }) ?? response.first
         } catch {
             print("[APP_MESSAGE] Failed to fetch app messages: \(error.localizedDescription)")
             return nil
@@ -112,10 +112,14 @@ class AppMessageService {
         switch role {
         case .admin:
             roleString = "admin"
-        case .officeCrew:
-            roleString = "officeCrew"
-        case .fieldCrew:
-            roleString = "fieldCrew"
+        case .owner:
+            roleString = "owner"
+        case .office:
+            roleString = "office"
+        case .operator:
+            roleString = "operator"
+        case .crew:
+            roleString = "crew"
         }
 
         return targetTypes.contains(roleString)

@@ -13,6 +13,7 @@ import Supabase
 
 // MARK: - OutboundProcessor
 
+@MainActor
 final class OutboundProcessor {
 
     /// Maximum retry count before an operation is marked as permanently failed.

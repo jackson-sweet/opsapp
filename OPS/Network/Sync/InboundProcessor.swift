@@ -19,6 +19,7 @@ import SwiftData
 /// local values, InboundProcessor checks for pending SyncOperations on each field
 /// before accepting server data. Fields with pending local changes are preserved
 /// and will be pushed to the server on the next outbound cycle.
+@MainActor
 final class InboundProcessor {
 
     // MARK: - Dependencies

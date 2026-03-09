@@ -158,7 +158,8 @@ struct OPSApp: App {
                     dataController.simplePINManager.resetAuthentication()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                    // App became active - check subscription status if data is healthy
+                    // Only run active checks on RETURN to foreground (not initial launch)
+                    guard scenePhase == .background || scenePhase == .inactive else { return }
                     Task {
                         await performActiveChecks()
                     }
@@ -183,14 +184,17 @@ struct OPSApp: App {
                 .onChange(of: scenePhase) { oldPhase, newPhase in
                     switch newPhase {
                     case .active:
-                        // Trigger sync when app comes to foreground
-                        Task {
-                            await dataController.syncEngine?.triggerSync()
-                            // Start realtime if authenticated
-                            if dataController.isAuthenticated,
-                               let companyId = dataController.currentUser?.companyId,
-                               !companyId.isEmpty {
-                                await dataController.syncEngine?.startRealtime(companyId: companyId)
+                        // Only trigger sync on RETURN to foreground (not initial launch,
+                        // which is handled by performAppLaunchSync)
+                        if oldPhase == .background {
+                            Task {
+                                await dataController.syncEngine?.triggerSync()
+                                // Restart realtime if authenticated
+                                if dataController.isAuthenticated,
+                                   let companyId = dataController.currentUser?.companyId,
+                                   !companyId.isEmpty {
+                                    await dataController.syncEngine?.startRealtime(companyId: companyId)
+                                }
                             }
                         }
                     case .background:

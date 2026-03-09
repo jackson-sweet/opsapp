@@ -33,6 +33,11 @@
 	<string>$(AWS_S3_BUCKET)</string>
 	<key>AWS_REGION</key>
 	<string>$(AWS_REGION)</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.ops.sync.refresh</string>
+		<string>com.ops.sync.processing</string>
+	</array>
 	<key>UIAppFonts</key>
 	<array>
 		<string>BebasNeue-Regular.ttf</string>

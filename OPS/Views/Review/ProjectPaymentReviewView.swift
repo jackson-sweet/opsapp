@@ -108,7 +108,7 @@ struct ProjectPaymentReviewView: View {
                 Text("PAYMENT REVIEW")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                Text("\(overdueProjects.count) OVERDUE")
+                Text("\(overdueProjects.count) COMPLETED")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }

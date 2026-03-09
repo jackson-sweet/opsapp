@@ -24,7 +24,8 @@ struct JobBoardView: View {
 
     // Payment review state
     @State private var showPaymentReview: Bool = false
-    @State private var overdueProjects: [Project] = []
+    @State private var reviewProjects: [Project] = []
+    @State private var overdueCount: Int = 0
 
     // Preloading state (legacy — client query now filtered at DB level)
     @State private var isPreloadingClients = false
@@ -138,8 +139,8 @@ struct JobBoardView: View {
 
                             Spacer()
 
-                            // Payment review button
-                            if !overdueProjects.isEmpty && (permissionStore.can("projects.manage") || permissionStore.hasFullAccess("projects.manage")) {
+                            // Payment review button — always visible for permitted users
+                            if permissionStore.can("projects.manage") || permissionStore.hasFullAccess("projects.manage") {
                                 Button(action: { showPaymentReview = true }) {
                                     ZStack(alignment: .topTrailing) {
                                         Image(systemName: "rectangle.stack.fill")
@@ -153,14 +154,16 @@ struct JobBoardView: View {
                                                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                             )
 
-                                        Text("\(overdueProjects.count)")
-                                            .font(.system(size: 11, weight: .bold))
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 2)
-                                            .background(OPSStyle.Colors.errorStatus)
-                                            .clipShape(Capsule())
-                                            .offset(x: 6, y: -6)
+                                        if overdueCount > 0 {
+                                            Text("\(overdueCount)")
+                                                .font(.system(size: 11, weight: .bold))
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 5)
+                                                .padding(.vertical, 2)
+                                                .background(OPSStyle.Colors.errorStatus)
+                                                .clipShape(Capsule())
+                                                .offset(x: 6, y: -6)
+                                        }
                                     }
                                 }
                             }
@@ -234,7 +237,7 @@ struct JobBoardView: View {
                         // Client preloading no longer needed — @Query is filtered at DB level
                     }
                     .task {
-                        // Compute overdue projects for payment review badge
+                        // Compute projects for payment review
                         let allProjects = dataController.getProjects()
                         let threshold: Int
                         if let companyId = dataController.currentUser?.companyId,
@@ -243,7 +246,15 @@ struct JobBoardView: View {
                         } else {
                             threshold = 14
                         }
-                        overdueProjects = OverdueProjectDetector.overdueProjects(from: allProjects, thresholdDays: threshold)
+                        let overdue = OverdueProjectDetector.overdueProjects(from: allProjects, thresholdDays: threshold)
+                        overdueCount = overdue.count
+
+                        // If overdue projects exist, show those first; otherwise show all completed
+                        if !overdue.isEmpty {
+                            reviewProjects = overdue
+                        } else {
+                            reviewProjects = allProjects.filter { $0.status == .completed }
+                        }
                     }
                     .onAppear {
                         selectedSection = defaultSection(for: dataController.currentUser)
@@ -260,7 +271,7 @@ struct JobBoardView: View {
                     .environmentObject(PermissionStore.shared)
             }
             .sheet(isPresented: $showPaymentReview) {
-                ProjectPaymentReviewView(overdueProjects: overdueProjects)
+                ProjectPaymentReviewView(overdueProjects: reviewProjects)
                     .environmentObject(appState)
                     .environmentObject(permissionStore)
             }

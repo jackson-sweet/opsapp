@@ -237,8 +237,37 @@ struct ProjectPaymentReviewView: View {
         guard project.modelContext != nil else { return }
         project.status = .closed
         project.needsSync = true
+
+        // Write off outstanding invoices if user has financial access
+        if hasFinancialAccess {
+            Task {
+                await writeOffOutstandingInvoices(for: project)
+            }
+        }
+
         reviewedCount += 1
         checkCompletion()
+    }
+
+    /// Finds invoices linked to this project with outstanding balances and marks them as written off.
+    private func writeOffOutstandingInvoices(for project: Project) async {
+        let repo = InvoiceRepository(companyId: project.companyId)
+        do {
+            let allDTOs = try await repo.fetchAll()
+            let outstanding = allDTOs.filter { dto in
+                dto.projectId == project.id
+                    && dto.balanceDue > 0
+                    && dto.status != InvoiceStatus.void.rawValue
+                    && dto.status != InvoiceStatus.writtenOff.rawValue
+            }
+
+            for dto in outstanding {
+                try await repo.updateStatus(dto.id, status: .writtenOff)
+                print("[PaymentReview] Wrote off invoice \(dto.invoiceNumber) for project: \(project.title)")
+            }
+        } catch {
+            print("[PaymentReview] Failed to write off invoices: \(error)")
+        }
     }
 
     private func checkCompletion() {

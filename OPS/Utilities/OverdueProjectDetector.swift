@@ -11,6 +11,7 @@ import Foundation
 struct OverdueProjectDetector {
 
     /// Returns projects that have been in `.completed` status longer than the threshold.
+    /// Only considers `completedAt` — projects without it are excluded (legacy data).
     static func overdueProjects(
         from projects: [Project],
         thresholdDays: Int = 14
@@ -22,22 +23,17 @@ struct OverdueProjectDetector {
             .filter { $0.status == .completed }
             .filter { project in
                 guard let completedAt = project.completedAt else {
-                    // No completedAt — use endDate as fallback, or include if no date at all
-                    if let endDate = project.endDate {
-                        let daysSince = calendar.dateComponents([.day], from: endDate, to: now).day ?? 0
-                        return daysSince >= thresholdDays
-                    }
-                    return true // No date info — include for safety
+                    return false // No completedAt — can't determine if overdue
                 }
                 let daysSince = calendar.dateComponents([.day], from: completedAt, to: now).day ?? 0
                 return daysSince >= thresholdDays
             }
-            .sorted { ($0.completedAt ?? $0.endDate ?? .distantPast) < ($1.completedAt ?? $1.endDate ?? .distantPast) }
+            .sorted { ($0.completedAt ?? .distantPast) < ($1.completedAt ?? .distantPast) }
     }
 
-    /// Number of days since project was completed
+    /// Number of days since project was completed. Returns 0 if no completedAt date.
     static func daysSinceCompleted(_ project: Project) -> Int {
-        let referenceDate = project.completedAt ?? project.endDate ?? Date()
-        return Calendar.current.dateComponents([.day], from: referenceDate, to: Date()).day ?? 0
+        guard let completedAt = project.completedAt else { return 0 }
+        return Calendar.current.dateComponents([.day], from: completedAt, to: Date()).day ?? 0
     }
 }

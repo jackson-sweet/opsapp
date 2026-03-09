@@ -25,6 +25,9 @@ class AppState: ObservableObject {
     // Track when inventory view is in selection mode (hides FAB)
     @Published var isInventorySelectionMode: Bool = false
 
+    // Track when schedule view is in selection mode (hides FAB)
+    @Published var isScheduleSelectionMode: Bool = false
+
     // Tutorial restart flag - when true, ContentView should show the tutorial
     @Published var shouldRestartTutorial: Bool = false
 
@@ -34,6 +37,9 @@ class AppState: ObservableObject {
 
     // MARK: - Job Board
     @Published var showingJobBoardSearch: Bool = false
+
+    // MARK: - Payment Review
+    @Published var showPaymentReview: Bool = false
 
     /// Refresh unread notification count from Supabase
     func refreshUnreadCount() {
@@ -227,5 +233,27 @@ class AppState: ObservableObject {
         else if !isViewingDetailsOnly {
             // Keep activeProjectID as is - we're still in project mode
         }
+    }
+
+    // MARK: - Overdue Payment Review Check
+
+    /// Check for overdue projects on app launch and schedule a local notification if needed.
+    /// Should be called after initial data sync completes.
+    func checkOverdueProjects(dataController: DataController) {
+        let allProjects = dataController.getProjects()
+        let companyId = dataController.currentUser?.companyId
+        let company: Company? = companyId.flatMap { dataController.getCompany(id: $0) }
+        let threshold = company?.overdueReviewThresholdDays ?? 14
+        let frequency = company?.overdueReminderFrequencyDays ?? 7
+
+        let overdueCount = OverdueProjectDetector.overdueProjects(
+            from: allProjects,
+            thresholdDays: threshold
+        ).count
+
+        NotificationManager.shared.checkAndSchedulePaymentReviewNotifications(
+            overdueCount: overdueCount,
+            reminderFrequencyDays: frequency
+        )
     }
 }

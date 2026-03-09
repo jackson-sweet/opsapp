@@ -264,6 +264,9 @@ struct JobBoardView: View {
                     .environmentObject(appState)
                     .environmentObject(permissionStore)
             }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenPaymentReview"))) { _ in
+                showPaymentReview = true
+            }
         }
 
     // MARK: - Background Data Preloading

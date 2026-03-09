@@ -313,7 +313,53 @@ class NotificationManager: NSObject, ObservableObject {
         // Return the notification identifier in case it needs to be removed later
         return identifier
     }
-    
+
+    // MARK: - Payment Review Notifications
+
+    /// Schedule a local notification for overdue payment reviews
+    func schedulePaymentReviewNotification(overdueCount: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "Payment Review Needed"
+        content.body = "\(overdueCount) project\(overdueCount == 1 ? "" : "s") overdue for payment"
+        content.categoryIdentifier = NotificationCategory.projectPaymentReview.rawValue
+        content.sound = .default
+        content.userInfo = ["type": "projectPaymentReview"]
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+
+        let request = UNNotificationRequest(
+            identifier: "payment-review-\(UUID().uuidString)",
+            content: content,
+            trigger: trigger
+        )
+
+        notificationCenter.add(request) { error in
+            if let error = error {
+                print("[NOTIFICATIONS] Failed to schedule payment review notification: \(error)")
+            }
+        }
+    }
+
+    /// Check if a payment review notification should be sent based on frequency settings,
+    /// and schedule one if enough time has elapsed since the last notification.
+    func checkAndSchedulePaymentReviewNotifications(
+        overdueCount: Int,
+        reminderFrequencyDays: Int
+    ) {
+        guard overdueCount > 0 else { return }
+
+        let lastNotifiedKey = "lastPaymentReviewNotification"
+        let lastNotified = UserDefaults.standard.object(forKey: lastNotifiedKey) as? Date
+
+        if let last = lastNotified {
+            let daysSince = Calendar.current.dateComponents([.day], from: last, to: Date()).day ?? 0
+            guard daysSince >= reminderFrequencyDays else { return }
+        }
+
+        schedulePaymentReviewNotification(overdueCount: overdueCount)
+        UserDefaults.standard.set(Date(), forKey: lastNotifiedKey)
+    }
+
     /// Schedule a team notification
     func scheduleTeamNotification(
         teamMemberId: String,
@@ -694,6 +740,15 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
 
             case NotificationCategory.team.rawValue:
                 handleTeamNotificationResponse(userInfo: userInfo, actionIdentifier: actionIdentifier)
+
+            case NotificationCategory.projectPaymentReview.rawValue:
+                DispatchQueue.main.async {
+                    // Post notification for deep link handling
+                    NotificationCenter.default.post(
+                        name: Notification.Name("OpenPaymentReview"),
+                        object: nil
+                    )
+                }
 
             case NotificationCategory.projectAssignment.rawValue,
                  NotificationCategory.projectUpdate.rawValue,

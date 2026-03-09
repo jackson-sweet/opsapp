@@ -177,12 +177,14 @@ struct MainTabView: View {
             VStack(spacing: 8) {
                 ImageSyncProgressView(syncManager: imageSyncProgressManager)
 
-                // Sync status indicator
-                HStack {
-                    Spacer()
-                    SyncStatusIndicator()
-                        .environmentObject(dataController)
-                        .padding(.trailing, 16)
+                // Sync status indicator — hidden when sync restored banner is showing
+                if !dataController.showSyncRestoredAlert {
+                    HStack {
+                        Spacer()
+                        SyncStatusIndicator()
+                            .environmentObject(dataController)
+                            .padding(.trailing, 16)
+                    }
                 }
 
                 Spacer()
@@ -205,15 +207,16 @@ struct MainTabView: View {
             // Floating action menu - visible across all tabs except Settings and during initial sync/loading
             // IMPORTANT: Always render to preserve @State (sheet presentation) when app goes to background
             // Use opacity and allowsHitTesting instead of conditional rendering to prevent sheet dismissal
-            FloatingActionMenu(currentTab: selectedTab, hasInventoryAccess: hasInventoryAccess, isScheduleTab: selectedTab == scheduleTabIndex)
+            FloatingActionMenu(currentTab: selectedTab, hasInventoryAccess: hasInventoryAccess, isScheduleTab: selectedTab == scheduleTabIndex, isInventoryTab: inventoryTabIndex != nil && selectedTab == inventoryTabIndex)
                 .environmentObject(dataController)
                 .environmentObject(appState)
-                .opacity(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects ? 1 : 0)
-                .allowsHitTesting(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects)
+                .opacity(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects && !appState.isScheduleSelectionMode ? 1 : 0)
+                .allowsHitTesting(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects && !appState.isScheduleSelectionMode)
                 .animation(OPSStyle.Animation.fast, value: isSettingsTab)
                 .animation(OPSStyle.Animation.fast, value: dataController.isPerformingInitialSync)
                 .animation(OPSStyle.Animation.fast, value: appState.isLoadingProjects)
                 .animation(OPSStyle.Animation.fast, value: appState.isInventorySelectionMode)
+                .animation(OPSStyle.Animation.fast, value: appState.isScheduleSelectionMode)
 
             // Project sheet container that overlays the whole app
             ProjectSheetContainer()
@@ -343,6 +346,11 @@ struct MainTabView: View {
             print("[MAIN_TAB_VIEW] onAppear - Initial user role: \(String(describing: userRole))")
             print("[MAIN_TAB_VIEW] onAppear - Current user: \(String(describing: dataController.currentUser?.fullName))")
             print("[MAIN_TAB_VIEW] onAppear - Tab count: \(tabs.count)")
+
+            // Check for overdue payment reviews after giving sync time to complete
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                appState.checkOverdueProjects(dataController: dataController)
+            }
         }
         .onChange(of: dataController.currentUser?.role) { oldRole, newRole in
             print("[MAIN_TAB_VIEW] User role changed from \(String(describing: oldRole)) to \(String(describing: newRole))")

@@ -21,6 +21,8 @@ struct ProjectPaymentReviewView: View {
     @State private var showWriteOffConfirmation: Bool = false
     @State private var pendingWriteOffProject: Project? = nil
     @State private var showAllCaughtUp: Bool = false
+    @State private var celebrationScale: CGFloat = 0
+    @State private var celebrationOpacity: Double = 0
 
     private var hasFinancialAccess: Bool {
         permissionStore.can("finances.view")
@@ -75,6 +77,8 @@ struct ProjectPaymentReviewView: View {
         .alert("Write Off as Bad Debt?", isPresented: $showWriteOffConfirmation) {
             Button("Cancel", role: .cancel) {
                 pendingWriteOffProject = nil
+                reviewedCount += 1
+                checkCompletion()
             }
             Button("Write Off & Close", role: .destructive) {
                 if let project = pendingWriteOffProject {
@@ -153,14 +157,17 @@ struct ProjectPaymentReviewView: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 64))
                 .foregroundColor(OPSStyle.Colors.successStatus)
+                .scaleEffect(celebrationScale)
 
             Text("ALL CAUGHT UP")
-                .font(OPSStyle.Typography.title)
+                .font(.custom("Mohave-Bold", size: 28))
                 .foregroundColor(OPSStyle.Colors.primaryText)
+                .opacity(celebrationOpacity)
 
             Text("No projects need payment review")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
+                .opacity(celebrationOpacity)
 
             Spacer()
 
@@ -175,6 +182,21 @@ struct ProjectPaymentReviewView: View {
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 32)
+            .opacity(celebrationOpacity)
+        }
+        .onAppear {
+            // Success haptic
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
+
+            // Checkmark scales in
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) {
+                celebrationScale = 1.0
+            }
+            // Text and button fade in after delay
+            withAnimation(.easeOut(duration: 0.4).delay(0.3)) {
+                celebrationOpacity = 1.0
+            }
         }
     }
 
@@ -201,6 +223,7 @@ struct ProjectPaymentReviewView: View {
     }
 
     private func executeClose(_ project: Project) {
+        guard project.modelContext != nil else { return }
         project.status = .closed
         project.needsSync = true
     }
@@ -211,6 +234,7 @@ struct ProjectPaymentReviewView: View {
     }
 
     private func executeWriteOff(_ project: Project) {
+        guard project.modelContext != nil else { return }
         project.status = .closed
         project.needsSync = true
         reviewedCount += 1

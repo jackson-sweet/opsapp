@@ -15,6 +15,7 @@ struct ProjectReviewCardStack: View {
     @State private var currentIndex: Int = 0
     @State private var dragOffset: CGSize = .zero
     @State private var dragDirection: SwipeDirection? = nil
+    @State private var hasTriggeredThresholdHaptic: Bool = false
 
     private let swipeThreshold: CGFloat = 120
     private let maxVisibleCards: Int = 3
@@ -93,8 +94,16 @@ struct ProjectReviewCardStack: View {
             .onChanged { value in
                 dragOffset = value.translation
                 dragDirection = computeDirection(from: value.translation)
+                let magnitude = max(abs(value.translation.width), abs(value.translation.height))
+                if magnitude >= swipeThreshold && !hasTriggeredThresholdHaptic {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    hasTriggeredThresholdHaptic = true
+                } else if magnitude < swipeThreshold {
+                    hasTriggeredThresholdHaptic = false
+                }
             }
             .onEnded { value in
+                hasTriggeredThresholdHaptic = false
                 let translation = value.translation
                 let direction = computeDirection(from: translation)
                 let magnitude = max(abs(translation.width), abs(translation.height))

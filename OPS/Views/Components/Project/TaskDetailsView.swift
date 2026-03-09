@@ -1155,6 +1155,7 @@ struct TaskDetailsView: View {
     private func completeProject() {
         // Update project status to completed
         project.status = .completed
+        project.completedAt = Date()
         project.needsSync = true
         
         // Save to model context

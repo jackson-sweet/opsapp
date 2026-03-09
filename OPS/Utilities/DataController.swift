@@ -2818,6 +2818,14 @@ class DataController: ObservableObject {
 
         // Apply locally
         project.status = newStatus
+
+        // Track completion timestamp
+        if newStatus == .completed {
+            project.completedAt = Date()
+        } else if previousStatus == .completed && newStatus != .completed {
+            project.completedAt = nil
+        }
+
         project.needsSync = true
         try? modelContext?.save()
 

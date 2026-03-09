@@ -10,11 +10,17 @@ import SwiftData
 
 struct ProjectSettingsView: View {
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
 
     // Navigation states
     @State private var showTaskSettings = false
     @State private var showSchedulingType = false
+
+    // Project review settings (bound to Company model)
+    @State private var overdueThreshold: Int = 14
+    @State private var reminderFrequency: Int = 7
+    @State private var matchInvoiceTerms: Bool = false
 
     var body: some View {
         ZStack {
@@ -47,6 +53,97 @@ struct ProjectSettingsView: View {
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
+
+                        // MARK: - Project Review Settings
+                        settingsSection(title: "PROJECT REVIEW") {
+                            // Overdue threshold stepper
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Overdue Threshold")
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                    Text("Days after completion before flagging for review")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                }
+
+                                Spacer()
+
+                                Stepper("\(overdueThreshold) days", value: $overdueThreshold, in: 7...90)
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .labelsHidden()
+                                    .onChange(of: overdueThreshold) { _, newValue in
+                                        saveReviewSetting(\.overdueReviewThresholdDays, value: newValue)
+                                    }
+
+                                Text("\(overdueThreshold) days")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .frame(width: 70, alignment: .trailing)
+                            }
+                            .padding(.vertical, 14)
+                            .padding(.horizontal, 16)
+
+                            sectionDivider
+
+                            // Reminder frequency stepper
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Reminder Frequency")
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                    Text("How often to re-notify about overdue projects")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                }
+
+                                Spacer()
+
+                                Stepper("\(reminderFrequency) days", value: $reminderFrequency, in: 1...30)
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .labelsHidden()
+                                    .onChange(of: reminderFrequency) { _, newValue in
+                                        saveReviewSetting(\.overdueReminderFrequencyDays, value: newValue)
+                                    }
+
+                                Text("\(reminderFrequency) days")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .frame(width: 70, alignment: .trailing)
+                            }
+                            .padding(.vertical, 14)
+                            .padding(.horizontal, 16)
+
+                            sectionDivider
+
+                            // Match invoice payment terms toggle
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Match Invoice Payment Terms")
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(permissionStore.can("finances.view") ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                                    Text("Use invoice net terms instead of fixed threshold")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                }
+
+                                Spacer()
+
+                                Toggle("", isOn: $matchInvoiceTerms)
+                                    .labelsHidden()
+                                    .tint(OPSStyle.Colors.primaryAccent)
+                                    .disabled(!permissionStore.can("finances.view"))
+                                    .onChange(of: matchInvoiceTerms) { _, newValue in
+                                        saveReviewSetting(\.matchInvoicePaymentTerms, value: newValue)
+                                    }
+                            }
+                            .padding(.vertical, 14)
+                            .padding(.horizontal, 16)
+                            .opacity(permissionStore.can("finances.view") ? 1.0 : 0.5)
+                        }
+                        .padding(.horizontal, 20)
                     }
                     .padding(.bottom, 90)
                 }
@@ -64,6 +161,9 @@ struct ProjectSettingsView: View {
                 SchedulingTypeExplanationView()
                     .environmentObject(dataController)
             }
+        }
+        .onAppear {
+            loadReviewSettings()
         }
     }
 
@@ -112,6 +212,24 @@ struct ProjectSettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Review Settings Helpers
+
+    private func loadReviewSettings() {
+        guard let companyId = dataController.currentUser?.companyId,
+              let company = dataController.getCompany(id: companyId) else { return }
+        overdueThreshold = company.overdueReviewThresholdDays
+        reminderFrequency = company.overdueReminderFrequencyDays
+        matchInvoiceTerms = company.matchInvoicePaymentTerms
+    }
+
+    private func saveReviewSetting<T>(_ keyPath: ReferenceWritableKeyPath<Company, T>, value: T) {
+        guard let companyId = dataController.currentUser?.companyId,
+              let company = dataController.getCompany(id: companyId) else { return }
+        company[keyPath: keyPath] = value
+        company.needsSync = true
+        try? dataController.modelContext?.save()
     }
 
     // MARK: - Divider

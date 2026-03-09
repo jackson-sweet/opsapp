@@ -164,7 +164,7 @@ struct SettingsView: View {
                     categoryTitle: "Business",
                     categoryIcon: "hammer.circle",
                     keywords: ["task", "types", "project", "defaults", "scheduling"],
-                    destination: AnyView(ProjectSettingsView().environmentObject(dataController))
+                    destination: AnyView(ProjectSettingsView().environmentObject(dataController).environmentObject(permissionStore))
                 )
             )
         }
@@ -212,6 +212,7 @@ struct SettingsView: View {
 
                 VStack(alignment: .leading, spacing: 0) {
                     AppHeader(headerType: .settings)
+                        .padding(.bottom, 8)
 
                     ScrollView {
                         VStack(spacing: OPSStyle.Layout.spacing4) {
@@ -467,6 +468,7 @@ struct SettingsView: View {
             NavigationStack {
                 ProjectSettingsView()
                     .environmentObject(dataController)
+                    .environmentObject(permissionStore)
             }
         }
         .fullScreenCover(isPresented: $showWhatsNew) {

@@ -147,6 +147,7 @@ struct AppSettingsView: View {
             NavigationStack {
                 ProjectSettingsView()
                     .environmentObject(dataController)
+                    .environmentObject(permissionStore)
             }
         }
         .fullScreenCover(isPresented: $showInventorySettings) {

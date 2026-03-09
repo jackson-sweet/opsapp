@@ -20,6 +20,11 @@ struct JobBoardView: View {
     @State private var showingFilters = false
     @State private var showingProjectFilterSheet = false
     @State private var showingTaskFilterSheet = false
+    @State private var activeOnly = false
+
+    // Payment review state
+    @State private var showPaymentReview: Bool = false
+    @State private var overdueProjects: [Project] = []
 
     // Preloading state (legacy — client query now filtered at DB level)
     @State private var isPreloadingClients = false
@@ -92,8 +97,76 @@ struct JobBoardView: View {
                                 }
                             }
                             .padding(.horizontal, 16)
+                            .padding(.bottom, 8)
                             .opacity(tutorialMode && tutorialPhase == .dragToAccepted ? 0.4 : 1.0)
                             .allowsHitTesting(!(tutorialMode && tutorialPhase == .dragToAccepted))
+                    }
+
+                    // Action row: filter + active toggle
+                    if !tutorialMode && (selectedSection == .projects || selectedSection == .myProjects) {
+                        HStack(spacing: 12) {
+                            Button(action: { showingProjectFilterSheet = true }) {
+                                Image(systemName: "line.3.horizontal.decrease")
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .frame(width: 36, height: 36)
+                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    )
+                            }
+
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.2)) { activeOnly.toggle() }
+                            }) {
+                                Text("ACTIVE ONLY")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(activeOnly ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .fill(activeOnly ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(activeOnly ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    )
+                            }
+
+                            Spacer()
+
+                            // Payment review button
+                            if !overdueProjects.isEmpty && (permissionStore.can("projects.manage") || permissionStore.hasFullAccess("projects.manage")) {
+                                Button(action: { showPaymentReview = true }) {
+                                    ZStack(alignment: .topTrailing) {
+                                        Image(systemName: "rectangle.stack.fill")
+                                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            .frame(width: 36, height: 36)
+                                            .background(OPSStyle.Colors.cardBackgroundDark)
+                                            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                            )
+
+                                        Text("\(overdueProjects.count)")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 2)
+                                            .background(OPSStyle.Colors.errorStatus)
+                                            .clipShape(Capsule())
+                                            .offset(x: 6, y: -6)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
                     }
 
                     // Main content with slide transitions
@@ -104,7 +177,8 @@ struct JobBoardView: View {
                             JobBoardProjectListView(
                                 searchText: searchText,
                                 showingFilters: $showingFilters,
-                                showingFilterSheet: $showingProjectFilterSheet
+                                showingFilterSheet: $showingProjectFilterSheet,
+                                activeOnly: activeOnly
                             )
                             .padding(.horizontal, 16)
                         } else {
@@ -115,14 +189,16 @@ struct JobBoardView: View {
                                 JobBoardProjectListView(
                                     searchText: searchText,
                                     showingFilters: $showingFilters,
-                                    showingFilterSheet: $showingProjectFilterSheet
+                                    showingFilterSheet: $showingProjectFilterSheet,
+                                    activeOnly: activeOnly
                                 )
                                 .padding(.horizontal, 16)
                             case .projects:
                                 JobBoardProjectListView(
                                     searchText: searchText,
                                     showingFilters: $showingFilters,
-                                    showingFilterSheet: $showingProjectFilterSheet
+                                    showingFilterSheet: $showingProjectFilterSheet,
+                                    activeOnly: activeOnly
                                 )
                                 .padding(.horizontal, 16)
                             case .tasks:
@@ -157,6 +233,18 @@ struct JobBoardView: View {
                     .task {
                         // Client preloading no longer needed — @Query is filtered at DB level
                     }
+                    .task {
+                        // Compute overdue projects for payment review badge
+                        let allProjects = dataController.getProjects()
+                        let threshold: Int
+                        if let companyId = dataController.currentUser?.companyId,
+                           let company = dataController.getCompany(id: companyId) {
+                            threshold = company.overdueReviewThresholdDays
+                        } else {
+                            threshold = 14
+                        }
+                        overdueProjects = OverdueProjectDetector.overdueProjects(from: allProjects, thresholdDays: threshold)
+                    }
                     .onAppear {
                         selectedSection = defaultSection(for: dataController.currentUser)
                         AnalyticsManager.shared.trackScreenView(screenName: .jobBoard, screenClass: "JobBoardView")
@@ -168,6 +256,13 @@ struct JobBoardView: View {
             .sheet(isPresented: $appState.showingJobBoardSearch) {
                 UniversalSearchSheet()
                     .environmentObject(dataController)
+                    .environmentObject(appState)
+                    .environmentObject(PermissionStore.shared)
+            }
+            .sheet(isPresented: $showPaymentReview) {
+                ProjectPaymentReviewView(overdueProjects: overdueProjects)
+                    .environmentObject(appState)
+                    .environmentObject(permissionStore)
             }
         }
 
@@ -216,7 +311,7 @@ enum JobBoardSection: String, CaseIterable {
     // Office / Admin sections
     case projects   = "PROJECTS"
     case tasks      = "TASKS"
-    case kanban     = "KANBAN"
+    case kanban     = "BOARD"
 
     var icon: String {
         switch self {

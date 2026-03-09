@@ -40,6 +40,11 @@ struct ContentView: View {
                     variantManager: variantManager,
                     onboardingManager: manager,
                     onComplete: {
+                        // Finalize onboarding state before disposing manager
+                        onboardingManagerInstance?.completeOnboarding()
+                        dataController.isAuthenticated = true
+                        UserDefaults.standard.set(true, forKey: "onboarding_completed")
+                        UserDefaults.standard.set(true, forKey: "is_authenticated")
                         showABTestOnboarding = false
                         onboardingManagerInstance = nil
                     },
@@ -52,9 +57,19 @@ struct ContentView: View {
                 .environmentObject(dataController)
                 .environmentObject(appState)
                 .environmentObject(locationManager)
-            } else if showExistingLogin || !dataController.isAuthenticated {
-                // Existing login for returning users or "I already have an account"
-                LoginView()
+            } else if showExistingLogin {
+                // "I already have an account" from A/B test → direct login form
+                LoginView(onBack: {
+                    // Go back to A/B test splash
+                    showExistingLogin = false
+                    onboardingManagerInstance = OnboardingManager(dataController: dataController)
+                    showABTestOnboarding = true
+                })
+                .environmentObject(appState)
+                .environmentObject(locationManager)
+            } else if !dataController.isAuthenticated {
+                // General unauthenticated state → landing page
+                LandingView()
                     .environmentObject(appState)
                     .environmentObject(locationManager)
             } else if showTutorialForReturningUser {
@@ -118,8 +133,8 @@ struct ContentView: View {
                         }
                         dataController.isAuthenticated = false
                     } else {
-                        // Returning user → existing LoginView with onboarding
-                        print("[CONTENT_VIEW] -> Showing onboarding (LoginView)")
+                        // Returning user → existing LandingView with onboarding
+                        print("[CONTENT_VIEW] -> Showing onboarding (LandingView)")
                         dataController.isAuthenticated = false
                     }
                 } else if dataController.isAuthenticated {
@@ -439,6 +454,7 @@ struct PINGatedView: View {
                     onComplete: {
                         // Mark project as completed after tasks are done
                         project.status = .completed
+                        project.completedAt = Date()
                         project.needsSync = true
 
                         Task {

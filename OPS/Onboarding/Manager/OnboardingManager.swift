@@ -58,17 +58,6 @@ class OnboardingManager: ObservableObject {
             self.state = OnboardingState.initial
             print("[ONBOARDING_MANAGER] Created initial state")
 
-            // Start new analytics session for fresh onboarding
-            OnboardingAnalyticsService.shared.startNewSession()
-
-            // Track initial welcome screen view
-            OnboardingAnalyticsService.shared.trackPageView(
-                pageName: OnboardingScreen.welcome.rawValue,
-                pageIndex: 1,
-                totalPages: 9, // Max possible (company creator flow)
-                flowType: "unknown", // Flow not selected yet
-                userId: nil
-            )
         }
     }
 
@@ -205,13 +194,6 @@ class OnboardingManager: ObservableObject {
         let (pageIndex, totalPages) = getPageIndexAndTotal(for: screen)
         let flowType = state.flow?.rawValue ?? "unknown"
 
-        OnboardingAnalyticsService.shared.trackPageView(
-            pageName: screen.rawValue,
-            pageIndex: pageIndex,
-            totalPages: totalPages,
-            flowType: flowType,
-            userId: state.userData.userId
-        )
     }
 
     /// Get page index and total pages for analytics
@@ -1066,12 +1048,6 @@ class OnboardingManager: ObservableObject {
         print("[ONBOARDING_MANAGER]   - userId: \(state.userData.userId ?? "nil")")
         print("[ONBOARDING_MANAGER]   - companyId: \(state.companyData.companyId ?? "nil")")
         print("[ONBOARDING_MANAGER]   - companyCode: \(state.companyData.companyCode ?? "nil")")
-
-        // Track analytics completion
-        OnboardingAnalyticsService.shared.trackCompleted(
-            flowType: state.flow?.rawValue ?? "unknown",
-            userId: state.userData.userId
-        )
 
         // Store credentials so app can load user data on next launch
         storeCredentials()

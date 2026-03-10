@@ -37,6 +37,8 @@ struct SupabaseCompanyDTO: Codable, Identifiable {
     let hasPrioritySupport: Bool?
     let stripeCustomerId: String?
     let companyCode: String?
+    let preciseSchedulingEnabled: Bool?
+    let skipWeekendsInAutoSchedule: Bool?
     let createdAt: String?
     let deletedAt: String?
 
@@ -57,6 +59,8 @@ struct SupabaseCompanyDTO: Codable, Identifiable {
         case hasPrioritySupport   = "has_priority_support"
         case stripeCustomerId     = "stripe_customer_id"
         case companyCode          = "company_code"
+        case preciseSchedulingEnabled    = "precise_scheduling_enabled"
+        case skipWeekendsInAutoSchedule  = "skip_weekends_in_auto_schedule"
         case createdAt            = "created_at"
         case deletedAt            = "deleted_at"
     }
@@ -86,6 +90,9 @@ struct SupabaseUserDTO: Codable, Identifiable {
     let locationName: String?
     let isActive: Bool?
     let specialPermissions: [String]?
+    let emergencyContactName: String?
+    let emergencyContactPhone: String?
+    let emergencyContactRelationship: String?
     let deletedAt: String?
 
     enum CodingKeys: String, CodingKey {
@@ -105,6 +112,9 @@ struct SupabaseUserDTO: Codable, Identifiable {
         case locationName          = "location_name"
         case isActive              = "is_active"
         case specialPermissions    = "special_permissions"
+        case emergencyContactName         = "emergency_contact_name"
+        case emergencyContactPhone        = "emergency_contact_phone"
+        case emergencyContactRelationship = "emergency_contact_relationship"
         case deletedAt             = "deleted_at"
     }
 }
@@ -173,10 +183,11 @@ struct SupabaseTaskTypeDTO: Codable, Identifiable {
     let icon: String?
     let isDefault: Bool?
     let displayOrder: Int?
+    let dependencies: [TaskTypeDependency]?
     let deletedAt: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, display, color, icon
+        case id, display, color, icon, dependencies
         case bubbleId      = "bubble_id"
         case companyId     = "company_id"
         case isDefault     = "is_default"
@@ -242,24 +253,30 @@ struct SupabaseProjectTaskDTO: Codable, Identifiable {
     let startDate: String?
     let endDate: String?
     let duration: Int?
+    let dependencyOverrides: [TaskTypeDependency]?
+    let startTime: String?   // "HH:mm" format
+    let endTime: String?     // "HH:mm" format
     let deletedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id, status, duration
-        case bubbleId         = "bubble_id"
-        case companyId        = "company_id"
-        case projectId        = "project_id"
-        case taskTypeId       = "task_type_id"
-        case customTitle      = "custom_title"
-        case taskNotes        = "task_notes"
-        case taskColor        = "task_color"
-        case displayOrder     = "display_order"
-        case teamMemberIds    = "team_member_ids"
-        case sourceLineItemId = "source_line_item_id"
-        case sourceEstimateId = "source_estimate_id"
-        case startDate        = "start_date"
-        case endDate          = "end_date"
-        case deletedAt        = "deleted_at"
+        case bubbleId             = "bubble_id"
+        case companyId            = "company_id"
+        case projectId            = "project_id"
+        case taskTypeId           = "task_type_id"
+        case customTitle          = "custom_title"
+        case taskNotes            = "task_notes"
+        case taskColor            = "task_color"
+        case displayOrder         = "display_order"
+        case teamMemberIds        = "team_member_ids"
+        case sourceLineItemId     = "source_line_item_id"
+        case sourceEstimateId     = "source_estimate_id"
+        case startDate            = "start_date"
+        case endDate              = "end_date"
+        case dependencyOverrides  = "dependency_overrides"
+        case startTime            = "start_time"
+        case endTime              = "end_time"
+        case deletedAt            = "deleted_at"
     }
 }
 

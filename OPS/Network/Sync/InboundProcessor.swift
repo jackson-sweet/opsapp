@@ -317,7 +317,8 @@ final class InboundProcessor {
                     "profileImageURL", "userColor", "role", "userType",
                     "hasCompletedAppOnboarding", "hasCompletedAppTutorial",
                     "devPermission", "latitude", "longitude", "locationName",
-                    "isActive", "deletedAt"
+                    "isActive", "emergencyContactName", "emergencyContactPhone",
+                    "emergencyContactRelationship", "deletedAt"
                 ],
                 context: context
             )
@@ -346,6 +347,9 @@ final class InboundProcessor {
             if accept.contains("longitude") { existing.longitude = dto.longitude }
             if accept.contains("locationName") { existing.locationName = dto.locationName }
             if accept.contains("isActive") { existing.isActive = dto.isActive ?? true }
+            if accept.contains("emergencyContactName") { existing.emergencyContactName = dto.emergencyContactName }
+            if accept.contains("emergencyContactPhone") { existing.emergencyContactPhone = dto.emergencyContactPhone }
+            if accept.contains("emergencyContactRelationship") { existing.emergencyContactRelationship = dto.emergencyContactRelationship }
             if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
 
             existing.lastSyncedAt = Date()

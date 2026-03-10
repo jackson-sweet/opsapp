@@ -541,6 +541,9 @@ class OnboardingViewModel: ObservableObject {
                 locationName: nil,
                 isActive: true,
                 specialPermissions: nil,
+                emergencyContactName: nil,
+                emergencyContactPhone: nil,
+                emergencyContactRelationship: nil,
                 deletedAt: nil
             )
             try? await userRepo.upsert(userDTO)
@@ -565,7 +568,7 @@ class OnboardingViewModel: ObservableObject {
                             id: userIdValue,
                             firstName: "",
                             lastName: "",
-                            role: .fieldCrew,
+                            role: .crew,
                             companyId: ""
                         )
                         userObject.email = email
@@ -679,7 +682,7 @@ class OnboardingViewModel: ObservableObject {
                 "first_name": .string(firstName),
                 "last_name": .string(lastName),
                 "phone": .string(formattedPhone),
-                "role": .string("field_crew"),
+                "role": .string("Crew"),
                 "is_company_admin": .bool(false)
             ])
 
@@ -1206,6 +1209,16 @@ class OnboardingViewModel: ObservableObject {
                 "last_name": .string(lastName),
                 "phone": .string(phoneNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression))
             ])
+
+            // Seed default task types, inventory units, and company settings (non-fatal)
+            do {
+                try await SupabaseService.shared.client
+                    .rpc("initialize_company_defaults", params: ["p_company_id": companyId])
+                    .execute()
+                print("[ONBOARDING] ✅ Company defaults initialized")
+            } catch {
+                print("[ONBOARDING] ⚠️ Failed to initialize defaults (will retry via web): \(error)")
+            }
 
             // Store company data and update SwiftData
             await MainActor.run {

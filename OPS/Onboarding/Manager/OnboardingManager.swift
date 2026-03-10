@@ -95,7 +95,7 @@ class OnboardingManager: ObservableObject {
                 id: userId,
                 firstName: state.userData.firstName,
                 lastName: state.userData.lastName,
-                role: userType == .company ? .admin : .fieldCrew,
+                role: userType == .company ? .admin : .crew,
                 companyId: state.companyData.companyId ?? ""
             )
             newUser.email = state.userData.email
@@ -597,6 +597,9 @@ class OnboardingManager: ObservableObject {
                 locationName: nil,
                 isActive: true,
                 specialPermissions: nil,
+                emergencyContactName: nil,
+                emergencyContactPhone: nil,
+                emergencyContactRelationship: nil,
                 deletedAt: nil
             )
             try await userRepo.upsert(userDTO)
@@ -742,9 +745,38 @@ class OnboardingManager: ObservableObject {
             let userRepo = UserRepository(companyId: companyId)
             try await userRepo.updateFields(userId: userId, fields: [
                 "company_id": .string(companyId),
-                "role": .string("admin"),
+                "role": .string("Admin"),
                 "is_company_admin": .bool(true)
             ])
+
+            // Assign admin role in user_roles table for permission system
+            do {
+                let adminRoleRows: [[String: String]] = try await SupabaseService.shared.client
+                    .from("roles")
+                    .select("id")
+                    .eq("name", value: "Admin")
+                    .execute()
+                    .value
+                if let roleId = adminRoleRows.first?["id"] {
+                    try await SupabaseService.shared.client
+                        .from("user_roles")
+                        .upsert(["user_id": userId, "role_id": roleId])
+                        .execute()
+                    print("[ONBOARDING_MANAGER] ✅ Admin role assigned in user_roles")
+                }
+            } catch {
+                print("[ONBOARDING_MANAGER] ⚠️ Failed to assign admin role: \(error)")
+            }
+
+            // Seed default task types, inventory units, and company settings (non-fatal)
+            do {
+                try await SupabaseService.shared.client
+                    .rpc("initialize_company_defaults", params: ["p_company_id": companyId])
+                    .execute()
+                print("[ONBOARDING_MANAGER] ✅ Company defaults initialized")
+            } catch {
+                print("[ONBOARDING_MANAGER] ⚠️ Failed to initialize defaults (will retry via web): \(error)")
+            }
 
             // Store company data in state
             state.companyData.companyId = companyId
@@ -843,9 +875,28 @@ class OnboardingManager: ObservableObject {
             let userRepo = UserRepository(companyId: companyId)
             try await userRepo.updateFields(userId: userId, fields: [
                 "company_id": .string(companyId),
-                "role": .string("field_crew"),
+                "role": .string("Crew"),
                 "is_company_admin": .bool(false)
             ])
+
+            // Assign Crew role in user_roles table for permission system
+            do {
+                let fieldRoleRows: [[String: String]] = try await SupabaseService.shared.client
+                    .from("roles")
+                    .select("id")
+                    .eq("name", value: "Crew")
+                    .execute()
+                    .value
+                if let roleId = fieldRoleRows.first?["id"] {
+                    try await SupabaseService.shared.client
+                        .from("user_roles")
+                        .upsert(["user_id": userId, "role_id": roleId])
+                        .execute()
+                    print("[ONBOARDING_MANAGER] ✅ Field crew role assigned in user_roles")
+                }
+            } catch {
+                print("[ONBOARDING_MANAGER] ⚠️ Failed to assign field crew role: \(error)")
+            }
 
             // Add user to company's seated_employee_ids
             var seatIds = companyDTO.seatedEmployeeIds ?? []
@@ -895,6 +946,20 @@ class OnboardingManager: ObservableObject {
             if let syncManager = dataController.syncManager {
                 try? await syncManager.syncCompany()
                 print("[ONBOARDING_MANAGER] Company sync triggered after join")
+            }
+
+            // Notify company admins that a new member joined
+            do {
+                let notifyIds = companyDTO.adminIds ?? []
+                let memberName = "\(state.userData.firstName) \(state.userData.lastName)"
+                try await OneSignalService.shared.notifyTeamJoin(
+                    adminUserIds: notifyIds,
+                    newMemberName: memberName,
+                    newMemberUserId: userId,
+                    companyId: companyId
+                )
+            } catch {
+                print("[ONBOARDING_MANAGER] ⚠️ Failed to send team join notification: \(error)")
             }
 
             print("[ONBOARDING_MANAGER] Joined company: \(companyId)")
@@ -955,7 +1020,7 @@ class OnboardingManager: ObservableObject {
                 id: userId,
                 firstName: state.userData.firstName,
                 lastName: state.userData.lastName,
-                role: userType == .company ? .admin : .fieldCrew,
+                role: userType == .company ? .admin : .crew,
                 companyId: "" // Will be set when company is created or joined
             )
             newUser.email = email

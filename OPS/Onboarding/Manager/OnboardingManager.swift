@@ -955,6 +955,22 @@ class OnboardingManager: ObservableObject {
         }
     }
 
+    /// Look up a company by crew code without joining.
+    /// Returns the company DTO for confirmation screen display.
+    func lookupCompanyByCode(_ code: String) async throws -> SupabaseCompanyDTO {
+        let trimmedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        let companyRepo = CompanyRepository()
+        guard let companyDTO = try await companyRepo.fetchByCode(trimmedCode) else {
+            throw OnboardingManagerError.invalidCompanyCode
+        }
+
+        // Store code in state for later joinCompany call
+        state.companyData.companyCode = trimmedCode
+        state.save()
+
+        return companyDTO
+    }
+
     /// Update user profile to Supabase
     private func updateUserProfile() async throws {
         guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
@@ -975,6 +991,60 @@ class OnboardingManager: ObservableObject {
         try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
 
         print("[ONBOARDING_MANAGER] User profile updated")
+    }
+
+    /// Save employee profile fields including emergency contact to Supabase.
+    /// Called from the employee onboarding profile screen.
+    func saveEmployeeProfile(
+        firstName: String,
+        lastName: String,
+        phone: String?,
+        emergencyContactName: String?,
+        emergencyContactPhone: String?,
+        emergencyContactRelationship: String?
+    ) async throws {
+        guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
+            throw OnboardingManagerError.noUserId
+        }
+
+        // Update state so joinCompany can use it
+        state.userData.firstName = firstName
+        state.userData.lastName = lastName
+        state.userData.phone = phone ?? ""
+        state.save()
+
+        var fields: [String: AnyJSON] = [
+            "first_name": .string(firstName),
+            "last_name": .string(lastName)
+        ]
+
+        if let phone = phone, !phone.isEmpty {
+            fields["phone"] = .string(phone)
+        }
+        if let name = emergencyContactName, !name.isEmpty {
+            fields["emergency_contact_name"] = .string(name)
+        }
+        if let phone = emergencyContactPhone, !phone.isEmpty {
+            fields["emergency_contact_phone"] = .string(phone)
+        }
+        if let rel = emergencyContactRelationship, !rel.isEmpty {
+            fields["emergency_contact_relationship"] = .string(rel)
+        }
+
+        try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
+
+        // Update local SwiftData user
+        if let currentUser = dataController.currentUser {
+            currentUser.firstName = firstName
+            currentUser.lastName = lastName
+            currentUser.phone = phone
+            currentUser.emergencyContactName = emergencyContactName
+            currentUser.emergencyContactPhone = emergencyContactPhone
+            currentUser.emergencyContactRelationship = emergencyContactRelationship
+            try? dataController.modelContext?.save()
+        }
+
+        print("[ONBOARDING_MANAGER] Employee profile saved")
     }
 
     /// Create a local User object in SwiftData and initialize DataController

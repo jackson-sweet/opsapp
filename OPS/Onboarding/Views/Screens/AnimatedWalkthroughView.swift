@@ -149,7 +149,7 @@ private struct WalkthroughPageView: View {
 
             // Headline
             Text(headline)
-                .font(.custom("Mohave-Bold", size: 28))
+                .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .tracking(2)
                 .multilineTextAlignment(.center)
@@ -171,6 +171,7 @@ private struct WalkthroughPageView: View {
         }
         .onAppear {
             animateIn()
+            OnboardingSupabaseAnalytics.shared.trackStepView("walkthrough")
         }
     }
 

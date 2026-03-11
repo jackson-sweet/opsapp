@@ -24,7 +24,6 @@ struct ContentView: View {
     // Add a state to track initial loading
     @State private var isCheckingAuth = true
     @State private var showLocationPermissionView = false
-    @State private var showTutorialForReturningUser = false
     @State private var showABTestOnboarding = false
     @State private var showExistingLogin = false
     @State private var onboardingManagerInstance: OnboardingManager?
@@ -49,8 +48,10 @@ struct ContentView: View {
                         onboardingManagerInstance = nil
                     },
                     onShowLogin: {
-                        showABTestOnboarding = false
-                        showExistingLogin = true
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            showABTestOnboarding = false
+                            showExistingLogin = true
+                        }
                         onboardingManagerInstance = nil
                     }
                 )
@@ -72,17 +73,6 @@ struct ContentView: View {
                 LandingView()
                     .environmentObject(appState)
                     .environmentObject(locationManager)
-            } else if showTutorialForReturningUser {
-                // Show tutorial for returning users who haven't completed it
-                TutorialLauncherView(
-                    flowType: TutorialLauncherView.detectFlowType(for: dataController.currentUser),
-                    onComplete: {
-                        showTutorialForReturningUser = false
-                    }
-                )
-                .environmentObject(dataController)
-                .environmentObject(appState)
-                .environmentObject(locationManager)
             } else {
                 // Check if PIN authentication is required
                 // Access the PIN manager directly as @ObservedObject to ensure proper state updates
@@ -137,33 +127,6 @@ struct ContentView: View {
                         print("[CONTENT_VIEW] -> Showing onboarding (LandingView)")
                         dataController.isAuthenticated = false
                     }
-                } else if dataController.isAuthenticated {
-                    // Check if returning user needs to complete tutorial
-                    let user = dataController.currentUser
-                    let hasCompletedTutorial = user?.hasCompletedAppTutorial ?? false
-
-                    print("[CONTENT_VIEW] Checking tutorial for returning user:")
-                    print("[CONTENT_VIEW]   - currentUser exists: \(user != nil)")
-                    if let user = user {
-                        print("[CONTENT_VIEW]   - user.id: \(user.id)")
-                        print("[CONTENT_VIEW]   - user.hasCompletedAppTutorial: \(user.hasCompletedAppTutorial)")
-                    }
-                    print("[CONTENT_VIEW]   - hasCompletedTutorial (with nil fallback): \(hasCompletedTutorial)")
-
-                    // Also check UserDefaults fallback from pre-signup tutorial
-                    let preSignupDone = UserDefaults.standard.bool(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
-
-                    if !hasCompletedTutorial && preSignupDone {
-                        // Pre-signup tutorial was done but flag wasn't synced to user yet
-                        print("[CONTENT_VIEW]   -> Pre-signup tutorial done, marking tutorial complete on user")
-                        user?.hasCompletedAppTutorial = true
-                        UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
-                    } else if !hasCompletedTutorial {
-                        print("[CONTENT_VIEW]   -> Showing tutorial for returning user")
-                        showTutorialForReturningUser = true
-                    } else {
-                        print("[CONTENT_VIEW]   -> Skipping tutorial, showing main app")
-                    }
                 }
 
                 // Finish the loading phase to show the appropriate screen
@@ -171,29 +134,11 @@ struct ContentView: View {
                 print("[CONTENT_VIEW] ========== END AUTH CHECK ==========")
             }
         }
-        // Watch for authentication changes to check tutorial status
+        // Watch for authentication changes
         .onChange(of: dataController.isAuthenticated) { _, isAuthenticated in
             if isAuthenticated && !isCheckingAuth {
                 // Clear A/B test login routing flag so user proceeds to main app
                 showExistingLogin = false
-
-                // User just became authenticated (login completed)
-                // Check if they need to complete the tutorial
-                let hasCompletedTutorial = dataController.currentUser?.hasCompletedAppTutorial ?? false
-                let preSignupDone = UserDefaults.standard.bool(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
-                print("[CONTENT_VIEW] Auth changed to true - checking tutorial:")
-                print("[CONTENT_VIEW]   - hasCompletedAppTutorial: \(hasCompletedTutorial)")
-                print("[CONTENT_VIEW]   - preSignupTutorialDone: \(preSignupDone)")
-
-                if !hasCompletedTutorial && preSignupDone {
-                    // Pre-signup tutorial was done, mark on user and skip
-                    print("[CONTENT_VIEW]   -> Pre-signup tutorial done, marking complete")
-                    dataController.currentUser?.hasCompletedAppTutorial = true
-                    UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
-                } else if !hasCompletedTutorial {
-                    print("[CONTENT_VIEW]   -> Showing tutorial after login")
-                    showTutorialForReturningUser = true
-                }
             }
         }
         // Watch for changes to the location denied state
@@ -211,14 +156,6 @@ struct ContentView: View {
                     onboardingManagerInstance = OnboardingManager(dataController: dataController)
                     showABTestOnboarding = true
                 }
-            }
-        }
-        // Watch for tutorial restart request from settings
-        .onChange(of: appState.shouldRestartTutorial) { _, shouldRestart in
-            if shouldRestart {
-                print("[CONTENT_VIEW] Tutorial restart requested from settings")
-                appState.shouldRestartTutorial = false
-                showTutorialForReturningUser = true
             }
         }
         // Add the location permission overlay

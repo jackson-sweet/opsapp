@@ -18,10 +18,11 @@ struct TypewriterText: View {
     let startDelay: Double
     let onComplete: (() -> Void)?
 
-    @State private var displayedText: String = ""
+    @State private var displayedCount: Int = 0
     @State private var showCursor: Bool = true
     @State private var isComplete: Bool = false
     @State private var hasStarted: Bool = false
+    @State private var cursorTimer: Timer?
 
     init(
         _ text: String,
@@ -40,27 +41,17 @@ struct TypewriterText: View {
     }
 
     var body: some View {
-        // ZStack to reserve space - invisible full text underneath
+        // ZStack to reserve space — invisible full text underneath
         ZStack(alignment: .leading) {
-            // Invisible placeholder to reserve space
+            // Invisible placeholder to reserve layout space
             Text(text)
                 .font(font)
                 .foregroundColor(.clear)
 
-            // Visible typed text with cursor
-            HStack(spacing: 0) {
-                Text(displayedText)
-                    .font(font)
-                    .foregroundColor(color)
-
-                // Blinking cursor
-                if hasStarted && !isComplete {
-                    Rectangle()
-                        .fill(color)
-                        .frame(width: 2, height: cursorHeight)
-                        .opacity(showCursor ? 1 : 0)
-                }
-            }
+            // Visible typed text with inline cursor via Text concatenation.
+            // This ensures the cursor wraps naturally with multiline text
+            // instead of floating mid-height in an HStack.
+            typedTextWithCursor
         }
         .onAppear {
             if startDelay > 0 {
@@ -72,37 +63,44 @@ struct TypewriterText: View {
             }
             startCursorBlink()
         }
+        .onDisappear {
+            cursorTimer?.invalidate()
+            cursorTimer = nil
+        }
     }
 
-    private var cursorHeight: CGFloat {
-        switch font {
-        case OPSStyle.Typography.title:
-            return 28
-        case OPSStyle.Typography.subtitle:
-            return 22
-        case OPSStyle.Typography.body:
-            return 16
-        case OPSStyle.Typography.bodyBold:
-            return 16
-        case OPSStyle.Typography.caption:
-            return 12
-        case OPSStyle.Typography.captionBold:
-            return 12
-        default:
-            return 18
+    /// Builds the displayed text + cursor as concatenated Text views
+    /// so the cursor follows the last character even across line wraps.
+    private var typedTextWithCursor: Text {
+        let typed = String(text.prefix(displayedCount))
+
+        if hasStarted && !isComplete {
+            return Text(typed)
+                .font(font)
+                .foregroundColor(color)
+            + Text("\u{2009}") // thin space before cursor
+                .font(font)
+                .foregroundColor(.clear)
+            + Text("|")
+                .font(font)
+                .foregroundColor(showCursor ? color : .clear)
+        } else {
+            return Text(typed)
+                .font(font)
+                .foregroundColor(color)
         }
     }
 
     private func startTyping() {
         hasStarted = true
-        let characters = Array(text)
+        let totalChars = text.count
         let interval = 1.0 / typingSpeed
 
-        for (index, character) in characters.enumerated() {
+        for index in 0..<totalChars {
             DispatchQueue.main.asyncAfter(deadline: .now() + interval * Double(index)) {
-                displayedText.append(character)
+                displayedCount = index + 1
 
-                if displayedText.count == text.count {
+                if displayedCount == totalChars {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         withAnimation(OPSStyle.Animation.faster) {
                             isComplete = true
@@ -115,7 +113,7 @@ struct TypewriterText: View {
     }
 
     private func startCursorBlink() {
-        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
+        cursorTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
             if isComplete {
                 timer.invalidate()
             } else {

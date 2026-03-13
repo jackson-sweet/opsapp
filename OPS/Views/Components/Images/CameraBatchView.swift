@@ -81,7 +81,7 @@ struct CameraBatchView: View {
 
             if !capturedImages.isEmpty {
                 Text("\(capturedImages.count) PHOTO\(capturedImages.count == 1 ? "" : "S")")
-                    .font(.custom("Kosugi-Regular", size: 12))
+                    .font(OPSStyle.Typography.smallCaption)
                     .tracking(0.5)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
@@ -103,7 +103,7 @@ struct CameraBatchView: View {
                 .font(.system(size: 40))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text("TAP CAPTURE TO START")
-                .font(.custom("Kosugi-Regular", size: 12))
+                .font(OPSStyle.Typography.smallCaption)
                 .tracking(1)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
@@ -149,7 +149,7 @@ struct CameraBatchView: View {
                     Image(systemName: "photo.on.rectangle")
                         .font(.system(size: OPSStyle.Layout.IconSize.lg))
                     Text("GALLERY")
-                        .font(.custom("Kosugi-Regular", size: 10))
+                        .font(OPSStyle.Typography.miniLabel)
                 }
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .frame(width: 56, height: 56)
@@ -176,7 +176,7 @@ struct CameraBatchView: View {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: OPSStyle.Layout.IconSize.lg))
                     Text(capturedImages.isEmpty ? "UPLOAD" : "UPLOAD (\(capturedImages.count))")
-                        .font(.custom("Kosugi-Regular", size: 10))
+                        .font(OPSStyle.Typography.miniLabel)
                 }
                 .foregroundColor(capturedImages.isEmpty ? OPSStyle.Colors.tertiaryText.opacity(0.3) : OPSStyle.Colors.primaryAccent)
                 .frame(width: 56, height: 56)

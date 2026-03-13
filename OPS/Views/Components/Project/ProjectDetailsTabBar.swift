@@ -32,7 +32,7 @@ struct ProjectDetailsTabBar: View {
                             }
                         }) {
                             Text(tab.rawValue)
-                                .font(.custom("Kosugi-Regular", size: 12))
+                                .font(OPSStyle.Typography.smallCaption)
                                 .tracking(1)
                                 .textCase(.uppercase)
                                 .foregroundColor(

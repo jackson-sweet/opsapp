@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import Supabase
+// FirebaseAuthService used for token retrieval (Firebase Auth migration)
 
 /// Service for sending targeted push notifications via ops-web backend
 class OneSignalService {
@@ -238,6 +238,66 @@ class OneSignalService {
         print("[ONESIGNAL SERVICE] Note mention notification sent to user: \(userId)")
     }
 
+    /// Notify admins when a new team member joins via crew code
+    func notifyTeamJoin(
+        adminUserIds: [String],
+        newMemberName: String,
+        newMemberUserId: String,
+        companyId: String
+    ) async throws {
+        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
+        let filtered = adminUserIds.filter { $0 != currentUserId }
+
+        guard !filtered.isEmpty else {
+            print("[ONESIGNAL SERVICE] No admins to notify for team join (all filtered)")
+            return
+        }
+
+        try await sendToUsers(
+            userIds: filtered,
+            title: "New Team Member",
+            body: "\(newMemberName) joined as Crew. Tap to set their role.",
+            data: [
+                "type": "teamJoin",
+                "userId": newMemberUserId,
+                "companyId": companyId,
+                "screen": "manageTeam"
+            ]
+        )
+        print("[ONESIGNAL SERVICE] Team join notification sent to \(filtered.count) admins")
+    }
+
+    /// Notify team members that a dependency has been completed and their task is ready to start
+    func notifyDependencyCompleted(
+        completedTaskTitle: String,
+        dependentTaskTitle: String,
+        projectTitle: String,
+        recipientUserIds: [String],
+        projectId: String,
+        dependentTaskId: String
+    ) async throws {
+        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
+        let filteredUserIds = recipientUserIds.filter { $0 != currentUserId }
+
+        guard !filteredUserIds.isEmpty else {
+            print("[ONESIGNAL SERVICE] No users to notify for dependency completion (all filtered)")
+            return
+        }
+
+        try await sendToUsers(
+            userIds: filteredUserIds,
+            title: "Ready to start",
+            body: "\(dependentTaskTitle) on \(projectTitle) — \(completedTaskTitle) is complete",
+            data: [
+                "type": "dependencyCompleted",
+                "screen": "taskDetails",
+                "projectId": projectId,
+                "taskId": dependentTaskId
+            ]
+        )
+        print("[ONESIGNAL SERVICE] Dependency completion notification sent to \(filteredUserIds.count) users")
+    }
+
     // MARK: - Private Implementation
 
     /// Send notification via ops-web backend route
@@ -248,15 +308,13 @@ class OneSignalService {
         data: [String: Any]? = nil,
         imageUrl: String? = nil
     ) async throws {
-        let session: Session
+        let idToken: String
         do {
-            session = try await SupabaseService.shared.client.auth.session
+            idToken = try await FirebaseAuthService.shared.getIDToken()
         } catch {
             print("[ONESIGNAL SERVICE] No authenticated user - cannot send notification")
             throw OneSignalError.notAuthenticated
         }
-
-        let idToken = session.accessToken
 
         let url = AppConfiguration.apiBaseURL.appendingPathComponent("/api/notifications/send")
 

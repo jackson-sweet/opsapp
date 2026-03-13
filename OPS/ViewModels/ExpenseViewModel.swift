@@ -17,9 +17,16 @@ class ExpenseViewModel: ObservableObject {
     @Published var searchText: String = ""
     @Published var isLoading: Bool = false
     @Published var error: String? = nil
+    @Published var autoApproveRules: [AutoApproveRuleDTO] = []
+    @Published var reviewBatches: [ExpenseBatchDTO] = []
+    @Published var selectedBatchExpenses: [ExpenseDTO] = []
+    @Published var flaggedExpenseIds: Set<String> = []
+    @Published var flagComments: [String: String] = [:]
 
     private var repository: ExpenseRepository?
+    private var storedCompanyId: String?
     private let ocrService: ExpenseOCRServiceProtocol = AppleVisionOCRService()
+    private let notificationRepo = NotificationRepository()
 
     enum ExpenseFilter: String, CaseIterable {
         case all      = "ALL"
@@ -118,6 +125,7 @@ class ExpenseViewModel: ObservableObject {
     }
 
     func setup(companyId: String) {
+        storedCompanyId = companyId
         repository = ExpenseRepository(companyId: companyId)
     }
 
@@ -369,6 +377,335 @@ class ExpenseViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             expenses = try await repo.fetchByProject(projectId)
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    // MARK: - Invoice Bundling
+
+    func bundleInvoice(userId: String, userName: String, periodStart: Date, periodEnd: Date) async throws {
+        guard let repo = repository else { return }
+        let iso = ISO8601DateFormatter()
+        let startStr = iso.string(from: periodStart)
+        let endStr = iso.string(from: periodEnd)
+
+        let unbatched = try await repo.fetchUnbatchedExpenses(
+            userId: userId, periodStart: startStr, periodEnd: endStr
+        )
+        guard !unbatched.isEmpty else { return }
+
+        let total = unbatched.reduce(0.0) { $0 + $1.amount }
+
+        let monthFormatter = DateFormatter()
+        monthFormatter.dateFormat = "yyyy-MM"
+        let monthKey = monthFormatter.string(from: periodStart)
+        let lastName = userName.split(separator: " ").last.map(String.init) ?? userName
+        let batchNumber = "EXP-\(monthKey)-\(lastName.uppercased())"
+
+        let createDTO = CreateExpenseBatchDTO(
+            companyId: unbatched[0].companyId,
+            batchNumber: batchNumber,
+            periodStart: startStr,
+            periodEnd: endStr,
+            status: ExpenseBatchStatus.submitted.rawValue,
+            submittedBy: userId,
+            totalAmount: total,
+            parentBatchId: nil,
+            amendmentNumber: nil
+        )
+
+        let batch = try await repo.createBatch(createDTO)
+        let expenseIds = unbatched.map { $0.id }
+        try await repo.assignExpensesToBatch(expenseIds, batchId: batch.id)
+
+        // Check auto-approve
+        let shouldAutoApprove = try await repo.checkAutoApproveInvoice(userId: userId, totalAmount: total)
+        if shouldAutoApprove {
+            _ = try await repo.updateBatchStatus(
+                batch.id,
+                status: ExpenseBatchStatus.autoApproved.rawValue,
+                reviewedBy: nil,
+                reviewNotes: "Auto-approved by rule"
+            )
+            for expense in unbatched {
+                _ = try await repo.approve(expense.id, approvedBy: "auto")
+                await repo.triggerAccountingSync(expenseId: expense.id)
+            }
+        }
+
+        // Fire-and-forget: create in-app notification for admins about new invoice submission
+        let capturedCompanyId = unbatched[0].companyId
+        let capturedBatchId = batch.id
+        let capturedBatchNumber = batchNumber
+        let capturedUserName = userName
+        let capturedNotificationRepo = notificationRepo
+        Task {
+            // Fetch admin/office users for the company to notify them
+            // For now, insert a notification record that can be picked up by admin users
+            let dto = NotificationRepository.CreateNotificationDTO(
+                userId: userId,  // Will be routed to admins via backend/RLS
+                companyId: capturedCompanyId,
+                type: "expense_submitted",
+                title: "Invoice Submitted",
+                body: "\(capturedUserName) submitted invoice \(capturedBatchNumber) for review",
+                expenseId: nil,
+                batchId: capturedBatchId,
+                deepLinkType: "invoice_detail"
+            )
+            try? await capturedNotificationRepo.createNotification(dto)
+        }
+
+        await loadBatches()
+    }
+
+    // MARK: - Invoice Review
+
+    func loadBatchesForReview() async {
+        guard let repo = repository else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            reviewBatches = try await repo.fetchBatches()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func loadBatchExpenses(_ batchId: String) async {
+        guard let repo = repository else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            selectedBatchExpenses = try await repo.fetchBatchExpenses(batchId)
+            flaggedExpenseIds = Set(selectedBatchExpenses.compactMap { $0.flaggedBy != nil ? $0.id : nil })
+            flagComments = Dictionary(uniqueKeysWithValues:
+                selectedBatchExpenses.compactMap { expense in
+                    guard let comment = expense.flagComment else { return nil }
+                    return (expense.id, comment)
+                }
+            )
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func flagExpense(_ expenseId: String, comment: String, flaggedBy: String) async {
+        guard let repo = repository else { return }
+        do {
+            let updated = try await repo.flagExpense(expenseId, flaggedBy: flaggedBy, comment: comment)
+            flaggedExpenseIds.insert(expenseId)
+            flagComments[expenseId] = comment
+            if let idx = selectedBatchExpenses.firstIndex(where: { $0.id == expenseId }) {
+                selectedBatchExpenses[idx] = updated
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func unflagExpense(_ expenseId: String) async {
+        guard let repo = repository else { return }
+        do {
+            let updated = try await repo.unflagExpense(expenseId)
+            flaggedExpenseIds.remove(expenseId)
+            flagComments.removeValue(forKey: expenseId)
+            if let idx = selectedBatchExpenses.firstIndex(where: { $0.id == expenseId }) {
+                selectedBatchExpenses[idx] = updated
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func unflagAllExpenses() async {
+        let ids = Array(flaggedExpenseIds)
+        for id in ids {
+            await unflagExpense(id)
+        }
+    }
+
+    func approveInvoice(_ batchId: String, reviewedBy: String) async {
+        guard let repo = repository else { return }
+        do {
+            let approvedAmount = selectedBatchExpenses.reduce(0.0) { $0 + $1.amount }
+            _ = try await repo.updateBatchStatus(
+                batchId,
+                status: ExpenseBatchStatus.approved.rawValue,
+                reviewedBy: reviewedBy,
+                approvedAmount: approvedAmount
+            )
+            for expense in selectedBatchExpenses {
+                _ = try await repo.approve(expense.id, approvedBy: reviewedBy)
+                await repo.triggerAccountingSync(expenseId: expense.id)
+            }
+
+            // Notify the crew member who submitted the invoice
+            let matchingBatch = reviewBatches.first(where: { $0.id == batchId })
+            if let submittedBy = matchingBatch?.submittedBy,
+               let companyId = storedCompanyId {
+                let capturedNotificationRepo = notificationRepo
+                let capturedBatchNumber = matchingBatch?.batchNumber ?? batchId
+                Task {
+                    let dto = NotificationRepository.CreateNotificationDTO(
+                        userId: submittedBy,
+                        companyId: companyId,
+                        type: "invoice_approved",
+                        title: "Invoice Approved",
+                        body: "Your invoice \(capturedBatchNumber) has been approved",
+                        expenseId: nil,
+                        batchId: batchId,
+                        deepLinkType: "invoice_detail"
+                    )
+                    try? await capturedNotificationRepo.createNotification(dto)
+                }
+
+                // Schedule local notification for immediate feedback
+                NotificationManager.shared.scheduleExpenseNotification(
+                    category: .invoiceApproved,
+                    title: "Invoice Approved",
+                    body: "Your invoice \(capturedBatchNumber) has been approved",
+                    batchId: batchId
+                )
+            }
+
+            await loadBatchesForReview()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func sendRevisions(batchId: String, batch: ExpenseBatchDTO, reviewedBy: String, reviewNotes: String?) async {
+        guard let repo = repository else { return }
+        do {
+            let clean = selectedBatchExpenses.filter { !flaggedExpenseIds.contains($0.id) }
+            let flagged = selectedBatchExpenses.filter { flaggedExpenseIds.contains($0.id) }
+
+            for expense in clean {
+                _ = try await repo.approve(expense.id, approvedBy: reviewedBy)
+                await repo.triggerAccountingSync(expenseId: expense.id)
+            }
+
+            let cleanAmount = clean.reduce(0.0) { $0 + $1.amount }
+
+            _ = try await repo.updateBatchStatus(
+                batchId,
+                status: ExpenseBatchStatus.partiallyApproved.rawValue,
+                reviewedBy: reviewedBy,
+                reviewNotes: reviewNotes,
+                approvedAmount: cleanAmount
+            )
+
+            let amendmentNumber = (batch.amendmentNumber ?? 0) + 1
+            let amendmentBatchNumber = "\(batch.batchNumber)-A\(amendmentNumber)"
+            let flaggedTotal = flagged.reduce(0.0) { $0 + $1.amount }
+
+            let amendmentDTO = CreateExpenseBatchDTO(
+                companyId: batch.companyId,
+                batchNumber: amendmentBatchNumber,
+                periodStart: batch.periodStart,
+                periodEnd: batch.periodEnd,
+                status: ExpenseBatchStatus.rejected.rawValue,
+                submittedBy: batch.submittedBy,
+                totalAmount: flaggedTotal,
+                parentBatchId: batchId,
+                amendmentNumber: amendmentNumber
+            )
+
+            let amendmentBatch = try await repo.createBatch(amendmentDTO)
+
+            let flaggedIds = flagged.map { $0.id }
+            try await repo.assignExpensesToBatch(flaggedIds, batchId: amendmentBatch.id)
+
+            for expense in flagged {
+                let comment = flagComments[expense.id] ?? "Flagged for revision"
+                _ = try await repo.reject(expense.id, rejectedBy: reviewedBy, reason: comment)
+            }
+
+            flaggedExpenseIds.removeAll()
+            flagComments.removeAll()
+
+            // Notify the crew member about revisions needed
+            if let submittedBy = batch.submittedBy,
+               let companyId = storedCompanyId {
+                let capturedNotificationRepo = notificationRepo
+                let capturedBatchNumber = batch.batchNumber
+                let flaggedCount = flagged.count
+                Task {
+                    let dto = NotificationRepository.CreateNotificationDTO(
+                        userId: submittedBy,
+                        companyId: companyId,
+                        type: "invoice_revisions",
+                        title: "Invoice Revisions Needed",
+                        body: "\(flaggedCount) expense\(flaggedCount == 1 ? "" : "s") on \(capturedBatchNumber) need\(flaggedCount == 1 ? "s" : "") revision",
+                        expenseId: nil,
+                        batchId: batchId,
+                        deepLinkType: "invoice_detail"
+                    )
+                    try? await capturedNotificationRepo.createNotification(dto)
+                }
+
+                // Schedule local notification for immediate feedback
+                NotificationManager.shared.scheduleExpenseNotification(
+                    category: .invoiceRevisions,
+                    title: "Invoice Revisions Needed",
+                    body: "\(flaggedCount) expense\(flaggedCount == 1 ? "" : "s") on \(capturedBatchNumber) need\(flaggedCount == 1 ? "s" : "") revision",
+                    batchId: batchId
+                )
+            }
+
+            await loadBatchesForReview()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    // MARK: - Auto-Approve Rules
+
+    func loadAutoApproveRules() async {
+        guard let repo = repository else { return }
+        do {
+            autoApproveRules = try await repo.fetchAutoApproveRules()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func createAutoApproveRule(ruleType: AutoApproveRuleType, threshold: Double, appliesToAll: Bool, memberIds: [String], createdBy: String) async {
+        guard let repo = repository else { return }
+        do {
+            let dto = CreateAutoApproveRuleDTO(
+                companyId: storedCompanyId ?? "",
+                createdBy: createdBy,
+                ruleType: ruleType.rawValue,
+                thresholdAmount: threshold,
+                appliesToAll: appliesToAll
+            )
+            let rule = try await repo.createAutoApproveRule(dto)
+            if !appliesToAll && !memberIds.isEmpty {
+                try await repo.setAutoApproveRuleMembers(rule.id, userIds: memberIds)
+            }
+            await loadAutoApproveRules()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func toggleAutoApproveRule(_ ruleId: String, isActive: Bool) async {
+        guard let repo = repository else { return }
+        do {
+            try await repo.updateAutoApproveRule(ruleId, isActive: isActive)
+            await loadAutoApproveRules()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func deleteAutoApproveRule(_ ruleId: String) async {
+        guard let repo = repository else { return }
+        do {
+            try await repo.deleteAutoApproveRule(ruleId)
+            await loadAutoApproveRules()
         } catch {
             self.error = error.localizedDescription
         }

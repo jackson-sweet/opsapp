@@ -32,51 +32,27 @@ struct ProjectActionBar: View {
     @StateObject private var expenseViewModel = ExpenseViewModel()
     
     var body: some View {
-        // Blurred background similar to tab bar
-        ZStack {
-            // Blur effect
-            BlurView(style: .systemUltraThinMaterialDark)
-                .cornerRadius(OPSStyle.Layout.cornerRadius * 2)
-            
-            // Semi-transparent overlay
-            Color(OPSStyle.Colors.cardBackgroundDark)
-                .opacity(0.5)
-                .cornerRadius(OPSStyle.Layout.cornerRadius * 2)
-            
-            // Actions with dividers
+        OPSActionBar {
             HStack(spacing: 0) {
                 ForEach(Array(ProjectAction.allCases.enumerated()), id: \.element) { index, action in
-                    // Action button
-                    Button(action: {
+                    OPSActionBarButton(
+                        icon: action.iconName(isRouting: inProgressManager.isRouting),
+                        label: action.label(isRouting: inProgressManager.isRouting)
+                    ) {
                         handleAction(action)
-                    }) {
-                        VStack(spacing: 8) {
-                            Image(systemName: action.iconName(isRouting: inProgressManager.isRouting))
-                                .font(.system(size: OPSStyle.Layout.IconSize.lg))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-
-                            Text(action.label(isRouting: inProgressManager.isRouting).uppercased())
-                                .font(OPSStyle.Typography.smallButton)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 60)
-                        .padding(4)
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .frame(maxWidth: .infinity)
                     .modifier(ActionButtonHighlightModifier(action: action))
 
                     // Vertical divider between buttons (not after last one)
                     if index < ProjectAction.allCases.count - 1 {
                         Rectangle()
-                            .fill(OPSStyle.Colors.tertiaryText.opacity(0.3))
-                            .frame(width: 1, height: 40)
+                            .fill(OPSStyle.Colors.cardBorderSubtle)
+                            .frame(width: 1, height: 32)
                     }
                 }
             }
-            //.padding(.horizontal, 24)
         }
-        .frame(height: 80)
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 12)
         .contentMargins(.bottom, 90)
@@ -148,7 +124,7 @@ struct ProjectActionBar: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 80)
                     .padding(.horizontal, 20)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius * 2)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                 }
             }
         )

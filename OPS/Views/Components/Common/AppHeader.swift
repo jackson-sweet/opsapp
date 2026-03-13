@@ -20,12 +20,22 @@ struct AppHeader: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @EnvironmentObject private var appState: AppState
+    @State private var showLockedMessage: String? = nil
+    @State private var showLockedAlert: Bool = false
     var headerType: HeaderType
     var onSearchTapped: (() -> Void)? = nil
     var onRefreshTapped: (() -> Void)? = nil
     var onFilterTapped: (() -> Void)? = nil
     var onMonthTapped: (() -> Void)? = nil
     var onScopeToggled: (() -> Void)? = nil
+    var onPaymentReviewTapped: (() -> Void)? = nil
+    var paymentReviewBadgeCount: Int = 0
+    var isPaymentReviewLocked: Bool = false
+    var paymentReviewLockedMessage: String = ""
+    var onTaskReviewTapped: (() -> Void)? = nil
+    var taskReviewBadgeCount: Int = 0
+    var isTaskReviewLocked: Bool = false
+    var taskReviewLockedMessage: String = ""
     var isScopeAll: Bool = true
     var hasActiveFilters: Bool = false
     var filterCount: Int = 0
@@ -288,6 +298,73 @@ struct AppHeader: View {
                     }
 
                     if headerType == .jobBoard {
+                        // Task review button
+                        if onTaskReviewTapped != nil || isTaskReviewLocked {
+                            Button(action: {
+                                if isTaskReviewLocked {
+                                    showLockedMessage = taskReviewLockedMessage
+                                    showLockedAlert = true
+                                } else {
+                                    onTaskReviewTapped?()
+                                }
+                            }) {
+                                ZStack(alignment: .topTrailing) {
+                                    Image(systemName: "checklist")
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(isTaskReviewLocked ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+                                        .frame(width: 44, height: 44)
+                                        .background(OPSStyle.Colors.cardBackground)
+                                        .clipShape(Circle())
+
+                                    if !isTaskReviewLocked && taskReviewBadgeCount > 0 {
+                                        Text("\(taskReviewBadgeCount)")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.invertedText)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 2)
+                                            .background(OPSStyle.Colors.warningStatus)
+                                            .clipShape(Capsule())
+                                            .offset(x: 6, y: -4)
+                                    }
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+
+                        // Payment review button
+                        if onPaymentReviewTapped != nil || isPaymentReviewLocked {
+                            Button(action: {
+                                if isPaymentReviewLocked {
+                                    showLockedMessage = paymentReviewLockedMessage
+                                    showLockedAlert = true
+                                } else {
+                                    onPaymentReviewTapped?()
+                                }
+                            }) {
+                                ZStack(alignment: .topTrailing) {
+                                    Image(systemName: "rectangle.stack.fill")
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(isPaymentReviewLocked ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+                                        .frame(width: 44, height: 44)
+                                        .background(OPSStyle.Colors.cardBackground)
+                                        .clipShape(Circle())
+
+                                    if !isPaymentReviewLocked && paymentReviewBadgeCount > 0 {
+                                        Text("\(paymentReviewBadgeCount)")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.invertedText)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 2)
+                                            .background(OPSStyle.Colors.warningStatus)
+                                            .clipShape(Capsule())
+                                            .offset(x: 6, y: -4)
+                                    }
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+
+                        // Search button
                         Button(action: {
                             appState.showingJobBoardSearch = true
                         }) {
@@ -305,10 +382,15 @@ struct AppHeader: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
-            
+            .alert("Locked", isPresented: $showLockedAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(showLockedMessage ?? "")
+            }
+
         }
     }
-    
+
     private var todayDateString: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMMM d"

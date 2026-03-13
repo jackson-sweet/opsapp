@@ -325,24 +325,33 @@ struct ProjectTeamView: View {
     private func loadAvailableMembers() {
         guard let companyId = dataController.currentUser?.companyId else { return }
 
-        Task {
-            do {
-                // Sync team members from Supabase, then query locally
-                try await dataController.syncManager.syncCompanyTeamMembers(companyId: companyId)
+        // Try company.teamMembers relationship first
+        let members = dataController.getCompanyTeamMembers(companyId: companyId)
+        if !members.isEmpty {
+            availableMembers = members.sorted { $0.fullName < $1.fullName }
+            return
+        }
 
-                await MainActor.run {
-                    // Query local SwiftData for all users in the company
-                    let descriptor = FetchDescriptor<User>(
-                        predicate: #Predicate<User> { user in
-                            user.companyId == companyId && user.isActive == true
-                        }
-                    )
-                    if let users = try? dataController.modelContext?.fetch(descriptor) {
-                        self.availableMembers = users.map { TeamMember.fromUser($0) }
-                    }
+        // Fallback: fetch User objects and convert to TeamMember
+        let users = dataController.getTeamMembers(companyId: companyId)
+        if !users.isEmpty {
+            availableMembers = users.map { TeamMember.fromUser($0) }
+                .sorted { $0.fullName < $1.fullName }
+            return
+        }
+
+        // Last resort: trigger async sync then retry
+        Task {
+            try? await dataController.syncManager?.syncCompanyTeamMembers(companyId: companyId)
+            await MainActor.run {
+                let retryMembers = dataController.getCompanyTeamMembers(companyId: companyId)
+                if !retryMembers.isEmpty {
+                    availableMembers = retryMembers.sorted { $0.fullName < $1.fullName }
+                } else {
+                    let retryUsers = dataController.getTeamMembers(companyId: companyId)
+                    availableMembers = retryUsers.map { TeamMember.fromUser($0) }
+                        .sorted { $0.fullName < $1.fullName }
                 }
-            } catch {
-                print("Error loading available members: \(error)")
             }
         }
     }
@@ -504,10 +513,10 @@ struct ProjectTeamView_Previews: PreviewProvider {
         let project = Project(id: "123", title: "Sample Project", status: .inProgress)
         
         // Add sample team members
-        let member1 = User(id: "1", firstName: "John", lastName: "Doe", role: .fieldCrew, companyId: "company-123")
-        let member2 = User(id: "2", firstName: "Jane", lastName: "Smith", role: .officeCrew, companyId: "company-123")
-        let member3 = User(id: "3", firstName: "Mike", lastName: "Johnson", role: .fieldCrew, companyId: "company-123")
-        let member4 = User(id: "4", firstName: "Sarah", lastName: "Williams", role: .officeCrew, companyId: "company-123")
+        let member1 = User(id: "1", firstName: "John", lastName: "Doe", role: .crew, companyId: "company-123")
+        let member2 = User(id: "2", firstName: "Jane", lastName: "Smith", role: .office, companyId: "company-123")
+        let member3 = User(id: "3", firstName: "Mike", lastName: "Johnson", role: .crew, companyId: "company-123")
+        let member4 = User(id: "4", firstName: "Sarah", lastName: "Williams", role: .office, companyId: "company-123")
         
         project.teamMembers = [member1, member2, member3, member4]
         

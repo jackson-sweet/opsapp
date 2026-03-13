@@ -33,7 +33,7 @@ struct MapFilterChips: View {
             }
         } label: {
             Text(label)
-                .font(Font.custom("Kosugi-Regular", size: 12))
+                .font(OPSStyle.Typography.smallCaption)
                 .tracking(0.5)
                 .textCase(.uppercase)
                 .foregroundColor(

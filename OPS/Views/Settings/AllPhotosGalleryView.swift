@@ -254,6 +254,7 @@ struct AllPhotosGalleryView: View {
                 }
             }
         }
+        .trackScreen("Settings.PhotoGallery")
         .onAppear {
             // Auto-expand the most recent month on first load
             if expandedMonths.isEmpty, let first = monthGroups.first {
@@ -717,7 +718,7 @@ struct AllPhotosGalleryView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Spacer()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 20)
     }
 
@@ -737,7 +738,7 @@ struct AllPhotosGalleryView: View {
             }
             Spacer()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 20)
     }
 

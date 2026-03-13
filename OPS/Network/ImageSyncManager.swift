@@ -100,9 +100,9 @@ class ImageSyncManager: ObservableObject {
                     .eq("id", value: project.id)
                     .execute()
 
-                // Mark project for sync
-                project.needsSync = true
-                project.syncPriority = 2
+                // Images uploaded to S3 and Supabase updated — no further sync needed
+                project.needsSync = false
+                project.lastSyncedAt = Date()
 
                 if let modelContext = modelContext {
                     try? modelContext.save()
@@ -281,7 +281,9 @@ class ImageSyncManager: ObservableObject {
                 .eq("id", value: project.id)
                 .execute()
 
-            project.needsSync = true
+            // Images uploaded to S3 and Supabase updated — no further sync needed
+            project.needsSync = false
+            project.lastSyncedAt = Date()
 
             // Remove from pending uploads
             pendingUploads.removeAll { upload in

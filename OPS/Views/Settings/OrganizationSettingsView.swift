@@ -84,6 +84,7 @@ struct OrganizationSettingsView: View {
                 }
             }
         }
+        .trackScreen("Settings.Organization")
         .navigationBarBackButtonHidden(true)
         .onAppear {
             loadOrganizationData()

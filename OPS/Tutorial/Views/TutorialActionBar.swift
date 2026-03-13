@@ -30,7 +30,7 @@ struct TutorialActionBar: View {
             // Back button (left)
             Button(action: onBack) {
                 Text("BACK")
-                    .font(.custom("Mohave-Regular", size: 14))
+                    .font(OPSStyle.Typography.cardBody)
                     .foregroundColor(isBackDisabled ? OPSStyle.Colors.inputFieldBorder : OPSStyle.Colors.primaryText.opacity(0.7))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -50,7 +50,7 @@ struct TutorialActionBar: View {
             }) {
                 HStack(spacing: 6) {
                     Text(continueLabel)
-                        .font(.custom("Mohave-Medium", size: 14))
+                        .font(OPSStyle.Typography.cardBody)
                     if !isContinueDisabled {
                         Image(systemName: "arrow.right")
                             .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
@@ -71,7 +71,7 @@ struct TutorialActionBar: View {
             // Skip button (right)
             Button(action: onSkip) {
                 Text("SKIP")
-                    .font(.custom("Mohave-Regular", size: 14))
+                    .font(OPSStyle.Typography.cardBody)
                     .foregroundColor(OPSStyle.Colors.primaryText.opacity(0.7))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)

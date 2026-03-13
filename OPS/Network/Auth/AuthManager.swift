@@ -6,35 +6,34 @@
 //
 
 import Foundation
-import GoogleSignIn
-import Supabase
 
-/// Handles authentication via Supabase Auth
+/// Handles authentication and user lookup.
+/// Authentication is delegated to FirebaseAuthService.
+/// User data loading uses Supabase repositories (data access, not auth).
 class AuthManager {
-    private let session: URLSession
     private let keychain: KeychainManager
 
-    // User information
+    // User information (from users table, not auth provider)
     private var userId: String?
 
-    init(keychain: KeychainManager = KeychainManager(service: AppConfiguration.Auth.keychainService),
-         session: URLSession = .shared) {
-        self.session = session
+    init(keychain: KeychainManager = KeychainManager(service: AppConfiguration.Auth.keychainService)) {
         self.keychain = keychain
-
-        // Initialize stored properties
         self.userId = keychain.retrieveUserId()
     }
 
     // MARK: - Public Methods
 
-    /// Get the current user ID (if authenticated)
+    /// Get the current user ID (from users table)
     func getUserId() -> String? {
         return userId
     }
 
-    /// Sign out - clear all credentials and tokens
-    func signOut() {
+    /// Sign out — clear all credentials and tokens.
+    ///
+    /// Fix #7: Made async so Firebase sign-out completes before returning,
+    /// preventing a race window where inflight requests could still get valid
+    /// Firebase tokens after the app considers the user signed out.
+    func signOut() async {
         userId = nil
 
         keychain.deleteToken()
@@ -43,75 +42,141 @@ class AuthManager {
         keychain.deleteUsername()
         keychain.deletePassword()
 
-        // Also sign out from Google if applicable
-        GoogleSignInManager.shared.signOut()
-    }
-
-    // MARK: - Email/Password Auth (Supabase)
-
-    /// Sign in with email and password via Supabase Auth.
-    /// After successful sign-in, fetches the user record from the `users` table
-    /// and stores `currentUserId` and `currentUserCompanyId` in UserDefaults.
-    func loginWithEmail(_ email: String, password: String) async throws {
-        let session = try await SupabaseService.shared.client.auth
-            .signIn(email: email, password: password)
-
-        let supabaseUserId = session.user.id.uuidString.lowercased()
-
-        // Store in UserDefaults (same keys the app uses elsewhere)
-        UserDefaults.standard.set(supabaseUserId, forKey: "currentUserId")
-        UserDefaults.standard.set(supabaseUserId, forKey: "user_id")
-
-        // Store in keychain
-        keychain.storeUserId(supabaseUserId)
-        self.userId = supabaseUserId
-
-        // Fetch user + company data from Supabase and persist to UserDefaults
-        try await loadUserFromSupabase(userId: supabaseUserId, email: email)
-    }
-
-    /// Create a new account with email and password via Supabase Auth.
-    func signUpWithEmail(_ email: String, password: String) async throws {
-        let response = try await SupabaseService.shared.client.auth
-            .signUp(email: email, password: password)
-
-        let supabaseUserId = response.user.id.uuidString.lowercased()
-
-        UserDefaults.standard.set(supabaseUserId, forKey: "currentUserId")
-        UserDefaults.standard.set(supabaseUserId, forKey: "user_id")
-        keychain.storeUserId(supabaseUserId)
-        self.userId = supabaseUserId
-    }
-
-    /// Send a password reset email via Supabase Auth.
-    func resetPassword(email: String) async throws {
-        try await SupabaseService.shared.client.auth.resetPasswordForEmail(email)
-    }
-
-    /// After authenticating with Supabase, load the user row from the `users` table
-    /// and persist critical identifiers (companyId) so repositories can be initialized.
-    func loadUserFromSupabase(userId: String, email: String) async throws {
-        // UserRepository needs a companyId but we don't have it yet.
-        // Use an empty-string companyId to perform the email lookup
-        // (fetchByEmail queries `users` table globally, not filtered by company).
-        let userRepo = UserRepository(companyId: "")
-        if let dto = try await userRepo.fetchByEmail(email) {
-            // Store companyId for repository initialization
-            if let companyId = dto.companyId, !companyId.isEmpty {
-                UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
-                UserDefaults.standard.set(companyId, forKey: "company_id")
-            }
-            // Store the user's own ID from the users table
-            // (may differ from auth UUID if migrated from legacy system)
-            UserDefaults.standard.set(dto.id, forKey: "currentUserId")
-            UserDefaults.standard.set(dto.id, forKey: "user_id")
-            keychain.storeUserId(dto.id)
-            self.userId = dto.id
-
-            // Store name for display
-            UserDefaults.standard.set(dto.firstName, forKey: "user_first_name")
-            UserDefaults.standard.set(dto.lastName, forKey: "user_last_name")
+        // Sign out from Firebase Auth and Google on MainActor
+        await MainActor.run {
+            FirebaseAuthService.shared.signOut()
+            GoogleSignInManager.shared.signOut()
         }
     }
 
+    /// Clear keychain credentials synchronously (no Firebase/Google signout).
+    /// Used by DataController.logout() which handles Firebase/Google signout directly.
+    func clearCredentials() {
+        userId = nil
+        keychain.deleteToken()
+        keychain.deleteTokenExpiration()
+        keychain.deleteUserId()
+        keychain.deleteUsername()
+        keychain.deletePassword()
+    }
+
+    // MARK: - Email/Password Auth (Firebase)
+
+    /// Sign in with email and password via Firebase Auth.
+    /// Handles transparent migration from Supabase Auth for existing users.
+    /// After successful sign-in, fetches the user record from the `users` table
+    /// and stores `currentUserId` and `currentUserCompanyId` in UserDefaults.
+    func loginWithEmail(_ email: String, password: String) async throws {
+        try await FirebaseAuthService.shared.signIn(email: email, password: password)
+
+        // Store in keychain
+        let firebaseUID = FirebaseAuthService.shared.firebaseUID ?? ""
+        keychain.storeUserId(firebaseUID)
+        self.userId = firebaseUID
+
+        // Fetch user + company data from Supabase users table and persist to UserDefaults
+        try await loadUserFromSupabase(userId: firebaseUID, email: email)
+    }
+
+    /// Create a new account with email and password via Firebase Auth.
+    ///
+    /// Fix #3: Only stores the Firebase UID temporarily. The correct users-table ID
+    /// is set later by OnboardingManager after creating the user row.
+    /// Callers must NOT call backfillFirebaseUID until the users-table row exists.
+    func signUpWithEmail(_ email: String, password: String) async throws {
+        try await FirebaseAuthService.shared.createUser(email: email, password: password)
+
+        let firebaseUID = FirebaseAuthService.shared.firebaseUID ?? ""
+
+        // Store Firebase UID temporarily — OnboardingManager will overwrite
+        // with the actual users-table ID after creating the row
+        UserDefaults.standard.set(firebaseUID, forKey: "currentUserId")
+        UserDefaults.standard.set(firebaseUID, forKey: "user_id")
+        keychain.storeUserId(firebaseUID)
+        self.userId = firebaseUID
+    }
+
+    /// Send a password reset email via Firebase Auth.
+    func resetPassword(email: String) async throws {
+        try await FirebaseAuthService.shared.resetPassword(email: email)
+    }
+
+    /// After authenticating, load the user row from the `users` table
+    /// and persist critical identifiers (companyId) so repositories can be initialized.
+    ///
+    /// Fix #8: When email lookup fails (e.g., returning Apple Sign-In users),
+    /// falls back to firebase_uid lookup.
+    ///
+    /// Fix #9: Logs explicitly when no user row is found instead of silently no-oping.
+    func loadUserFromSupabase(userId: String, email: String) async throws {
+        let userRepo = UserRepository(companyId: "")
+
+        // Try email lookup first (works for most users)
+        var dto: SupabaseUserDTO?
+        if !email.isEmpty {
+            dto = try await userRepo.fetchByEmail(email)
+        }
+
+        // Fallback: lookup by firebase_uid (handles returning Apple users with nil email)
+        if dto == nil {
+            dto = try await userRepo.fetchByFirebaseUID(userId)
+        }
+
+        guard let userDTO = dto else {
+            print("[AUTH] No user row found for email='\(email)' or firebase_uid='\(userId)' — likely a new user")
+            // Clear stale userId from any previous session to prevent
+            // loginWithGoogle from using a different user's ID
+            self.userId = nil
+            keychain.deleteUserId()
+            return
+        }
+
+        // Store companyId for repository initialization
+        if let companyId = userDTO.companyId, !companyId.isEmpty {
+            UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
+            UserDefaults.standard.set(companyId, forKey: "company_id")
+        }
+        // Store the user's own ID from the users table
+        // (may differ from Firebase UID — the users table ID is what repositories use)
+        UserDefaults.standard.set(userDTO.id, forKey: "currentUserId")
+        UserDefaults.standard.set(userDTO.id, forKey: "user_id")
+        keychain.storeUserId(userDTO.id)
+        self.userId = userDTO.id
+
+        // Store name for display
+        UserDefaults.standard.set(userDTO.firstName, forKey: "user_first_name")
+        UserDefaults.standard.set(userDTO.lastName, forKey: "user_last_name")
+    }
+
+    // MARK: - Firebase UID Backfill
+
+    /// Updates the user's `firebase_uid` and `auth_id` in the Supabase users table.
+    /// Called after every successful login to ensure the mapping exists.
+    ///
+    /// IMPORTANT: `usersTableId` must be the actual `users.id`, not the Firebase UID.
+    /// Only call this after loadUserFromSupabase has resolved the correct users-table ID.
+    func backfillFirebaseUID(usersTableId: String) async {
+        guard let firebaseUID = FirebaseAuthService.shared.firebaseUID else { return }
+
+        // Safety: don't backfill if we don't have a real users-table ID
+        guard !usersTableId.isEmpty else {
+            print("[AUTH] Skipping backfill — no users-table ID")
+            return
+        }
+
+        do {
+            try await SupabaseService.shared.client
+                .from("users")
+                .update([
+                    "firebase_uid": firebaseUID,
+                    "auth_id": firebaseUID
+                ])
+                .eq("id", value: usersTableId)
+                .execute()
+            print("[AUTH] Firebase UID backfilled for user: \(usersTableId)")
+        } catch {
+            // Non-fatal — backfill is best-effort
+            print("[AUTH] Firebase UID backfill failed: \(error.localizedDescription)")
+        }
+    }
 }

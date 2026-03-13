@@ -136,7 +136,6 @@ struct DataStorageSettingsView: View {
                                 }
                                 .padding(16)
                             }
-                            .padding(16)
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
@@ -319,7 +318,6 @@ struct DataStorageSettingsView: View {
                                 }
                                 .padding(16)
                             }
-                            .padding(16)
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
@@ -370,6 +368,7 @@ struct DataStorageSettingsView: View {
                 }
             }
         }
+        .trackScreen("Settings.DataStorage")
         .navigationBarBackButtonHidden(true)
         .onAppear {
             calculateStorageUsage()

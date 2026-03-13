@@ -98,6 +98,7 @@ struct TaskSettingsView: View {
                 .background(OPSStyle.Colors.cardBackgroundDark)
             }
         }
+        .trackScreen("Settings.Tasks")
         .navigationBarHidden(true)
         .onAppear {
             fetchTaskTypes()

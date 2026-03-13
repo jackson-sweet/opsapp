@@ -81,7 +81,7 @@ enum FieldErrorHandler {
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
                 Text(message)
-                    .font(.subheadline)
+                    .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
                 Spacer()

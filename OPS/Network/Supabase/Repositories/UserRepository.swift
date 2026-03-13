@@ -58,6 +58,19 @@ class UserRepository {
         return response.first
     }
 
+    /// Lookup user by Firebase UID.
+    /// Used as fallback when email is unavailable (e.g., returning Apple Sign-In users).
+    func fetchByFirebaseUID(_ firebaseUID: String) async throws -> SupabaseUserDTO? {
+        let response: [SupabaseUserDTO] = try await client
+            .from("users")
+            .select()
+            .eq("firebase_uid", value: firebaseUID)
+            .limit(1)
+            .execute()
+            .value
+        return response.first
+    }
+
     // MARK: - Upsert
 
     func upsert(_ dto: SupabaseUserDTO) async throws {

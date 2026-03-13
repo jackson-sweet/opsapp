@@ -125,7 +125,7 @@ struct ExpenseBatchReviewView: View {
             }
         }
         .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -144,7 +144,7 @@ struct ExpenseBatchReviewView: View {
             Divider().background(OPSStyle.Colors.cardBorder)
             summaryCell(label: "REJECTED", count: rejectedCount, color: OPSStyle.Colors.errorStatus)
         }
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -284,7 +284,7 @@ struct ExpenseBatchReviewView: View {
                 .padding(.bottom, OPSStyle.Layout.spacing2)
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)

@@ -13,6 +13,7 @@ struct InvoiceDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showPaymentSheet = false
     @State private var showVoidConfirm = false
+    @State private var showWriteOffConfirm = false
 
     private var lineItems: [InvoiceLineItem] {
         viewModel.lineItems(for: invoice.id)
@@ -41,6 +42,7 @@ struct InvoiceDetailView: View {
             // Sticky footer
             stickyFooter
         }
+        .trackScreen("InvoiceDetail")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -57,6 +59,11 @@ struct InvoiceDetailView: View {
                         if invoice.status != .void && invoice.status != .paid {
                             Button("Void Invoice", role: .destructive) {
                                 showVoidConfirm = true
+                            }
+                        }
+                        if invoice.status.needsPayment {
+                            Button("Bad Debt", role: .destructive) {
+                                showWriteOffConfirm = true
                             }
                         }
                     } label: {
@@ -76,6 +83,17 @@ struct InvoiceDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will void the invoice. This action cannot be undone.")
+        }
+        .confirmationDialog("Write Off as Bad Debt?", isPresented: $showWriteOffConfirm, titleVisibility: .visible) {
+            Button("Write Off", role: .destructive) {
+                Task {
+                    await viewModel.writeOffInvoice(invoice)
+                    dismiss()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will write off \(invoice.invoiceNumber) (\(invoice.balanceDue, format: .currency(code: "USD"))) as bad debt. This action cannot be undone.")
         }
         .sheet(isPresented: $showPaymentSheet) {
             PaymentRecordSheet(invoice: invoice, viewModel: viewModel)
@@ -381,6 +399,13 @@ struct InvoiceDetailView: View {
                     .fontWeight(.semibold)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Spacer()
+
+            case .writtenOff:
+                Text("WRITTEN OFF")
+                    .font(OPSStyle.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Spacer()
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -404,6 +429,7 @@ private extension InvoiceStatus {
         case .paid:            return OPSStyle.Colors.successStatus
         case .pastDue:         return OPSStyle.Colors.errorStatus
         case .void:            return OPSStyle.Colors.tertiaryText
+        case .writtenOff:      return OPSStyle.Colors.tertiaryText
         }
     }
 }

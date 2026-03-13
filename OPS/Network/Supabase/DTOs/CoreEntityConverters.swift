@@ -47,6 +47,8 @@ extension SupabaseCompanyDTO {
         company.hasPrioritySupport = hasPrioritySupport ?? false
         company.stripeCustomerId = stripeCustomerId
         company.externalId = companyCode
+        company.preciseSchedulingEnabled = preciseSchedulingEnabled ?? false
+        company.skipWeekendsInAutoSchedule = skipWeekendsInAutoSchedule ?? true
         company.deletedAt = deletedAt.flatMap { SupabaseDate.parse($0) }
         return company
     }
@@ -60,9 +62,9 @@ extension SupabaseUserDTO {
     /// Deviations from plan template:
     /// - User.init requires (id:firstName:lastName:role:companyId:) — role and companyId are NOT optional.
     /// - User.profileImageURL (not profileImageUrl).
-    /// - User.hasCompletedAppOnboarding / hasCompletedAppTutorial (not hasCompletedOnboarding/Tutorial).
+    /// - User.hasCompletedAppOnboarding reads onboardingCompleted["ios"] (JSONB column).
     func toModel() -> User {
-        let resolvedRole = role.flatMap { UserRole(rawValue: $0) } ?? .fieldCrew
+        let resolvedRole = role.flatMap { UserRole(rawValue: $0) } ?? .unassigned
         let resolvedCompanyId = companyId ?? ""
         let user = User(
             id: id,
@@ -77,8 +79,10 @@ extension SupabaseUserDTO {
         user.profileImageURL = profileImageUrl
         user.userColor = userColor
         user.userType = userType.flatMap { UserType(rawValue: $0) }
-        user.isCompanyAdmin = isCompanyAdmin ?? false
-        user.hasCompletedAppOnboarding = hasCompletedOnboarding ?? false
+
+        let onboardingIos = onboardingCompleted?["ios"] ?? false
+        print("[DTO] User \(id): onboarding_completed raw=\(String(describing: onboardingCompleted)), ios=\(onboardingIos)")
+        user.hasCompletedAppOnboarding = onboardingIos
         user.hasCompletedAppTutorial = hasCompletedTutorial ?? false
         user.devPermission = devPermission ?? false
         user.latitude = latitude
@@ -86,6 +90,9 @@ extension SupabaseUserDTO {
         user.locationName = locationName
         user.isActive = isActive ?? true
         user.specialPermissions = specialPermissions ?? []
+        user.emergencyContactName = emergencyContactName
+        user.emergencyContactPhone = emergencyContactPhone
+        user.emergencyContactRelationship = emergencyContactRelationship
         user.deletedAt = deletedAt.flatMap { SupabaseDate.parse($0) }
         return user
     }
@@ -167,6 +174,14 @@ extension SupabaseTaskTypeDTO {
             icon: icon
         )
         tt.displayOrder = displayOrder ?? 0
+
+        // Encode dependencies array into JSON string for SwiftData storage
+        if let deps = dependencies, !deps.isEmpty,
+           let data = try? JSONEncoder().encode(deps),
+           let json = String(data: data, encoding: .utf8) {
+            tt.dependenciesJSON = json
+        }
+
         tt.deletedAt = deletedAt.flatMap { SupabaseDate.parse($0) }
         return tt
     }
@@ -224,7 +239,32 @@ extension SupabaseProjectTaskDTO {
         task.startDate = startDate.flatMap { SupabaseDate.parse($0) }
         task.endDate = endDate.flatMap { SupabaseDate.parse($0) }
         task.duration = duration ?? 1
+
+        // Encode dependency overrides into JSON string for SwiftData storage
+        if let overrides = dependencyOverrides, !overrides.isEmpty,
+           let data = try? JSONEncoder().encode(overrides),
+           let json = String(data: data, encoding: .utf8) {
+            task.dependencyOverridesJSON = json
+        }
+
+        // Parse "HH:mm" time strings into Date objects (today's date with that time)
+        if let st = startTime {
+            task.startTime = Self.parseTime(st) ?? task.startTime
+        }
+        if let et = endTime {
+            task.endTime = Self.parseTime(et) ?? task.endTime
+        }
+
         task.deletedAt = deletedAt.flatMap { SupabaseDate.parse($0) }
         return task
+    }
+
+    /// Parse an "HH:mm" string into a Date with today's date and that time.
+    private static func parseTime(_ timeString: String) -> Date? {
+        let parts = timeString.split(separator: ":")
+        guard parts.count >= 2,
+              let hour = Int(parts[0]),
+              let minute = Int(parts[1]) else { return nil }
+        return Calendar.current.date(from: DateComponents(hour: hour, minute: minute))
     }
 }

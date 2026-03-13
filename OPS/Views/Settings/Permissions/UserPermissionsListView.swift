@@ -145,8 +145,11 @@ struct UserPermissionsListView: View {
     private func colorForRole(_ role: UserRole) -> Color {
         switch role {
         case .admin: return OPSStyle.Colors.warningStatus
-        case .officeCrew: return OPSStyle.Colors.primaryAccent
-        case .fieldCrew: return OPSStyle.Colors.secondaryText
+        case .owner: return OPSStyle.Colors.warningStatus
+        case .office: return OPSStyle.Colors.primaryAccent
+        case .operator: return OPSStyle.Colors.primaryAccent
+        case .crew: return OPSStyle.Colors.secondaryText
+        case .unassigned: return OPSStyle.Colors.tertiaryText
         }
     }
 
@@ -160,8 +163,8 @@ struct UserPermissionsListView: View {
 
         let members = dataController.getTeamMembers(companyId: companyId)
             .sorted { user1, user2 in
-                if user1.role == .admin && user2.role != .admin { return true }
-                if user1.role != .admin && user2.role == .admin { return false }
+                if user1.role.hierarchy < user2.role.hierarchy { return true }
+                if user1.role.hierarchy > user2.role.hierarchy { return false }
                 return user1.firstName < user2.firstName
             }
 

@@ -24,10 +24,10 @@ struct ContentView: View {
     // Add a state to track initial loading
     @State private var isCheckingAuth = true
     @State private var showLocationPermissionView = false
-    @State private var showTutorialForReturningUser = false
     @State private var showABTestOnboarding = false
     @State private var showExistingLogin = false
     @State private var onboardingManagerInstance: OnboardingManager?
+    @State private var hasCompletedInitialAuthCheck = false
 
     var body: some View {
         Group {
@@ -40,34 +40,40 @@ struct ContentView: View {
                     variantManager: variantManager,
                     onboardingManager: manager,
                     onComplete: {
+                        // Finalize onboarding state before disposing manager
+                        onboardingManagerInstance?.completeOnboarding()
+                        dataController.isAuthenticated = true
+                        UserDefaults.standard.set(true, forKey: "onboarding_completed")
+                        UserDefaults.standard.set(true, forKey: "is_authenticated")
                         showABTestOnboarding = false
                         onboardingManagerInstance = nil
                     },
                     onShowLogin: {
-                        showABTestOnboarding = false
-                        showExistingLogin = true
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            showABTestOnboarding = false
+                            showExistingLogin = true
+                        }
                         onboardingManagerInstance = nil
                     }
                 )
                 .environmentObject(dataController)
                 .environmentObject(appState)
                 .environmentObject(locationManager)
-            } else if showExistingLogin || !dataController.isAuthenticated {
-                // Existing login for returning users or "I already have an account"
-                LoginView()
-                    .environmentObject(appState)
-                    .environmentObject(locationManager)
-            } else if showTutorialForReturningUser {
-                // Show tutorial for returning users who haven't completed it
-                TutorialLauncherView(
-                    flowType: TutorialLauncherView.detectFlowType(for: dataController.currentUser),
-                    onComplete: {
-                        showTutorialForReturningUser = false
-                    }
-                )
-                .environmentObject(dataController)
+            } else if showExistingLogin {
+                // "I already have an account" from A/B test → direct login form
+                LoginView(onBack: {
+                    // Go back to A/B test splash
+                    showExistingLogin = false
+                    onboardingManagerInstance = OnboardingManager(dataController: dataController)
+                    showABTestOnboarding = true
+                })
                 .environmentObject(appState)
                 .environmentObject(locationManager)
+            } else if !dataController.isAuthenticated {
+                // General unauthenticated state → landing page
+                LandingView()
+                    .environmentObject(appState)
+                    .environmentObject(locationManager)
             } else {
                 // Check if PIN authentication is required
                 // Access the PIN manager directly as @ObservedObject to ensure proper state updates
@@ -90,6 +96,9 @@ struct ContentView: View {
             let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
             
             
+            // Guard against re-running after Google auth UI dismissal triggers onAppear again
+            guard !hasCompletedInitialAuthCheck else { return }
+
             // Wait longer to ensure auth check completes
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 print("[CONTENT_VIEW] ========== AUTH CHECK ==========")
@@ -118,67 +127,28 @@ struct ContentView: View {
                         }
                         dataController.isAuthenticated = false
                     } else {
-                        // Returning user → existing LoginView with onboarding
-                        print("[CONTENT_VIEW] -> Showing onboarding (LoginView)")
+                        // Returning user → existing LandingView with onboarding
+                        print("[CONTENT_VIEW] -> Showing onboarding (LandingView)")
                         dataController.isAuthenticated = false
-                    }
-                } else if dataController.isAuthenticated {
-                    // Check if returning user needs to complete tutorial
-                    let user = dataController.currentUser
-                    let hasCompletedTutorial = user?.hasCompletedAppTutorial ?? false
-
-                    print("[CONTENT_VIEW] Checking tutorial for returning user:")
-                    print("[CONTENT_VIEW]   - currentUser exists: \(user != nil)")
-                    if let user = user {
-                        print("[CONTENT_VIEW]   - user.id: \(user.id)")
-                        print("[CONTENT_VIEW]   - user.hasCompletedAppTutorial: \(user.hasCompletedAppTutorial)")
-                    }
-                    print("[CONTENT_VIEW]   - hasCompletedTutorial (with nil fallback): \(hasCompletedTutorial)")
-
-                    // Also check UserDefaults fallback from pre-signup tutorial
-                    let preSignupDone = UserDefaults.standard.bool(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
-
-                    if !hasCompletedTutorial && preSignupDone {
-                        // Pre-signup tutorial was done but flag wasn't synced to user yet
-                        print("[CONTENT_VIEW]   -> Pre-signup tutorial done, marking tutorial complete on user")
-                        user?.hasCompletedAppTutorial = true
-                        UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
-                    } else if !hasCompletedTutorial {
-                        print("[CONTENT_VIEW]   -> Showing tutorial for returning user")
-                        showTutorialForReturningUser = true
-                    } else {
-                        print("[CONTENT_VIEW]   -> Skipping tutorial, showing main app")
                     }
                 }
 
                 // Finish the loading phase to show the appropriate screen
                 isCheckingAuth = false
+                hasCompletedInitialAuthCheck = true
                 print("[CONTENT_VIEW] ========== END AUTH CHECK ==========")
             }
         }
-        // Watch for authentication changes to check tutorial status
+        // Watch for authentication changes
         .onChange(of: dataController.isAuthenticated) { _, isAuthenticated in
             if isAuthenticated && !isCheckingAuth {
-                // Clear A/B test login routing flag so user proceeds to main app
+                // Clear ALL onboarding routing flags so user proceeds to main app.
+                // Fixes race condition where onAppear timer fires after Google auth UI
+                // dismissal but before loginWithGoogle completes, incorrectly routing
+                // to onboarding.
                 showExistingLogin = false
-
-                // User just became authenticated (login completed)
-                // Check if they need to complete the tutorial
-                let hasCompletedTutorial = dataController.currentUser?.hasCompletedAppTutorial ?? false
-                let preSignupDone = UserDefaults.standard.bool(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
-                print("[CONTENT_VIEW] Auth changed to true - checking tutorial:")
-                print("[CONTENT_VIEW]   - hasCompletedAppTutorial: \(hasCompletedTutorial)")
-                print("[CONTENT_VIEW]   - preSignupTutorialDone: \(preSignupDone)")
-
-                if !hasCompletedTutorial && preSignupDone {
-                    // Pre-signup tutorial was done, mark on user and skip
-                    print("[CONTENT_VIEW]   -> Pre-signup tutorial done, marking complete")
-                    dataController.currentUser?.hasCompletedAppTutorial = true
-                    UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
-                } else if !hasCompletedTutorial {
-                    print("[CONTENT_VIEW]   -> Showing tutorial after login")
-                    showTutorialForReturningUser = true
-                }
+                showABTestOnboarding = false
+                onboardingManagerInstance = nil
             }
         }
         // Watch for changes to the location denied state
@@ -196,14 +166,6 @@ struct ContentView: View {
                     onboardingManagerInstance = OnboardingManager(dataController: dataController)
                     showABTestOnboarding = true
                 }
-            }
-        }
-        // Watch for tutorial restart request from settings
-        .onChange(of: appState.shouldRestartTutorial) { _, shouldRestart in
-            if shouldRestart {
-                print("[CONTENT_VIEW] Tutorial restart requested from settings")
-                appState.shouldRestartTutorial = false
-                showTutorialForReturningUser = true
             }
         }
         // Add the location permission overlay
@@ -255,6 +217,14 @@ struct PINGatedView: View {
     @State private var showClientCreatedMessage = false
     @State private var createdClientName: String = ""
 
+    // Bug reporting
+    @State private var lastShakeTime: Date = .distantPast
+
+    // Wizard system
+    @StateObject private var wizardStateManager = WizardStateManager()
+    @StateObject private var wizardTriggerService = WizardTriggerService()
+    @State private var hasConfiguredWizards = false
+
     init(dataController: DataController, appState: AppState, locationManager: LocationManager) {
         self.dataController = dataController
         self.pinManager = dataController.simplePINManager
@@ -283,6 +253,11 @@ struct PINGatedView: View {
                 MainTabView()
                     .environmentObject(appState)
                     .environmentObject(locationManager)
+                    .wizardActive(wizardStateManager.isActive)
+                    .environment(\.wizardStateManager, wizardStateManager)
+                    .wizardBanner(stateManager: wizardStateManager)
+                    .wizardPromptOverlay(stateManager: wizardStateManager)
+                    .wizardInstructionBar(stateManager: wizardStateManager)
                     .gracePeriodBanner() // Add grace period banner overlay
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TaskCreatedSuccess"))) { notification in
                         // Show success message when task is created
@@ -321,6 +296,24 @@ struct PINGatedView: View {
                     .onAppear {
                         // Set the appState reference in DataController for cross-component access
                         dataController.appState = appState
+
+                        // Configure wizard system (once per session)
+                        if !hasConfiguredWizards,
+                           let context = dataController.modelContext,
+                           let user = dataController.currentUser {
+                            let role = user.role
+                            wizardStateManager.configure(
+                                modelContext: context,
+                                userId: user.id,
+                                userRole: role
+                            )
+                            wizardTriggerService.configure(
+                                stateManager: wizardStateManager,
+                                userRole: role,
+                                permissionCheck: { PermissionStore.shared.can($0) }
+                            )
+                            hasConfiguredWizards = true
+                        }
 
                         // Check for unassigned employee roles (only once per session)
                         if !hasCheckedForUnassignedRoles {
@@ -439,6 +432,7 @@ struct PINGatedView: View {
                     onComplete: {
                         // Mark project as completed after tasks are done
                         project.status = .completed
+                        project.completedAt = Date()
                         project.needsSync = true
 
                         Task {
@@ -456,6 +450,53 @@ struct PINGatedView: View {
                 .environmentObject(dataController)
             }
         }
+        // MARK: - Bug Report Sheet (Shake-to-Report)
+        .sheet(isPresented: $appState.showingBugReport, onDismiss: {
+            appState.bugReportScreenshot = nil
+        }) {
+            BugReportSheet(screenshot: appState.bugReportScreenshot)
+                .environmentObject(appState)
+                .environmentObject(dataController)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
+            handleShake()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ConnectivityManager.connectivityChangedNotification)) { _ in
+            // Drain offline bug report queue when connectivity returns
+            if dataController.connectivity?.shouldAttemptSync ?? false {
+                Task {
+                    await BugReportSubmissionService.shared.drainOfflineQueue(dataController: dataController)
+                }
+            }
+        }
+    }
+
+    // MARK: - Shake Handler
+
+    private func handleShake() {
+        // Debounce: ignore shakes within 3 seconds
+        let now = Date()
+        guard now.timeIntervalSince(lastShakeTime) > 3.0 else { return }
+
+        // Don't trigger during tutorial
+        // TutorialStateManager is not available here as EnvironmentObject,
+        // but we can check via the dataController or UserDefaults
+        if appState.shouldRestartTutorial { return }
+
+        // Don't trigger if already showing
+        guard !appState.showingBugReport else { return }
+
+        // Don't trigger if not authenticated
+        guard dataController.isAuthenticated else { return }
+
+        lastShakeTime = now
+
+        // Capture screenshot BEFORE showing the sheet
+        let screenshot = BugReportCaptureService.shared.captureScreenshot()
+        appState.bugReportScreenshot = screenshot
+        appState.showingBugReport = true
+
+        DebugLogger.shared.log("Bug report triggered via shake", level: .info, category: "BugReport")
     }
 
     /// Check for active app messages and filter by user role

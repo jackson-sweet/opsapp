@@ -34,6 +34,11 @@ struct ProjectDetailsView: View {
     @State private var isNoteComposing = false
     @State private var showingTaskPicker = false
     @State private var taskDetailTask: ProjectTask? = nil
+    @State private var lastTeamEditTask: ProjectTask? = nil
+    @State private var selectedTeamMemberIds: Set<String> = []
+    @State private var allTeamMembers: [TeamMember] = []
+    @State private var showingClientPicker = false
+    @State private var dismissDragOffset: CGFloat = 0
 
     init(project: Project, isEditMode: Bool = false, initialSelectedTask: ProjectTask? = nil) {
         self._project = Bindable(wrappedValue: project)
@@ -85,6 +90,30 @@ struct ProjectDetailsView: View {
                     .sheet(isPresented: $viewModel.showingClientContact) {
                         clientContactSheet
                     }
+                    .sheet(isPresented: $showingClientPicker) {
+                        ClientPickerSheet(
+                            currentClientId: project.clientId,
+                            companyId: project.companyId,
+                            onSelect: { client in
+                                project.client = client
+                                project.clientId = client.id
+                                project.needsSync = true
+                                try? dataController.modelContext?.save()
+                                Task {
+                                    try? await dataController.syncManager.updateProjectFields(
+                                        projectId: project.id,
+                                        fields: ["client_id": .string(client.id)]
+                                    )
+                                    project.needsSync = false
+                                    project.lastSyncedAt = Date()
+                                    try? dataController.modelContext?.save()
+                                }
+                                let generator = UIImpactFeedbackGenerator(style: .medium)
+                                generator.impactOccurred()
+                            }
+                        )
+                        .environmentObject(dataController)
+                    }
                     .sheet(item: $selectedTeamMember) { member in
                         ContactDetailView(user: member)
                             .environmentObject(dataController)
@@ -102,13 +131,7 @@ struct ProjectDetailsView: View {
                         )
                         .environmentObject(dataController)
                     }
-                    .sheet(isPresented: $viewModel.showingAddressEditor) {
-                        AddressEditorSheet(
-                            address: $viewModel.editedAddress,
-                            onSave: { viewModel.saveAddress() },
-                            onCancel: { viewModel.showingAddressEditor = false }
-                        )
-                    }
+                    // Address editing is now inline in DetailsTabView
                     .sheet(isPresented: $viewModel.showingAddTaskSheet) {
                         TaskFormSheet(
                             mode: .create,
@@ -141,29 +164,46 @@ struct ProjectDetailsView: View {
                         ProjectStatusChangeSheet(project: project)
                             .environmentObject(dataController)
                     }
-                    .sheet(isPresented: $showingTaskPicker) {
-                        taskPickerSheet
-                    }
-                    .sheet(item: $taskDetailTask) { task in
+                    // Task picker is now an inline overlay (see mainContent)
+                    .sheet(item: $taskDetailTask, onDismiss: {
+                        saveTaskTeamChanges()
+                    }) { task in
                         TaskDetailPopupSheet(
                             task: task,
                             onSelect: { t in
+                                taskDetailTask = nil
                                 withAnimation(OPSStyle.Animation.fast) {
                                     viewModel.selectedTask = t
                                 }
                             },
                             onComplete: { t in
                                 viewModel.selectedTask = t
-                                viewModel.toggleTaskStatus()
+                                taskDetailTask = nil
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                    viewModel.toggleTaskStatus()
+                                }
                             },
                             onReschedule: { t in
                                 viewModel.selectedTask = t
-                                viewModel.showingTaskScheduler = true
+                                taskDetailTask = nil
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                    viewModel.showingTaskScheduler = true
+                                }
                             },
                             onCancel: { t in
                                 viewModel.selectedTask = t
-                                viewModel.showingCancelTaskConfirmation = true
-                            }
+                                viewModel.cancelSelectedTask()
+                            },
+                            onScheduleTap: { t in
+                                viewModel.selectedTask = t
+                                taskDetailTask = nil
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                    viewModel.showingTaskScheduler = true
+                                }
+                            },
+                            selectedTeamMemberIds: $selectedTeamMemberIds,
+                            allTeamMembers: allTeamMembers,
+                            isProjectCompleted: project.status == .completed
                         )
                     }
                     .confirmationDialog("Unsaved Changes", isPresented: $viewModel.showingUnsavedChangesAlert, titleVisibility: .visible) {
@@ -187,12 +227,7 @@ struct ProjectDetailsView: View {
                     } message: {
                         Text("This action cannot be undone.")
                     }
-                    .confirmationDialog("Cancel Task?", isPresented: $viewModel.showingCancelTaskConfirmation, titleVisibility: .visible) {
-                        Button("Cancel Task", role: .destructive) { viewModel.cancelSelectedTask() }
-                        Button("Keep Task", role: .cancel) { }
-                    } message: {
-                        Text("This task will be marked as cancelled.")
-                    }
+                    // Cancel task confirmation is now inline in TaskDetailPopupSheet
                     .alert("Delete Task?", isPresented: $viewModel.showingTaskDeleteConfirmation) {
                         Button("Delete", role: .destructive) { viewModel.deleteSelectedTask() }
                         Button("Cancel", role: .cancel) { }
@@ -202,6 +237,7 @@ struct ProjectDetailsView: View {
                     .onAppear { handleOnAppear() }
             }
         }
+        .trackScreen("ProjectDetails")
     }
 
     // MARK: - Main Content
@@ -224,7 +260,7 @@ struct ProjectDetailsView: View {
             ScrollView {
                 LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                     // Initial spacer — positions content in lower portion of map
-                    Color.clear.frame(height: ProjectMapHeader.mapHeight - 130)
+                    Color.clear.frame(height: ProjectMapHeader.mapHeight - 170)
 
                     // Gradient scrolls with content (not pinned — avoids content peeking through)
                     mapScrollGradient
@@ -238,31 +274,20 @@ struct ProjectDetailsView: View {
                 }
             }
 
-            // Layer 3: Nav bar (above scroll view so it's always tappable)
-            projectNavBar
-                .zIndex(10)
+            // Layer 3: Task picker overlay (below nav bar)
+            if showingTaskPicker {
+                taskPickerOverlay
+                    .zIndex(15)
+            }
 
-            // Layer 4: Floating toolbar — quick actions or note compose toolbar
-            VStack {
-                Spacer()
-                if isNoteComposing {
-                    NoteComposeToolbar(
-                        onMention: {
-                            notesViewModel.newNoteText += "@"
-                            notesViewModel.handleMentionInput(notesViewModel.newNoteText)
-                        },
-                        onPhoto: { viewModel.showingNoteImagePicker = true },
-                        onPost: {
-                            Task {
-                                await notesViewModel.postNote()
-                                isNoteComposing = false
-                            }
-                        },
-                        canPost: notesViewModel.canPost
-                    )
-                    .padding(.bottom, 16)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                } else {
+            // Layer 4: Nav bar (above everything — CANCEL badge visible over gradient)
+            projectNavBar
+                .zIndex(20)
+
+            // Layer 5: Floating toolbar — quick actions (hidden when composing notes)
+            if !isNoteComposing {
+                VStack {
+                    Spacer()
                     ProjectQuickActionsBar(
                         selectedTask: viewModel.selectedTask,
                         hasClientContact: viewModel.hasClientContact,
@@ -283,11 +308,36 @@ struct ProjectDetailsView: View {
                     .padding(.bottom, 16)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+                .zIndex(5)
             }
-            .zIndex(5)
-            .animation(OPSStyle.Animation.fast, value: isNoteComposing)
         }
         .background(OPSStyle.Colors.background.edgesIgnoringSafeArea(.all))
+        .offset(y: dismissDragOffset)
+        .opacity(dismissDragOffset > 0 ? 1.0 - Double(dismissDragOffset) / 600.0 : 1.0)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 50)
+                .onChanged { value in
+                    // Only respond to gestures starting in the top 120pt
+                    guard value.startLocation.y < 120 else { return }
+                    let translation = max(0, value.translation.height)
+                    dismissDragOffset = translation
+                }
+                .onEnded { value in
+                    guard value.startLocation.y < 120 else { return }
+                    if value.translation.height > 150 {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            dismissDragOffset = UIScreen.main.bounds.height
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            dismiss()
+                        }
+                    } else {
+                        withAnimation(OPSStyle.Animation.standard) {
+                            dismissDragOffset = 0
+                        }
+                    }
+                }
+        )
     }
 
     /// Gradient overlay that scrolls with title content — fades map into background
@@ -302,7 +352,7 @@ struct ProjectDetailsView: View {
             startPoint: .top,
             endPoint: .bottom
         )
-        .frame(height: 100)
+        .frame(height: 70)
         .allowsHitTesting(false)
     }
 
@@ -322,17 +372,55 @@ struct ProjectDetailsView: View {
 
             Spacer()
 
-            // Task badge — tappable to open picker
-            if let task = viewModel.selectedTask {
+            // Task badge — tappable to open/close picker
+            if showingTaskPicker {
+                // When picker is open, badge becomes CANCEL button
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        showingTaskPicker = false
+                    }
+                }) {
+                    TaskBadge(
+                        name: "Cancel",
+                        color: OPSStyle.Colors.tertiaryText,
+                        size: .navBar
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+            } else if let task = viewModel.selectedTask {
                 let taskColor = Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent
                 let isComplete = task.status == .completed
-                Button(action: { showingTaskPicker = true }) {
-                    TaskBadge(
-                        name: task.taskType?.display ?? "Task",
-                        color: taskColor,
-                        size: .navBar,
-                        faded: isComplete
-                    )
+                let isCancelled = task.status == .cancelled
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        showingTaskPicker = true
+                    }
+                }) {
+                    // Task badge with status overlay for completed/cancelled
+                    ZStack(alignment: .bottomTrailing) {
+                        TaskBadge(
+                            name: task.taskType?.display ?? "Task",
+                            color: taskColor,
+                            size: .navBar,
+                            faded: isComplete || isCancelled
+                        )
+
+                        if isComplete {
+                            StatusBadgePill(
+                                text: "COMPLETE",
+                                color: TaskStatus.completed.color,
+                                size: .small
+                            )
+                            .offset(x: 6, y: 10)
+                        } else if isCancelled {
+                            StatusBadgePill(
+                                text: "CANCELLED",
+                                color: TaskStatus.cancelled.color,
+                                size: .small
+                            )
+                            .offset(x: 6, y: 10)
+                        }
+                    }
                 }
                 .buttonStyle(PlainButtonStyle())
             } else if project.tasks.isEmpty {
@@ -345,7 +433,11 @@ struct ProjectDetailsView: View {
                 )
             } else {
                 // Has tasks but none selected — tappable
-                Button(action: { showingTaskPicker = true }) {
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        showingTaskPicker = true
+                    }
+                }) {
                     TaskBadge(
                         name: "Select Task",
                         color: OPSStyle.Colors.tertiaryText,
@@ -361,9 +453,24 @@ struct ProjectDetailsView: View {
 
     /// Pinned section header: title + tab bar with solid background.
     /// Solid background blocks content from showing through when pinned.
+    /// Top clearance keeps the title below the DONE button when pinned.
     private var stickyHeader: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ProjectTitleOverlay(project: project)
+            // Nav bar clearance — when pinned, keeps title below DONE button
+            Color.clear.frame(height: 40)
+
+            ProjectTitleOverlay(
+                project: project,
+                isEditingTitle: viewModel.isEditingTitle,
+                editedTitle: $viewModel.editedTitle,
+                canEdit: viewModel.canEditProject,
+                onStartEditingTitle: {
+                    viewModel.editedTitle = project.title
+                    viewModel.isEditingTitle = true
+                },
+                onSaveTitle: { viewModel.saveTitle() },
+                onClientLongPress: { showingClientPicker = true }
+            )
             ProjectDetailsTabBar(selectedTab: $viewModel.selectedTab)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 4)
@@ -400,12 +507,43 @@ struct ProjectDetailsView: View {
                 viewModel: viewModel,
                 onClientTap: { viewModel.showingClientContact = true },
                 onTeamMemberTap: { member in selectedTeamMember = member },
-                onTaskTap: { task in taskDetailTask = task },
+                onTaskTap: { task in
+                    selectedTeamMemberIds = Set(task.getTeamMemberIds())
+                    lastTeamEditTask = task
+                    loadAvailableTeamMembers()
+                    taskDetailTask = task
+                },
                 onAddTask: { viewModel.showingAddTaskSheet = true },
-                onEditAddress: {
-                    viewModel.editedAddress = project.address ?? ""
-                    viewModel.showingAddressEditor = true
-                }
+                onSelectTask: { task in
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    withAnimation(OPSStyle.Animation.fast) {
+                        if viewModel.selectedTask?.id == task.id {
+                            viewModel.selectedTask = nil
+                        } else {
+                            viewModel.selectedTask = task
+                        }
+                    }
+                },
+                onCompleteTask: { task in
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    viewModel.selectedTask = task
+                    viewModel.toggleTaskStatus()
+                },
+                onReopenTask: { task in
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    viewModel.selectedTask = task
+                    viewModel.toggleTaskStatus()
+                },
+                onCancelTask: { task in
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    viewModel.selectedTask = task
+                    viewModel.cancelSelectedTask()
+                },
+                onDeleteTask: { task in
+                    viewModel.selectedTask = task
+                    viewModel.showingTaskDeleteConfirmation = true
+                },
+                onClientLongPress: { showingClientPicker = true }
             )
 
         case .expenses:
@@ -487,99 +625,166 @@ struct ProjectDetailsView: View {
         }
     }
 
-    // MARK: - Task Picker Sheet
+    // MARK: - Task Picker Overlay (right-aligned, top-aligned below task badge)
 
-    private var taskPickerSheet: some View {
+    @State private var scrolledTaskID: UUID?
+    @State private var lastSnappedTaskID: UUID?
+
+    private var taskPickerOverlay: some View {
         let sortedTasks = project.tasks.sorted { $0.displayOrder < $1.displayOrder }
-        return NavigationView {
-            ScrollView {
-                VStack(spacing: 8) {
-                    // Deselect option (only if a task is currently selected)
-                    if viewModel.selectedTask != nil {
-                        Button(action: {
-                            withAnimation(OPSStyle.Animation.fast) {
-                                viewModel.selectedTask = nil
-                            }
-                            showingTaskPicker = false
-                        }) {
-                            HStack(spacing: 12) {
-                                Circle()
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                    .frame(width: 10, height: 10)
+        let baseDelay: Double = 0.04
 
-                                Text("DESELECT")
-                                    .font(.custom("Kosugi-Regular", size: 12))
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+        return ZStack(alignment: .topTrailing) {
+            // Gradient background — tap to dismiss
+            LinearGradient(
+                colors: [Color(OPSStyle.Colors.background).opacity(0.90), .clear],
+                startPoint: .topTrailing,
+                endPoint: .bottomLeading
+            )
+            .ignoresSafeArea()
+            .transition(.opacity)
+            .onTapGesture {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    showingTaskPicker = false
+                }
+            }
 
-                                Spacer()
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        }
-                        .buttonStyle(PlainButtonStyle())
+            // Task items — right-aligned, top-aligned below nav bar
+            VStack(alignment: .trailing, spacing: 0) {
+                // Clearance for nav bar badge
+                Color.clear.frame(height: 52)
 
-                        Divider()
-                            .background(OPSStyle.Colors.cardBorder)
-                            .padding(.vertical, 4)
-                    }
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .trailing, spacing: 0) {
+                        // Task list
+                        ForEach(Array(sortedTasks.enumerated()), id: \.element.id) { index, task in
+                            let isSelected = viewModel.selectedTask?.id == task.id
+                            let taskColor = Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent
 
-                    // Task list
-                    ForEach(sortedTasks, id: \.id) { task in
-                        Button(action: {
-                            withAnimation(OPSStyle.Animation.fast) {
-                                viewModel.selectedTask = task
-                            }
-                            showingTaskPicker = false
-                        }) {
-                            HStack(spacing: 12) {
-                                Circle()
-                                    .fill(Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent)
-                                    .frame(width: 10, height: 10)
+                            Button(action: {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                withAnimation(OPSStyle.Animation.fast) {
+                                    viewModel.selectedTask = task
+                                }
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    showingTaskPicker = false
+                                }
+                            }) {
+                                HStack(spacing: 8) {
+                                    // Status badge for non-active tasks
+                                    if task.status == .completed {
+                                        StatusBadgePill(
+                                            text: "COMPLETE",
+                                            color: TaskStatus.completed.color,
+                                            size: .small
+                                        )
+                                    } else if task.status == .cancelled {
+                                        StatusBadgePill(
+                                            text: "CANCELLED",
+                                            color: TaskStatus.cancelled.color,
+                                            size: .small
+                                        )
+                                    }
 
-                                Text(task.displayTitle.uppercased())
-                                    .font(.custom("Kosugi-Regular", size: 12))
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .lineLimit(1)
+                                    TaskBadge(
+                                        name: task.displayTitle,
+                                        color: taskColor,
+                                        size: .large,
+                                        faded: task.status == .completed || task.status == .cancelled
+                                    )
 
-                                StatusBadgePill(
-                                    text: task.status.displayName.uppercased(),
-                                    color: task.status.color,
-                                    size: .small
-                                )
-
-                                Spacer()
-
-                                if viewModel.selectedTask?.id == task.id {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    // Checkmark for currently selected task
+                                    if isSelected {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    }
                                 }
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
-                            .background(viewModel.selectedTask?.id == task.id ? OPSStyle.Colors.primaryAccent.opacity(0.1) : Color.clear)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .buttonStyle(PlainButtonStyle())
+                            .id(task.id)
+                            .padding(.vertical, 6)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                            .animation(
+                                OPSStyle.Animation.standard.delay(Double(index) * baseDelay),
+                                value: showingTaskPicker
+                            )
+
+                            // Minimal divider between items (not after last)
+                            if index < sortedTasks.count - 1 {
+                                Rectangle()
+                                    .fill(OPSStyle.Colors.separator)
+                                    .frame(width: 120, height: 1)
+                                    .padding(.vertical, 2)
+                            }
                         }
-                        .buttonStyle(PlainButtonStyle())
+
+                        // Deselect option (if a task is selected)
+                        if viewModel.selectedTask != nil {
+                            Rectangle()
+                                .fill(OPSStyle.Colors.separator)
+                                .frame(width: 120, height: 1)
+                                .padding(.vertical, 4)
+
+                            Button(action: {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(OPSStyle.Animation.fast) {
+                                    viewModel.selectedTask = nil
+                                }
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    showingTaskPicker = false
+                                }
+                            }) {
+                                TaskBadge(
+                                    name: "Deselect",
+                                    color: OPSStyle.Colors.tertiaryText,
+                                    size: .large
+                                )
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .padding(.vertical, 6)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                            .animation(
+                                OPSStyle.Animation.standard.delay(Double(sortedTasks.count) * baseDelay),
+                                value: showingTaskPicker
+                            )
+                        }
                     }
+                    .scrollTargetLayout()
+                    .padding(.top, 8)
+                    .padding(.bottom, 16)
                 }
-                .padding()
-            }
-            .background(OPSStyle.Colors.background)
-            .navigationTitle("SELECT TASK")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        showingTaskPicker = false
+                .frame(maxHeight: 400)
+                .scrollTargetBehavior(.viewAligned)
+                .onChange(of: scrolledTaskID) { _, newValue in
+                    guard newValue != nil, newValue != lastSnappedTaskID else { return }
+                    lastSnappedTaskID = newValue
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+                // Edge fade mask
+                .mask(
+                    VStack(spacing: 0) {
+                        LinearGradient(
+                            colors: [.clear, .black],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 20)
+                        Color.black
+                        LinearGradient(
+                            colors: [.black, .clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 24)
                     }
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
+                )
+                .transition(
+                    .opacity.combined(with: .scale(scale: 0.8, anchor: .topTrailing))
+                )
             }
+            .padding(.trailing, 16)
         }
-        .presentationDetents([.medium])
-        .presentationDragIndicator(.visible)
     }
 
     // MARK: - Save Notification Overlay
@@ -629,6 +834,65 @@ struct ProjectDetailsView: View {
         showNewExpenseSheet = true
     }
 
+    private func loadAvailableTeamMembers() {
+        guard let companyId = dataController.currentUser?.companyId else { return }
+
+        // Try company.teamMembers relationship first
+        let members = dataController.getCompanyTeamMembers(companyId: companyId)
+        if !members.isEmpty {
+            allTeamMembers = members.sorted { $0.fullName < $1.fullName }
+            return
+        }
+
+        // Fallback: fetch User objects and convert to TeamMember
+        let users = dataController.getTeamMembers(companyId: companyId)
+        if !users.isEmpty {
+            allTeamMembers = users.map { TeamMember.fromUser($0) }
+                .sorted { $0.fullName < $1.fullName }
+            return
+        }
+
+        // Last resort: trigger async sync then retry
+        Task {
+            try? await dataController.syncManager?.syncCompanyTeamMembers(companyId: companyId)
+            await MainActor.run {
+                let retryMembers = dataController.getCompanyTeamMembers(companyId: companyId)
+                if !retryMembers.isEmpty {
+                    allTeamMembers = retryMembers.sorted { $0.fullName < $1.fullName }
+                } else {
+                    let retryUsers = dataController.getTeamMembers(companyId: companyId)
+                    allTeamMembers = retryUsers.map { TeamMember.fromUser($0) }
+                        .sorted { $0.fullName < $1.fullName }
+                }
+            }
+        }
+    }
+
+    private func saveTaskTeamChanges() {
+        guard let task = lastTeamEditTask else { return }
+        let currentIds = Set(task.getTeamMemberIds())
+        guard selectedTeamMemberIds != currentIds else {
+            lastTeamEditTask = nil
+            return
+        }
+
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+
+        let newMemberIds = Array(selectedTeamMemberIds)
+
+        Task {
+            do {
+                try await dataController.updateTaskTeamMembers(task: task, memberIds: newMemberIds)
+                print("[PROJECT_DETAILS] ✅ Task team update complete")
+            } catch {
+                print("[PROJECT_DETAILS] ⚠️ Team update failed: \(error)")
+            }
+        }
+
+        lastTeamEditTask = nil
+    }
+
     private func handleOnAppear() {
         // Inject dependencies
         viewModel.dataController = dataController
@@ -645,6 +909,17 @@ struct ProjectDetailsView: View {
 
         // Refresh client
         viewModel.refreshClientData()
+
+        // Pre-composite photo annotations into image cache so gallery
+        // thumbnails and the photo viewer show annotations immediately.
+        if let modelContext = dataController.modelContext {
+            Task {
+                await PhotoAnnotationSyncManager.shared.preCompositeAnnotations(
+                    projectId: project.id,
+                    modelContext: modelContext
+                )
+            }
+        }
     }
 
     private func setupNotesViewModel() {

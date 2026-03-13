@@ -11,8 +11,9 @@ import SwiftData
 struct DeveloperDashboard: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
+    @Environment(\.wizardStateManager) private var wizardStateManager
     @State private var selectedTool: DeveloperTool? = nil
-    
+
     enum DeveloperTool: String, CaseIterable, Identifiable {
         var id: String { self.rawValue }
 
@@ -24,6 +25,7 @@ struct DeveloperDashboard: View {
         case clearData = "Clear Data"
         case taskTypes = "Task Types"
         case inventoryUnits = "Inventory Units"
+        case wizardTesting = "Wizard Testing"
 
         var icon: String {
             switch self {
@@ -35,6 +37,7 @@ struct DeveloperDashboard: View {
             case .clearData: return "trash.circle"
             case .taskTypes: return "square.grid.2x2"
             case .inventoryUnits: return "shippingbox.fill"
+            case .wizardTesting: return "wand.and.stars"
             }
         }
 
@@ -48,6 +51,7 @@ struct DeveloperDashboard: View {
             case .clearData: return "Clear local database data"
             case .taskTypes: return "Manage task type definitions"
             case .inventoryUnits: return "Create default inventory units for company"
+            case .wizardTesting: return "Test and debug setup guide wizards"
             }
         }
 
@@ -61,6 +65,7 @@ struct DeveloperDashboard: View {
             case .clearData: return OPSStyle.Colors.errorStatus
             case .taskTypes: return Color.orange
             case .inventoryUnits: return Color.teal
+            case .wizardTesting: return Color.purple
             }
         }
     }
@@ -103,28 +108,28 @@ struct DeveloperDashboard: View {
                     
                     Text("Developer Tools")
                         .font(OPSStyle.Typography.title)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
                 .padding()
                 .background(OPSStyle.Colors.cardBackgroundDark)
                 
                 // Tools Grid
                 ScrollView {
-                    VStack(spacing: 20) {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
                         // Quick Info Card
                         InfoCard()
                             .padding(.horizontal)
                             .padding(.top)
                         
                         // Tool Categories
-                        VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             // Data Management Tools
                             SectionHeader(title: "DATA MANAGEMENT")
-                            
+
                             LazyVGrid(columns: [
                                 GridItem(.flexible()),
                                 GridItem(.flexible())
-                            ], spacing: 12) {
+                            ], spacing: OPSStyle.Layout.spacing2) {
                                 ToolCard(tool: .taskList) {
                                     selectedTool = .taskList
                                 }
@@ -156,7 +161,7 @@ struct DeveloperDashboard: View {
                             LazyVGrid(columns: [
                                 GridItem(.flexible()),
                                 GridItem(.flexible())
-                            ], spacing: 12) {
+                            ], spacing: OPSStyle.Layout.spacing2) {
                                 ToolCard(tool: .onboardingPreview) {
                                     selectedTool = .onboardingPreview
                                 }
@@ -165,6 +170,11 @@ struct DeveloperDashboard: View {
                                     selectedTool = .taskTest
                                 }
 
+                                if wizardStateManager != nil {
+                                    ToolCard(tool: .wizardTesting) {
+                                        selectedTool = .wizardTesting
+                                    }
+                                }
                             }
                         }
                         .padding(.horizontal)
@@ -203,6 +213,10 @@ struct DeveloperDashboard: View {
                 case .inventoryUnits:
                     CreateDefaultInventoryUnitsView()
                         .environmentObject(dataController)
+                case .wizardTesting:
+                    if let stateManager = wizardStateManager {
+                        WizardTestingView(stateManager: stateManager)
+                    }
                 }
             }
         }
@@ -218,11 +232,11 @@ struct DeveloperDashboard: View {
 // Section header component
 struct SectionHeader: View {
     let title: String
-    
+
     var body: some View {
         Text(title)
-            .font(OPSStyle.Typography.caption)
-            .foregroundColor(OPSStyle.Colors.tertiaryText)
+            .font(OPSStyle.Typography.captionBold)
+            .foregroundColor(OPSStyle.Colors.secondaryText)
     }
 }
 
@@ -233,20 +247,20 @@ struct ToolCard: View {
     
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 ZStack {
                     Circle()
                         .fill(tool.color.opacity(0.2))
                         .frame(width: 56, height: 56)
-                    
+
                     Image(systemName: tool.icon)
-                        .font(.system(size: 24))
+                        .font(.system(size: OPSStyle.Layout.IconSize.lg))
                         .foregroundColor(tool.color)
                 }
                 
                 Text(tool.rawValue)
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 
                 Text(tool.description)
                     .font(OPSStyle.Typography.smallCaption)
@@ -306,15 +320,15 @@ struct DatabaseStatsCard: View {
     @State private var userCount = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("DATABASE STATS")
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
 
             LazyVGrid(columns: [
                 GridItem(.flexible()),
                 GridItem(.flexible())
-            ], spacing: 12) {
+            ], spacing: OPSStyle.Layout.spacing2) {
                 StatItem(label: "Projects", value: "\(projectCount)")
                 StatItem(label: "Tasks", value: "\(taskCount)")
                 StatItem(label: "Scheduled", value: "\(scheduledTaskCount)")
@@ -348,10 +362,10 @@ struct StatItem: View {
     let value: String
     
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: OPSStyle.Layout.spacing1) {
             Text(value)
                 .font(OPSStyle.Typography.title)
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
             
             Text(label)
                 .font(OPSStyle.Typography.caption)

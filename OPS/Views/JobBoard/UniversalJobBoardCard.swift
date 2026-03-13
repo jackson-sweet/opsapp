@@ -18,6 +18,7 @@ enum JobBoardCardType {
 struct UniversalJobBoardCard: View {
     let cardType: JobBoardCardType
     var disableSwipe: Bool = false  // When true, disables swipe gestures (useful in sheets where scrolling is needed)
+    var compact: Bool = false       // When true, renders a compact card layout (used in kanban board)
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var permissionStore: PermissionStore
@@ -42,7 +43,7 @@ struct UniversalJobBoardCard: View {
     @State private var isChangingStatus = false
     @State private var hasTriggeredHaptic = false
     @State private var confirmingStatus: Any? = nil
-    @State private var confirmingDirection: SwipeDirection? = nil
+    @State private var confirmingDirection: CardSwipeDirection? = nil
     @State private var showingDeleteConfirmation = false
     @State private var showingClientDeletionSheet = false
     @State private var showingNoTasksAlert = false
@@ -62,7 +63,7 @@ struct UniversalJobBoardCard: View {
             clientCard
         } else if case .project = cardType {
             projectCard
-                .padding(.vertical, 8)
+                .padding(.vertical, compact ? 0 : 8)
         } else {
             taskCard
                 .padding(.vertical, 8)
@@ -302,7 +303,7 @@ struct UniversalJobBoardCard: View {
                 }
             }
         }
-        .frame(height: 80)
+        .frame(height: compact ? 72 : 80)
     }
 
     /// Whether to show tutorial shimmer for swipe hint
@@ -312,6 +313,129 @@ struct UniversalJobBoardCard: View {
 
     @ViewBuilder
     private var projectCardContent: some View {
+        Group {
+            if compact {
+                compactProjectCardContent
+            } else {
+                standardProjectCardContent
+            }
+        }
+        .contentShape(Rectangle())
+        .scaleEffect(isLongPressing ? 0.95 : 1.0)
+        .animation(.accessibleEaseInOut(duration: 0.2), value: isLongPressing)
+    }
+
+    // MARK: - Compact project card content (kanban board)
+
+    @ViewBuilder
+    private var compactProjectCardContent: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            // Row 1: Project name
+            Text(title)
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            // Row 2: Client name - Address
+            HStack(spacing: 4) {
+                Text(subtitle)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineLimit(1)
+
+                if case .project(let project) = cardType,
+                   let address = project.address, !address.isEmpty {
+                    Text("-")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text(formatAddressStreetOnly(address))
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+
+            // Row 3: Dates + task progress
+            HStack(spacing: OPSStyle.Layout.spacing3) {
+                HStack(spacing: 4) {
+                    Image(systemName: OPSStyle.Icons.calendar)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text(compactDateRange)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+
+                Spacer()
+
+                if case .project(let project) = cardType {
+                    compactTaskProgress(project: project)
+                }
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .center)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
+    private var compactDateRange: String {
+        guard case .project(let project) = cardType else { return "-" }
+        let start = project.computedStartDate ?? project.startDate
+        let end = project.computedEndDate ?? project.endDate
+        switch (start, end) {
+        case (let s?, let e?):
+            return "\(DateHelper.simpleDateString(from: s)) - \(DateHelper.simpleDateString(from: e))"
+        case (let s?, nil):
+            return DateHelper.simpleDateString(from: s)
+        case (nil, let e?):
+            return "- \(DateHelper.simpleDateString(from: e))"
+        case (nil, nil):
+            return "-"
+        }
+    }
+
+    @ViewBuilder
+    private func compactTaskProgress(project: Project) -> some View {
+        let tasks = project.tasks.filter { $0.deletedAt == nil && $0.status != .cancelled }
+        let completed = tasks.filter { $0.status == .completed }.count
+        let total = tasks.count
+
+        if total > 0 {
+            HStack(spacing: 6) {
+                HStack(spacing: 2) {
+                    ForEach(0..<total, id: \.self) { i in
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(i < completed
+                                  ? OPSStyle.Colors.successStatus
+                                  : OPSStyle.Colors.cardBorder)
+                            .frame(height: 3)
+                    }
+                }
+                .frame(width: 48)
+
+                Text("\(completed)/\(total)")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+        } else {
+            Text("No tasks")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+    }
+
+    // MARK: - Standard project card content (full layout)
+
+    @ViewBuilder
+    private var standardProjectCardContent: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -321,10 +445,6 @@ struct UniversalJobBoardCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 metadataRow
-
-                if case .project(let project) = cardType, project.status == .inProgress {
-                    taskProgressPips(project: project)
-                }
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
             .padding(OPSStyle.Layout.spacing3)
@@ -369,9 +489,8 @@ struct UniversalJobBoardCard: View {
         .overlay(
             Group {
                 if case .project(let project) = cardType {
-                    // Badge stack - evenly spaced on right side
-                    VStack(alignment: .trailing, spacing: 0) {
-                        // Status badge - top
+                    // Status badge — top right
+                    VStack {
                         Text(project.status.displayName.uppercased())
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(project.status.color)
@@ -385,28 +504,23 @@ struct UniversalJobBoardCard: View {
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .stroke(project.status.color, lineWidth: OPSStyle.Layout.Border.standard)
                             )
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(8)
 
-                        Spacer()
+                    // Task progress bars — always vertically centered, right side
+                    if project.status == .inProgress {
+                        VStack {
+                            taskProgressBars(project: project)
+                                .frame(width: 60)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                        .padding(.horizontal, 8)
+                    }
 
-                        // Task-only scheduling migration: Always show task count badge
-                        Text("\(project.tasks.count) \(project.tasks.count == 1 ? "TASK" : "TASKS")")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(schedulingBadgeColor)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .fill(OPSStyle.Colors.cardBackground)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .stroke(schedulingBadgeColor.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
-                            )
-
-                        Spacer()
-
-                        // Unscheduled badge - bottom (or spacer if not shown)
-                        if shouldShowUnscheduledBadge(for: project) {
+                    // Unscheduled badge — bottom right
+                    if shouldShowUnscheduledBadge(for: project) {
+                        VStack {
                             Text("UNSCHEDULED")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -420,19 +534,13 @@ struct UniversalJobBoardCard: View {
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                         .stroke(OPSStyle.Colors.warningStatus, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
-                        } else {
-                            // Empty spacer to maintain badge positioning when unscheduled badge isn't shown
-                            Color.clear.frame(height: 0)
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                        .padding(8)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                    .padding(8)
                 }
             }
         )
-        .contentShape(Rectangle())
-        .scaleEffect(isLongPressing ? 0.95 : 1.0)
-        .animation(.accessibleEaseInOut(duration: 0.2), value: isLongPressing)
         .onTapGesture {
             // Block tap to open details during projectListSwipe tutorial phase
             if tutorialMode && tutorialPhase == .projectListSwipe {
@@ -727,27 +835,22 @@ struct UniversalJobBoardCard: View {
     }
 
     @ViewBuilder
-    private func taskProgressPips(project: Project) -> some View {
-        let activeTasks = project.tasks.filter { $0.status == .active }
-        let completedTasks = project.tasks.filter { $0.status == .completed }
-        let totalTasks = activeTasks.count + completedTasks.count
-        if totalTasks > 0 {
-            let maxPips = 8
-            if totalTasks <= maxPips {
-                HStack(spacing: 3) {
-                    ForEach(0..<totalTasks, id: \.self) { i in
-                        Circle()
-                            .fill(i < completedTasks.count
+    private func taskProgressBars(project: Project) -> some View {
+        let tasks = project.tasks.filter { $0.deletedAt == nil && $0.status != .cancelled }
+        let completed = tasks.filter { $0.status == .completed }.count
+        let total = tasks.count
+
+        return Group {
+            if total > 0 {
+                HStack(spacing: 2) {
+                    ForEach(0..<total, id: \.self) { i in
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(i < completed
                                   ? OPSStyle.Colors.successStatus
                                   : OPSStyle.Colors.cardBorder)
-                            .frame(width: 6, height: 6)
+                            .frame(height: 3)
                     }
-                    Spacer()
                 }
-            } else {
-                Text("\(activeTasks.count) tasks remaining")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
         }
     }
@@ -1399,7 +1502,7 @@ struct UniversalJobBoardCard: View {
         }
     }
 
-    private func getTargetStatus(direction: SwipeDirection) -> Any? {
+    private func getTargetStatus(direction: CardSwipeDirection) -> Any? {
         switch cardType {
         case .project(let project):
             return direction == .right ? project.status.nextStatus() : project.status.previousStatus()
@@ -1410,7 +1513,7 @@ struct UniversalJobBoardCard: View {
         }
     }
 
-    private func canSwipe(direction: SwipeDirection) -> Bool {
+    private func canSwipe(direction: CardSwipeDirection) -> Bool {
         switch cardType {
         case .project(let project):
             return direction == .right ? project.status.canSwipeForward : project.status.canSwipeBackward
@@ -1476,7 +1579,7 @@ struct UniversalJobBoardCard: View {
     private func handleSwipeChangedWidth(_ translationWidth: CGFloat, cardWidth: CGFloat) {
         guard !isChangingStatus else { return }
 
-        let direction: SwipeDirection = translationWidth > 0 ? .right : .left
+        let direction: CardSwipeDirection = translationWidth > 0 ? .right : .left
 
         // Tutorial mode: During projectListSwipe, ONLY allow right swipe (to complete project)
         if tutorialMode && tutorialPhase == .projectListSwipe {
@@ -1512,7 +1615,7 @@ struct UniversalJobBoardCard: View {
         guard !isChangingStatus else { return }
 
         let swipePercentage = abs(translationWidth) / cardWidth
-        let direction: SwipeDirection = translationWidth > 0 ? .right : .left
+        let direction: CardSwipeDirection = translationWidth > 0 ? .right : .left
 
         // Tutorial mode: Block left swipe during projectListSwipe
         if tutorialMode && tutorialPhase == .projectListSwipe && direction == .left {
@@ -1574,7 +1677,7 @@ struct UniversalJobBoardCard: View {
         // Only activate swipe if horizontal movement is clearly dominant
         guard horizontalDrag > verticalDrag else { return }
 
-        let direction: SwipeDirection = value.translation.width > 0 ? .right : .left
+        let direction: CardSwipeDirection = value.translation.width > 0 ? .right : .left
 
         // Tutorial mode: During projectListSwipe, ONLY allow right swipe (to complete project)
         if tutorialMode && tutorialPhase == .projectListSwipe {
@@ -1614,7 +1717,7 @@ struct UniversalJobBoardCard: View {
         guard !isChangingStatus else { return }
 
         let swipePercentage = abs(value.translation.width) / cardWidth
-        let direction: SwipeDirection = value.translation.width > 0 ? .right : .left
+        let direction: CardSwipeDirection = value.translation.width > 0 ? .right : .left
 
         // Tutorial mode: Block left swipe during projectListSwipe
         if tutorialMode && tutorialPhase == .projectListSwipe && direction == .left {
@@ -1767,14 +1870,14 @@ struct UniversalJobBoardCard: View {
     }
 }
 
-enum SwipeDirection {
+enum CardSwipeDirection {
     case left
     case right
 }
 
 struct RevealedStatusCard: View {
     let status: Any
-    let direction: SwipeDirection
+    let direction: CardSwipeDirection
 
     private var statusText: String {
         if let projectStatus = status as? Status {

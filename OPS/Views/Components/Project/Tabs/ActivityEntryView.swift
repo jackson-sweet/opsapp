@@ -34,7 +34,7 @@ struct ActivityEntryView: View {
                         .frame(width: 28, height: 28)
                         .overlay(
                             Text(String(authorName.prefix(1)).uppercased())
-                                .font(.custom("Mohave-Bold", size: 12))
+                                .font(OPSStyle.Typography.status)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         )
                 }

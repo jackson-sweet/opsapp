@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import Supabase
+// FirebaseAuthService used for token retrieval (Firebase Auth migration)
 
 class StripeService {
     static let shared = StripeService()
@@ -205,8 +205,7 @@ class StripeService {
 
     private func getAuthToken() async throws -> String {
         do {
-            let session = try await SupabaseService.shared.client.auth.session
-            return session.accessToken
+            return try await FirebaseAuthService.shared.getIDToken()
         } catch {
             throw StripeServiceError.notAuthenticated
         }

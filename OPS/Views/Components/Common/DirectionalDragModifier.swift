@@ -3,8 +3,8 @@
 //  OPS
 //
 //  Resolves scroll vs. swipe gesture conflict by committing to a drag axis
-//  within the first 10pt of movement. Horizontal intent = swipe captured.
-//  Vertical intent = gesture released to ScrollView.
+//  within the first few points of movement. Horizontal intent = swipe captured.
+//  Vertical intent = gesture ignored so ScrollView can scroll normally.
 //
 
 import SwiftUI
@@ -14,32 +14,44 @@ struct DirectionalDragModifier: ViewModifier {
     var onChanged: ((CGFloat) -> Void)?
     var onEnded: ((CGFloat) -> Void)?
 
-    @GestureState private var dragState: DragAxisState = .undecided
+    // @State so the axis decision survives into onEnded
+    // (@GestureState resets BEFORE onEnded fires — cannot be used for axis tracking)
+    @State private var resolvedAxis: DragAxis = .undecided
 
-    private let threshold: CGFloat = 10
+    /// Minimum movement before we commit to an axis direction
+    private let axisThreshold: CGFloat = 12
 
-    enum DragAxisState: Equatable {
+    enum DragAxis: Equatable {
         case undecided
         case horizontal
         case vertical
     }
 
     func body(content: Content) -> some View {
-        content
-            .simultaneousGesture(isEnabled ? horizontalGesture : nil)
+        if isEnabled {
+            content
+                .simultaneousGesture(horizontalGesture)
+        } else {
+            content
+        }
     }
 
     private var horizontalGesture: some Gesture {
-        DragGesture(minimumDistance: 1, coordinateSpace: .local)
-            .updating($dragState) { value, state, _ in
+        DragGesture(minimumDistance: 20, coordinateSpace: .local)
+            .onChanged { value in
                 let t = value.translation
-                switch state {
+                switch resolvedAxis {
                 case .undecided:
-                    guard abs(t.width) > threshold || abs(t.height) > threshold else { return }
-                    if abs(t.width) > abs(t.height) {
-                        state = .horizontal
+                    let absW = abs(t.width)
+                    let absH = abs(t.height)
+                    // Wait until movement exceeds threshold before deciding
+                    guard absW > axisThreshold || absH > axisThreshold else { return }
+                    // Require horizontal to be clearly dominant (3× vertical)
+                    if absW > absH * 3 {
+                        resolvedAxis = .horizontal
+                        onChanged?(t.width)
                     } else {
-                        state = .vertical
+                        resolvedAxis = .vertical
                     }
                 case .horizontal:
                     onChanged?(t.width)
@@ -48,10 +60,10 @@ struct DirectionalDragModifier: ViewModifier {
                 }
             }
             .onEnded { value in
-                // dragState is still valid here — @GestureState resets after onEnded fires
-                if dragState == .horizontal {
+                if resolvedAxis == .horizontal {
                     onEnded?(value.translation.width)
                 }
+                resolvedAxis = .undecided
             }
     }
 }

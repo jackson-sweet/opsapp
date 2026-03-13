@@ -58,6 +58,7 @@ struct HomeView: View {
             stopProject: stopProject,
             getActiveProject: getActiveProject
         )
+        .trackScreen("Home")
         .environmentObject(locationManager)
         .environmentObject(dataController)
         .preferredColorScheme(.dark) // Enforce dark mode for the entire view

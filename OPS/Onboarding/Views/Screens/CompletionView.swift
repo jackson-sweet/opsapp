@@ -79,7 +79,7 @@ struct CompletionView: View {
                 if demoMode {
                     VStack {
                         Text("Preview Controls")
-                            .font(.headline)
+                            .font(OPSStyle.Typography.bodyEmphasis)
                         
                         Divider()
                         

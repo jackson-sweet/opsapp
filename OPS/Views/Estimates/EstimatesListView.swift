@@ -69,9 +69,12 @@ struct EstimatesListView: View {
                 }
             }
 
-            // FAB
-            estimatesFAB
+            // FAB — hidden when embedded in MoneyTabView (global FAB handles creation)
+            if !embedded {
+                estimatesFAB
+            }
         }
+        .trackScreen("Estimates")
         .navigationDestination(item: $selectedEstimate) { est in
             EstimateDetailView(estimate: est, viewModel: viewModel)
         }

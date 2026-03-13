@@ -2,8 +2,8 @@
 //  UniversalSearchSheet.swift
 //  OPS
 //
-//  Universal search across projects and tasks, role-filtered.
-//  Opened from the Job Board header search button.
+//  Universal search across all data types, role-filtered.
+//  Opened from header search button on Job Board and Schedule.
 //
 
 import SwiftUI
@@ -12,30 +12,46 @@ import SwiftData
 struct UniversalSearchSheet: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
+    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+
+    // SwiftData queries
     @Query private var allProjects: [Project]
+    @Query private var allClients: [Client]
+    @Query private var allUsers: [User]
+    @Query private var allInventoryItems: [InventoryItem]
+
+    // Supabase-backed ViewModels
+    @StateObject private var invoiceVM = InvoiceViewModel()
+    @StateObject private var estimateVM = EstimateViewModel()
+
     @FocusState private var searchFocused: Bool
     @State private var query: String = ""
 
-    // Permission-based pipeline access
-    private var hasPipelineAccess: Bool {
-        permissionStore.can("pipeline.view")
-    }
+    // Detail sheet states
+    @State private var selectedClient: Client?
+    @State private var selectedUser: User?
+    @State private var selectedInvoice: Invoice?
+    @State private var selectedEstimate: Estimate?
+    @State private var selectedInventoryItem: InventoryItem?
 
-    // Permission-based restricted access (field crew equivalent)
+    // MARK: - Permission Filters
+
     private var isFieldCrew: Bool {
         !permissionStore.hasFullAccess("projects.view")
     }
 
-    // Field crew see only projects they are assigned to.
-    // Users without pipeline access cannot see RFQ or Estimated projects.
+    private var hasPipelineAccess: Bool {
+        permissionStore.can("pipeline.view")
+    }
+
+    // MARK: - Available Data (role-filtered)
+
     private var availableProjects: [Project] {
         guard let userId = dataController.currentUser?.id else { return [] }
-        var projects: [Project]
+        var projects = allProjects.filter { $0.deletedAt == nil }
         if isFieldCrew {
-            projects = allProjects.filter { $0.getTeamMemberIds().contains(userId) }
-        } else {
-            projects = Array(allProjects)
+            projects = projects.filter { $0.getTeamMemberIds().contains(userId) }
         }
         if !hasPipelineAccess {
             projects = projects.filter { $0.status != .rfq && $0.status != .estimated }
@@ -43,75 +59,118 @@ struct UniversalSearchSheet: View {
         return projects
     }
 
-    // Flatten tasks from all visible projects
     private var availableTasks: [ProjectTask] {
-        availableProjects.flatMap { $0.tasks }
+        availableProjects.flatMap { $0.tasks.filter { $0.deletedAt == nil } }
     }
 
-    // ProjectTask.displayTitle is the computed title (customTitle or taskType.display)
-    // ProjectTask.taskNotes is the optional notes string
+    private var availableClients: [Client] {
+        guard let companyId = dataController.currentUser?.companyId else { return [] }
+        return allClients.filter { $0.deletedAt == nil && $0.companyId == companyId }
+    }
+
+    private var availableUsers: [User] {
+        guard let companyId = dataController.currentUser?.companyId else { return [] }
+        return allUsers.filter { $0.deletedAt == nil && $0.companyId == companyId }
+    }
+
+    private var availableInventoryItems: [InventoryItem] {
+        guard let companyId = dataController.currentUser?.companyId else { return [] }
+        return allInventoryItems.filter { $0.deletedAt == nil && $0.companyId == companyId }
+    }
+
+    // MARK: - Search Results
+
     private var matchingProjects: [Project] {
         guard !query.isEmpty else { return [] }
+        let q = query
         return availableProjects.filter {
-            $0.title.localizedCaseInsensitiveContains(query) ||
-            $0.effectiveClientName.localizedCaseInsensitiveContains(query) ||
-            ($0.address?.localizedCaseInsensitiveContains(query) ?? false)
+            $0.title.localizedCaseInsensitiveContains(q) ||
+            $0.effectiveClientName.localizedCaseInsensitiveContains(q) ||
+            ($0.address?.localizedCaseInsensitiveContains(q) ?? false)
         }
     }
 
     private var matchingTasks: [ProjectTask] {
         guard !query.isEmpty else { return [] }
+        let q = query
         return availableTasks.filter {
-            $0.displayTitle.localizedCaseInsensitiveContains(query) ||
-            ($0.taskNotes?.localizedCaseInsensitiveContains(query) ?? false)
+            $0.displayTitle.localizedCaseInsensitiveContains(q) ||
+            ($0.taskNotes?.localizedCaseInsensitiveContains(q) ?? false)
+        }
+    }
+
+    private var matchingClients: [Client] {
+        guard !query.isEmpty else { return [] }
+        let q = query
+        return availableClients.filter {
+            $0.name.localizedCaseInsensitiveContains(q) ||
+            ($0.email?.localizedCaseInsensitiveContains(q) ?? false) ||
+            ($0.phoneNumber?.localizedCaseInsensitiveContains(q) ?? false)
+        }
+    }
+
+    private var matchingUsers: [User] {
+        guard !query.isEmpty else { return [] }
+        let q = query
+        return availableUsers.filter {
+            $0.fullName.localizedCaseInsensitiveContains(q) ||
+            ($0.email?.localizedCaseInsensitiveContains(q) ?? false) ||
+            ($0.phone?.localizedCaseInsensitiveContains(q) ?? false)
+        }
+    }
+
+    private var matchingInventoryItems: [InventoryItem] {
+        guard !query.isEmpty else { return [] }
+        let q = query
+        return availableInventoryItems.filter {
+            $0.name.localizedCaseInsensitiveContains(q) ||
+            ($0.itemDescription?.localizedCaseInsensitiveContains(q) ?? false) ||
+            ($0.sku?.localizedCaseInsensitiveContains(q) ?? false)
+        }
+    }
+
+    private var matchingInvoices: [Invoice] {
+        guard !query.isEmpty else { return [] }
+        let q = query
+        return invoiceVM.invoices.filter {
+            $0.invoiceNumber.localizedCaseInsensitiveContains(q) ||
+            ($0.title?.localizedCaseInsensitiveContains(q) ?? false)
+        }
+    }
+
+    private var matchingEstimates: [Estimate] {
+        guard !query.isEmpty else { return [] }
+        let q = query
+        return estimateVM.estimates.filter {
+            $0.estimateNumber.localizedCaseInsensitiveContains(q) ||
+            ($0.title?.localizedCaseInsensitiveContains(q) ?? false)
         }
     }
 
     private var hasResults: Bool {
-        !matchingProjects.isEmpty || !matchingTasks.isEmpty
+        !matchingProjects.isEmpty || !matchingTasks.isEmpty ||
+        !matchingClients.isEmpty || !matchingUsers.isEmpty ||
+        !matchingInventoryItems.isEmpty || !matchingInvoices.isEmpty ||
+        !matchingEstimates.isEmpty
     }
+
+    // MARK: - Body
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.background.ignoresSafeArea()
+            // Black-tinted ultra thin material background
+            Color.black.opacity(0.85)
+                .ignoresSafeArea()
+                .background(.ultraThinMaterial)
 
             VStack(spacing: 0) {
-                // Search header bar
-                HStack(spacing: 12) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                // Floating search bar
+                searchBar
+                    .padding(.top, 20)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
 
-                    TextField("Search projects, tasks...", text: $query)
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .autocorrectionDisabled()
-                        .focused($searchFocused)
-
-                    if !query.isEmpty {
-                        Button(action: { query = "" }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-                    }
-
-                    Button("CANCEL") {
-                        dismiss()
-                    }
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .overlay(
-                    Rectangle()
-                        .fill(OPSStyle.Colors.separator)
-                        .frame(height: 1),
-                    alignment: .bottom
-                )
-
-                // Body
+                // Content
                 if query.isEmpty {
                     emptyQueryState
                 } else if !hasResults {
@@ -121,7 +180,70 @@ struct UniversalSearchSheet: View {
                 }
             }
         }
-        .onAppear { searchFocused = true }
+        .onAppear {
+            searchFocused = true
+            loadSupabaseData()
+        }
+        // Detail sheets
+        .sheet(item: $selectedClient) { client in
+            ContactDetailView(client: client, project: nil)
+                .environmentObject(dataController)
+        }
+        .sheet(item: $selectedUser) { user in
+            ContactDetailView(user: user)
+                .environmentObject(dataController)
+        }
+        .sheet(item: $selectedInvoice) { invoice in
+            NavigationStack {
+                InvoiceDetailView(invoice: invoice, viewModel: invoiceVM)
+            }
+        }
+        .sheet(item: $selectedEstimate) { estimate in
+            NavigationStack {
+                EstimateDetailView(estimate: estimate, viewModel: estimateVM)
+            }
+        }
+        .sheet(item: $selectedInventoryItem) { item in
+            InventoryFormSheet(item: item)
+                .environmentObject(dataController)
+        }
+    }
+
+    // MARK: - Search Bar
+
+    private var searchBar: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            TextField("Search everything...", text: $query)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .autocorrectionDisabled()
+                .focused($searchFocused)
+
+            if !query.isEmpty {
+                Button(action: { query = "" }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+            }
+
+            Button("CANCEL") {
+                dismiss()
+            }
+            .font(OPSStyle.Typography.captionBold)
+            .foregroundColor(OPSStyle.Colors.primaryAccent)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Color.black)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
 
     // MARK: - Results
@@ -130,33 +252,122 @@ struct UniversalSearchSheet: View {
         ScrollView {
             LazyVStack(spacing: 0, pinnedViews: .sectionHeaders) {
 
+                // Projects
                 if !matchingProjects.isEmpty {
-                    Section {
-                        VStack(spacing: 8) {
-                            ForEach(matchingProjects) { project in
-                                UniversalJobBoardCard(cardType: .project(project))
-                                    .environmentObject(dataController)
-                                    .padding(.horizontal, 16)
+                    searchSection("PROJECTS", icon: "folder.fill", count: matchingProjects.count) {
+                        ForEach(matchingProjects) { project in
+                            SearchResultRow(
+                                icon: "folder.fill",
+                                title: project.title,
+                                subtitle: project.effectiveClientName.isEmpty ? project.address : project.effectiveClientName,
+                                trailingText: project.status.displayName,
+                                accentColor: project.status.color
+                            ) {
+                                navigateToProject(project)
                             }
                         }
-                        .padding(.vertical, 12)
-                    } header: {
-                        sectionHeader("[ PROJECTS ]")
                     }
                 }
 
+                // Tasks
                 if !matchingTasks.isEmpty {
-                    Section {
-                        VStack(spacing: 8) {
-                            ForEach(matchingTasks) { task in
-                                UniversalJobBoardCard(cardType: .task(task))
-                                    .environmentObject(dataController)
-                                    .padding(.horizontal, 16)
+                    searchSection("TASKS", icon: "checklist", count: matchingTasks.count) {
+                        ForEach(matchingTasks) { task in
+                            SearchResultRow(
+                                icon: "checklist",
+                                title: task.displayTitle,
+                                subtitle: task.project?.title,
+                                trailingText: task.status.displayName,
+                                accentColor: task.status.color
+                            ) {
+                                navigateToTask(task)
                             }
                         }
-                        .padding(.vertical, 12)
-                    } header: {
-                        sectionHeader("[ TASKS ]")
+                    }
+                }
+
+                // Clients
+                if !matchingClients.isEmpty {
+                    searchSection("CLIENTS", icon: "building.2.fill", count: matchingClients.count) {
+                        ForEach(matchingClients) { client in
+                            SearchResultRow(
+                                icon: "building.2.fill",
+                                title: client.name,
+                                subtitle: client.email ?? client.phoneNumber,
+                                trailingText: nil,
+                                accentColor: OPSStyle.Colors.primaryAccent
+                            ) {
+                                selectedClient = client
+                            }
+                        }
+                    }
+                }
+
+                // Team Members
+                if !matchingUsers.isEmpty {
+                    searchSection("TEAM", icon: "person.fill", count: matchingUsers.count) {
+                        ForEach(matchingUsers) { user in
+                            SearchResultRow(
+                                icon: "person.fill",
+                                title: user.fullName,
+                                subtitle: user.email,
+                                trailingText: user.roleDisplay.uppercased(),
+                                accentColor: user.roleColor
+                            ) {
+                                selectedUser = user
+                            }
+                        }
+                    }
+                }
+
+                // Invoices
+                if !matchingInvoices.isEmpty {
+                    searchSection("INVOICES", icon: "doc.text.fill", count: matchingInvoices.count) {
+                        ForEach(matchingInvoices) { invoice in
+                            SearchResultRow(
+                                icon: "doc.text.fill",
+                                title: invoice.title ?? "Invoice #\(invoice.invoiceNumber)",
+                                subtitle: formatCurrency(invoice.total),
+                                trailingText: invoice.status.displayName,
+                                accentColor: invoice.status.isPaid ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent
+                            ) {
+                                selectedInvoice = invoice
+                            }
+                        }
+                    }
+                }
+
+                // Estimates
+                if !matchingEstimates.isEmpty {
+                    searchSection("ESTIMATES", icon: "doc.plaintext.fill", count: matchingEstimates.count) {
+                        ForEach(matchingEstimates) { estimate in
+                            SearchResultRow(
+                                icon: "doc.plaintext.fill",
+                                title: estimate.title ?? "Estimate #\(estimate.estimateNumber)",
+                                subtitle: formatCurrency(estimate.total),
+                                trailingText: estimate.status.displayName,
+                                accentColor: OPSStyle.Colors.primaryAccent
+                            ) {
+                                selectedEstimate = estimate
+                            }
+                        }
+                    }
+                }
+
+                // Inventory
+                if !matchingInventoryItems.isEmpty {
+                    searchSection("INVENTORY", icon: "shippingbox.fill", count: matchingInventoryItems.count) {
+                        ForEach(matchingInventoryItems) { item in
+                            SearchResultRow(
+                                icon: "shippingbox.fill",
+                                title: item.name,
+                                subtitle: item.sku != nil ? "SKU: \(item.sku!)" : item.itemDescription,
+                                trailingText: item.quantityDisplay,
+                                accentColor: item.effectiveThresholdStatus().color
+                            ) {
+                                selectedInventoryItem = item
+                            }
+                        }
                     }
                 }
             }
@@ -165,16 +376,37 @@ struct UniversalSearchSheet: View {
         .animation(.accessibleEaseInOut(duration: 0.15), value: query)
     }
 
-    private func sectionHeader(_ label: String) -> some View {
-        HStack {
-            Text(label)
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-            Spacer()
+    // MARK: - Section Builder
+
+    private func searchSection<Content: View>(
+        _ title: String,
+        icon: String,
+        count: Int,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Section {
+            VStack(spacing: 6) {
+                content()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+        } header: {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Text("[ \(title) ]")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Text("\(count)")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.9))
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(OPSStyle.Colors.background)
     }
 
     // MARK: - Empty States
@@ -184,7 +416,7 @@ struct UniversalSearchSheet: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl, weight: .light))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Text("Search projects, tasks, and more")
+            Text("Search projects, tasks, clients, and more")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
@@ -200,5 +432,106 @@ struct UniversalSearchSheet: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.top, 60)
+    }
+
+    // MARK: - Navigation
+
+    private func navigateToProject(_ project: Project) {
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            appState.viewProjectDetails(project)
+        }
+    }
+
+    private func navigateToTask(_ task: ProjectTask) {
+        guard let project = task.project else { return }
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            appState.viewProjectDetails(project)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func loadSupabaseData() {
+        guard let companyId = dataController.currentUser?.companyId else { return }
+        invoiceVM.setup(companyId: companyId)
+        estimateVM.setup(companyId: companyId)
+        Task {
+            await invoiceVM.loadInvoices()
+            await estimateVM.loadEstimates()
+        }
+    }
+
+    private func formatCurrency(_ amount: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: amount)) ?? "$\(amount)"
+    }
+}
+
+// MARK: - Search Result Row
+
+private struct SearchResultRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String?
+    let trailingText: String?
+    let accentColor: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                // Type icon
+                Image(systemName: icon)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(accentColor)
+                    .frame(width: 28)
+
+                // Title + subtitle
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title.uppercased())
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer()
+
+                // Trailing badge
+                if let trailingText, !trailingText.isEmpty {
+                    Text(trailingText)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(accentColor)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(accentColor.opacity(0.15))
+                        .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }

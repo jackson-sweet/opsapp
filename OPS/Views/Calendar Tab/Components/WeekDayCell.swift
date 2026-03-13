@@ -10,17 +10,7 @@ import SwiftUI
 struct WeekDayCell: View {
     let date: Date
     let isSelected: Bool
-    let eventCount: Int
-    let tasks: [ProjectTask]
     let onTap: () -> Void
-
-    init(date: Date, isSelected: Bool, eventCount: Int, tasks: [ProjectTask] = [], onTap: @escaping () -> Void) {
-        self.date = date
-        self.isSelected = isSelected
-        self.eventCount = eventCount
-        self.tasks = tasks
-        self.onTap = onTap
-    }
 
     var body: some View {
         Button(action: onTap) {
@@ -30,44 +20,25 @@ struct WeekDayCell: View {
                     .foregroundColor(isToday ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
 
                 Text(DateHelper.dayString(from: date))
-                    .font(.custom("Mohave-SemiBold", size: 18))
+                    .font(OPSStyle.Typography.buttonLarge)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
-                densityBarsView
+                // Reserve space for spanning bars overlay (rendered by CalendarDaySelector)
+                Spacer(minLength: 0)
             }
+            .padding(.top, 6)
             .frame(maxWidth: .infinity)
-            .frame(height: 80)
+            .frame(height: 86)
             .background(cellBackground)
-            .cornerRadius(2)
+            .cornerRadius(4)
             .overlay(
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: 4)
                     .stroke(OPSStyle.Colors.primaryText, lineWidth: isSelected ? 1 : 0)
             )
+            .padding(.horizontal, 4)
             .opacity(isPast ? 0.55 : 1.0)
         }
         .disabled(false)
-    }
-
-    private var densityBarsView: some View {
-        let overflow = tasks.count > 4
-        let displayTasks = Array(tasks.prefix(overflow ? 3 : 4))
-
-        return VStack(spacing: 1) {
-            ForEach(Array(displayTasks.enumerated()), id: \.offset) { index, task in
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(task.swiftUIColor.opacity(0.85))
-                    .frame(height: 3)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 3)
-            }
-            if overflow {
-                Text("···")
-                    .font(.system(size: 7, weight: .medium))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .frame(height: 3)
-            }
-        }
-        .frame(height: 20)
     }
 
     private var isPast: Bool {
@@ -94,25 +65,22 @@ struct WeekDayCell: View {
 // Preview
 struct WeekDayCell_Previews: PreviewProvider {
     static var previews: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 0) {
             WeekDayCell(
                 date: Date(),
                 isSelected: false,
-                eventCount: 2,
                 onTap: {}
             )
-            
+
             WeekDayCell(
                 date: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date(),
                 isSelected: true,
-                eventCount: 0,
                 onTap: {}
             )
-            
+
             WeekDayCell(
                 date: Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date(),
                 isSelected: false,
-                eventCount: 5,
                 onTap: {}
             )
         }

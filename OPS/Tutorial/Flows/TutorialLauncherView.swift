@@ -833,9 +833,9 @@ extension TutorialLauncherView {
         }
 
         switch user.role {
-        case .admin, .officeCrew:
+        case .admin, .owner, .office:
             return .companyCreator
-        case .fieldCrew:
+        case .operator, .crew, .unassigned:
             return .employee
         }
     }

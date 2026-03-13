@@ -244,6 +244,121 @@ class ExpenseRepository {
             .value
     }
 
+    // MARK: - Invoice Batches
+
+    func createBatch(_ dto: CreateExpenseBatchDTO) async throws -> ExpenseBatchDTO {
+        try await client
+            .from("expense_batches")
+            .insert(dto)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func updateBatchStatus(_ batchId: String, status: String, reviewedBy: String? = nil, reviewNotes: String? = nil, approvedAmount: Double? = nil) async throws -> ExpenseBatchDTO {
+        var fields: [String: String] = ["status": status]
+        if let reviewedBy {
+            fields["reviewed_by"] = reviewedBy
+            fields["reviewed_at"] = ISO8601DateFormatter().string(from: Date())
+        }
+        if let reviewNotes {
+            fields["review_notes"] = reviewNotes
+        }
+        if let approvedAmount {
+            fields["approved_amount"] = String(approvedAmount)
+        }
+        return try await client
+            .from("expense_batches")
+            .update(fields)
+            .eq("id", value: batchId)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func assignExpensesToBatch(_ expenseIds: [String], batchId: String) async throws {
+        for id in expenseIds {
+            try await client
+                .from("expenses")
+                .update(["batch_id": batchId])
+                .eq("id", value: id)
+                .execute()
+        }
+    }
+
+    func fetchBatchesByUser(_ userId: String) async throws -> [ExpenseBatchDTO] {
+        try await client
+            .from("expense_batches")
+            .select()
+            .eq("company_id", value: companyId)
+            .eq("submitted_by", value: userId)
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+    }
+
+    func fetchBatchesByPeriod(start: String, end: String) async throws -> [ExpenseBatchDTO] {
+        try await client
+            .from("expense_batches")
+            .select()
+            .eq("company_id", value: companyId)
+            .gte("period_start", value: start)
+            .lte("period_end", value: end)
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+    }
+
+    // MARK: - Expense Flagging
+
+    func flagExpense(_ expenseId: String, flaggedBy: String, comment: String) async throws -> ExpenseDTO {
+        try await client
+            .from("expenses")
+            .update([
+                "flag_comment": comment,
+                "flagged_by": flaggedBy,
+                "flagged_at": ISO8601DateFormatter().string(from: Date())
+            ])
+            .eq("id", value: expenseId)
+            .select("*, expense_project_allocations(*), expense_categories(*)")
+            .single()
+            .execute()
+            .value
+    }
+
+    func unflagExpense(_ expenseId: String) async throws -> ExpenseDTO {
+        struct UnflagUpdate: Encodable {
+            let flag_comment: String? = nil
+            let flagged_by: String? = nil
+            let flagged_at: String? = nil
+        }
+        return try await client
+            .from("expenses")
+            .update(UnflagUpdate())
+            .eq("id", value: expenseId)
+            .select("*, expense_project_allocations(*), expense_categories(*)")
+            .single()
+            .execute()
+            .value
+    }
+
+    func fetchUnbatchedExpenses(userId: String, periodStart: String, periodEnd: String) async throws -> [ExpenseDTO] {
+        try await client
+            .from("expenses")
+            .select("*, expense_project_allocations(*), expense_categories(*)")
+            .eq("company_id", value: companyId)
+            .eq("submitted_by", value: userId)
+            .is("batch_id", value: nil)
+            .is("deleted_at", value: nil)
+            .gte("expense_date", value: periodStart)
+            .lte("expense_date", value: periodEnd)
+            .order("expense_date", ascending: true)
+            .execute()
+            .value
+    }
+
     // MARK: - Settings
 
     func fetchSettings() async throws -> ExpenseSettingsDTO? {
@@ -314,5 +429,121 @@ class ExpenseRepository {
             .delete()
             .eq("id", value: id)
             .execute()
+    }
+
+    // MARK: - Auto-Approve Rules
+
+    func fetchAutoApproveRules() async throws -> [AutoApproveRuleDTO] {
+        try await client
+            .from("expense_auto_approve_rules")
+            .select("*, expense_auto_approve_rule_members(*)")
+            .eq("company_id", value: companyId)
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+    }
+
+    func createAutoApproveRule(_ dto: CreateAutoApproveRuleDTO) async throws -> AutoApproveRuleDTO {
+        try await client
+            .from("expense_auto_approve_rules")
+            .insert(dto)
+            .select("*, expense_auto_approve_rule_members(*)")
+            .single()
+            .execute()
+            .value
+    }
+
+    func updateAutoApproveRule(_ ruleId: String, thresholdAmount: Double? = nil, appliesToAll: Bool? = nil, isActive: Bool? = nil) async throws {
+        struct RuleUpdate: Encodable {
+            var threshold_amount: Double?
+            var applies_to_all: Bool?
+            var is_active: Bool?
+            var updated_at: String
+
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                if let threshold_amount { try container.encode(threshold_amount, forKey: .threshold_amount) }
+                if let applies_to_all { try container.encode(applies_to_all, forKey: .applies_to_all) }
+                if let is_active { try container.encode(is_active, forKey: .is_active) }
+                try container.encode(updated_at, forKey: .updated_at)
+            }
+
+            enum CodingKeys: String, CodingKey {
+                case threshold_amount, applies_to_all, is_active, updated_at
+            }
+        }
+
+        let update = RuleUpdate(threshold_amount: thresholdAmount, applies_to_all: appliesToAll, is_active: isActive, updated_at: ISO8601DateFormatter().string(from: Date()))
+        try await client
+            .from("expense_auto_approve_rules")
+            .update(update)
+            .eq("id", value: ruleId)
+            .execute()
+    }
+
+    func deleteAutoApproveRule(_ ruleId: String) async throws {
+        try await client
+            .from("expense_auto_approve_rules")
+            .delete()
+            .eq("id", value: ruleId)
+            .execute()
+    }
+
+    func setAutoApproveRuleMembers(_ ruleId: String, userIds: [String]) async throws {
+        // Delete existing members
+        try await client
+            .from("expense_auto_approve_rule_members")
+            .delete()
+            .eq("rule_id", value: ruleId)
+            .execute()
+
+        // Insert new members
+        if !userIds.isEmpty {
+            let dtos = userIds.map { CreateAutoApproveRuleMemberDTO(ruleId: ruleId, userId: $0) }
+            try await client
+                .from("expense_auto_approve_rule_members")
+                .insert(dtos)
+                .execute()
+        }
+    }
+
+    func checkAutoApproveLineItem(userId: String, amount: Double) async throws -> Bool {
+        let rules: [AutoApproveRuleDTO] = try await client
+            .from("expense_auto_approve_rules")
+            .select("*, expense_auto_approve_rule_members(*)")
+            .eq("company_id", value: companyId)
+            .eq("rule_type", value: "line_item")
+            .eq("is_active", value: true)
+            .execute()
+            .value
+
+        for rule in rules {
+            guard amount < rule.thresholdAmount else { continue }
+            if rule.appliesToAll { return true }
+            if let members = rule.members, members.contains(where: { $0.userId == userId }) {
+                return true
+            }
+        }
+        return false
+    }
+
+    func checkAutoApproveInvoice(userId: String, totalAmount: Double) async throws -> Bool {
+        let rules: [AutoApproveRuleDTO] = try await client
+            .from("expense_auto_approve_rules")
+            .select("*, expense_auto_approve_rule_members(*)")
+            .eq("company_id", value: companyId)
+            .eq("rule_type", value: "invoice")
+            .eq("is_active", value: true)
+            .execute()
+            .value
+
+        for rule in rules {
+            guard totalAmount < rule.thresholdAmount else { continue }
+            if rule.appliesToAll { return true }
+            if let members = rule.members, members.contains(where: { $0.userId == userId }) {
+                return true
+            }
+        }
+        return false
     }
 }

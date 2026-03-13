@@ -9,7 +9,7 @@
 import SwiftUI
 import SwiftData
 import PencilKit
-import Supabase
+// FirebaseAuthService used for token retrieval (Firebase Auth migration)
 
 @MainActor
 class PhotoAnnotationSyncManager {
@@ -64,6 +64,12 @@ class PhotoAnnotationSyncManager {
                 existing.lastSyncedAt = Date()
                 existing.needsSync = annotationURL == nil
                 try? modelContext.save()
+
+                // Cache overlay PNG locally for instant compositing on next load
+                if let pngData = pngData {
+                    _ = ImageFileManager.shared.saveImage(data: pngData, localID: "overlay_\(existingId)")
+                }
+
                 return existing
             }
         }
@@ -85,6 +91,12 @@ class PhotoAnnotationSyncManager {
         model.needsSync = annotationURL == nil
         modelContext.insert(model)
         try? modelContext.save()
+
+        // Cache overlay PNG locally for instant compositing on next load
+        if let pngData = pngData {
+            _ = ImageFileManager.shared.saveImage(data: pngData, localID: "overlay_\(created.id)")
+        }
+
         return model
     }
 
@@ -107,57 +119,130 @@ class PhotoAnnotationSyncManager {
         return image.pngData()
     }
 
-    // MARK: - S3 Upload
+    // MARK: - Upload
 
+    /// Upload annotation PNG via multipart form data to /api/uploads/presign.
+    /// The API uploads directly to Supabase Storage and returns `{ url, publicUrl }`.
     private func uploadAnnotationPNG(data: Data, projectId: String, companyId: String) async throws -> String {
-        let session = try await SupabaseService.shared.client.auth.session
-        let idToken = session.accessToken
+        let idToken = try await FirebaseAuthService.shared.getIDToken()
 
         let timestamp = Date().timeIntervalSince1970
         let filename = "annotation_\(timestamp).png"
         let folder = "annotations/\(companyId)/\(projectId)"
 
-        // Step 1: Get presigned URL
+        let boundary = "Boundary-\(UUID().uuidString)"
         let url = AppConfiguration.apiBaseURL.appendingPathComponent("/api/uploads/presign")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
 
-        let body: [String: String] = [
-            "filename": filename,
-            "contentType": "image/png",
-            "folder": folder
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        // Build multipart body
+        var body = Data()
 
-        let (presignData, presignResponse) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = presignResponse as? HTTPURLResponse,
+        // folder field
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"folder\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(folder)\r\n".data(using: .utf8)!)
+
+        // file field
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/png\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n".data(using: .utf8)!)
+
+        // closing boundary
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+        request.httpBody = body
+
+        let (responseData, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
-            throw AnnotationSyncError.presignFailed
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let responseBody = String(data: responseData, encoding: .utf8) ?? "no body"
+            print("[ANNOTATION SYNC] Upload failed (\(statusCode)): \(responseBody)")
+            throw AnnotationSyncError.uploadFailed
         }
 
-        let presigned = try JSONDecoder().decode(PresignedURLUploadService.PresignedURLResponse.self, from: presignData)
+        let result = try JSONDecoder().decode(UploadResponse.self, from: responseData)
+        let publicUrl = result.publicUrl ?? result.url ?? ""
 
-        // Step 2: Upload PNG to S3
-        guard let uploadURL = URL(string: presigned.uploadUrl) else {
+        guard !publicUrl.isEmpty else {
             throw AnnotationSyncError.invalidURL
         }
 
-        var uploadRequest = URLRequest(url: uploadURL)
-        uploadRequest.httpMethod = "PUT"
-        uploadRequest.setValue("image/png", forHTTPHeaderField: "Content-Type")
-        uploadRequest.setValue("\(data.count)", forHTTPHeaderField: "Content-Length")
-        uploadRequest.httpBody = data
+        print("[ANNOTATION SYNC] PNG uploaded: \(publicUrl)")
+        return publicUrl
+    }
 
-        let (_, uploadResponse) = try await URLSession.shared.data(for: uploadRequest)
-        guard let uploadHttpResponse = uploadResponse as? HTTPURLResponse,
-              (200...299).contains(uploadHttpResponse.statusCode) else {
-            throw AnnotationSyncError.s3UploadFailed
+    /// Response from /api/uploads/presign (multipart upload)
+    private struct UploadResponse: Codable {
+        let url: String?
+        let publicUrl: String?
+    }
+
+    // MARK: - Pre-Composite Into Cache
+
+    /// Composite all annotations for a project into the in-memory image cache.
+    /// Uses locally-cached overlay PNGs when available (instant), falls back to download.
+    /// Call from ProjectDetailsView.onAppear so gallery thumbnails show annotations,
+    /// and from PhotoCommentViewer.onAppear for the full-screen viewer.
+    func preCompositeAnnotations(projectId: String, modelContext: ModelContext) async {
+        let descriptor = FetchDescriptor<PhotoAnnotation>(
+            predicate: #Predicate {
+                $0.projectId == projectId && $0.deletedAt == nil
+            }
+        )
+        guard let annotations = try? modelContext.fetch(descriptor), !annotations.isEmpty else { return }
+
+        var didComposite = false
+        for annotation in annotations {
+            guard let urlString = annotation.annotationURL,
+                  let overlayURL = URL(string: urlString) else { continue }
+
+            let photoURL = annotation.photoURL
+            let cacheKey = photoURL.hasPrefix("//") ? "https:" + photoURL : photoURL
+
+            // Load base image from file system (original, un-composited)
+            // Also check ImageCache as fallback (thumbnails may have loaded it)
+            guard let baseImage = ImageFileManager.shared.loadImage(localID: photoURL)
+                    ?? ImageFileManager.shared.loadImage(localID: cacheKey)
+                    ?? ImageCache.shared.get(forKey: cacheKey) else { continue }
+
+            // Load overlay from local cache or download
+            let overlayKey = "overlay_\(annotation.id)"
+            var overlayImage: UIImage?
+
+            if let cached = ImageFileManager.shared.loadImage(localID: overlayKey) {
+                overlayImage = cached
+            } else {
+                if let (data, _) = try? await URLSession.shared.data(from: overlayURL),
+                   let downloaded = UIImage(data: data) {
+                    overlayImage = downloaded
+                    if let pngData = downloaded.pngData() {
+                        _ = ImageFileManager.shared.saveImage(data: pngData, localID: overlayKey)
+                    }
+                }
+            }
+
+            guard let overlay = overlayImage else { continue }
+
+            let originalSize = baseImage.size
+            let renderer = UIGraphicsImageRenderer(size: originalSize)
+            let composited = renderer.image { _ in
+                baseImage.draw(in: CGRect(origin: .zero, size: originalSize))
+                overlay.draw(in: CGRect(origin: .zero, size: originalSize))
+            }
+
+            ImageCache.shared.set(composited, forKey: cacheKey)
+            didComposite = true
         }
 
-        print("[ANNOTATION SYNC] PNG uploaded to S3: \(presigned.publicUrl)")
-        return presigned.publicUrl
+        if didComposite {
+            NotificationCenter.default.post(name: .annotationsComposited, object: nil)
+        }
     }
 
     // MARK: - Sync Pending
@@ -202,18 +287,22 @@ class PhotoAnnotationSyncManager {
     }
 }
 
+// MARK: - Notification
+
+extension Notification.Name {
+    static let annotationsComposited = Notification.Name("annotationsComposited")
+}
+
 // MARK: - Errors
 
 enum AnnotationSyncError: Error, LocalizedError {
-    case presignFailed
+    case uploadFailed
     case invalidURL
-    case s3UploadFailed
 
     var errorDescription: String? {
         switch self {
-        case .presignFailed: return "Failed to get upload URL"
+        case .uploadFailed: return "Failed to upload annotation"
         case .invalidURL: return "Invalid upload URL"
-        case .s3UploadFailed: return "Failed to upload annotation"
         }
     }
 }

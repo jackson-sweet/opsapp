@@ -107,6 +107,10 @@ class InvoiceViewModel: ObservableObject {
         await updateStatus(invoice, to: .sent)
     }
 
+    func writeOffInvoice(_ invoice: Invoice) async {
+        await updateStatus(invoice, to: .writtenOff)
+    }
+
     private func updateStatus(_ invoice: Invoice, to status: InvoiceStatus) async {
         guard let repo = repository else { return }
         let originalStatus = invoice.status

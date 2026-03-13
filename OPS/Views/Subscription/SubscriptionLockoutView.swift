@@ -642,7 +642,7 @@ struct SubscriptionLockoutView: View {
     
     private func seatedUserRow(for employee: User, in company: Company) -> some View {
         let isCurrentUser = employee.id == dataController.currentUser?.id
-        let isAdmin = employee.isCompanyAdmin || employee.role == .admin
+        let isAdmin = employee.role == .admin || employee.role == .owner
         
         return HStack(spacing: 12) {
             // User info - no avatars
@@ -665,7 +665,7 @@ struct SubscriptionLockoutView: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     
                     if isAdmin {
-                        Text("• ADMIN")
+                        Text("• \(employee.role.displayName.uppercased())")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
@@ -696,7 +696,7 @@ struct SubscriptionLockoutView: View {
     
     private func unseatedUserRow(for employee: User, in company: Company, canAssignSeat: Bool) -> some View {
         let isCurrentUser = employee.id == dataController.currentUser?.id
-        let isAdmin = employee.isCompanyAdmin || employee.role == .admin
+        let isAdmin = employee.role == .admin || employee.role == .owner
         let availableSeats = subscriptionManager.maxSeats - subscriptionManager.seatedEmployees.count
         
         return HStack(spacing: 12) {
@@ -720,7 +720,7 @@ struct SubscriptionLockoutView: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     
                     if isAdmin {
-                        Text("• ADMIN")
+                        Text("• \(employee.role.displayName.uppercased())")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(canAssignSeat ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                     }

@@ -180,7 +180,7 @@ struct OnboardingView: View {
                             id: userIdValue,
                             firstName: viewModel.firstName,
                             lastName: viewModel.lastName,
-                            role: .fieldCrew, companyId: companyId ?? ""  // Default role
+                            role: .crew, companyId: companyId ?? ""  // Default role
                         )
                         user.email = viewModel.email
                         user.phone = viewModel.phoneNumber

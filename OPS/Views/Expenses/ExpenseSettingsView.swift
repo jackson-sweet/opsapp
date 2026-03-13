@@ -16,6 +16,7 @@ struct ExpenseSettingsView: View {
     @State private var requireReceiptPhoto = true
     @State private var requireProjectAssignment = false
     @State private var isSaving = false
+    @State private var showAddRuleSheet = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -32,6 +33,9 @@ struct ExpenseSettingsView: View {
                     sectionHeader("AUTO-APPROVAL THRESHOLDS")
                     thresholdsCard
 
+                    // AUTO-APPROVE RULES
+                    autoApproveRulesSection
+
                     // POLICY TOGGLES
                     sectionHeader("SUBMISSION POLICY")
                     policyCard
@@ -41,14 +45,19 @@ struct ExpenseSettingsView: View {
 
             saveFooter
         }
+        .trackScreen("Settings.Expenses")
         .navigationTitle("EXPENSE SETTINGS")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
                 viewModel.setup(companyId: companyId)
                 await viewModel.loadSettings()
+                await viewModel.loadAutoApproveRules()
                 populateFromSettings()
             }
+        }
+        .sheet(isPresented: $showAddRuleSheet) {
+            AutoApproveRuleSheet(viewModel: viewModel)
         }
         .alert("Error", isPresented: Binding(
             get: { viewModel.error != nil },
@@ -98,7 +107,7 @@ struct ExpenseSettingsView: View {
                 }
             }
         }
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -163,7 +172,7 @@ struct ExpenseSettingsView: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2)
         }
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -212,13 +221,95 @@ struct ExpenseSettingsView: View {
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
         }
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+        .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .padding(.horizontal, OPSStyle.Layout.spacing3)
+    }
+
+    // MARK: - Auto-Approve Rules Section
+
+    private var autoApproveRulesSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            sectionHeader("AUTO-APPROVE RULES")
+
+            ForEach(viewModel.autoApproveRules, id: \.id) { rule in
+                autoApproveRuleRow(rule)
+            }
+
+            Button {
+                showAddRuleSheet = true
+            } label: {
+                HStack {
+                    Image(systemName: "plus")
+                    Text("ADD RULE")
+                }
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                )
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+    }
+
+    private func autoApproveRuleRow(_ rule: AutoApproveRuleDTO) -> some View {
+        let pillColor = rule.ruleType == "invoice" ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.warningStatus
+        let typeLabel = AutoApproveRuleType(rawValue: rule.ruleType)?.displayName ?? rule.ruleType.uppercased()
+        let memberLabel = rule.appliesToAll ? "ALL MEMBERS" : "\(rule.members?.count ?? 0) MEMBERS"
+
+        return HStack(spacing: 12) {
+            Text(typeLabel)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(pillColor)
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Under \(formatRuleCurrency(rule.thresholdAmount))")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Text(memberLabel)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { rule.isActive },
+                set: { newValue in
+                    Task { await viewModel.toggleAutoApproveRule(rule.id, isActive: newValue) }
+                }
+            ))
+            .labelsHidden()
+            .tint(OPSStyle.Colors.successStatus)
+        }
+        .padding(14)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
+    private func formatRuleCurrency(_ amount: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        return formatter.string(from: NSNumber(value: amount)) ?? "$\(amount)"
     }
 
     // MARK: - Save Footer

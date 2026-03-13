@@ -36,11 +36,11 @@ struct PersonalEventSheet: View {
                         // Title field
                         sectionLabel("EVENT TITLE")
                         TextField("", text: $title)
-                            .font(.custom("Mohave-Regular", size: 16))
+                            .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .placeholder(when: title.isEmpty) {
                                 Text("TITLE")
-                                    .font(.custom("Mohave-Regular", size: 16))
+                                    .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             .padding(14)
@@ -87,7 +87,7 @@ struct PersonalEventSheet: View {
                         // Notes
                         sectionLabel("NOTES (OPTIONAL)")
                         TextEditor(text: $notes)
-                            .font(.custom("Mohave-Regular", size: 15))
+                            .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(minHeight: 80)
                             .padding(10)
@@ -107,7 +107,7 @@ struct PersonalEventSheet: View {
                                     ProgressView().tint(.black)
                                 } else {
                                     Text("SAVE EVENT")
-                                        .font(.custom("Kosugi-Regular", size: 14))
+                                        .font(OPSStyle.Typography.button)
                                         .foregroundColor(.black)
                                 }
                                 Spacer()
@@ -127,7 +127,7 @@ struct PersonalEventSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("CANCEL") { isPresented = false }
-                        .font(.custom("Kosugi-Regular", size: 13))
+                        .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
@@ -137,7 +137,7 @@ struct PersonalEventSheet: View {
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
-            .font(.custom("Kosugi-Regular", size: 11))
+            .font(OPSStyle.Typography.microLabel)
             .foregroundColor(OPSStyle.Colors.secondaryText)
             .padding(.horizontal, 20)
             .padding(.bottom, 6)

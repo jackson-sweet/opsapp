@@ -104,16 +104,61 @@ extension Font {
         return Font.custom("Kosugi-Regular", size: 12)
     }
 
+    // MARK: - Dynamic Sizing
+
+    /// Avatar initials — Mohave Bold, dynamically sized relative to the avatar frame.
+    /// Use for initials inside Circle/RoundedRectangle avatars where size varies.
+    public static func avatarInitials(size: CGFloat) -> Font {
+        return Font.custom("Mohave-Bold", size: size)
+    }
+
+    // MARK: - Compact UI Labels (Kosugi)
+
+    /// Mini label — Kosugi Regular (10pt). Avatar initials inside small circles (28-32pt).
+    public static var miniLabel: Font {
+        return Font.custom("Kosugi-Regular", size: 10)
+    }
+
+    /// Micro label — Kosugi Regular (11pt). Sheet section labels, toolbar cancel buttons.
+    public static var microLabel: Font {
+        return Font.custom("Kosugi-Regular", size: 11)
+    }
+
+    /// Tag label — Kosugi Regular (12pt). Small tags, dependency bar labels, chip text.
+    public static var tagLabel: Font {
+        return Font.custom("Kosugi-Regular", size: 12)
+    }
+
+    /// Preview label — Kosugi Regular (18pt). Task type preview badges, large chip text.
+    public static var previewLabel: Font {
+        return Font.custom("Kosugi-Regular", size: 18)
+    }
+
     // MARK: - Additional Sizes
+
+    /// Button large — Mohave SemiBold (18pt). Medium-prominence buttons (Reset, secondary actions).
+    public static var buttonLarge: Font {
+        return Font.custom("Mohave-SemiBold", size: 18)
+    }
 
     /// Heading text - Mohave Medium (20pt)
     public static var heading: Font {
         return Font.custom("Mohave-Medium", size: 20)
     }
 
+    /// Heading bold — Mohave Bold (22pt). Large avatar initials, prominent display text.
+    public static var headingBold: Font {
+        return Font.custom("Mohave-Bold", size: 22)
+    }
+
     /// Large heading text - Mohave SemiBold (24pt)
     public static var headingLarge: Font {
         return Font.custom("Mohave-SemiBold", size: 24)
+    }
+
+    /// Quantity display — Mohave Bold (56pt). Inventory quantity counters.
+    public static var displayQuantity: Font {
+        return Font.custom("Mohave-Bold", size: 56)
     }
 
     /// Display large - Mohave Bold (48pt)

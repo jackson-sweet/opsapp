@@ -133,6 +133,17 @@ final class ProjectTask {
     var endDate: Date?
     var duration: Int = 1  // Duration in days
 
+    // MARK: - Precise Scheduling (time-of-day)
+    var startTime: Date = {
+        Calendar.current.date(from: DateComponents(hour: 8, minute: 0)) ?? Date()
+    }()
+    var endTime: Date = {
+        Calendar.current.date(from: DateComponents(hour: 17, minute: 0)) ?? Date()
+    }()
+
+    // MARK: - Dependency Overrides
+    var dependencyOverridesJSON: String?  // JSON array of TaskTypeDependency; nil = use taskType defaults
+
     // Store team member IDs as string (for compatibility with existing patterns)
     var teamMemberIdsString: String = ""
     
@@ -216,6 +227,31 @@ final class ProjectTask {
         return true
     }
     
+    // MARK: - Dependency Helpers
+
+    /// Returns per-task overrides if set, otherwise falls back to taskType.dependencies.
+    var effectiveDependencies: [TaskTypeDependency] {
+        if let json = dependencyOverridesJSON,
+           let data = json.data(using: .utf8),
+           let overrides = try? JSONDecoder().decode([TaskTypeDependency].self, from: data) {
+            return overrides
+        }
+        return taskType?.dependencies ?? []
+    }
+
+    /// Persist dependency overrides as JSON string.
+    func setDependencyOverrides(_ deps: [TaskTypeDependency]) {
+        if let data = try? JSONEncoder().encode(deps),
+           let json = String(data: data, encoding: .utf8) {
+            dependencyOverridesJSON = json
+        }
+    }
+
+    /// Check if this task depends on a given task type.
+    func dependsOn(taskTypeId: String) -> Bool {
+        return effectiveDependencies.contains { $0.dependsOnTaskTypeId == taskTypeId }
+    }
+
     // MARK: - Computed Properties for Dates
 
     var scheduledDate: Date? { startDate }
@@ -270,3 +306,6 @@ final class ProjectTask {
 
     var displayIcon: String? { taskType?.icon }
 }
+
+// MARK: - SchedulableTask Conformance
+extension ProjectTask: SchedulableTask {}

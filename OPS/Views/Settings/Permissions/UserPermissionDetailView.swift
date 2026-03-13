@@ -127,11 +127,12 @@ struct UserPermissionDetailView: View {
             .padding(.horizontal, 20)
 
             VStack(spacing: 0) {
-                roleOption(.fieldCrew, title: "Field Crew", description: "Works on job sites. Limited scheduling and client access.")
-                Divider().background(OPSStyle.Colors.cardBorder)
-                roleOption(.officeCrew, title: "Office Crew", description: "Full access to scheduling, clients, and project creation.")
-                Divider().background(OPSStyle.Colors.cardBorder)
-                roleOption(.admin, title: "Admin", description: "Full access to all features including team and billing.")
+                ForEach(UserRole.allCases.sorted(by: { $0.hierarchy < $1.hierarchy }), id: \.rawValue) { role in
+                    if role != UserRole.allCases.sorted(by: { $0.hierarchy < $1.hierarchy }).first {
+                        Divider().background(OPSStyle.Colors.cardBorder)
+                    }
+                    roleOption(role, title: role.displayName, description: role.roleDescription)
+                }
             }
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -212,7 +213,6 @@ struct UserPermissionDetailView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .padding(.horizontal, 20)
 
-            // Group by category
             ForEach(PermissionRegistry.categories, id: \.self) { category in
                 overrideCategory(category)
             }
@@ -221,84 +221,182 @@ struct UserPermissionDetailView: View {
 
     private func overrideCategory(_ category: String) -> some View {
         let permissions = PermissionRegistry.permissions(for: category)
+        let catLevel = overrideCategoryLevel(for: category)
+        let isMixed = catLevel == nil
 
-        return VStack(alignment: .leading, spacing: 4) {
-            Text(category.uppercased())
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
+        return VStack(spacing: 0) {
+            // Top row: icon + title + bulk picker (lighter background)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: PermissionRegistry.iconForCategory(category))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Text(category.uppercased())
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
 
-            VStack(spacing: 0) {
-                ForEach(permissions) { perm in
-                    overrideRow(perm)
+                    Spacer()
 
-                    if perm.id != permissions.last?.id {
-                        Divider().background(OPSStyle.Colors.cardBorder)
-                    }
-                }
-            }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .padding(.horizontal, 20)
-        }
-    }
-
-    private func overrideRow(_ perm: PermissionDefinition) -> some View {
-        let fromRole = rolePermissions[perm.id] != nil
-        let hasOverride = userOverrides[perm.id] != nil
-        let override = userOverrides[perm.id]
-        let effectivelyGranted = hasOverride ? (override?.granted ?? false) : fromRole
-
-        return HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(perm.label)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(effectivelyGranted ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
-
-                HStack(spacing: 4) {
-                    if fromRole {
-                        Text("FROM ROLE")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.successStatus)
-                    } else {
-                        Text("NOT IN ROLE")
+                    if isMixed {
+                        Text("MIXED")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
+                }
 
-                    if hasOverride {
-                        Text("· OVERRIDE")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.warningStatus)
+                overrideScopePicker(
+                    selection: catLevel ?? .off,
+                    isMixed: isMixed,
+                    onChange: { level in
+                        setOverrideCategoryLevel(category, to: level)
                     }
+                )
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color.white.opacity(0.04))
+
+            // Individual permission rows (darker)
+            ForEach(permissions) { perm in
+                Rectangle()
+                    .fill(Color.white.opacity(0.06))
+                    .frame(height: 1)
+
+                overrideRow(perm)
+            }
+        }
+        .background(OPSStyle.Colors.background)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .padding(.horizontal, 20)
+    }
+
+    private func overrideRow(_ perm: PermissionDefinition) -> some View {
+        let level = effectiveOverrideLevel(for: perm.id)
+        let baseline = roleBaselineLevel(for: perm.id)
+        let hasOverride = level != baseline
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(perm.label)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(level != .off ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                Spacer()
+                if hasOverride {
+                    Text("OVERRIDE")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.warningStatus)
+                } else {
+                    Text("FROM ROLE")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.successStatus)
                 }
             }
 
-            Spacer()
-
-            Toggle("", isOn: Binding(
-                get: { effectivelyGranted },
-                set: { newValue in
-                    toggleOverride(permissionId: perm.id, fromRole: fromRole, granted: newValue)
+            overrideScopePicker(
+                selection: level,
+                isMixed: false,
+                onChange: { newLevel in
+                    setOverrideLevel(permissionId: perm.id, level: newLevel)
                 }
-            ))
-            .tint(OPSStyle.Colors.primaryAccent)
-            .labelsHidden()
+            )
         }
-        .padding(.vertical, 12)
         .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
-    // MARK: - Actions
+    // MARK: - Override Scope Picker
 
-    private func toggleOverride(permissionId: String, fromRole: Bool, granted: Bool) {
-        // If toggling to match the role baseline, remove the override
-        if granted == fromRole {
+    private func overrideScopePicker(
+        selection: PermissionLevel,
+        isMixed: Bool,
+        onChange: @escaping (PermissionLevel) -> Void
+    ) -> some View {
+        HStack(spacing: 2) {
+            ForEach(PermissionLevel.allCases) { level in
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onChange(level)
+                }) {
+                    Text(level.displayName)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .tracking(0.3)
+                        .foregroundColor(
+                            !isMixed && selection == level
+                                ? OPSStyle.Colors.primaryText
+                                : OPSStyle.Colors.tertiaryText
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(
+                                    !isMixed && selection == level
+                                        ? Color.white.opacity(0.12)
+                                        : Color.clear
+                                )
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.white.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
+        .opacity(isMixed ? 0.4 : 1.0)
+    }
+
+    // MARK: - Override Helpers
+
+    private func effectiveOverrideLevel(for permissionId: String) -> PermissionLevel {
+        if let override = userOverrides[permissionId] {
+            if override.granted, let scope = override.scope {
+                return PermissionLevel(rawValue: scope) ?? .all
+            }
+            return .off
+        }
+        return roleBaselineLevel(for: permissionId)
+    }
+
+    private func roleBaselineLevel(for permissionId: String) -> PermissionLevel {
+        if let scope = rolePermissions[permissionId] {
+            return PermissionLevel(rawValue: scope) ?? .all
+        }
+        return .off
+    }
+
+    private func overrideCategoryLevel(for category: String) -> PermissionLevel? {
+        let perms = PermissionRegistry.permissions(for: category)
+        guard let first = perms.first else { return nil }
+        let firstLevel = effectiveOverrideLevel(for: first.id)
+        for perm in perms.dropFirst() {
+            if effectiveOverrideLevel(for: perm.id) != firstLevel {
+                return nil
+            }
+        }
+        return firstLevel
+    }
+
+    private func setOverrideCategoryLevel(_ category: String, to level: PermissionLevel) {
+        let perms = PermissionRegistry.permissions(for: category)
+        for perm in perms {
+            setOverrideLevel(permissionId: perm.id, level: level)
+        }
+    }
+
+    private func setOverrideLevel(permissionId: String, level: PermissionLevel) {
+        let baseline = roleBaselineLevel(for: permissionId)
+        if level == baseline {
+            // Matches role baseline — remove override
             Task {
                 do {
                     try await PermissionAdminService.removeUserOverride(userId: member.id, permission: permissionId)
@@ -309,20 +407,37 @@ struct UserPermissionDetailView: View {
                     await MainActor.run { errorMessage = "Failed to remove override" }
                 }
             }
-        } else {
-            // Add/update override
+        } else if level == .off {
+            // Revoking permission
             Task {
                 do {
-                    let scope = granted ? "all" : nil
                     try await PermissionAdminService.setUserOverride(
                         userId: member.id,
                         companyId: companyId,
                         permission: permissionId,
-                        scope: scope,
-                        granted: granted
+                        scope: nil,
+                        granted: false
                     )
                     await MainActor.run {
-                        userOverrides[permissionId] = OverrideState(granted: granted, scope: scope)
+                        userOverrides[permissionId] = OverrideState(granted: false, scope: nil)
+                    }
+                } catch {
+                    await MainActor.run { errorMessage = "Failed to save override" }
+                }
+            }
+        } else {
+            // Granting with specific scope
+            Task {
+                do {
+                    try await PermissionAdminService.setUserOverride(
+                        userId: member.id,
+                        companyId: companyId,
+                        permission: permissionId,
+                        scope: level.rawValue,
+                        granted: true
+                    )
+                    await MainActor.run {
+                        userOverrides[permissionId] = OverrideState(granted: true, scope: level.rawValue)
                     }
                 } catch {
                     await MainActor.run { errorMessage = "Failed to save override" }
@@ -343,12 +458,7 @@ struct UserPermissionDetailView: View {
                 try await PermissionAdminService.assignUserRole(userId: member.id, roleId: roleId)
 
                 // 2. Write to legacy employee_type
-                let employeeTypeValue: String
-                switch selectedRole {
-                case .fieldCrew: employeeTypeValue = "Field Crew"
-                case .officeCrew: employeeTypeValue = "Office Crew"
-                case .admin: employeeTypeValue = "Admin"
-                }
+                let employeeTypeValue = selectedRole.displayName
 
                 try await dataController.syncManager.updateUserFields(
                     userId: member.id,
@@ -371,8 +481,8 @@ struct UserPermissionDetailView: View {
 
                 // 4. Refresh PermissionStore if editing current user
                 if member.id == dataController.currentUser?.id {
-                    if let supabaseId = SupabaseService.shared.currentUserId {
-                        await PermissionStore.shared.fetchPermissions(userId: supabaseId)
+                    if let userId = dataController.currentUser?.id {
+                        await PermissionStore.shared.fetchPermissions(userId: userId)
                     }
                 }
 

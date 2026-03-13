@@ -49,12 +49,7 @@ enum PermissionAdminService {
     /// Resolve a UserRole enum to its UUID in the `roles` table.
     @MainActor
     static func resolveRoleId(for role: UserRole) async throws -> String {
-        let roleName: String
-        switch role {
-        case .fieldCrew: roleName = "field_crew"
-        case .officeCrew: roleName = "office_crew"
-        case .admin: roleName = "admin"
-        }
+        let roleName = role.displayName
 
         if let cached = roleIdCache[roleName] {
             return cached
@@ -211,6 +206,79 @@ enum PermissionAdminService {
             .execute()
 
         print("[PERMISSION_ADMIN] Removed user override: \(permission) for user \(userId)")
+    }
+
+    // MARK: - Role CRUD
+
+    /// Create a new custom role.
+    @MainActor
+    static func createRole(name: String, hierarchy: Int) async throws -> AdminRoleRow {
+        let client = SupabaseService.shared.client
+        let rows: [AdminRoleRow] = try await client
+            .from("roles")
+            .insert(["name": name, "hierarchy": "\(hierarchy)"])
+            .select("id, name, hierarchy")
+            .execute()
+            .value
+        guard let row = rows.first else {
+            throw PermissionAdminError.roleNotFound(name)
+        }
+        print("[PERMISSION_ADMIN] Created role '\(name)' with id \(row.id)")
+        return row
+    }
+
+    /// Duplicate a role: create new role and copy all permissions from source.
+    @MainActor
+    static func duplicateRole(sourceRoleId: String, newName: String, hierarchy: Int) async throws -> AdminRoleRow {
+        let newRole = try await createRole(name: newName, hierarchy: hierarchy)
+        let sourcePerms = try await fetchRolePermissions(roleId: sourceRoleId)
+        for perm in sourcePerms {
+            try await setRolePermission(roleId: newRole.id, permission: perm.permission, scope: perm.scope)
+        }
+        print("[PERMISSION_ADMIN] Duplicated role to '\(newName)' with \(sourcePerms.count) permissions")
+        return newRole
+    }
+
+    /// Delete a role and all its permissions.
+    @MainActor
+    static func deleteRole(roleId: String) async throws {
+        let client = SupabaseService.shared.client
+        try await client
+            .from("role_permissions")
+            .delete()
+            .eq("role_id", value: roleId)
+            .execute()
+        try await client
+            .from("roles")
+            .delete()
+            .eq("id", value: roleId)
+            .execute()
+        print("[PERMISSION_ADMIN] Deleted role \(roleId)")
+    }
+
+    /// Rename a role.
+    @MainActor
+    static func renameRole(roleId: String, name: String) async throws {
+        let client = SupabaseService.shared.client
+        try await client
+            .from("roles")
+            .update(["name": name])
+            .eq("id", value: roleId)
+            .execute()
+        print("[PERMISSION_ADMIN] Renamed role \(roleId) to '\(name)'")
+    }
+
+    /// Fetch all user IDs assigned to a given role.
+    @MainActor
+    static func fetchUserIdsForRole(roleId: String) async throws -> [String] {
+        let client = SupabaseService.shared.client
+        let rows: [AdminUserRoleRow] = try await client
+            .from("user_roles")
+            .select("user_id, role_id")
+            .eq("role_id", value: roleId)
+            .execute()
+            .value
+        return rows.map { $0.user_id }
     }
 
     // MARK: - Errors

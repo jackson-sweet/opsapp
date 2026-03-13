@@ -134,7 +134,7 @@ struct ProfileSettingsView: View {
                                             size: 56,
                                             shape: .circle,
                                             allowDelete: true,
-                                            backgroundColor: Color(hex: user.userColor ?? "#59779F") ?? OPSStyle.Colors.primaryAccent
+                                            backgroundColor: user.userColor.flatMap { Color(hex: $0) } ?? OPSStyle.Colors.primaryAccent
                                         ),
                                         onUpload: { image in
                                             try await dataController.uploadUserProfileImage(image, for: user)
@@ -301,6 +301,7 @@ struct ProfileSettingsView: View {
                 deleteAccountSheet
             }
         }
+        .trackScreen("Settings.Profile")
     }
 
     // Password reset sheet view (unchanged)
@@ -749,7 +750,7 @@ struct ProfileSettingsView: View {
                         UserDefaults.standard.synchronize()
 
                         // The deleteUserAccount already logged out, which cleared auth state
-                        // This will automatically trigger ContentView to show LoginView (signup page)
+                        // This will automatically trigger ContentView to show LandingView (signup page)
                         isDeletingAccount = false
                         showDeleteAccountSheet = false
 

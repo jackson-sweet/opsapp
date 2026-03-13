@@ -10,11 +10,13 @@ import SwiftUI
 
 struct CrewCodeShareView: View {
     let crewCode: String
+    let companyName: String
+    let companyId: String
     let variant: OnboardingVariant  // for analytics
     let onContinue: () -> Void
 
     @State private var showCopyFeedback = false
-    @State private var showShareSheet = false
+    @State private var showInviteSheet = false
 
     var body: some View {
         ZStack {
@@ -39,23 +41,22 @@ struct CrewCodeShareView: View {
                         .padding(.top, 24)
 
                         // 2. Headline
-                        Text("YOUR CREW CODE")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("YOU'RE SET UP.")
+                                .font(OPSStyle.Typography.title)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
 
-                        // 3. Subtext
-                        Text("Share this code with your team so they can join your company on OPS.")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .lineSpacing(4)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            Text("\(companyName) is ready.")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                        // 4. Code display box
+                        // 3. Code display box
                         VStack(spacing: 24) {
                             // Label row with inline copy button
                             HStack {
-                                Text("COMPANY CODE")
+                                Text("CREW CODE")
                                     .font(OPSStyle.Typography.captionBold)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -93,70 +94,44 @@ struct CrewCodeShareView: View {
                             )
                         }
 
-                        // 5. Share via text button (outline style)
-                        Button(action: shareCode) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "message.fill")
-                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                Text("SHARE VIA TEXT")
-                                    .font(OPSStyle.Typography.button)
+                        // 4. Share this with your crew
+                        Text("Share this with your crew so they can join.")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        // 5. Invite crew button
+                        Button {
+                            showInviteSheet = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "person.2")
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                                Text("INVITE CREW")
+                                    .font(OPSStyle.Typography.bodyBold)
                             }
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity)
-                            .frame(height: OPSStyle.Layout.touchTargetStandard)
-                            .background(Color.clear)
+                            .frame(height: 56)
+                            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(OPSStyle.Colors.tertiaryText.opacity(0.5), lineWidth: 1)
                             )
                         }
 
-                        // 7. Info box
-                        VStack(alignment: .leading, spacing: 16) {
-                            HStack(alignment: .top, spacing: 12) {
-                                Image(systemName: OPSStyle.Icons.info)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                    .font(OPSStyle.Typography.body)
-
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("HOW IT WORKS")
-                                        .font(OPSStyle.Typography.cardSubtitle)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                                    Text("Your crew uses this code to join your company.")
-                                        .font(OPSStyle.Typography.cardBody)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                }
-                            }
-
-                            HStack(alignment: .top, spacing: 12) {
-                                Image(systemName: "shield")
-                                    .foregroundColor(OPSStyle.Colors.successStatus)
-                                    .font(OPSStyle.Typography.body)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("KEEP IT SECURE")
-                                        .font(OPSStyle.Typography.cardSubtitle)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                                    Text("Only share with crew you trust.")
-                                        .font(OPSStyle.Typography.cardBody)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                }
-                            }
-                        }
-                        .padding(OPSStyle.Layout.spacing3)
-                        .background(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .fill(OPSStyle.Colors.cardBackgroundDark)
-                        )
+                        // 6. Info text
+                        Text("You'll find this code in Settings anytime.")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.bottom, 120)
                 }
 
-                // 6. Continue button pinned at bottom
+                // 7. Continue button pinned at bottom
                 VStack(spacing: 16) {
                     Button(action: handleContinue) {
                         Text("CONTINUE")
@@ -186,23 +161,25 @@ struct CrewCodeShareView: View {
                 )
             }
         }
-        .sheet(isPresented: $showShareSheet) {
-            ActivityViewControllerWrapper(
-                activityItems: [shareMessage]
+        .onAppear { OnboardingSupabaseAnalytics.shared.trackStepView("crew_code") }
+        .sheet(isPresented: $showInviteSheet) {
+            InviteTeamSheet(
+                companyCode: crewCode,
+                companyName: companyName,
+                companyId: companyId,
+                isPresented: $showInviteSheet
             )
         }
-    }
-
-    // MARK: - Computed
-
-    private var shareMessage: String {
-        "Join my company on OPS! Use crew code: \(crewCode). Download OPS: \(OnboardingCopy.appStoreURL)"
     }
 
     // MARK: - Actions
 
     private func copyCode() {
         UIPasteboard.general.string = crewCode
+
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
+
         withAnimation(OPSStyle.Animation.fast) {
             showCopyFeedback = true
         }
@@ -214,32 +191,10 @@ struct CrewCodeShareView: View {
         AnalyticsManager.shared.trackCrewCodeAction(variant: variant.rawValue, action: "copied")
     }
 
-    private func shareCode() {
-        showShareSheet = true
-        AnalyticsManager.shared.trackCrewCodeAction(variant: variant.rawValue, action: "shared")
-    }
-
     private func handleContinue() {
         AnalyticsManager.shared.trackCrewCodeAction(variant: variant.rawValue, action: "continued")
         onContinue()
     }
-}
-
-// MARK: - UIActivityViewController Wrapper
-
-/// Wraps UIActivityViewController for SwiftUI share sheet presentation.
-private struct ActivityViewControllerWrapper: UIViewControllerRepresentable {
-    let activityItems: [Any]
-    var applicationActivities: [UIActivity]? = nil
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(
-            activityItems: activityItems,
-            applicationActivities: applicationActivities
-        )
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Preview
@@ -247,6 +202,8 @@ private struct ActivityViewControllerWrapper: UIViewControllerRepresentable {
 #Preview("Crew Code Share") {
     CrewCodeShareView(
         crewCode: "ABCD1234",
+        companyName: "Acme Construction",
+        companyId: "test-company-id",
         variant: .A,
         onContinue: {}
     )
@@ -256,6 +213,8 @@ private struct ActivityViewControllerWrapper: UIViewControllerRepresentable {
 #Preview("Crew Code Share - Variant B") {
     CrewCodeShareView(
         crewCode: "XYZ98765",
+        companyName: "Smith Roofing",
+        companyId: "test-company-id-2",
         variant: .B,
         onContinue: {}
     )

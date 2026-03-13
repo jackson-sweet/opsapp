@@ -2,340 +2,466 @@
 //  ExpensesListView.swift
 //  OPS
 //
-//  List of all expenses — grouped by month > project, filter by status, swipe actions, FAB for new expense.
+//  Review Expenses hub — segmented picker for Review / History tabs,
+//  settings gear in header, expense settings link at bottom.
 //
 
 import SwiftUI
-import SwiftData
 
 struct ExpensesListView: View {
     var embedded: Bool = false
 
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = ExpenseViewModel()
     @EnvironmentObject private var dataController: DataController
-    @Query private var allProjects: [Project]
-    @State private var showNewExpenseSheet = false
-    @State private var editingExpense: ExpenseDTO? = nil
-    @State private var searchText = ""
-    @State private var expandedMonths: Set<String> = []
-    @State private var expandedProjects: Set<String> = []
+    @State private var selectedTab: ReviewTab = .review
+    @State private var showExpenseSettings = false
 
-    private static var currentMonthKey: String {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyy-MM"
-        return fmt.string(from: Date())
+    enum ReviewTab: String, CaseIterable {
+        case review = "REVIEW"
+        case history = "HISTORY"
     }
 
+    // MARK: - Filtered Batches
+
+    private var selectedPeriodBatches: [ExpenseBatchDTO] {
+        viewModel.reviewBatches
+    }
+
+    private var needsReviewBatches: [ExpenseBatchDTO] {
+        selectedPeriodBatches.filter { batchStatus($0).needsReview }
+    }
+
+    private var autoApprovedBatches: [ExpenseBatchDTO] {
+        selectedPeriodBatches.filter { batchStatus($0) == .autoApproved }
+    }
+
+    private var approvedBatches: [ExpenseBatchDTO] {
+        selectedPeriodBatches.filter {
+            let s = batchStatus($0)
+            return s == .approved || s == .partiallyApproved
+        }
+    }
+
+    private var rejectedBatches: [ExpenseBatchDTO] {
+        selectedPeriodBatches.filter { batchStatus($0) == .rejected }
+    }
+
+    // Hero summary
+    private var totalCrewExpenses: Double {
+        selectedPeriodBatches.compactMap(\.totalAmount).reduce(0, +)
+    }
+
+    private var approvedTotal: Double {
+        selectedPeriodBatches.compactMap(\.approvedAmount).reduce(0, +)
+    }
+
+    private var pendingTotal: Double {
+        max(totalCrewExpenses - approvedTotal, 0)
+    }
+
+    private var approvedFraction: Double {
+        guard totalCrewExpenses > 0 else { return 0 }
+        return min(approvedTotal / totalCrewExpenses, 1.0)
+    }
+
+    // MARK: - Body
+
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
+        ZStack {
             if !embedded {
-                OPSStyle.Colors.background.ignoresSafeArea()
+                OPSStyle.Colors.backgroundGradient
+                    .edgesIgnoringSafeArea(.all)
             }
 
             VStack(spacing: 0) {
-                // Search + filter
-                searchAndFilter
-                    .padding(.top, OPSStyle.Layout.spacing2)
-
-                Divider().background(OPSStyle.Colors.separator)
-
-                // Content
-                if viewModel.isLoading && viewModel.expenses.isEmpty {
-                    Spacer()
-                    TacticalLoadingBarAnimated()
-                    Spacer()
-                } else if viewModel.filteredExpenses.isEmpty {
-                    emptyState
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(viewModel.groupedExpenses) { monthGroup in
-                                monthSection(monthGroup)
-                            }
+                // Header with gear button
+                if !embedded {
+                    HStack {
+                        Button(action: { dismiss() }) {
+                            Image(systemName: OPSStyle.Icons.chevronLeft)
+                                .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                         }
-                        .padding(.horizontal, OPSStyle.Layout.spacing3)
-                        .padding(.vertical, OPSStyle.Layout.spacing2)
-                        .padding(.bottom, 80)
+                        .frame(width: 44, height: 44)
+
+                        Spacer()
+
+                        Text("REVIEW EXPENSES")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+
+                        Spacer()
+
+                        Button(action: { showExpenseSettings = true }) {
+                            Image(systemName: "gearshape")
+                                .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                        .frame(width: 44, height: 44)
                     }
-                    .refreshable {
-                        await viewModel.loadAll()
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+                }
+
+                // Segmented picker
+                tabToggle
+                    .padding(.top, 16)
+
+                // Hero summary
+                heroSummaryBar
+                    .padding(.top, 12)
+
+                // Tab content
+                ScrollView {
+                    VStack(spacing: 20) {
+                        switch selectedTab {
+                        case .review:
+                            reviewContent
+                        case .history:
+                            historyContent
+                        }
+
+                        // Expense Settings at bottom
+                        expenseSettingsFooter
                     }
+                    .padding(.top, 16)
+                    .padding(.bottom, 100)
                 }
             }
-
-            // FAB
-            expensesFAB
         }
-        .sheet(item: $editingExpense) { expense in
-            ExpenseFormSheet(viewModel: viewModel, editing: expense)
-        }
-        .sheet(isPresented: $showNewExpenseSheet) {
-            ExpenseFormSheet(viewModel: viewModel)
-        }
-        .alert("Error", isPresented: Binding(
-            get: { viewModel.error != nil },
-            set: { if !$0 { viewModel.error = nil } }
-        )) {
-            Button("OK") { viewModel.error = nil }
-        } message: {
-            Text(viewModel.error ?? "")
+        .trackScreen("Expenses")
+        .navigationBarBackButtonHidden(true)
+        .navigationDestination(isPresented: $showExpenseSettings) {
+            ExpenseSettingsView(viewModel: viewModel)
+                .environmentObject(dataController)
         }
         .task {
             if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
                 viewModel.setup(companyId: companyId)
-                await viewModel.loadAll()
-            }
-        }
-        .onAppear {
-            if expandedMonths.isEmpty {
-                expandedMonths.insert(Self.currentMonthKey)
+                await viewModel.loadBatchesForReview()
             }
         }
     }
 
-    // MARK: - Month Section
+    // MARK: - Tab Toggle
 
-    @ViewBuilder
-    private func monthSection(_ monthGroup: ExpenseViewModel.ExpenseMonthGroup) -> some View {
-        let isExpanded = expandedMonths.contains(monthGroup.id)
+    private var tabToggle: some View {
+        HStack(spacing: 0) {
+            ForEach(ReviewTab.allCases, id: \.self) { tab in
+                Button {
+                    withAnimation(OPSStyle.Animation.fast) {
+                        selectedTab = tab
+                    }
+                } label: {
+                    VStack(spacing: OPSStyle.Layout.spacing1) {
+                        Text(tab.rawValue)
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(
+                                selectedTab == tab
+                                    ? OPSStyle.Colors.primaryText
+                                    : OPSStyle.Colors.tertiaryText
+                            )
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
 
-        VStack(spacing: 12) {
-            // Month header — CollapsibleSection style
-            HStack(spacing: 8) {
-                Text("[ \(monthGroup.monthLabel) ]")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                Rectangle()
-                    .fill(OPSStyle.Colors.secondaryText.opacity(0.3))
-                    .frame(height: 1)
-
-                Text("[ \(monthGroup.totalCount) ]")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    if isExpanded {
-                        expandedMonths.remove(monthGroup.id)
-                    } else {
-                        expandedMonths.insert(monthGroup.id)
+                        Rectangle()
+                            .fill(
+                                selectedTab == tab
+                                    ? OPSStyle.Colors.primaryAccent
+                                    : Color.clear
+                            )
+                            .frame(height: 2)
                     }
                 }
-            }
-
-            if isExpanded {
-                VStack(spacing: OPSStyle.Layout.spacing2) {
-                    // Unallocated expenses — flat under month
-                    ForEach(monthGroup.unallocated) { expense in
-                        expenseCardView(expense)
-                    }
-
-                    // Project sub-groups
-                    ForEach(monthGroup.projectGroups) { projectGroup in
-                        projectSubSection(projectGroup, monthId: monthGroup.id)
-                    }
-                }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .buttonStyle(PlainButtonStyle())
             }
         }
+        .padding(.horizontal, 20)
     }
 
-    // MARK: - Project Sub-Section
+    // MARK: - Hero Summary Bar
 
-    @ViewBuilder
-    private func projectSubSection(_ projectGroup: ExpenseViewModel.ProjectExpenseGroup, monthId: String) -> some View {
-        let compositeKey = "\(monthId)_\(projectGroup.projectId)"
-        let isExpanded = expandedProjects.contains(compositeKey)
-        let projectName = allProjects.first(where: { $0.id == projectGroup.projectId })?.title ?? projectGroup.projectId
-
+    private var heroSummaryBar: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
-            // Project sub-header — indented
-            HStack(spacing: 6) {
-                Image(systemName: OPSStyle.Icons.folderFill)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("CREW EXPENSES")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Text(totalCrewExpenses, format: .currency(code: "USD").precision(.fractionLength(0)))
+                        .font(OPSStyle.Typography.title)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        legendDot(color: OPSStyle.Colors.successStatus, label: "APPROVED")
+                        legendDot(color: OPSStyle.Colors.primaryAccent, label: "PENDING")
+                    }
+                }
+            }
 
-                Text(projectName.uppercased())
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(OPSStyle.Colors.primaryAccent.opacity(0.3))
+                        .frame(height: 6)
+
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(OPSStyle.Colors.successStatus)
+                        .frame(width: geometry.size.width * approvedFraction, height: 6)
+                }
+            }
+            .frame(height: 6)
+
+            HStack {
+                Text(approvedTotal, format: .currency(code: "USD").precision(.fractionLength(0)))
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.successStatus)
+                Text("approved")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Spacer()
+                Text(pendingTotal, format: .currency(code: "USD").precision(.fractionLength(0)))
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                Text("pending")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .padding(.horizontal, 20)
+    }
+
+    private func legendDot(color: Color, label: String) -> some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(color)
+                .frame(width: 6, height: 6)
+            Text(label)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+    }
+
+    // MARK: - Review Content
+
+    private var reviewContent: some View {
+        VStack(spacing: 20) {
+            if needsReviewBatches.isEmpty && autoApprovedBatches.isEmpty {
+                reviewEmptyState
+            } else {
+                if !needsReviewBatches.isEmpty {
+                    batchSection(
+                        title: "\(needsReviewBatches.count) NEED REVIEW",
+                        batches: needsReviewBatches
+                    )
+                }
+
+                if !autoApprovedBatches.isEmpty {
+                    batchSection(
+                        title: "\(autoApprovedBatches.count) AUTO-APPROVED",
+                        batches: autoApprovedBatches
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - History Content
+
+    private var historyContent: some View {
+        VStack(spacing: 20) {
+            if approvedBatches.isEmpty && rejectedBatches.isEmpty {
+                reviewEmptyState
+            } else {
+                if !approvedBatches.isEmpty {
+                    batchSection(
+                        title: "APPROVED",
+                        batches: approvedBatches
+                    )
+                }
+
+                if !rejectedBatches.isEmpty {
+                    batchSection(
+                        title: "REJECTED",
+                        batches: rejectedBatches
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - Batch Section
+
+    private func batchSection(title: String, batches: [ExpenseBatchDTO]) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text(title)
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .padding(.horizontal, 20)
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2),
+                    GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2)
+                ],
+                spacing: OPSStyle.Layout.spacing2
+            ) {
+                ForEach(batches) { batch in
+                    NavigationLink(destination: ExpenseBatchReviewView(batch: batch, viewModel: viewModel)) {
+                        batchCard(batch)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+    }
+
+    // MARK: - Batch Card
+
+    private func batchCard(_ batch: ExpenseBatchDTO) -> some View {
+        let status = batchStatus(batch)
+        let statusColor = batchStatusColor(status)
+
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            Text(batch.batchNumber)
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+
+            Text(batch.totalAmount ?? 0, format: .currency(code: "USD").precision(.fractionLength(0)))
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+
+            if let start = batch.periodStart {
+                Text(formatPeriodShort(start))
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .lineLimit(1)
+            }
 
-                Spacer()
-
-                Text("[ \(projectGroup.expenses.count) ]")
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 6, height: 6)
+                Text(status.displayName)
                     .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs - 2, weight: .medium))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-            }
-            .padding(.leading, OPSStyle.Layout.spacing2)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    if isExpanded {
-                        expandedProjects.remove(compositeKey)
-                    } else {
-                        expandedProjects.insert(compositeKey)
-                    }
-                }
+                    .foregroundColor(statusColor)
             }
 
-            if isExpanded {
-                ForEach(projectGroup.expenses) { expense in
-                    expenseCardView(expense)
-                }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+            if let amendment = batch.amendmentNumber, amendment > 0 {
+                Text("AMENDMENT \(amendment)")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
             }
         }
-        .onAppear {
-            // Auto-expand project groups by default
-            if !expandedProjects.contains(compositeKey) {
-                expandedProjects.insert(compositeKey)
-            }
-        }
-    }
-
-    // MARK: - Expense Card
-
-    private func expenseCardView(_ expense: ExpenseDTO) -> some View {
-        ExpenseCard(
-            expense: expense,
-            categoryName: expense.category?.name,
-            categoryIcon: expense.category?.icon,
-            onTap: { editingExpense = expense },
-            onSwipeRight: {
-                if expense.status == ExpenseStatus.draft.rawValue {
-                    Task { await viewModel.submitExpense(expense.id) }
-                }
-            },
-            onSwipeLeft: {
-                let status = ExpenseStatus(rawValue: expense.status)
-                guard status != .approved && status != .reimbursed else { return }
-                Task { await viewModel.deleteExpense(expense.id) }
-            }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
-    // MARK: - Search & Filter
+    // MARK: - Expense Settings Footer
 
-    private var searchAndFilter: some View {
-        VStack(spacing: OPSStyle.Layout.spacing2) {
-            // Search field
-            HStack {
-                Image(systemName: OPSStyle.Icons.search)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                TextField("Search expenses...", text: $searchText)
+    private var expenseSettingsFooter: some View {
+        Button {
+            showExpenseSettings = true
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .frame(width: 28, alignment: .center)
+
+                Text("Expense Settings")
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .onChange(of: searchText) { _, newValue in
-                        viewModel.searchText = newValue
-                    }
-                if !searchText.isEmpty {
-                    Button { searchText = ""; viewModel.searchText = "" } label: {
-                        Image(systemName: OPSStyle.Icons.xmarkCircleFill)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-                }
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Spacer()
+
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
-            .padding(OPSStyle.Layout.spacing2)
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
             .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-
-            // Filter chips
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    ForEach(ExpenseViewModel.ExpenseFilter.allCases, id: \.self) { filter in
-                        Button(action: { viewModel.selectedFilter = filter }) {
-                            Text(filter.rawValue)
-                                .font(OPSStyle.Typography.smallCaption)
-                                .fontWeight(viewModel.selectedFilter == filter ? .semibold : .regular)
-                                .foregroundColor(
-                                    viewModel.selectedFilter == filter
-                                    ? OPSStyle.Colors.primaryText
-                                    : OPSStyle.Colors.tertiaryText
-                                )
-                                .padding(.horizontal, OPSStyle.Layout.spacing2 + 2)
-                                .padding(.vertical, OPSStyle.Layout.spacing1 + 2)
-                                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                                .background(
-                                    viewModel.selectedFilter == filter
-                                    ? OPSStyle.Colors.primaryAccent.opacity(0.2)
-                                    : OPSStyle.Colors.cardBackgroundDark
-                                )
-                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .stroke(
-                                            viewModel.selectedFilter == filter
-                                            ? OPSStyle.Colors.primaryAccent
-                                            : OPSStyle.Colors.cardBorder,
-                                            lineWidth: OPSStyle.Layout.Border.standard
-                                        )
-                                )
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-            }
         }
+        .buttonStyle(PlainButtonStyle())
+        .padding(.horizontal, 20)
+        .padding(.top, 20)
     }
 
     // MARK: - Empty State
 
-    private var emptyState: some View {
+    private var reviewEmptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
-            Spacer()
-            Image(systemName: OPSStyle.Icons.expense)
+            Image(systemName: "doc.text.magnifyingglass")
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Text(viewModel.expenses.isEmpty ? "NO EXPENSES YET" : "NO EXPENSES MATCH FILTER")
-                .font(OPSStyle.Typography.subtitle)
+
+            Text("NO INVOICES")
+                .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-            if viewModel.expenses.isEmpty {
-                Text("Submit your first expense to get started.")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, OPSStyle.Layout.spacing4)
-                Button("NEW EXPENSE") { showNewExpenseSheet = true }
-                    .opsPrimaryButtonStyle()
-                    .padding(.horizontal, OPSStyle.Layout.spacing4)
-            }
-            Spacer()
+
+            Text("No expense invoices to show.")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+    }
+
+    // MARK: - Helpers
+
+    private func batchStatus(_ batch: ExpenseBatchDTO) -> ExpenseBatchStatus {
+        ExpenseBatchStatus(rawValue: batch.status) ?? .pendingReview
+    }
+
+    private func batchStatusColor(_ status: ExpenseBatchStatus) -> Color {
+        switch status {
+        case .pendingReview:     return OPSStyle.Colors.warningStatus
+        case .submitted:         return OPSStyle.Colors.primaryAccent
+        case .approved:          return OPSStyle.Colors.successStatus
+        case .partiallyApproved: return OPSStyle.Colors.warningStatus
+        case .rejected:          return OPSStyle.Colors.errorStatus
+        case .autoApproved:      return OPSStyle.Colors.successStatus
         }
     }
 
-    // MARK: - FAB
+    private func formatPeriodShort(_ dateString: String) -> String {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withFullDate]
+        let isoFull = ISO8601DateFormatter()
 
-    private var expensesFAB: some View {
-        Button {
-            showNewExpenseSheet = true
-        } label: {
-            Image(systemName: OPSStyle.Icons.plus)
-                .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .medium))
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)
-                .background(OPSStyle.Colors.primaryAccent)
-                .clipShape(Circle())
-        }
-        .padding(OPSStyle.Layout.spacing3)
-        .accessibilityLabel("New Expense")
+        var date: Date?
+        date = iso.date(from: dateString)
+        if date == nil { date = isoFull.date(from: dateString) }
+        guard let resolved = date else { return dateString }
+
+        let fmt = DateFormatter()
+        fmt.dateFormat = "MMM d"
+        return fmt.string(from: resolved)
     }
 }
 

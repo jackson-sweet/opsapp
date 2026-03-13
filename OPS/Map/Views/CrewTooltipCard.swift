@@ -21,7 +21,7 @@ struct CrewTooltipCard: View {
 
             // ── Crew name ──
             Text(fullName.uppercased())
-                .font(Font.custom("Kosugi-Regular", size: 13))
+                .font(OPSStyle.Typography.caption)
                 .tracking(0.5)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .lineLimit(1)
@@ -35,7 +35,7 @@ struct CrewTooltipCard: View {
                 } label: {
                     HStack(spacing: 0) {
                         Text(taskName)
-                            .font(Font.custom("Mohave-Regular", size: 15))
+                            .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .lineLimit(1)
                         Spacer(minLength: 4)
@@ -52,21 +52,21 @@ struct CrewTooltipCard: View {
                 // Project address sub-line
                 if let address = update.currentProjectAddress, !address.isEmpty {
                     Text("at \(address)")
-                        .font(Font.custom("Mohave-Light", size: 14))
+                        .font(OPSStyle.Typography.smallBody)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .lineLimit(1)
                 }
             } else {
                 // No assignment
                 Text("No tasks assigned")
-                    .font(Font.custom("Mohave-Regular", size: 15))
+                    .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .padding(.top, 4)
             }
 
             // ── Staleness ──
             Text(timeAgo(from: update.timestamp))
-                .font(Font.custom("Mohave-Light", size: 14))
+                .font(OPSStyle.Typography.smallBody)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .padding(.top, 4)
 
@@ -84,7 +84,7 @@ struct CrewTooltipCard: View {
                         Image(systemName: "phone.fill")
                             .font(.system(size: 13))
                         Text("CALL")
-                            .font(Font.custom("Kosugi-Regular", size: 13))
+                            .font(OPSStyle.Typography.caption)
                             .tracking(0.5)
                     }
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -103,7 +103,7 @@ struct CrewTooltipCard: View {
                         Image(systemName: "message.fill")
                             .font(.system(size: 13))
                         Text("MESSAGE")
-                            .font(Font.custom("Kosugi-Regular", size: 13))
+                            .font(OPSStyle.Typography.caption)
                             .tracking(0.5)
                     }
                     .foregroundColor(OPSStyle.Colors.primaryText)

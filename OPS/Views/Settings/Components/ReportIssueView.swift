@@ -74,23 +74,13 @@ struct ReportIssueView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                 
                                 ZStack(alignment: .topLeading) {
-                                    ZStack {
-                                        OPSStyle.Colors.cardBackgroundDark
-                                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                        
-                                        TextEditor(text: $issueDescription)
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
-                                            .background(Color.clear)
-                                            .cornerRadius(OPSStyle.Layout.largeCornerRadius)
-                                    }
-                                    .frame(height: 150)
-                                    .padding(12)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                    )
-
+                                    TextEditor(text: $issueDescription)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .scrollContentBackground(.hidden)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .frame(minHeight: 150)
 
                                     if issueDescription.isEmpty {
                                         Text("Please describe the issue you're experiencing, including steps to reproduce if possible...")
@@ -101,6 +91,12 @@ struct ReportIssueView: View {
                                             .allowsHitTesting(false)
                                     }
                                 }
+                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                )
                             }
                             .padding(.horizontal, 20)
                             

@@ -44,10 +44,7 @@ struct MoneyTabView: View {
             VStack(spacing: 0) {
                 // Fixed app header
                 AppHeader(headerType: .pipeline)
-
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(OPSStyle.Colors.cardBorder)
+                    .padding(.bottom, 8)
 
                 // Pinned segmented control when header is collapsed
                 if headerCollapsed {
@@ -91,6 +88,7 @@ struct MoneyTabView: View {
             }
             .background(OPSStyle.Colors.background.ignoresSafeArea())
         }
+        .trackScreen("Pipeline")
         .onAppear {
             setupViewModels()
         }

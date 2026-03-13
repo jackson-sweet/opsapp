@@ -58,17 +58,6 @@ class OnboardingManager: ObservableObject {
             self.state = OnboardingState.initial
             print("[ONBOARDING_MANAGER] Created initial state")
 
-            // Start new analytics session for fresh onboarding
-            OnboardingAnalyticsService.shared.startNewSession()
-
-            // Track initial welcome screen view
-            OnboardingAnalyticsService.shared.trackPageView(
-                pageName: OnboardingScreen.welcome.rawValue,
-                pageIndex: 1,
-                totalPages: 9, // Max possible (company creator flow)
-                flowType: "unknown", // Flow not selected yet
-                userId: nil
-            )
         }
     }
 
@@ -95,7 +84,7 @@ class OnboardingManager: ObservableObject {
                 id: userId,
                 firstName: state.userData.firstName,
                 lastName: state.userData.lastName,
-                role: userType == .company ? .admin : .fieldCrew,
+                role: userType == .company ? .owner : .crew,
                 companyId: state.companyData.companyId ?? ""
             )
             newUser.email = state.userData.email
@@ -151,19 +140,21 @@ class OnboardingManager: ObservableObject {
             return (true, manager)
         }
 
-        // CRITICAL: Check if user has already completed onboarding
-        if user.hasCompletedAppOnboarding {
+        // Check if user has company (definitive proof of completed onboarding)
+        let hasCompany = user.companyId != nil && !user.companyId!.isEmpty
+
+        // CRITICAL: Check if user has already completed onboarding.
+        // Having a company is definitive proof — covers pre-migration users
+        // whose onboarding_completed JSONB was never populated.
+        if user.hasCompletedAppOnboarding || hasCompany {
             // Clear any stale saved state
             OnboardingState.clear()
-            print("[ONBOARDING_MANAGER] User has completed onboarding, skipping")
+            print("[ONBOARDING_MANAGER] User has completed onboarding (hasCompletedAppOnboarding=\(user.hasCompletedAppOnboarding), hasCompany=\(hasCompany)), skipping")
             return (false, nil)
         }
 
         // Check if user has userType set
         let hasUserType = user.userType != nil
-
-        // Check if user has company
-        let hasCompany = user.companyId != nil && !user.companyId!.isEmpty
 
         // Check for saved state that needs to be resumed
         if let savedState = OnboardingState.load() {
@@ -205,13 +196,6 @@ class OnboardingManager: ObservableObject {
         let (pageIndex, totalPages) = getPageIndexAndTotal(for: screen)
         let flowType = state.flow?.rawValue ?? "unknown"
 
-        OnboardingAnalyticsService.shared.trackPageView(
-            pageName: screen.rawValue,
-            pageIndex: pageIndex,
-            totalPages: totalPages,
-            flowType: flowType,
-            userId: state.userData.userId
-        )
     }
 
     /// Get page index and total pages for analytics
@@ -565,7 +549,7 @@ class OnboardingManager: ObservableObject {
         print("[ONBOARDING_MANAGER] Creating account for: \(email)")
 
         do {
-            // Sign up via Supabase Auth
+            // Sign up via Firebase Auth
             let authManager = dataController.authManager
             try await authManager.signUpWithEmail(email, password: password)
 
@@ -589,7 +573,7 @@ class OnboardingManager: ObservableObject {
                 role: nil,
                 userType: flow.userType.rawValue,
                 isCompanyAdmin: nil,
-                hasCompletedOnboarding: false,
+                onboardingCompleted: nil,
                 hasCompletedTutorial: nil,
                 devPermission: nil,
                 latitude: nil,
@@ -597,6 +581,9 @@ class OnboardingManager: ObservableObject {
                 locationName: nil,
                 isActive: true,
                 specialPermissions: nil,
+                emergencyContactName: nil,
+                emergencyContactPhone: nil,
+                emergencyContactRelationship: nil,
                 deletedAt: nil
             )
             try await userRepo.upsert(userDTO)
@@ -627,9 +614,36 @@ class OnboardingManager: ObservableObject {
         } catch {
             let msg = error.localizedDescription
             if msg.contains("already registered") || msg.contains("already been registered") {
-                throw OnboardingManagerError.serverError("An account with this email already exists. Please log in instead.")
+                // Account exists — attempt to log them in with the same credentials
+                print("[ONBOARDING_MANAGER] Email already registered, attempting login instead...")
+                do {
+                    let loginSuccess = await dataController.login(username: email, password: password)
+                    if loginSuccess, let user = dataController.currentUser {
+                        let hasCompany = !(user.companyId ?? "").isEmpty
+                        if hasCompany {
+                            // Returning user with completed setup — skip onboarding entirely
+                            print("[ONBOARDING_MANAGER] Existing user logged in — skipping onboarding")
+                            dataController.isAuthenticated = true
+                            UserDefaults.standard.set(true, forKey: "onboarding_completed")
+                            UserDefaults.standard.set(true, forKey: "is_authenticated")
+                            OnboardingState.clear()
+                            throw OnboardingManagerError.existingUserLoggedIn
+                        } else {
+                            // Existing user but hasn't finished onboarding — continue the flow
+                            print("[ONBOARDING_MANAGER] Existing user logged in — continuing onboarding")
+                            state.userData.email = email
+                            state.userData.userId = user.id
+                            state.isAuthenticated = true
+                            state.save()
+                        }
+                    } else {
+                        // Login failed — likely wrong password for the existing account
+                        throw OnboardingManagerError.serverError("An account with this email already exists but the password doesn't match. Try logging in instead.")
+                    }
+                }
+            } else {
+                throw OnboardingManagerError.serverError(msg)
             }
-            throw OnboardingManagerError.serverError(msg)
         }
     }
 
@@ -742,9 +756,38 @@ class OnboardingManager: ObservableObject {
             let userRepo = UserRepository(companyId: companyId)
             try await userRepo.updateFields(userId: userId, fields: [
                 "company_id": .string(companyId),
-                "role": .string("admin"),
+                "role": .string("owner"),
                 "is_company_admin": .bool(true)
             ])
+
+            // Assign Owner role in user_roles table for permission system
+            do {
+                let ownerRoleRows: [[String: String]] = try await SupabaseService.shared.client
+                    .from("roles")
+                    .select("id")
+                    .eq("name", value: "Owner")
+                    .execute()
+                    .value
+                if let roleId = ownerRoleRows.first?["id"] {
+                    try await SupabaseService.shared.client
+                        .from("user_roles")
+                        .upsert(["user_id": userId, "role_id": roleId])
+                        .execute()
+                    print("[ONBOARDING_MANAGER] ✅ Owner role assigned in user_roles")
+                }
+            } catch {
+                print("[ONBOARDING_MANAGER] ⚠️ Failed to assign Owner role: \(error)")
+            }
+
+            // Seed default task types, inventory units, and company settings (non-fatal)
+            do {
+                try await SupabaseService.shared.client
+                    .rpc("initialize_company_defaults", params: ["p_company_id": companyId])
+                    .execute()
+                print("[ONBOARDING_MANAGER] ✅ Company defaults initialized")
+            } catch {
+                print("[ONBOARDING_MANAGER] ⚠️ Failed to initialize defaults (will retry via web): \(error)")
+            }
 
             // Store company data in state
             state.companyData.companyId = companyId
@@ -770,7 +813,7 @@ class OnboardingManager: ObservableObject {
                 if !state.userData.phone.isEmpty {
                     currentUser.phone = state.userData.phone
                 }
-                currentUser.role = .admin
+                currentUser.role = .owner
                 try? dataController.modelContext?.save()
                 print("[ONBOARDING_MANAGER] ✅ Updated local user - companyId: \(companyId), name: \(currentUser.fullName)")
             } else {
@@ -843,9 +886,28 @@ class OnboardingManager: ObservableObject {
             let userRepo = UserRepository(companyId: companyId)
             try await userRepo.updateFields(userId: userId, fields: [
                 "company_id": .string(companyId),
-                "role": .string("field_crew"),
+                "role": .string("unassigned"),
                 "is_company_admin": .bool(false)
             ])
+
+            // Assign Crew role in user_roles table for permission system
+            do {
+                let fieldRoleRows: [[String: String]] = try await SupabaseService.shared.client
+                    .from("roles")
+                    .select("id")
+                    .eq("name", value: "Crew")
+                    .execute()
+                    .value
+                if let roleId = fieldRoleRows.first?["id"] {
+                    try await SupabaseService.shared.client
+                        .from("user_roles")
+                        .upsert(["user_id": userId, "role_id": roleId])
+                        .execute()
+                    print("[ONBOARDING_MANAGER] ✅ Field crew role assigned in user_roles")
+                }
+            } catch {
+                print("[ONBOARDING_MANAGER] ⚠️ Failed to assign field crew role: \(error)")
+            }
 
             // Add user to company's seated_employee_ids
             var seatIds = companyDTO.seatedEmployeeIds ?? []
@@ -897,6 +959,20 @@ class OnboardingManager: ObservableObject {
                 print("[ONBOARDING_MANAGER] Company sync triggered after join")
             }
 
+            // Notify company admins that a new member joined
+            do {
+                let notifyIds = companyDTO.adminIds ?? []
+                let memberName = "\(state.userData.firstName) \(state.userData.lastName)"
+                try await OneSignalService.shared.notifyTeamJoin(
+                    adminUserIds: notifyIds,
+                    newMemberName: memberName,
+                    newMemberUserId: userId,
+                    companyId: companyId
+                )
+            } catch {
+                print("[ONBOARDING_MANAGER] ⚠️ Failed to send team join notification: \(error)")
+            }
+
             print("[ONBOARDING_MANAGER] Joined company: \(companyId)")
 
         } catch {
@@ -906,6 +982,22 @@ class OnboardingManager: ObservableObject {
             }
             throw OnboardingManagerError.serverError(error.localizedDescription)
         }
+    }
+
+    /// Look up a company by crew code without joining.
+    /// Returns the company DTO for confirmation screen display.
+    func lookupCompanyByCode(_ code: String) async throws -> SupabaseCompanyDTO {
+        let trimmedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        let companyRepo = CompanyRepository()
+        guard let companyDTO = try await companyRepo.fetchByCode(trimmedCode) else {
+            throw OnboardingManagerError.invalidCompanyCode
+        }
+
+        // Store code in state for later joinCompany call
+        state.companyData.companyCode = trimmedCode
+        state.save()
+
+        return companyDTO
     }
 
     /// Update user profile to Supabase
@@ -928,6 +1020,60 @@ class OnboardingManager: ObservableObject {
         try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
 
         print("[ONBOARDING_MANAGER] User profile updated")
+    }
+
+    /// Save employee profile fields including emergency contact to Supabase.
+    /// Called from the employee onboarding profile screen.
+    func saveEmployeeProfile(
+        firstName: String,
+        lastName: String,
+        phone: String?,
+        emergencyContactName: String?,
+        emergencyContactPhone: String?,
+        emergencyContactRelationship: String?
+    ) async throws {
+        guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
+            throw OnboardingManagerError.noUserId
+        }
+
+        // Update state so joinCompany can use it
+        state.userData.firstName = firstName
+        state.userData.lastName = lastName
+        state.userData.phone = phone ?? ""
+        state.save()
+
+        var fields: [String: AnyJSON] = [
+            "first_name": .string(firstName),
+            "last_name": .string(lastName)
+        ]
+
+        if let phone = phone, !phone.isEmpty {
+            fields["phone"] = .string(phone)
+        }
+        if let name = emergencyContactName, !name.isEmpty {
+            fields["emergency_contact_name"] = .string(name)
+        }
+        if let phone = emergencyContactPhone, !phone.isEmpty {
+            fields["emergency_contact_phone"] = .string(phone)
+        }
+        if let rel = emergencyContactRelationship, !rel.isEmpty {
+            fields["emergency_contact_relationship"] = .string(rel)
+        }
+
+        try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
+
+        // Update local SwiftData user
+        if let currentUser = dataController.currentUser {
+            currentUser.firstName = firstName
+            currentUser.lastName = lastName
+            currentUser.phone = phone
+            currentUser.emergencyContactName = emergencyContactName
+            currentUser.emergencyContactPhone = emergencyContactPhone
+            currentUser.emergencyContactRelationship = emergencyContactRelationship
+            try? dataController.modelContext?.save()
+        }
+
+        print("[ONBOARDING_MANAGER] Employee profile saved")
     }
 
     /// Create a local User object in SwiftData and initialize DataController
@@ -955,7 +1101,7 @@ class OnboardingManager: ObservableObject {
                 id: userId,
                 firstName: state.userData.firstName,
                 lastName: state.userData.lastName,
-                role: userType == .company ? .admin : .fieldCrew,
+                role: userType == .company ? .owner : .unassigned,
                 companyId: "" // Will be set when company is created or joined
             )
             newUser.email = email
@@ -1001,12 +1147,6 @@ class OnboardingManager: ObservableObject {
         print("[ONBOARDING_MANAGER]   - userId: \(state.userData.userId ?? "nil")")
         print("[ONBOARDING_MANAGER]   - companyId: \(state.companyData.companyId ?? "nil")")
         print("[ONBOARDING_MANAGER]   - companyCode: \(state.companyData.companyCode ?? "nil")")
-
-        // Track analytics completion
-        OnboardingAnalyticsService.shared.trackCompleted(
-            flowType: state.flow?.rawValue ?? "unknown",
-            userId: state.userData.userId
-        )
 
         // Store credentials so app can load user data on next launch
         storeCredentials()
@@ -1063,7 +1203,8 @@ class OnboardingManager: ObservableObject {
         print("[ONBOARDING_MANAGER] ✅ Credentials stored to UserDefaults")
     }
 
-    /// PATCH hasCompletedAppOnboarding to Supabase
+    /// PATCH onboarding_completed JSONB with {"ios": true} via read-modify-write merge.
+    /// The web app independently writes {"web": true} to the same column.
     private func markOnboardingComplete() async {
         guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
             print("[ONBOARDING_MANAGER] No user ID for completion patch")
@@ -1071,11 +1212,22 @@ class OnboardingManager: ObservableObject {
         }
 
         do {
-            let fields: [String: AnyJSON] = [
-                "has_completed_onboarding": .bool(true)
-            ]
-            try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
-            print("[ONBOARDING_MANAGER] has_completed_onboarding PATCHed to true")
+            // Read current onboarding_completed JSONB, merge with ios: true, write back
+            let userRepo = UserRepository(companyId: "")
+            let currentDTO = try await userRepo.fetchOne(userId)
+            var merged = currentDTO.onboardingCompleted ?? [:]
+            merged["ios"] = true
+
+            // Build merged JSONB value
+            var mergedJSON: [String: AnyJSON] = [:]
+            for (key, value) in merged {
+                mergedJSON[key] = .bool(value)
+            }
+
+            try await userRepo.updateFields(userId: userId, fields: [
+                "onboarding_completed": .object(mergedJSON)
+            ])
+            print("[ONBOARDING_MANAGER] onboarding_completed merged with ios:true → \(merged)")
         } catch {
             print("[ONBOARDING_MANAGER] Failed to patch completion: \(error)")
             // Non-fatal, continue anyway
@@ -1149,6 +1301,10 @@ class OnboardingManager: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "currentUserCompanyId")
         UserDefaults.standard.set(false, forKey: "is_authenticated")
 
+        // Sign out from Firebase Auth and Google
+        FirebaseAuthService.shared.signOut()
+        GoogleSignInManager.shared.signOut()
+
         // Reset local state
         state = OnboardingState.initial
         errorMessage = nil
@@ -1190,6 +1346,9 @@ enum OnboardingManagerError: LocalizedError {
     case invalidCompanyCode
     case serverError(String)
     case networkError
+    /// Signup detected an existing account and successfully logged the user in.
+    /// The caller should skip onboarding and proceed to the main app.
+    case existingUserLoggedIn
 
     var errorDescription: String? {
         switch self {
@@ -1203,6 +1362,8 @@ enum OnboardingManagerError: LocalizedError {
             return message
         case .networkError:
             return "No internet connection. Check your connection and try again."
+        case .existingUserLoggedIn:
+            return nil // Not an error — handled silently
         }
     }
 }

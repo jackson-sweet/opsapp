@@ -729,7 +729,7 @@ struct InventorySettingsView: View {
                     ForEach(adjustmentValues, id: \.self) { value in
                         HStack(spacing: OPSStyle.Layout.spacing2) {
                             Text(value > 0 ? "+\(value)" : "\(value)")
-                                .font(Font.custom("Mohave-SemiBold", size: 18))
+                                .font(OPSStyle.Typography.buttonLarge)
                                 .foregroundColor(value > 0 ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
 
                             Button(action: { removeValue(value) }) {
@@ -1088,9 +1088,9 @@ struct TagEditSheet: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
-                OPSStyle.Colors.background
+                OPSStyle.Colors.backgroundGradient
                     .ignoresSafeArea()
 
                 VStack(spacing: 0) {

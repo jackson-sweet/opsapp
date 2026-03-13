@@ -215,23 +215,27 @@ struct OPSMapContainer: View {
 
             // 7. Navigation UI — split into maneuver card (top) + trip strip (bottom)
             if coordinator.isNavigating {
-                // 7a. Maneuver card — positioned below ProjectHeader (~120pt from top)
+                // 7a. Maneuver card — positioned below ProjectHeader
+                // ProjectHeader occupies ~110pt from safe area top (~59pt on notch phones)
+                // = ~169pt from absolute screen top. Padding must clear that.
                 VStack {
                     NavigationManeuverCard(navigationManager: coordinator.navigationManager)
                         .padding(.horizontal, 16)
-                        .padding(.top, 120) // Below ProjectHeader
+                        .padding(.top, 185)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
                 .transition(.move(edge: .top))
                 .animation(OPSStyle.Animation.standard, value: coordinator.isNavigating)
 
-                // 7b. Trip info strip — just above the tab bar
+                // 7b. Trip info strip — above tab bar; higher when action bar is visible
+                // ProjectActionBar sits at safe area bottom + 120pt padding + ~64pt bar height
+                // = ~218pt from screen bottom on notch phones. Strip must clear that.
                 VStack {
                     Spacer()
                     NavigationTripStrip(navigationManager: coordinator.navigationManager)
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 108) // 100pt tab bar + 8pt spacing
+                        .padding(.bottom, appState.isInProjectMode ? 235 : 108)
                 }
                 .frame(maxWidth: .infinity)
                 .transition(.move(edge: .bottom))
@@ -241,7 +245,7 @@ struct OPSMapContainer: View {
             // 8. Geofence banners — below header
             if geofenceManager.pendingArrival != nil || geofenceManager.pendingDeparture != nil {
                 VStack {
-                    Spacer().frame(height: coordinator.isNavigating ? 210 : 100)
+                    Spacer().frame(height: coordinator.isNavigating ? 270 : 100)
 
                     if let arrival = geofenceManager.pendingArrival {
                         GeofenceBannerView(
@@ -359,9 +363,21 @@ struct OPSMapContainer: View {
             guard newIndex < projects.count else { return }
             let project = projects[newIndex]
             if coordinator.selectedProjectId != project.id {
-                coordinator.selectProject(project)
-                onProjectSelected(project)
+                if filterMode == .today {
+                    // Today's tasks mode: show the pin card for assigned tasks
+                    coordinator.selectProject(project)
+                    onProjectSelected(project)
+                } else {
+                    // Other filter modes: update selected pin silently (no popup)
+                    coordinator.selectedProjectId = project.id
+                }
             }
+        }
+        .onChange(of: coordinator.showingProjectCard) { _, newValue in
+            appState.isShowingMapOverlay = newValue || coordinator.showingCrewTooltip
+        }
+        .onChange(of: coordinator.showingCrewTooltip) { _, newValue in
+            appState.isShowingMapOverlay = coordinator.showingProjectCard || newValue
         }
 
         // ── Notifications ──

@@ -19,13 +19,13 @@ struct CalendarUserEventCard: View {
             // Content
             VStack(alignment: .leading, spacing: 5) {
                 Text(event.title.isEmpty ? eventTypeFallback : event.title)
-                    .font(.custom("Mohave-SemiBold", size: 15))
+                    .font(OPSStyle.Typography.bodyEmphasis)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .textCase(.uppercase)
                     .lineLimit(1)
 
                 Text(dateRangeString)
-                    .font(.custom("Kosugi-Regular", size: 11))
+                    .font(OPSStyle.Typography.microLabel)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -60,7 +60,7 @@ struct CalendarUserEventCard: View {
     private var statusBadge: some View {
         if event.isTimeOff {
             Text(statusLabel)
-                .font(.custom("Kosugi-Regular", size: 9))
+                .font(OPSStyle.Typography.miniLabel)
                 .foregroundColor(statusColor)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3)
@@ -74,7 +74,7 @@ struct CalendarUserEventCard: View {
                 )
         } else {
             Text("PERSONAL")
-                .font(.custom("Kosugi-Regular", size: 9))
+                .font(OPSStyle.Typography.miniLabel)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3)

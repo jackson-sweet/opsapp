@@ -23,6 +23,13 @@ enum NotificationCategory: String {
     case projectUpdate = "PROJECT_UPDATE_NOTIFICATION"
     case projectCompletion = "PROJECT_COMPLETION_NOTIFICATION"
     case projectAdvance = "PROJECT_ADVANCE_NOTIFICATION"
+    case projectPaymentReview = "PROJECT_PAYMENT_REVIEW_NOTIFICATION"
+    case expenseApproved = "EXPENSE_APPROVED_NOTIFICATION"
+    case expenseRejected = "EXPENSE_REJECTED_NOTIFICATION"
+    case expenseSubmitted = "EXPENSE_SUBMITTED_NOTIFICATION"
+    case invoiceReady = "INVOICE_READY_NOTIFICATION"
+    case invoiceRevisions = "INVOICE_REVISIONS_NOTIFICATION"
+    case invoiceApproved = "INVOICE_APPROVED_NOTIFICATION"
 }
 
 /// Notification actions that can be taken on notifications
@@ -186,7 +193,62 @@ class NotificationManager: NSObject, ObservableObject {
             intentIdentifiers: [],
             options: []
         )
-        
+
+        let reviewAction = UNNotificationAction(
+            identifier: "REVIEW_PROJECTS",
+            title: "Review Now",
+            options: [.foreground]
+        )
+        let paymentReviewCategory = UNNotificationCategory(
+            identifier: NotificationCategory.projectPaymentReview.rawValue,
+            actions: [reviewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        // Expense / Invoice notification categories
+        let expenseApprovedCategory = UNNotificationCategory(
+            identifier: NotificationCategory.expenseApproved.rawValue,
+            actions: [viewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        let expenseRejectedCategory = UNNotificationCategory(
+            identifier: NotificationCategory.expenseRejected.rawValue,
+            actions: [viewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        let expenseSubmittedCategory = UNNotificationCategory(
+            identifier: NotificationCategory.expenseSubmitted.rawValue,
+            actions: [viewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        let invoiceReadyCategory = UNNotificationCategory(
+            identifier: NotificationCategory.invoiceReady.rawValue,
+            actions: [viewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        let invoiceRevisionsCategory = UNNotificationCategory(
+            identifier: NotificationCategory.invoiceRevisions.rawValue,
+            actions: [viewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        let invoiceApprovedCategory = UNNotificationCategory(
+            identifier: NotificationCategory.invoiceApproved.rawValue,
+            actions: [viewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
         // Register all categories
         notificationCenter.setNotificationCategories([
             projectCategory,
@@ -196,7 +258,14 @@ class NotificationManager: NSObject, ObservableObject {
             projectAssignmentCategory,
             projectUpdateCategory,
             projectCompletionCategory,
-            projectAdvanceCategory
+            projectAdvanceCategory,
+            paymentReviewCategory,
+            expenseApprovedCategory,
+            expenseRejectedCategory,
+            expenseSubmittedCategory,
+            invoiceReadyCategory,
+            invoiceRevisionsCategory,
+            invoiceApprovedCategory
         ])
     }
     
@@ -299,7 +368,85 @@ class NotificationManager: NSObject, ObservableObject {
         // Return the notification identifier in case it needs to be removed later
         return identifier
     }
-    
+
+    // MARK: - Payment Review Notifications
+
+    /// Schedule a local notification for overdue payment reviews
+    func schedulePaymentReviewNotification(overdueCount: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "Payment Review Needed"
+        content.body = "\(overdueCount) project\(overdueCount == 1 ? "" : "s") overdue for payment"
+        content.categoryIdentifier = NotificationCategory.projectPaymentReview.rawValue
+        content.sound = .default
+        content.userInfo = ["type": "projectPaymentReview"]
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+
+        let request = UNNotificationRequest(
+            identifier: "payment-review-\(UUID().uuidString)",
+            content: content,
+            trigger: trigger
+        )
+
+        notificationCenter.add(request) { error in
+            if let error = error {
+                print("[NOTIFICATIONS] Failed to schedule payment review notification: \(error)")
+            }
+        }
+    }
+
+    /// Check if a payment review notification should be sent based on frequency settings,
+    /// and schedule one if enough time has elapsed since the last notification.
+    func checkAndSchedulePaymentReviewNotifications(
+        overdueCount: Int,
+        reminderFrequencyDays: Int
+    ) {
+        guard overdueCount > 0 else { return }
+
+        let lastNotifiedKey = "lastPaymentReviewNotification"
+        let lastNotified = UserDefaults.standard.object(forKey: lastNotifiedKey) as? Date
+
+        if let last = lastNotified {
+            let daysSince = Calendar.current.dateComponents([.day], from: last, to: Date()).day ?? 0
+            guard daysSince >= reminderFrequencyDays else { return }
+        }
+
+        schedulePaymentReviewNotification(overdueCount: overdueCount)
+        UserDefaults.standard.set(Date(), forKey: lastNotifiedKey)
+    }
+
+    // MARK: - Expense Notifications
+
+    /// Schedule a local notification for expense/invoice events
+    func scheduleExpenseNotification(
+        category: NotificationCategory,
+        title: String,
+        body: String,
+        batchId: String? = nil,
+        expenseId: String? = nil
+    ) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        content.categoryIdentifier = category.rawValue
+
+        var userInfo: [String: String] = ["type": category.rawValue]
+        if let batchId { userInfo["batchId"] = batchId }
+        if let expenseId { userInfo["expenseId"] = expenseId }
+        content.userInfo = userInfo
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let identifier = "expense-\(UUID().uuidString)"
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+
+        notificationCenter.add(request) { error in
+            if let error = error {
+                print("[NOTIFICATIONS] Failed to schedule expense notification: \(error)")
+            }
+        }
+    }
+
     /// Schedule a team notification
     func scheduleTeamNotification(
         teamMemberId: String,
@@ -681,6 +828,15 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             case NotificationCategory.team.rawValue:
                 handleTeamNotificationResponse(userInfo: userInfo, actionIdentifier: actionIdentifier)
 
+            case NotificationCategory.projectPaymentReview.rawValue:
+                DispatchQueue.main.async {
+                    // Post notification for deep link handling
+                    NotificationCenter.default.post(
+                        name: Notification.Name("OpenPaymentReview"),
+                        object: nil
+                    )
+                }
+
             case NotificationCategory.projectAssignment.rawValue,
                  NotificationCategory.projectUpdate.rawValue,
                  NotificationCategory.projectCompletion.rawValue,
@@ -692,6 +848,14 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
                     // Project notification - open project details
                     handleProjectNotificationResponse(userInfo: userInfo, actionIdentifier: actionIdentifier)
                 }
+
+            case NotificationCategory.expenseApproved.rawValue,
+                 NotificationCategory.expenseRejected.rawValue,
+                 NotificationCategory.expenseSubmitted.rawValue,
+                 NotificationCategory.invoiceReady.rawValue,
+                 NotificationCategory.invoiceRevisions.rawValue,
+                 NotificationCategory.invoiceApproved.rawValue:
+                handleExpenseNotificationResponse(userInfo: userInfo)
 
             default:
                 print("[NOTIFICATIONS] Unknown category: \(categoryIdentifier)")
@@ -921,6 +1085,26 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             
         default:
             break
+        }
+    }
+
+    /// Handle tap on expense/invoice notification
+    private func handleExpenseNotificationResponse(userInfo: [AnyHashable: Any]) {
+        let batchId = userInfo["batchId"] as? String
+        let expenseId = userInfo["expenseId"] as? String
+
+        print("[NOTIFICATIONS] Expense notification tapped - batch: \(batchId ?? "none"), expense: \(expenseId ?? "none")")
+
+        var deepLinkInfo: [String: Any] = [:]
+        if let batchId { deepLinkInfo["batchId"] = batchId }
+        if let expenseId { deepLinkInfo["expenseId"] = expenseId }
+
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenExpenseDetail"),
+                object: nil,
+                userInfo: deepLinkInfo
+            )
         }
     }
 

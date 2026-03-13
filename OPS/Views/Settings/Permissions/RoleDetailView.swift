@@ -67,20 +67,36 @@ enum PermissionRegistry {
 
     static func displayName(for roleName: String) -> String {
         switch roleName {
-        case "field_crew": return "Field Crew"
-        case "office_crew": return "Office Crew"
-        case "admin": return "Admin"
+        case "admin", "Admin": return "Admin"
+        case "owner", "Owner": return "Owner"
+        case "office", "Office", "office_crew", "Office Crew": return "Office"
+        case "operator", "Operator": return "Operator"
+        case "crew", "Crew", "field_crew", "Field Crew": return "Crew"
         default: return roleName.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
 
     static func iconForRole(_ roleName: String) -> String {
         switch roleName {
-        case "field_crew": return "hammer.fill"
-        case "office_crew": return "desktopcomputer"
-        case "admin": return "shield.checkered"
+        case "admin", "Admin": return "shield.checkered"
+        case "owner", "Owner": return "crown.fill"
+        case "office", "Office", "office_crew", "Office Crew": return "desktopcomputer"
+        case "operator", "Operator": return "wrench.and.screwdriver.fill"
+        case "crew", "Crew", "field_crew", "Field Crew": return "hammer.fill"
         default: return "person.fill"
         }
+    }
+
+    /// Maps permission categories to their feature flag slug.
+    /// Categories not in this map are always enabled.
+    static let categoryFeatureFlag: [String: String] = [
+        "Pipeline": "pipeline",
+        "Estimates": "estimates",
+    ]
+
+    /// Returns the feature flag slug gating a category, or nil if ungated.
+    static func featureFlag(for category: String) -> String? {
+        categoryFeatureFlag[category]
     }
 
     static func iconForCategory(_ category: String) -> String {
@@ -101,11 +117,27 @@ enum PermissionRegistry {
     }
 }
 
+// MARK: - Permission Level
+
+enum PermissionLevel: String, CaseIterable, Identifiable {
+    case off = "off"
+    case own = "own"
+    case assigned = "assigned"
+    case all = "all"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        rawValue.uppercased()
+    }
+}
+
 // MARK: - View
 
 struct RoleDetailView: View {
     let role: AdminRoleRow
     @EnvironmentObject private var dataController: DataController
+    @ObservedObject private var permissionStore = PermissionStore.shared
     @Environment(\.dismiss) private var dismiss
 
     // Current state from server
@@ -113,6 +145,12 @@ struct RoleDetailView: View {
     @State private var isLoading = true
     @State private var isSaving = false
     @State private var errorMessage: String?
+
+    // Team members assigned to this role
+    @State private var roleUsers: [User] = []
+
+    // Feature gate alert
+    @State private var showFeatureGateAlert = false
 
     // Pending changes
     @State private var pendingChanges: [String: PermissionChange] = [:]
@@ -124,6 +162,12 @@ struct RoleDetailView: View {
 
     private var hasPendingChanges: Bool {
         !pendingChanges.isEmpty
+    }
+
+    /// Preset roles (the 5 built-in roles) cannot be edited.
+    private var isPresetRole: Bool {
+        let presetNames = ["admin", "owner", "office", "office_crew", "operator", "crew", "field_crew"]
+        return presetNames.contains(role.name.lowercased())
     }
 
     var body: some View {
@@ -169,6 +213,67 @@ struct RoleDetailView: View {
                             }
                             .padding(.horizontal, 20)
 
+                            // Preset role banner
+                            if isPresetRole {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "lock.fill")
+                                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    Text("Preset roles are read-only")
+                                        .font(OPSStyle.Typography.caption)
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                }
+                                .padding(.horizontal, 20)
+                            }
+
+                            // Team members assigned to this role
+                            if !roleUsers.isEmpty {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: OPSStyle.Icons.crew)
+                                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                                        Text("\(roleUsers.count) TEAM MEMBER\(roleUsers.count == 1 ? "" : "S")")
+                                            .font(OPSStyle.Typography.captionBold)
+                                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    }
+                                    .padding(.horizontal, 20)
+
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 12) {
+                                            ForEach(roleUsers) { user in
+                                                VStack(spacing: 6) {
+                                                    if let imageData = user.profileImageData,
+                                                       let uiImage = UIImage(data: imageData) {
+                                                        Image(uiImage: uiImage)
+                                                            .resizable()
+                                                            .scaledToFill()
+                                                            .frame(width: 44, height: 44)
+                                                            .clipShape(Circle())
+                                                    } else {
+                                                        Circle()
+                                                            .fill(user.userColor.flatMap { Color(hex: $0) } ?? OPSStyle.Colors.primaryAccent)
+                                                            .frame(width: 44, height: 44)
+                                                            .overlay(
+                                                                Text(user.firstName.prefix(1).uppercased())
+                                                                    .font(OPSStyle.Typography.bodyBold)
+                                                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                                            )
+                                                    }
+
+                                                    Text(user.firstName)
+                                                        .font(OPSStyle.Typography.smallCaption)
+                                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                                        .lineLimit(1)
+                                                }
+                                                .frame(width: 56)
+                                            }
+                                        }
+                                        .padding(.horizontal, 20)
+                                    }
+                                }
+                            }
+
                             // Error
                             if let error = errorMessage {
                                 HStack(spacing: 8) {
@@ -184,7 +289,12 @@ struct RoleDetailView: View {
 
                             // Permission categories
                             ForEach(PermissionRegistry.categories, id: \.self) { category in
-                                permissionCategory(category)
+                                if let flag = PermissionRegistry.featureFlag(for: category),
+                                   !permissionStore.isFeatureEnabled(flag) {
+                                    gatedCategory(category)
+                                } else {
+                                    permissionCategory(category)
+                                }
                             }
                         }
                         .padding(.vertical, 16)
@@ -194,8 +304,8 @@ struct RoleDetailView: View {
                 }
             }
 
-            // Floating save button
-            if hasPendingChanges {
+            // Floating save button (hidden for preset roles)
+            if hasPendingChanges && !isPresetRole {
                 VStack {
                     Spacer()
                     saveButton
@@ -206,119 +316,186 @@ struct RoleDetailView: View {
         }
         .navigationBarBackButtonHidden(true)
         .onAppear { loadPermissions() }
+        .alert("In Testing", isPresented: $showFeatureGateAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("This feature is currently in testing. Reach out if you'd like to be added to the testing group.")
+        }
     }
 
     // MARK: - Category Card
 
     private func permissionCategory(_ category: String) -> some View {
         let permissions = PermissionRegistry.permissions(for: category)
+        let catLevel = categoryLevel(for: category)
+        let isMixed = catLevel == nil
 
-        return VStack(alignment: .leading, spacing: 8) {
-            // Section header
+        return VStack(spacing: 0) {
+            // Top row: icon + title + bulk picker (lighter background)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: PermissionRegistry.iconForCategory(category))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Text(category.uppercased())
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    Spacer()
+
+                    if isMixed {
+                        Text("MIXED")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+
+                permissionScopePicker(
+                    selection: catLevel ?? .off,
+                    isMixed: isMixed,
+                    isReadOnly: isPresetRole,
+                    onChange: { level in
+                        setCategoryLevel(category, to: level)
+                    }
+                )
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color.white.opacity(0.04))
+
+            // Individual permission rows (darker)
+            ForEach(permissions) { perm in
+                Rectangle()
+                    .fill(Color.white.opacity(0.06))
+                    .frame(height: 1)
+
+                permissionRow(perm)
+            }
+        }
+        .background(OPSStyle.Colors.background)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .padding(.horizontal, 20)
+    }
+
+    // MARK: - Gated Category (feature-flagged, not yet available)
+
+    private func gatedCategory(_ category: String) -> some View {
+        Button(action: {
+            showFeatureGateAlert = true
+        }) {
             HStack(spacing: 6) {
                 Image(systemName: PermissionRegistry.iconForCategory(category))
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Text(category.uppercased())
                     .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-            .padding(.horizontal, 20)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-            // Permissions card
-            VStack(spacing: 0) {
-                ForEach(permissions) { perm in
-                    permissionRow(perm)
+                Spacer()
 
-                    if perm.id != permissions.last?.id {
-                        Divider()
-                            .background(OPSStyle.Colors.cardBorder)
-                    }
-                }
+                Text("IN TESTING")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.white.opacity(0.04))
+                    )
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
+        .buttonStyle(PlainButtonStyle())
+        .background(OPSStyle.Colors.background)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .opacity(0.4)
+        .padding(.horizontal, 20)
     }
 
     // MARK: - Permission Row
 
     private func permissionRow(_ perm: PermissionDefinition) -> some View {
-        let isEnabled = effectiveEnabled(for: perm.id)
-        let currentScope = effectiveScope(for: perm.id)
+        let level = effectiveLevel(for: perm.id)
 
-        return VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(perm.label)
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(isEnabled ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(perm.label)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(level != .off ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
 
-                    if isEnabled {
-                        Text("Scope: \(currentScope.uppercased())")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
+            permissionScopePicker(
+                selection: level,
+                isMixed: false,
+                isReadOnly: isPresetRole,
+                onChange: { newLevel in
+                    if newLevel == .off {
+                        pendingChanges[perm.id] = .disable
+                    } else {
+                        pendingChanges[perm.id] = .enable(scope: newLevel.rawValue)
                     }
                 }
-
-                Spacer()
-
-                Toggle("", isOn: Binding(
-                    get: { isEnabled },
-                    set: { newValue in
-                        if newValue {
-                            let scope = currentPermissions[perm.id] ?? "all"
-                            pendingChanges[perm.id] = .enable(scope: scope)
-                        } else {
-                            pendingChanges[perm.id] = .disable
-                        }
-                    }
-                ))
-                .tint(OPSStyle.Colors.primaryAccent)
-                .labelsHidden()
-            }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
-
-            // Scope picker when enabled
-            if isEnabled {
-                HStack(spacing: 8) {
-                    ForEach(["all", "assigned", "own"], id: \.self) { scope in
-                        scopeButton(scope: scope, permissionId: perm.id, currentScope: currentScope)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
-            }
+            )
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
-    // MARK: - Scope Button
+    // MARK: - Scope Picker
 
-    private func scopeButton(scope: String, permissionId: String, currentScope: String) -> some View {
-        let isSelected = currentScope == scope
-
-        return Button(action: {
-            pendingChanges[permissionId] = .enable(scope: scope)
-        }) {
-            Text(scope.uppercased())
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(isSelected ? OPSStyle.Colors.subtleBackground : Color.clear)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+    private func permissionScopePicker(
+        selection: PermissionLevel,
+        isMixed: Bool,
+        isReadOnly: Bool = false,
+        onChange: @escaping (PermissionLevel) -> Void
+    ) -> some View {
+        HStack(spacing: 2) {
+            ForEach(PermissionLevel.allCases) { level in
+                Button(action: {
+                    guard !isReadOnly else { return }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onChange(level)
+                }) {
+                    Text(level.displayName)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .tracking(0.3)
+                        .foregroundColor(
+                            !isMixed && selection == level
+                                ? OPSStyle.Colors.primaryText
+                                : OPSStyle.Colors.tertiaryText
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(
+                                    !isMixed && selection == level
+                                        ? Color.white.opacity(0.12)
+                                        : Color.clear
+                                )
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
         }
-        .buttonStyle(PlainButtonStyle())
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.white.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
+        .opacity(isMixed ? 0.4 : 1.0)
+        .allowsHitTesting(!isReadOnly)
     }
 
     // MARK: - Save Button
@@ -346,24 +523,42 @@ struct RoleDetailView: View {
 
     // MARK: - Effective State
 
-    private func effectiveEnabled(for permissionId: String) -> Bool {
+    private func effectiveLevel(for permissionId: String) -> PermissionLevel {
         if let change = pendingChanges[permissionId] {
             switch change {
-            case .enable: return true
-            case .disable: return false
+            case .enable(let scope): return PermissionLevel(rawValue: scope) ?? .all
+            case .disable: return .off
             }
         }
-        return currentPermissions[permissionId] != nil
+        if let scope = currentPermissions[permissionId] {
+            return PermissionLevel(rawValue: scope) ?? .all
+        }
+        return .off
     }
 
-    private func effectiveScope(for permissionId: String) -> String {
-        if let change = pendingChanges[permissionId] {
-            switch change {
-            case .enable(let scope): return scope
-            case .disable: return "all"
+    /// Returns the uniform level for all permissions in a category, or nil if mixed.
+    private func categoryLevel(for category: String) -> PermissionLevel? {
+        let perms = PermissionRegistry.permissions(for: category)
+        guard let first = perms.first else { return nil }
+        let firstLevel = effectiveLevel(for: first.id)
+        for perm in perms.dropFirst() {
+            if effectiveLevel(for: perm.id) != firstLevel {
+                return nil
             }
         }
-        return currentPermissions[permissionId] ?? "all"
+        return firstLevel
+    }
+
+    /// Bulk-set all permissions in a category to the given level.
+    private func setCategoryLevel(_ category: String, to level: PermissionLevel) {
+        let perms = PermissionRegistry.permissions(for: category)
+        for perm in perms {
+            if level == .off {
+                pendingChanges[perm.id] = .disable
+            } else {
+                pendingChanges[perm.id] = .enable(scope: level.rawValue)
+            }
+        }
     }
 
     // MARK: - Data
@@ -376,8 +571,19 @@ struct RoleDetailView: View {
                 for perm in perms {
                     map[perm.permission] = perm.scope
                 }
+
+                // Fetch users assigned to this role
+                let userIds = try await PermissionAdminService.fetchUserIdsForRole(roleId: role.id)
+                let companyId = dataController.getCurrentUserCompany()?.id
+                var matchedUsers: [User] = []
+                if let companyId = companyId, !userIds.isEmpty {
+                    let allTeam = dataController.getTeamMembers(companyId: companyId)
+                    matchedUsers = allTeam.filter { userIds.contains($0.id) }
+                }
+
                 await MainActor.run {
                     self.currentPermissions = map
+                    self.roleUsers = matchedUsers
                     self.isLoading = false
                 }
             } catch {

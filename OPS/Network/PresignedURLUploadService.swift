@@ -7,7 +7,7 @@
 
 import Foundation
 import SwiftUI
-import Supabase
+// FirebaseAuthService used for token retrieval (Firebase Auth migration)
 
 /// Service for handling image uploads using presigned URLs from ops-web
 @MainActor
@@ -213,8 +213,24 @@ class PresignedURLUploadService {
         return presignedResponse.publicUrl
     }
 
+    // MARK: - Generic Upload (used by PhotoProcessor)
+
+    /// Upload raw image data to S3 via presigned URL, returning the public URL.
+    func uploadImageData(_ data: Data, filename: String, folder: String) async throws -> String {
+        let presignedResponse = try await requestPresignedURL(
+            filename: filename,
+            contentType: "image/jpeg",
+            folder: folder
+        )
+        try await uploadToPresignedURL(
+            presignedResponse: presignedResponse,
+            imageData: data
+        )
+        return presignedResponse.publicUrl
+    }
+
     // MARK: - Private Methods
-    
+
     /// Get presigned URL from ops-web
     private func getPresignedURL(filename: String, projectId: String, companyId: String) async throws -> PresignedURLResponse {
         return try await requestPresignedURL(
@@ -236,14 +252,12 @@ class PresignedURLUploadService {
 
     /// Shared presigned URL request to ops-web
     private func requestPresignedURL(filename: String, contentType: String, folder: String) async throws -> PresignedURLResponse {
-        let session: Session
+        let idToken: String
         do {
-            session = try await SupabaseService.shared.client.auth.session
+            idToken = try await FirebaseAuthService.shared.getIDToken()
         } catch {
             throw UploadError.invalidResponse
         }
-
-        let idToken = session.accessToken
         let url = AppConfiguration.apiBaseURL.appendingPathComponent("/api/uploads/presign")
 
         var request = URLRequest(url: url)

@@ -120,6 +120,8 @@ class AppMessageService {
             roleString = "operator"
         case .crew:
             roleString = "crew"
+        case .unassigned:
+            roleString = "unassigned"
         }
 
         return targetTypes.contains(roleString)

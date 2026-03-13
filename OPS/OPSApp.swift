@@ -63,7 +63,9 @@ struct OPSApp: App {
             TimeEntry.self,
             SignatureCapture.self,
             FormSubmission.self,
-            LocalPhoto.self
+            LocalPhoto.self,
+            // Wizard system
+            WizardState.self
         ])
         
         let modelConfiguration = ModelConfiguration(

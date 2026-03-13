@@ -128,6 +128,7 @@ struct ProductsListView: View {
             .padding(OPSStyle.Layout.spacing3)
             .accessibilityLabel("New Product")
         }
+        .trackScreen("Products")
         .navigationTitle("PRODUCTS & SERVICES")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showFormSheet) {

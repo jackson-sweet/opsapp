@@ -12,6 +12,7 @@ struct InvoiceCard: View {
     let onTap: () -> Void
     let onSwipeRight: () -> Void
     let onSwipeLeft: () -> Void
+    var onWriteOff: (() -> Void)? = nil
 
     @State private var dragOffset: CGFloat = 0
 
@@ -129,6 +130,25 @@ struct InvoiceCard: View {
             )
         }
         .buttonStyle(PlainButtonStyle())
+        .contextMenu {
+            if invoice.status.needsPayment {
+                Button(action: onSwipeRight) {
+                    Label("Record Payment", systemImage: "dollarsign.circle")
+                }
+            }
+
+            if !invoice.status.isTerminal {
+                Button(action: onSwipeLeft) {
+                    Label("Void Invoice", systemImage: "xmark.circle")
+                }
+
+                if invoice.status.needsPayment, let writeOff = onWriteOff {
+                    Button(role: .destructive, action: writeOff) {
+                        Label("Bad Debt", systemImage: "exclamationmark.triangle")
+                    }
+                }
+            }
+        }
     }
 
     private var statusBadge: some View {
@@ -158,11 +178,12 @@ private extension InvoiceStatus {
         case .paid:            return OPSStyle.Colors.successStatus
         case .pastDue:         return OPSStyle.Colors.errorStatus
         case .void:            return OPSStyle.Colors.tertiaryText
+        case .writtenOff:      return OPSStyle.Colors.tertiaryText
         }
     }
 
     var isTerminal: Bool {
-        self == .paid || self == .void
+        self == .paid || self == .void || self == .writtenOff
     }
 }
 

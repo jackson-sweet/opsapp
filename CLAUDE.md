@@ -291,6 +291,9 @@ OPS speaks with the confident, straightforward voice of an experienced field sup
 - **Performance Matters** - Every millisecond counts on older devices in the field
 - **Defensive Programming** - Assume things will go wrong and handle gracefully
 
+### Build Guidelines
+- **Always build on connected device** - Never use simulator destinations. Use `xcodebuild -scheme OPS -destination 'generic/platform=iOS'` for build verification. Do NOT use `-destination 'platform=iOS Simulator,...'`.
+
 ### Git Commit Guidelines
 - **Never include Claude as co-author** - Do not add Claude or any AI attribution to git commits
 - **Clear commit messages** - Write concise, descriptive commit messages that explain the changes

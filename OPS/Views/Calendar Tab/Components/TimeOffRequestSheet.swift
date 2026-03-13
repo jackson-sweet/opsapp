@@ -36,7 +36,7 @@ struct TimeOffRequestSheet: View {
                             Image(systemName: "clock.badge.questionmark")
                                 .foregroundColor(Color(red: 196/255, green: 168/255, blue: 104/255))
                             Text("Request will be sent to your admin for approval.")
-                                .font(.custom("Kosugi-Regular", size: 12))
+                                .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(Color(red: 196/255, green: 168/255, blue: 104/255).opacity(0.85))
                         }
                         .padding(14)
@@ -71,11 +71,11 @@ struct TimeOffRequestSheet: View {
                         // Reason field
                         sectionLabel("REASON (OPTIONAL)")
                         TextField("", text: $reason)
-                            .font(.custom("Mohave-Regular", size: 16))
+                            .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .placeholder(when: reason.isEmpty) {
                                 Text("ENTER REASON")
-                                    .font(.custom("Mohave-Regular", size: 16))
+                                    .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
                             .padding(14)
@@ -95,7 +95,7 @@ struct TimeOffRequestSheet: View {
                                     ProgressView().tint(.black)
                                 } else {
                                     Text("SUBMIT REQUEST")
-                                        .font(.custom("Kosugi-Regular", size: 14))
+                                        .font(OPSStyle.Typography.button)
                                         .foregroundColor(.black)
                                 }
                                 Spacer()
@@ -115,7 +115,7 @@ struct TimeOffRequestSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("CANCEL") { isPresented = false }
-                        .font(.custom("Kosugi-Regular", size: 13))
+                        .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
@@ -125,7 +125,7 @@ struct TimeOffRequestSheet: View {
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
-            .font(.custom("Kosugi-Regular", size: 11))
+            .font(OPSStyle.Typography.microLabel)
             .foregroundColor(OPSStyle.Colors.secondaryText)
             .padding(.horizontal, 20)
             .padding(.bottom, 6)

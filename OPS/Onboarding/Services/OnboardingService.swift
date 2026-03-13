@@ -8,7 +8,7 @@
 //
 
 import Foundation
-import Supabase
+// FirebaseAuthService used for token retrieval (Firebase Auth migration)
 
 class OnboardingService {
 
@@ -22,14 +22,12 @@ class OnboardingService {
     ///   - companyId: Company ID to invite them to
     /// - Returns: Invitation response
     func sendInvites(emails: [String], companyId: String) async throws -> InviteResponse {
-        let session: Session
+        let idToken: String
         do {
-            session = try await SupabaseService.shared.client.auth.session
+            idToken = try await FirebaseAuthService.shared.getIDToken()
         } catch {
             throw OnboardingServiceError.notAuthenticated
         }
-
-        let idToken = session.accessToken
 
         let url = AppConfiguration.apiBaseURL.appendingPathComponent("/api/auth/send-invite")
 

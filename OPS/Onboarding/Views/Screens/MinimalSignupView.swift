@@ -3,8 +3,8 @@
 //  OPS
 //
 //  Single-screen signup for onboarding A/B/C test.
-//  Combines Apple Sign-In, Google Sign-In, email/password, and company name
-//  into one view, replacing the multi-screen signup flow.
+//  Handles authentication only (Apple, Google, email/password).
+//  Company name is collected on a separate screen after auth.
 //
 
 import SwiftUI
@@ -15,18 +15,17 @@ struct MinimalSignupView: View {
     @ObservedObject var onboardingManager: OnboardingManager
     @EnvironmentObject var dataController: DataController
     let variant: OnboardingVariant
-    let onComplete: (String) -> Void  // passes crew code
-    var onShowLogin: (() -> Void)?    // navigate to login for existing users
+    let onAuthenticated: () -> Void       // called after successful auth (new user)
+    var onExistingUserComplete: (() -> Void)?  // called when existing user detected (skip onboarding)
+    var onShowLogin: (() -> Void)?        // navigate to login for existing users
 
     @State private var email = ""
     @State private var password = ""
-    @State private var companyName = ""
     @State private var isLoading = false
     @State private var errorMessage = ""
 
     var body: some View {
         ZStack {
-            // Background
             OPSStyle.Colors.background.ignoresSafeArea()
 
             ScrollView {
@@ -134,7 +133,7 @@ struct MinimalSignupView: View {
 
                     Spacer().frame(height: 24)
 
-                    // MARK: - Input fields
+                    // MARK: - Input fields (auth only — no company name)
                     VStack(spacing: 24) {
                         // Email field
                         VStack(spacing: 8) {
@@ -157,19 +156,6 @@ struct MinimalSignupView: View {
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .textContentType(.newPassword)
-
-                            Rectangle()
-                                .fill(OPSStyle.Colors.tertiaryText.opacity(0.3))
-                                .frame(height: 1)
-                        }
-
-                        // Company Name field
-                        VStack(spacing: 8) {
-                            TextField("", text: $companyName, prompt: Text("Company Name").foregroundColor(OPSStyle.Colors.secondaryText))
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .textContentType(.organizationName)
-                                .disableAutocorrection(true)
 
                             Rectangle()
                                 .fill(OPSStyle.Colors.tertiaryText.opacity(0.3))
@@ -236,13 +222,13 @@ struct MinimalSignupView: View {
         }
         .onAppear {
             AnalyticsManager.shared.trackSignupScreenShown(variant: variant.rawValue)
+            OnboardingSupabaseAnalytics.shared.trackStepView("signup")
         }
     }
 
     // MARK: - Email/Password Sign-Up
 
     private func handleEmailSignup() {
-        // Validate inputs
         guard !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             errorMessage = "Please enter your email address."
             return
@@ -251,41 +237,16 @@ struct MinimalSignupView: View {
             errorMessage = "Password must be at least 8 characters."
             return
         }
-        guard !companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "Please enter your company name."
-            return
-        }
 
         isLoading = true
         errorMessage = ""
 
         Task { @MainActor in
             do {
-                // Set flow to company creator for the minimal signup
-                onboardingManager.state.flow = .companyCreator
-
-                // 1. Create the account
                 try await onboardingManager.createAccount(email: email, password: password)
 
-                // 2. Set company name
-                onboardingManager.state.companyData.name = companyName.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                // 3. Create company and get crew code
-                let crewCode = try await onboardingManager.createCompany()
-
-                // 4. Store crew code
-                UserDefaults.standard.set(crewCode, forKey: "company_code")
-
-                // 5. Track analytics
-                AnalyticsManager.shared.trackSignUp(userType: .company, method: .email)
-
-                // 6. Migrate demo data if from pre-signup tutorial (Variant A)
-                await migrateDemoDataIfNeeded()
-
                 isLoading = false
-
-                // 7. Complete
-                onComplete(crewCode)
+                onAuthenticated()
             } catch {
                 isLoading = false
                 errorMessage = error.localizedDescription
@@ -297,12 +258,6 @@ struct MinimalSignupView: View {
 
     private func handleAppleSignIn() {
         guard !isLoading else { return }
-
-        // Validate company name before initiating auth to avoid orphaned accounts
-        guard !companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "Please enter your company name before signing up."
-            return
-        }
 
         isLoading = true
         errorMessage = ""
@@ -318,10 +273,7 @@ struct MinimalSignupView: View {
             }
 
             do {
-                // 1. Apple Sign-In
                 let appleResult = try await AppleSignInManager.shared.signIn(presenting: window)
-
-                // 2. Authenticate with Supabase via DataController
                 let success = await dataController.loginWithApple(appleResult: appleResult)
 
                 guard success else {
@@ -330,8 +282,12 @@ struct MinimalSignupView: View {
                     return
                 }
 
-                // 3. Set flow and handle social auth in onboarding manager
-                onboardingManager.state.flow = .companyCreator
+                // Existing user with a company — skip onboarding entirely
+                if dataController.isAuthenticated {
+                    isLoading = false
+                    onExistingUserComplete?()
+                    return
+                }
 
                 let userId = UserDefaults.standard.string(forKey: "user_id") ?? ""
                 let userEmail = appleResult.email ?? UserDefaults.standard.string(forKey: "user_email") ?? ""
@@ -343,27 +299,14 @@ struct MinimalSignupView: View {
                     lastName: appleResult.familyName
                 )
 
-                // 4. Set company name and create company
-
-                onboardingManager.state.companyData.name = companyName.trimmingCharacters(in: .whitespacesAndNewlines)
-                let crewCode = try await onboardingManager.createCompany()
-                UserDefaults.standard.set(crewCode, forKey: "company_code")
-
-                // 5. Track analytics
                 AnalyticsManager.shared.trackSignUp(userType: .company, method: .apple)
 
-                // 6. Migrate demo data if from pre-signup tutorial (Variant A)
-                await migrateDemoDataIfNeeded()
-
                 isLoading = false
-
-                // 7. Complete
-                onComplete(crewCode)
+                onAuthenticated()
             } catch {
                 isLoading = false
-
                 if let authError = error as? ASAuthorizationError, authError.code == .canceled {
-                    // User canceled — silently ignore
+                    // User canceled
                 } else {
                     errorMessage = error.localizedDescription
                 }
@@ -375,12 +318,6 @@ struct MinimalSignupView: View {
 
     private func handleGoogleSignIn() {
         guard !isLoading else { return }
-
-        // Validate company name before initiating auth to avoid orphaned accounts
-        guard !companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "Please enter your company name before signing up."
-            return
-        }
 
         isLoading = true
         errorMessage = ""
@@ -394,10 +331,7 @@ struct MinimalSignupView: View {
             }
 
             do {
-                // 1. Google Sign-In
                 let googleUser = try await GoogleSignInManager.shared.signIn(presenting: rootViewController)
-
-                // 2. Authenticate with Supabase via DataController
                 let success = await dataController.loginWithGoogle(googleUser: googleUser)
 
                 guard success else {
@@ -406,8 +340,12 @@ struct MinimalSignupView: View {
                     return
                 }
 
-                // 3. Set flow and handle social auth in onboarding manager
-                onboardingManager.state.flow = .companyCreator
+                // Existing user with a company — skip onboarding entirely
+                if dataController.isAuthenticated {
+                    isLoading = false
+                    onExistingUserComplete?()
+                    return
+                }
 
                 let userId = UserDefaults.standard.string(forKey: "user_id") ?? ""
                 let userEmail = googleUser.profile?.email ?? UserDefaults.standard.string(forKey: "user_email") ?? ""
@@ -419,52 +357,18 @@ struct MinimalSignupView: View {
                     lastName: googleUser.profile?.familyName
                 )
 
-                // 4. Set company name and create company
-
-                onboardingManager.state.companyData.name = companyName.trimmingCharacters(in: .whitespacesAndNewlines)
-                let crewCode = try await onboardingManager.createCompany()
-                UserDefaults.standard.set(crewCode, forKey: "company_code")
-
-                // 5. Track analytics
                 AnalyticsManager.shared.trackSignUp(userType: .company, method: .google)
 
-                // 6. Migrate demo data if from pre-signup tutorial (Variant A)
-                await migrateDemoDataIfNeeded()
-
                 isLoading = false
-
-                // 7. Complete
-                onComplete(crewCode)
+                onAuthenticated()
             } catch {
                 isLoading = false
-
                 if let gidError = error as? GIDSignInError, gidError.code == .canceled {
-                    // User canceled — silently ignore
+                    // User canceled
                 } else {
                     errorMessage = error.localizedDescription
                 }
             }
         }
-    }
-
-    // MARK: - Demo Data Migration (Variant A)
-
-    /// If the user completed a pre-signup tutorial, migrate demo data to their real account
-    private func migrateDemoDataIfNeeded() async {
-        guard UserDefaults.standard.bool(forKey: "pending_demo_data_migration") else { return }
-
-        let realUserId = UserDefaults.standard.string(forKey: "user_id") ?? ""
-        let realCompanyId = UserDefaults.standard.string(forKey: "company_id") ?? ""
-
-        guard !realUserId.isEmpty, !realCompanyId.isEmpty else {
-            print("[MINIMAL_SIGNUP] Cannot migrate demo data — missing real user/company ID")
-            return
-        }
-
-        await TutorialDemoDataManager.migrateDemoDataToRealUser(
-            dataController: dataController,
-            realUserId: realUserId,
-            realCompanyId: realCompanyId
-        )
     }
 }

@@ -20,68 +20,73 @@ struct ProjectQuickActionsBar: View {
     let onContact: () -> Void
     let onAddTask: () -> Void
 
+    /// Builds the list of actions based on current context
+    private var actions: [ActionItem] {
+        var items: [ActionItem] = [
+            ActionItem(icon: "camera.fill", label: "PHOTO", action: onPhoto),
+            ActionItem(icon: "note.text", label: "NOTE", action: onNote),
+            ActionItem(icon: "doc.text.viewfinder", label: "EXPENSE", action: onExpense),
+        ]
+
+        if let task = selectedTask {
+            let isCompleted = task.status == .completed
+            items.append(ActionItem(
+                icon: isCompleted ? "arrow.uturn.backward" : "checkmark.circle.fill",
+                label: isCompleted ? "REOPEN" : "COMPLETE",
+                action: onComplete
+            ))
+            items.append(ActionItem(
+                icon: "calendar",
+                label: "RESCHEDULE",
+                action: onReschedule
+            ))
+        }
+
+        if hasClientContact {
+            items.append(ActionItem(icon: "phone.fill", label: "CONTACT", action: onContact))
+        }
+
+        if canEdit {
+            items.append(ActionItem(icon: "plus", label: "TASK", action: onAddTask))
+        }
+
+        return items
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 0) {
-                actionItem(icon: "camera.fill", label: "PHOTO", action: onPhoto)
-                actionItem(icon: "note.text", label: "NOTE", action: onNote)
-                actionItem(icon: "doc.text.viewfinder", label: "EXPENSE", action: onExpense)
+            OPSActionBar {
+                HStack(spacing: 0) {
+                    ForEach(Array(actions.enumerated()), id: \.element.id) { index, item in
+                        OPSActionBarButton(
+                            icon: item.icon,
+                            label: item.label,
+                            action: item.action
+                        )
+                        .frame(minWidth: 64)
 
-                if selectedTask != nil {
-                    let isCompleted = selectedTask?.status == .completed
-                    actionItem(
-                        icon: isCompleted ? "arrow.uturn.backward" : "checkmark.circle.fill",
-                        label: isCompleted ? "REOPEN" : "COMPLETE",
-                        action: onComplete
-                    )
-                    actionItem(
-                        icon: "calendar",
-                        label: "RESCHEDULE",
-                        action: onReschedule
-                    )
-                }
-
-                if hasClientContact {
-                    actionItem(icon: "phone.fill", label: "CONTACT", action: onContact)
-                }
-
-                if canEdit {
-                    actionItem(icon: "plus", label: "TASK", action: onAddTask)
+                        // Spacer + divider + spacer — matches the 16pt container edge padding
+                        if index < actions.count - 1 {
+                            Spacer().frame(width: 16)
+                            Rectangle()
+                                .fill(OPSStyle.Colors.cardBorderSubtle)
+                                .frame(width: 1, height: 32)
+                            Spacer().frame(width: 16)
+                        }
+                    }
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .fill(Color.black.opacity(0.5))
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .fill(.ultraThinMaterial)
-                        .environment(\.colorScheme, .dark)
-                }
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            )
             .padding(.horizontal, 16)
         }
     }
+}
 
-    private func actionItem(icon: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xl))
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Text(label)
-                    .font(.custom("Kosugi-Regular", size: 11))
-                    .tracking(0.3)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-            .frame(minWidth: OPSStyle.Layout.touchTargetLarge, minHeight: OPSStyle.Layout.touchTargetLarge)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
+// MARK: - Action Item
+
+/// Lightweight struct to build the action list dynamically
+private struct ActionItem: Identifiable {
+    let id = UUID()
+    let icon: String
+    let label: String
+    let action: () -> Void
 }

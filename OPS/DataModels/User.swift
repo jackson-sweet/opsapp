@@ -33,9 +33,14 @@ final class User {
     var devPermission: Bool = false  // Dev permission for testing features
     var hasCompletedAppOnboarding: Bool = false  // Track if user has completed onboarding
     var hasCompletedAppTutorial: Bool = false  // Track if user has completed the interactive tutorial
-    var isCompanyAdmin: Bool = false  // Whether user is an admin for their company
+
     var inventoryAccess: Bool = false  // Whether user can access inventory feature
     var specialPermissions: [String] = []  // Beta feature flags (e.g. "pipeline")
+
+    // Emergency contact
+    var emergencyContactName: String?
+    var emergencyContactPhone: String?
+    var emergencyContactRelationship: String?
 
     // Stripe integration
     var stripeCustomerId: String?  // User's Stripe customer ID (for plan holders)
@@ -90,17 +95,23 @@ final class User {
     // Computed property for user display color based on role
     var roleColor: Color {
         switch role {
-        case .fieldCrew:
-            return .blue
-        case .officeCrew:
-            return .orange
         case .admin:
             return .green
+        case .owner:
+            return .purple
+        case .office:
+            return .orange
+        case .operator:
+            return .cyan
+        case .crew:
+            return .blue
+        case .unassigned:
+            return .gray
         }
     }
-    
+
     // Computed property for role display
     var roleDisplay: String {
-        role.rawValue
+        role.displayName
     }
 }

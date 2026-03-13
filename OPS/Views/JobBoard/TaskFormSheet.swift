@@ -101,6 +101,9 @@ struct TaskFormSheet: View {
     @State private var showingTeamPicker = false
     @State private var selectedStatus: TaskStatus = .active
 
+    @State private var dependencyOverrides: [TaskTypeDependency]? = nil
+    @State private var showingDependencyOverride = false
+
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var showingError = false
@@ -215,6 +218,7 @@ struct TaskFormSheet: View {
             _startDate = State(initialValue: task.startDate)
             _endDate = State(initialValue: task.endDate)
             _selectedStatus = State(initialValue: task.status)
+            _dependencyOverrides = State(initialValue: task.dependencyOverridesJSON != nil ? task.effectiveDependencies : nil)
         } else if let projectId = preselectedProjectId {
             _selectedProjectId = State(initialValue: projectId)
         }
@@ -341,6 +345,22 @@ struct TaskFormSheet: View {
                 selectedTeamMemberIds: $selectedTeamMemberIds,
                 allTeamMembers: uniqueTeamMembers
             )
+        }
+        .sheet(isPresented: $showingDependencyOverride) {
+            if let taskType = selectedTaskType {
+                DependencyPickerSheet(
+                    currentTaskTypeId: selectedTaskTypeId,
+                    existingDependencies: dependencyOverrides ?? taskType.dependencies,
+                    companyId: dataController.currentUser?.companyId ?? "",
+                    onSelect: { newDepId in
+                        if dependencyOverrides == nil {
+                            dependencyOverrides = taskType.dependencies
+                        }
+                        dependencyOverrides?.append(TaskTypeDependency(dependsOnTaskTypeId: newDepId, overlapPercentage: 0))
+                    }
+                )
+                .environmentObject(dataController)
+            }
         }
         .alert("Error", isPresented: $showingError) {
             Button("OK", role: .cancel) { }
@@ -478,6 +498,7 @@ struct TaskFormSheet: View {
                             datesField
                                 .allowsHitTesting(isDatesFieldEnabled && !needsProjectSelection)
                                 .opacity((tutorialMode && !isDatesFieldEnabled) || needsProjectSelection ? 0.5 : 1.0)
+                            dependenciesSection
                             notesField
                                 .allowsHitTesting(!tutorialMode && !needsProjectSelection)
                                 .opacity(tutorialMode || needsProjectSelection ? 0.5 : 1.0)
@@ -839,7 +860,7 @@ struct TaskFormSheet: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             Menu {
-                ForEach(TaskStatus.allCases.filter { $0 != .cancelled || dataController.currentUser?.role != .fieldCrew }, id: \.self) { status in
+                ForEach(TaskStatus.allCases.filter { $0 != .cancelled || PermissionStore.shared.can("tasks.edit") }, id: \.self) { status in
                     Button(action: {
                         selectedStatus = status
                     }) {
@@ -996,6 +1017,58 @@ struct TaskFormSheet: View {
         }
     }
 
+    @ViewBuilder
+    private var dependenciesSection: some View {
+        if let taskType = selectedTaskType, !taskType.dependencies.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "arrow.triangle.branch")
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    Text("DEPENDENCIES")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+
+                let effectiveDeps = dependencyOverrides ?? taskType.dependencies
+                ForEach(effectiveDeps.indices, id: \.self) { index in
+                    let dep = effectiveDeps[index]
+                    HStack {
+                        Text(taskTypeNameForDep(dep.dependsOnTaskTypeId))
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        Spacer()
+                        Text("\(dep.overlapPercentage)% overlap")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        if dependencyOverrides == nil {
+                            Text("inherited")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
+                    }
+                    .padding(8)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                }
+
+                Button(action: {
+                    if dependencyOverrides == nil {
+                        dependencyOverrides = taskType.dependencies
+                    }
+                    showingDependencyOverride = true
+                }) {
+                    Text(dependencyOverrides == nil ? "Override for this task" : "Edit overrides")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+            }
+        }
+    }
+
+    private func taskTypeNameForDep(_ taskTypeId: String) -> String {
+        allTaskTypes.first(where: { $0.id == taskTypeId })?.display ?? "Task Type"
+    }
+
     private var notesField: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("NOTES")
@@ -1108,6 +1181,13 @@ struct TaskFormSheet: View {
                 task.status = selectedStatus
                 task.taskNotes = taskNotes.isEmpty ? nil : taskNotes
 
+                // Save dependency overrides (nil = inherit from task type)
+                if let overrides = dependencyOverrides {
+                    task.setDependencyOverrides(overrides)
+                } else {
+                    task.dependencyOverridesJSON = nil
+                }
+
                 // For edit mode, track if team members changed so we can use centralized update
                 let previousTeamMemberIds = Set(task.getTeamMemberIds())
                 let isEditMode: Bool
@@ -1176,6 +1256,9 @@ struct TaskFormSheet: View {
                         startDate: task.startDate.map { ISO8601DateFormatter().string(from: $0) },
                         endDate: task.endDate.map { ISO8601DateFormatter().string(from: $0) },
                         duration: task.duration,
+                        dependencyOverrides: dependencyOverrides,
+                        startTime: nil,
+                        endTime: nil,
                         deletedAt: nil
                     )
                     let createdTaskId = try await dataController.syncManager.createTask(dto: supabaseTaskDTO)

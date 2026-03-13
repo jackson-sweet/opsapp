@@ -66,7 +66,7 @@ struct OnboardingScaffold<Content: View, Footer: View>: View {
                         onBack?()
                     } label: {
                         Image(systemName: OPSStyle.Icons.back)
-                            .font(.title2.weight(.semibold))
+                            .font(OPSStyle.Typography.heading)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())

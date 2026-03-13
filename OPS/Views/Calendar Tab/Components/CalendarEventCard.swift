@@ -14,6 +14,7 @@ struct CalendarEventCard: View {
     let isFirst: Bool
     let isOngoing: Bool
     let dayPosition: DayPosition
+    let showLabels: Bool
     let onTap: () -> Void
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
@@ -26,11 +27,13 @@ struct CalendarEventCard: View {
     }
 
     init(task: ProjectTask, isFirst: Bool, isOngoing: Bool = false,
-         dayPosition: DayPosition = .single, onTap: @escaping () -> Void) {
+         dayPosition: DayPosition = .single, showLabels: Bool = true,
+         onTap: @escaping () -> Void) {
         self.task = task
         self.isFirst = isFirst
         self.isOngoing = isOngoing
         self.dayPosition = dayPosition
+        self.showLabels = showLabels
         self.onTap = onTap
     }
 
@@ -76,48 +79,70 @@ struct CalendarEventCard: View {
         return displayColor
     }
 
+    // MARK: - Multi-day bleed logic
+
+    private var isMultiDay: Bool { dayPosition != .single }
+    private var bleedsRight: Bool { dayPosition == .start || dayPosition == .middle }
+    private var bleedsLeft: Bool { dayPosition == .end || dayPosition == .middle }
+
+    /// Rounded corners depend on which edges connect to adjacent days
+    private var visibleCorners: UIRectCorner {
+        switch dayPosition {
+        case .single: return .allCorners
+        case .start:  return [.topLeft, .bottomLeft]
+        case .end:    return [.topRight, .bottomRight]
+        case .middle: return []
+        }
+    }
+
     var body: some View {
         GeometryReader { geo in
-            let bleedsRight = dayPosition == .start || dayPosition == .middle
-            let bleedWidth: CGFloat = bleedsRight ? 32 : 0
-            let totalWidth = geo.size.width + bleedWidth
+            let rightBleed: CGFloat = bleedsRight ? 32 : 0
+            let leftBleed: CGFloat = bleedsLeft ? 32 : 0
+            let totalWidth = geo.size.width + rightBleed + leftBleed
 
             ZStack(alignment: .topTrailing) {
                 HStack(spacing: 0) {
-                    // Left color stripe
-                    Rectangle()
-                        .fill(displayColor)
-                        .frame(width: 4)
+                    // Left color stripe — only on first day of event and single-day
+                    if !bleedsLeft && dayPosition != .middle {
+                        Rectangle()
+                            .fill(displayColor)
+                            .frame(width: 4)
+                    }
 
-                    // Content
+                    // Content — opacity controlled by showLabels
+                    // When bleedsLeft, add extra leading padding to compensate for the
+                    // leftward offset (32pt) and the missing left color stripe (4pt)
                     VStack(alignment: .leading, spacing: 5) {
                         if let project = associatedProject {
                             Text(project.title)
-                                .font(.custom("Mohave-SemiBold", size: 15))
+                                .font(OPSStyle.Typography.bodyEmphasis)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .textCase(.uppercase)
                                 .lineLimit(1)
 
                             Text(project.effectiveClientName)
-                                .font(.custom("Kosugi-Regular", size: 12))
+                                .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .lineLimit(1)
 
                             Text(formattedAddress)
-                                .font(.custom("Kosugi-Regular", size: 11))
+                                .font(OPSStyle.Typography.microLabel)
                                 .foregroundColor(OPSStyle.Colors.primaryText.opacity(0.45))
                                 .lineLimit(1)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14)
+                    .padding(.leading, bleedsLeft ? (leftBleed + 4 + 14 + 20) : 14)
+                    .padding(.trailing, 14)
                     .padding(.vertical, 14)
+                    .opacity(showLabels ? 1 : 0)
 
-                    // Task type badge (top-right, only if not bleeding far right)
-                    if !typeDisplay.isEmpty && !bleedsRight {
+                    // Task type badge (top-right, only when right edge is visible)
+                    if !typeDisplay.isEmpty && !bleedsRight && showLabels {
                         VStack {
                             Text(typeDisplay)
-                                .font(.custom("Kosugi-Regular", size: 9))
+                                .font(OPSStyle.Typography.miniLabel)
                                 .foregroundColor(badgeColor)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 3)
@@ -137,14 +162,19 @@ struct CalendarEventCard: View {
                 }
                 .frame(width: totalWidth, height: 64)
                 .background(OPSStyle.Colors.cardBackgroundDark)
+                // Top colored stripe for all multi-day events
+                .overlay(alignment: .top) {
+                    if isMultiDay {
+                        Rectangle()
+                            .fill(displayColor)
+                            .frame(height: 2)
+                    }
+                }
                 .clipShape(
-                    OPSRoundedCornerShape(
-                        radius: 2,
-                        corners: bleedsRight ? [.topLeft, .bottomLeft] : .allCorners
-                    )
+                    OPSRoundedCornerShape(radius: 2, corners: visibleCorners)
                 )
                 .overlay(
-                    OPSRoundedCornerBorder(radius: 2, bleedsRight: bleedsRight)
+                    OPSCardBorder(radius: 2, bleedsRight: bleedsRight, bleedsLeft: bleedsLeft)
                         .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
                 )
                 // Right-edge gradient fade for bleed
@@ -163,22 +193,41 @@ struct CalendarEventCard: View {
                         }
                     }
                 )
+                // Left-edge gradient fade for bleed
+                .overlay(
+                    Group {
+                        if bleedsLeft {
+                            HStack {
+                                LinearGradient(
+                                    colors: [OPSStyle.Colors.cardBackgroundDark, .clear],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                                .frame(width: 40)
+                                Spacer()
+                            }
+                        }
+                    }
+                )
 
                 // Completed overlay (on top of card)
                 if task.status == .completed {
                     ZStack(alignment: .topTrailing) {
                         OPSStyle.Colors.modalOverlay
-                            .clipShape(OPSRoundedCornerShape(radius: 2, corners: bleedsRight ? [.topLeft, .bottomLeft] : .allCorners))
-                        Text("COMPLETED")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(OPSStyle.Colors.statusColor(for: .completed))
-                            )
-                            .padding(8)
+                            .clipShape(OPSRoundedCornerShape(radius: 2, corners: visibleCorners))
+                        if showLabels && !bleedsRight {
+                            Text("COMPLETED")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(OPSStyle.Colors.statusColor(for: .completed))
+                                )
+                                .padding(.top, 8)
+                                .padding(.trailing, 8)
+                        }
                     }
                     .frame(width: totalWidth, height: 64)
                 }
@@ -187,21 +236,25 @@ struct CalendarEventCard: View {
                 if task.status == .cancelled {
                     ZStack(alignment: .topTrailing) {
                         OPSStyle.Colors.modalOverlay
-                            .clipShape(OPSRoundedCornerShape(radius: 2, corners: bleedsRight ? [.topLeft, .bottomLeft] : .allCorners))
-                        Text("CANCELLED")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(OPSStyle.Colors.inactiveStatus)
-                            )
-                            .padding(8)
+                            .clipShape(OPSRoundedCornerShape(radius: 2, corners: visibleCorners))
+                        if showLabels && !bleedsRight {
+                            Text("CANCELLED")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(OPSStyle.Colors.inactiveStatus)
+                                )
+                                .padding(.top, 8)
+                                .padding(.trailing, 8)
+                        }
                     }
                     .frame(width: totalWidth, height: 64)
                 }
             }
+            .offset(x: bleedsLeft ? -leftBleed : 0)
         }
         .frame(height: 64)
         .onTapGesture {
@@ -224,7 +277,8 @@ struct CalendarEventCard: View {
             Button("Cancel", role: .cancel) {}
         }
         .padding(.vertical, 4)
-        .padding(.horizontal)
+        .padding(.leading, bleedsLeft ? 0 : 20)
+        .padding(.trailing, bleedsRight ? 0 : 20)
         .sheet(isPresented: $showingReschedule) {
             CalendarSchedulerSheet(
                 isPresented: $showingReschedule,
@@ -233,6 +287,9 @@ struct CalendarEventCard: View {
                 currentEndDate: task.endDate,
                 onScheduleUpdate: { newStart, newEnd in
                     updateTaskSchedule(task: task, startDate: newStart, endDate: newEnd)
+                },
+                onClearDates: {
+                    clearTaskDates(task: task)
                 }
             )
             .environmentObject(dataController)
@@ -249,6 +306,56 @@ struct CalendarEventCard: View {
                 try await dataController.updateTaskSchedule(task: task, startDate: startDate, endDate: endDate)
             } catch {
                 print("Error updating task schedule: \(error)")
+            }
+        }
+    }
+
+    private func clearTaskDates(task: ProjectTask) {
+        let projectId = task.project?.id
+
+        // Capture other tasks' dates for project date recalculation
+        let scheduledTaskDates: [(start: Date, end: Date)]? = task.project?.tasks.compactMap { t in
+            guard t.id != task.id,
+                  let start = t.startDate,
+                  let end = t.endDate else { return nil }
+            return (start, end)
+        }
+
+        task.startDate = nil
+        task.endDate = nil
+        task.duration = 0
+        task.needsSync = true
+
+        dataController.scheduledTasksDidChange.toggle()
+
+        Task {
+            do {
+                try await dataController.syncManager.updateTaskFields(
+                    taskId: task.id,
+                    fields: [
+                        "start_date": .null,
+                        "end_date": .null,
+                        "duration": .integer(0)
+                    ]
+                )
+
+                if let projId = projectId {
+                    if let dates = scheduledTaskDates, !dates.isEmpty {
+                        let earliestStart = dates.map { $0.start }.min()
+                        let latestEnd = dates.map { $0.end }.max()
+                        if let start = earliestStart, let end = latestEnd {
+                            try await dataController.syncManager.updateProjectDates(
+                                projectId: projId, startDate: start, endDate: end
+                            )
+                        }
+                    } else {
+                        try await dataController.syncManager.updateProjectDates(
+                            projectId: projId, startDate: nil, endDate: nil
+                        )
+                    }
+                }
+            } catch {
+                print("Error clearing task dates: \(error)")
             }
         }
     }
@@ -278,23 +385,68 @@ private struct OPSRoundedCornerBorder: Shape {
         var path = Path()
         let r = radius
         if bleedsRight {
-            // Top edge (no right corner)
             path.move(to: CGPoint(x: rect.minX + r, y: rect.minY))
             path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-            // Top-left corner
             path.move(to: CGPoint(x: rect.minX + r, y: rect.minY))
             path.addArc(center: CGPoint(x: rect.minX + r, y: rect.minY + r),
                         radius: r, startAngle: .degrees(-90), endAngle: .degrees(180), clockwise: true)
-            // Left side
             path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - r))
-            // Bottom-left corner
             path.addArc(center: CGPoint(x: rect.minX + r, y: rect.maxY - r),
                         radius: r, startAngle: .degrees(180), endAngle: .degrees(90), clockwise: true)
-            // Bottom edge
             path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         } else {
             path.addRoundedRect(in: rect, cornerSize: CGSize(width: r, height: r))
         }
+        return path
+    }
+}
+
+/// Border that skips edges which bleed into adjacent day columns
+private struct OPSCardBorder: Shape {
+    let radius: CGFloat
+    let bleedsRight: Bool
+    let bleedsLeft: Bool
+
+    func path(in rect: CGRect) -> Path {
+        if !bleedsRight && !bleedsLeft {
+            var path = Path()
+            path.addRoundedRect(in: rect, cornerSize: CGSize(width: radius, height: radius))
+            return path
+        }
+
+        var path = Path()
+        let r = radius
+
+        // Top edge
+        let topLeft = bleedsLeft ? rect.minX : rect.minX + r
+        let topRight = bleedsRight ? rect.maxX : rect.maxX - r
+        path.move(to: CGPoint(x: topLeft, y: rect.minY))
+        path.addLine(to: CGPoint(x: topRight, y: rect.minY))
+
+        // Top-right corner + right edge (if visible)
+        if !bleedsRight {
+            path.addArc(center: CGPoint(x: rect.maxX - r, y: rect.minY + r),
+                        radius: r, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
+            path.addArc(center: CGPoint(x: rect.maxX - r, y: rect.maxY - r),
+                        radius: r, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        }
+
+        // Bottom edge
+        let bottomRight = bleedsRight ? rect.maxX : rect.maxX - r
+        let bottomLeft = bleedsLeft ? rect.minX : rect.minX + r
+        path.move(to: CGPoint(x: bottomRight, y: rect.maxY))
+        path.addLine(to: CGPoint(x: bottomLeft, y: rect.maxY))
+
+        // Bottom-left corner + left edge (if visible)
+        if !bleedsLeft {
+            path.addArc(center: CGPoint(x: rect.minX + r, y: rect.maxY - r),
+                        radius: r, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + r))
+            path.addArc(center: CGPoint(x: rect.minX + r, y: rect.minY + r),
+                        radius: r, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        }
+
         return path
     }
 }

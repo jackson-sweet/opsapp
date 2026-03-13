@@ -758,7 +758,7 @@ struct ClientSheet: View {
                             .frame(width: 56, height: 56)
                             .overlay(
                                 Text(String(name.prefix(1)).uppercased())
-                                    .font(.custom("Mohave-Bold", size: 22))
+                                    .font(OPSStyle.Typography.headingBold)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                             )
                     } else {

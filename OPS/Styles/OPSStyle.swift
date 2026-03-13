@@ -178,14 +178,23 @@ enum OPSStyle {
         // Button text
         static let button = Font.button
         static let smallButton = Font.smallButton
+        static let buttonLarge = Font.buttonLarge
         static let sectionLabel = Font.sectionLabel
+
+        // Compact UI labels
+        static let miniLabel = Font.miniLabel
+        static let microLabel = Font.microLabel
+        static let tagLabel = Font.tagLabel
+        static let previewLabel = Font.previewLabel
 
         // Headings
         static let heading = Font.heading
+        static let headingBold = Font.headingBold
         static let headingLarge = Font.headingLarge
 
         // Display
         static let displayLarge = Font.displayLarge
+        static let displayQuantity = Font.displayQuantity
         static let displayXL = Font.displayXL
     }
 

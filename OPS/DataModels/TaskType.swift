@@ -20,6 +20,7 @@ final class TaskType: Identifiable {
     var companyId: String
     var displayOrder: Int = 0
     var defaultTeamMemberIdsString: String = ""  // Default crew user IDs for auto-generated tasks
+    var dependenciesJSON: String = "[]"  // JSON array of TaskTypeDependency objects
     
     // MARK: - Relationships
     @Relationship(deleteRule: .nullify, inverse: \ProjectTask.taskType)
@@ -50,8 +51,25 @@ final class TaskType: Identifiable {
         self.displayOrder = 0
     }
     
+    // MARK: - Dependencies (computed from JSON)
+
+    /// Decoded dependency list. SwiftData can't store Codable arrays directly,
+    /// so we persist as JSON string and decode on access.
+    var dependencies: [TaskTypeDependency] {
+        get {
+            guard let data = dependenciesJSON.data(using: .utf8) else { return [] }
+            return (try? JSONDecoder().decode([TaskTypeDependency].self, from: data)) ?? []
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue),
+               let json = String(data: data, encoding: .utf8) {
+                dependenciesJSON = json
+            }
+        }
+    }
+
     // MARK: - Helper Methods
-    
+
     /// Check if user can edit this task type
     func canEdit(user: User) -> Bool {
         return PermissionStore.shared.can("tasks.create")

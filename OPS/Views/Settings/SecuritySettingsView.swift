@@ -46,16 +46,15 @@ struct SecuritySettingsView: View {
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
                             VStack(spacing: 0) {
-                                VStack(spacing: 16) {
-
                                 // PIN toggle
                                 HStack {
-                                    VStack(alignment: .leading){
+                                    VStack(alignment: .leading, spacing: 4) {
                                         Text("LOCK IT DOWN")
                                             .font(OPSStyle.Typography.cardTitle)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
                                         Text("Require PIN on App Launch")
                                             .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
+                                            .foregroundColor(OPSStyle.Colors.secondaryText)
                                     }
                                     Spacer()
 
@@ -74,16 +73,18 @@ struct SecuritySettingsView: View {
                                 .padding(16)
 
                                 if pinManager.hasPINEnabled {
+                                    Divider()
+                                        .background(OPSStyle.Colors.cardBorder)
+
                                     Button(action: { showPINSetup = true }) {
                                         Text("CHANGE PIN")
-                                            .font(OPSStyle.Typography.button)
+                                            .font(OPSStyle.Typography.captionBold)
                                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                                     }
-                                    .padding(.horizontal, 20)
-                                }
+                                    .padding(.vertical, 14)
+                                    .padding(.horizontal, 16)
                                 }
                             }
-                            .padding(16)
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
@@ -100,8 +101,6 @@ struct SecuritySettingsView: View {
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
                             VStack(spacing: 0) {
-                                VStack(spacing: 16) {
-                                // Reset Password button
                                 SettingsCategoryButton(
                                     title: "Reset Password",
                                     description: "Change your account password",
@@ -110,9 +109,7 @@ struct SecuritySettingsView: View {
                                         showResetPasswordSheet = true
                                     }
                                 )
-                                }
                             }
-                            .padding(16)
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
@@ -127,6 +124,7 @@ struct SecuritySettingsView: View {
                 }
             }
         }
+        .trackScreen("Settings.Security")
         .navigationBarBackButtonHidden(true)
         .sheet(isPresented: $showPINSetup) {
             PINSetupSheet(pinManager: pinManager, isPresented: $showPINSetup)

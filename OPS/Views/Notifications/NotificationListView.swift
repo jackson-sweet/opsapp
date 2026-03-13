@@ -42,11 +42,12 @@ struct NotificationListView: View {
                 }
             }
         }
+        .trackScreen("Notifications")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Text("NOTIFICATIONS")
-                    .font(Font.custom("Kosugi-Regular", size: 14))
+                    .font(OPSStyle.Typography.caption)
                     .tracking(0.5)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
@@ -55,7 +56,7 @@ struct NotificationListView: View {
                     dismiss()
                 } label: {
                     Text("DONE")
-                        .font(Font.custom("Kosugi-Regular", size: 12))
+                        .font(OPSStyle.Typography.smallCaption)
                         .tracking(0.3)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
@@ -66,7 +67,7 @@ struct NotificationListView: View {
                         markAllAsRead()
                     } label: {
                         Text("MARK ALL READ")
-                            .font(Font.custom("Kosugi-Regular", size: 10))
+                            .font(OPSStyle.Typography.miniLabel)
                             .tracking(0.3)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
@@ -108,7 +109,7 @@ struct NotificationListView: View {
                         .frame(width: 56, height: 56)
                         .overlay(
                             Text(String(user.firstName.prefix(1)) + String(user.lastName.prefix(1)))
-                                .font(Font.custom("Kosugi-Regular", size: 18))
+                                .font(OPSStyle.Typography.previewLabel)
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                         )
 

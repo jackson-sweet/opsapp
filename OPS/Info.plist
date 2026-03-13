@@ -11,12 +11,12 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.748032911358-3a66h9ie5o4l7g41ec42d6fq4k4erqgb</string>
+				<string>com.googleusercontent.apps.992104001932-rnec0iliev7mrnvh3c1ui5n3gbh9ddhf</string>
 			</array>
 		</dict>
 	</array>
 	<key>GIDClientID</key>
-	<string>748032911358-3a66h9ie5o4l7g41ec42d6fq4k4erqgb.apps.googleusercontent.com</string>
+	<string>992104001932-rnec0iliev7mrnvh3c1ui5n3gbh9ddhf.apps.googleusercontent.com</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>OPS needs notification access to keep you updated about schedule changes, job assignments, and important team messages.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

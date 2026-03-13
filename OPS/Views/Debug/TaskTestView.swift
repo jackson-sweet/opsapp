@@ -22,7 +22,7 @@ struct TaskTestView: View {
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Test Status")
-                .font(.headline)
+                .font(OPSStyle.Typography.bodyEmphasis)
             Text(statusMessage)
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(.secondary)
@@ -67,7 +67,7 @@ struct TaskTestView: View {
 
             // API Sync Testing
             Text("API Sync Testing")
-                .font(.headline)
+                .font(OPSStyle.Typography.bodyEmphasis)
                 .frame(maxWidth: .infinity, alignment: .leading)
            
             Button(action: testTaskTypeSync) {
@@ -105,7 +105,7 @@ struct TaskTestView: View {
     private func projectDataSection(_ project: Project) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Test Project")
-                .font(.headline)
+                .font(OPSStyle.Typography.bodyEmphasis)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Title: \(project.title)")
@@ -125,7 +125,7 @@ struct TaskTestView: View {
     private var taskTypesDataSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Task Types")
-                .font(.headline)
+                .font(OPSStyle.Typography.bodyEmphasis)
 
             ForEach(testTaskTypes, id: \.id) { taskType in
                 HStack {
@@ -150,7 +150,7 @@ struct TaskTestView: View {
     private var tasksDataSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Tasks")
-                .font(.headline)
+                .font(OPSStyle.Typography.bodyEmphasis)
 
             ForEach(testTasks, id: \.id) { task in
                 VStack(alignment: .leading, spacing: 4) {

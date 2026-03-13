@@ -167,7 +167,7 @@ class TutorialDemoDataManager {
                 id: data.id,
                 firstName: data.firstName,
                 lastName: data.lastName,
-                role: .fieldCrew,
+                role: .crew,
                 companyId: companyId
             )
 
@@ -195,7 +195,7 @@ class TutorialDemoDataManager {
                 id: data.id,
                 firstName: data.firstName,
                 lastName: data.lastName,
-                role: "Field Crew",
+                role: "Crew",
                 avatarURL: data.avatarAssetName  // Use asset name for local lookup
             )
             context.insert(teamMember)

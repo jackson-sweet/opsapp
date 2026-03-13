@@ -76,7 +76,7 @@ struct TutorialCollapsibleTooltip: View {
                         // Step counter in top-right area
                         if totalSteps > 0 {
                             Text("STEP \(stepIndex + 1)/\(totalSteps)")
-                                .font(.custom("Mohave-Regular", size: 11))
+                                .font(OPSStyle.Typography.status)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
                     } else {

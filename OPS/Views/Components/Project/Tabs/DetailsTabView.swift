@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import MapKit
 
 struct DetailsTabView: View {
     @Bindable var project: Project
@@ -15,26 +16,18 @@ struct DetailsTabView: View {
     let onTeamMemberTap: (User) -> Void
     let onTaskTap: (ProjectTask) -> Void
     let onAddTask: () -> Void
-    let onEditAddress: () -> Void
+    var onSelectTask: ((ProjectTask) -> Void)? = nil
+    var onCompleteTask: ((ProjectTask) -> Void)? = nil
+    var onReopenTask: ((ProjectTask) -> Void)? = nil
+    var onCancelTask: ((ProjectTask) -> Void)? = nil
+    var onDeleteTask: ((ProjectTask) -> Void)? = nil
+    var onClientLongPress: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            // DATE HEADER — subtle inline row above client
-            if project.computedStartDate != nil || project.computedEndDate != nil {
-                HStack {
-                    if let start = project.computedStartDate {
-                        Text(DateHelper.simpleDateString(from: start))
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-                    Spacer()
-                    if let end = project.computedEndDate {
-                        Text(DateHelper.simpleDateString(from: end))
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-                }
-                .padding(.horizontal, 16)
+            // PROJECT TIMELINE — dates + task progress
+            if project.hasTasks {
+                ProjectTimelineSection(project: project)
             }
 
             // CLIENT
@@ -42,15 +35,20 @@ struct DetailsTabView: View {
                 project: project,
                 onTap: onClientTap,
                 onCall: { if let p = project.effectiveClientPhone { viewModel.callPhone(p) } },
-                onEmail: { if let e = project.effectiveClientEmail { viewModel.sendEmail(e) } }
+                onEmail: { if let e = project.effectiveClientEmail { viewModel.sendEmail(e) } },
+                onLongPress: onClientLongPress
             )
 
             // ADDRESS (below client)
             AddressSection(
                 address: project.address,
                 canEdit: viewModel.canEditProject,
-                onEdit: onEditAddress,
-                onDirections: { viewModel.openDirections() }
+                onEdit: {},
+                onDirections: { viewModel.openDirections() },
+                onSaveAddress: { newAddress in
+                    viewModel.editedAddress = newAddress
+                    viewModel.saveAddress()
+                }
             )
 
             // TASKS
@@ -60,7 +58,12 @@ struct DetailsTabView: View {
                 project: project,
                 canEdit: viewModel.canEditProject,
                 onTaskTap: onTaskTap,
-                onAddTask: onAddTask
+                onAddTask: onAddTask,
+                onSelectTask: onSelectTask,
+                onCompleteTask: onCompleteTask,
+                onReopenTask: onReopenTask,
+                onCancelTask: onCancelTask,
+                onDeleteTask: onDeleteTask
             )
 
             // DESCRIPTION
@@ -109,6 +112,90 @@ struct DetailsTabView: View {
     }
 }
 
+// MARK: - Project Timeline Section
+
+private struct ProjectTimelineSection: View {
+    let project: Project
+
+    private var activeTasks: [ProjectTask] {
+        project.tasks.filter { $0.status != .cancelled }
+    }
+
+    private var completedCount: Int {
+        activeTasks.filter { $0.status == .completed }.count
+    }
+
+    private var totalCount: Int {
+        activeTasks.count
+    }
+
+    private var progress: Double {
+        totalCount > 0 ? Double(completedCount) / Double(totalCount) : 0
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            // Date labels
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("PROJECT START")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    if let start = project.computedStartDate {
+                        Text(DateHelper.simpleDateString(from: start))
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    } else {
+                        Text("—")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("PROJECT COMPLETE")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    if let end = project.computedEndDate {
+                        Text(DateHelper.simpleDateString(from: end))
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    } else {
+                        Text("—")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+            }
+
+            // Progress bar
+            if totalCount > 0 {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(OPSStyle.Colors.cardBackgroundDark)
+
+                        Capsule()
+                            .fill(progress >= 1.0
+                                  ? OPSStyle.Colors.successStatus
+                                  : OPSStyle.Colors.primaryAccent)
+                            .frame(width: max(0, geo.size.width * CGFloat(progress)))
+                    }
+                }
+                .frame(height: 6)
+
+                // Task count
+                Text("\(completedCount) of \(totalCount) TASKS COMPLETE")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+}
+
 // MARK: - Client Section
 
 struct ClientSection: View {
@@ -116,6 +203,7 @@ struct ClientSection: View {
     let onTap: () -> Void
     let onCall: () -> Void
     let onEmail: () -> Void
+    var onLongPress: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -187,6 +275,13 @@ struct ClientSection: View {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
+            .onLongPressGesture {
+                if let onLongPress = onLongPress {
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.impactOccurred()
+                    onLongPress()
+                }
+            }
             .padding(.horizontal, 16)
         }
     }
@@ -253,6 +348,11 @@ struct TaskListSection: View {
     let canEdit: Bool
     let onTaskTap: (ProjectTask) -> Void
     let onAddTask: () -> Void
+    var onSelectTask: ((ProjectTask) -> Void)? = nil
+    var onCompleteTask: ((ProjectTask) -> Void)? = nil
+    var onReopenTask: ((ProjectTask) -> Void)? = nil
+    var onCancelTask: ((ProjectTask) -> Void)? = nil
+    var onDeleteTask: ((ProjectTask) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -263,7 +363,7 @@ struct TaskListSection: View {
                     let isSelected = selectedTask?.id == task.id
                     let hasSelection = selectedTask != nil
                     let taskColor = Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent
-                    let isComplete = task.status == .completed
+                    let isInactive = task.status == .completed || task.status == .cancelled
 
                     Button(action: { onTaskTap(task) }) {
                         HStack(spacing: 8) {
@@ -272,24 +372,52 @@ struct TaskListSection: View {
                                 name: task.taskType?.display ?? "Task",
                                 color: taskColor,
                                 size: .medium,
-                                faded: isComplete
+                                faded: isInactive
                             )
 
-                            if isComplete {
+                            if task.status == .completed {
                                 StatusBadgePill(
                                     text: "COMPLETE",
                                     color: TaskStatus.completed.color,
                                     size: .medium
                                 )
-                            } else if isSelected {
+                            } else if task.status == .cancelled {
                                 StatusBadgePill(
-                                    text: "ACTIVE",
-                                    color: OPSStyle.Colors.primaryAccent,
+                                    text: "CANCELLED",
+                                    color: TaskStatus.cancelled.color,
                                     size: .medium
                                 )
                             }
 
+                            // Assigned team avatars (overlapping)
+                            if !task.teamMembers.isEmpty {
+                                HStack(spacing: -6) {
+                                    ForEach(Array(task.teamMembers.prefix(3)), id: \.id) { member in
+                                        UserAvatar(user: member, size: 22)
+                                            .overlay(
+                                                Circle()
+                                                    .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: 1.5)
+                                            )
+                                    }
+                                    if task.teamMembers.count > 3 {
+                                        Text("+\(task.teamMembers.count - 3)")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                            .padding(.leading, 8)
+                                    }
+                                }
+                                .padding(.leading, 4)
+                            }
+
                             Spacer()
+
+                            // Schedule date
+                            if let startDate = task.startDate {
+                                Text(TaskListSection.formatTaskDate(startDate))
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(Calendar.current.isDateInToday(startDate) ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+
+                            }
 
                             // Right side: SELECTED badge OR chevron — never both
                             if isSelected {
@@ -311,6 +439,43 @@ struct TaskListSection: View {
                         .opacity(isSelected || !hasSelection ? 1.0 : 0.45)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .contextMenu {
+                        // Select / Deselect
+                        if isSelected {
+                            Button(action: { onSelectTask?(task) }) {
+                                Label("Deselect", systemImage: "xmark.circle")
+                            }
+                        } else {
+                            Button(action: { onSelectTask?(task) }) {
+                                Label("Select Task", systemImage: "checkmark.circle")
+                            }
+                        }
+
+                        Divider()
+
+                        // Status actions based on current status
+                        if task.status == .active {
+                            Button(action: { onCompleteTask?(task) }) {
+                                Label("Complete", systemImage: "checkmark")
+                            }
+                            Button(role: .destructive, action: { onCancelTask?(task) }) {
+                                Label("Cancel Task", systemImage: "xmark")
+                            }
+                        } else if task.status == .completed || task.status == .cancelled {
+                            Button(action: { onReopenTask?(task) }) {
+                                Label("Reopen", systemImage: "arrow.uturn.backward")
+                            }
+                        }
+
+                        Divider()
+
+                        // Delete (always available for admin)
+                        if canEdit {
+                            Button(role: .destructive, action: { onDeleteTask?(task) }) {
+                                Label("Delete Task", systemImage: "trash")
+                            }
+                        }
+                    }
 
                     // Divider
                     if task.id != tasks.last?.id {
@@ -352,6 +517,26 @@ struct TaskListSection: View {
             )
             .padding(.horizontal, 16)
         }
+    }
+
+    // MARK: - Date Formatting
+
+    static func formatTaskDate(_ date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) {
+            return "TODAY"
+        }
+        if calendar.isDateInTomorrow(date) {
+            return "TOMORROW"
+        }
+        let formatter = DateFormatter()
+        // Same year → "Mar 9", different year → "Mar 9, 2025"
+        if calendar.component(.year, from: date) == calendar.component(.year, from: Date()) {
+            formatter.dateFormat = "MMM d"
+        } else {
+            formatter.dateFormat = "MMM d, yyyy"
+        }
+        return formatter.string(from: date).uppercased()
     }
 }
 
@@ -458,52 +643,216 @@ struct AddressSection: View {
     let canEdit: Bool
     let onEdit: () -> Void
     let onDirections: () -> Void
+    var onSaveAddress: ((String) -> Void)? = nil
+
+    @State private var isEditing = false
+    @State private var draft = ""
+    @StateObject private var completer = InlineAddressCompleter()
+    @FocusState private var fieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionLabel("ADDRESS")
 
-            HStack {
-                if let address = address, !address.isEmpty {
-                    Button(action: onDirections) {
+            VStack(spacing: 0) {
+                if isEditing {
+                    // Inline edit mode
+                    VStack(alignment: .leading, spacing: 0) {
                         HStack(spacing: 8) {
                             Image(systemName: "mappin.circle")
                                 .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                            Text(address)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                            TextField("Start typing an address...", text: $draft)
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
-                                .multilineTextAlignment(.leading)
+                                .focused($fieldFocused)
+                                .onSubmit { saveAndClose() }
+                                .onChange(of: draft) { _, newValue in
+                                    completer.search(newValue)
+                                }
+
+                            // Save / Cancel
+                            Button(action: saveAndClose) {
+                                Text("SAVE")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+
+                            Button(action: cancelEdit) {
+                                Image(systemName: OPSStyle.Icons.xmark)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        .padding(14)
+
+                        // Inline suggestions
+                        if !completer.results.isEmpty {
+                            Rectangle()
+                                .fill(OPSStyle.Colors.cardBorderSubtle)
+                                .frame(height: 1)
+
+                            ForEach(completer.results, id: \.self) { result in
+                                Button(action: { selectResult(result) }) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "location.fill")
+                                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(result.title)
+                                                .font(OPSStyle.Typography.body)
+                                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                                .lineLimit(1)
+                                            if !result.subtitle.isEmpty {
+                                                Text(result.subtitle)
+                                                    .font(OPSStyle.Typography.smallCaption)
+                                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                                    .lineLimit(1)
+                                            }
+                                        }
+
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(PlainButtonStyle())
+
+                                if result != completer.results.last {
+                                    Rectangle()
+                                        .fill(OPSStyle.Colors.cardBorderSubtle)
+                                        .frame(height: 1)
+                                        .padding(.leading, 36)
+                                }
+                            }
                         }
                     }
-                    .buttonStyle(PlainButtonStyle())
                 } else {
-                    Text("No address set")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
+                    // Display mode
+                    HStack {
+                        if let address = address, !address.isEmpty {
+                            Button(action: onDirections) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "mappin.circle")
+                                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                    Text(address)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .multilineTextAlignment(.leading)
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        } else {
+                            Text("No address set")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
 
-                Spacer()
+                        Spacer()
 
-                if canEdit {
-                    Button(action: onEdit) {
-                        Image(systemName: OPSStyle.Icons.pencil)
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        if canEdit {
+                            Button(action: startEditing) {
+                                Image(systemName: OPSStyle.Icons.pencil)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .padding(14)
                 }
             }
-            .padding(14)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    .stroke(isEditing ? OPSStyle.Colors.primaryAccent.opacity(0.5) : OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
+            .animation(.easeInOut(duration: 0.2), value: isEditing)
             .padding(.horizontal, 16)
         }
     }
+
+    private func startEditing() {
+        draft = address ?? ""
+        isEditing = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            fieldFocused = true
+        }
+    }
+
+    private func saveAndClose() {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        onSaveAddress?(trimmed)
+        completer.clear()
+        withAnimation { isEditing = false }
+    }
+
+    private func cancelEdit() {
+        completer.clear()
+        withAnimation { isEditing = false }
+    }
+
+    private func selectResult(_ result: MKLocalSearchCompletion) {
+        let search = MKLocalSearch(request: MKLocalSearch.Request(completion: result))
+        search.start { response, _ in
+            if let placemark = response?.mapItems.first?.placemark {
+                let parts = [
+                    placemark.subThoroughfare,
+                    placemark.thoroughfare,
+                    placemark.locality,
+                    placemark.administrativeArea,
+                    placemark.postalCode
+                ].compactMap { $0 }
+                draft = parts.joined(separator: " ")
+            } else {
+                draft = [result.title, result.subtitle]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: ", ")
+            }
+            completer.clear()
+        }
+    }
+}
+
+// MARK: - Inline Address Completer
+
+private class InlineAddressCompleter: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
+    @Published var results: [MKLocalSearchCompletion] = []
+    private let completer = MKLocalSearchCompleter()
+
+    override init() {
+        super.init()
+        completer.delegate = self
+        completer.resultTypes = .address
+    }
+
+    func search(_ query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count < 3 {
+            results = []
+            return
+        }
+        completer.queryFragment = trimmed
+    }
+
+    func clear() {
+        results = []
+    }
+
+    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        DispatchQueue.main.async {
+            self.results = Array(completer.results.prefix(4))
+        }
+    }
+
+    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {}
 }
 
 // MARK: - Photos Section
@@ -572,7 +921,7 @@ struct PhotosSection: View {
 /// Section headers appear OUTSIDE cards per design system
 func sectionLabel(_ title: String) -> some View {
     Text("[ \(title) ]")
-        .font(.custom("Kosugi-Regular", size: 12))
+        .font(OPSStyle.Typography.smallCaption)
         .textCase(.uppercase)
         .tracking(1)
         .foregroundColor(OPSStyle.Colors.tertiaryText)

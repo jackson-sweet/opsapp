@@ -21,30 +21,41 @@ struct ActivityTabView: View {
     @FocusState private var isTextFieldFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Section header
-            sectionLabel("ACTIVITY")
-                .padding(.top, 8)
+        ScrollViewReader { proxy in
+            VStack(alignment: .leading, spacing: 0) {
+                // Section header
+                sectionLabel("ACTIVITY")
+                    .padding(.top, 8)
 
-            // Notes feed
-            notesFeed
+                // Notes feed
+                notesFeed
 
-            // Compose bar
-            composeBar
+                // Compose bar
+                composeBar
+                    .id("composeBar")
 
-            // Project photos (below notes)
-            projectPhotosSection
+                // Project photos (below notes)
+                projectPhotosSection
 
-            // Bottom spacer for scroll
-            Spacer()
-                .frame(height: 200)
-        }
-        // Sync FocusState ↔ Binding
-        .onChange(of: isTextFieldFocused) { _, newValue in
-            noteFieldFocused = newValue
-        }
-        .onChange(of: noteFieldFocused) { _, newValue in
-            if newValue { isTextFieldFocused = true }
+                // Bottom spacer for scroll
+                Spacer()
+                    .frame(height: 200)
+            }
+            // Sync FocusState ↔ Binding
+            .onChange(of: isTextFieldFocused) { _, newValue in
+                noteFieldFocused = newValue
+                if newValue {
+                    // Scroll compose bar into view above keyboard
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            proxy.scrollTo("composeBar", anchor: .bottom)
+                        }
+                    }
+                }
+            }
+            .onChange(of: noteFieldFocused) { _, newValue in
+                if newValue { isTextFieldFocused = true }
+            }
         }
     }
 
@@ -205,8 +216,14 @@ struct ActivityTabView: View {
         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .stroke(
+                    isTextFieldFocused
+                        ? OPSStyle.Colors.primaryAccent
+                        : OPSStyle.Colors.cardBorder,
+                    lineWidth: isTextFieldFocused ? 1.5 : 1
+                )
         )
+        .animation(.easeInOut(duration: 0.2), value: isTextFieldFocused)
         .padding(.horizontal, 16)
         .padding(.top, 16)
     }
@@ -276,7 +293,7 @@ struct ActivityTabView: View {
             if !photos.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("[ PHOTOS ]")
-                        .font(.custom("Kosugi-Regular", size: 12))
+                        .font(OPSStyle.Typography.smallCaption)
                         .textCase(.uppercase)
                         .tracking(1)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)

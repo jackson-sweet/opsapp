@@ -131,8 +131,7 @@ class ProjectDetailsViewModel: ObservableObject {
     // MARK: - Permissions
 
     var canEditProject: Bool {
-        guard let currentUser = dataController?.currentUser else { return false }
-        return currentUser.role != .fieldCrew
+        return PermissionStore.shared.can("projects.edit")
     }
 
     var hasClientContact: Bool {

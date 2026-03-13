@@ -20,8 +20,10 @@ struct ProjectExpensesTabView: View {
             sectionLabel("EXPENSES")
                 .padding(.top, 8)
 
-            // Running total card
-            totalCard
+            // Running total card (hidden when no expenses)
+            if !viewModel.projectExpenses.isEmpty {
+                totalCard
+            }
 
             // Expense list
             if viewModel.isLoadingExpenses {
@@ -32,9 +34,7 @@ struct ProjectExpensesTabView: View {
                     Spacer()
                 }
                 .padding(.vertical, OPSStyle.Layout.spacing4)
-            } else if viewModel.projectExpenses.isEmpty {
-                emptyState
-            } else {
+            } else if !viewModel.projectExpenses.isEmpty {
                 expenseList
             }
 
@@ -73,7 +73,7 @@ struct ProjectExpensesTabView: View {
     private var totalCard: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(formatCurrency(viewModel.expenseTotal))
-                .font(.custom("Mohave-Bold", size: 28))
+                .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.accountingCost)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

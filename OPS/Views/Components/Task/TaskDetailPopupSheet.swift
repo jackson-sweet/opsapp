@@ -2,8 +2,8 @@
 //  TaskDetailPopupSheet.swift
 //  OPS
 //
-//  Half-sheet popup showing task details and action buttons.
-//  Presented when tapping a task in the project details task list.
+//  Task detail sheet shown from project details task list.
+//  Dates row tappable to open scheduler. Team row expands inline.
 //
 
 import SwiftUI
@@ -14,8 +14,18 @@ struct TaskDetailPopupSheet: View {
     let onComplete: (ProjectTask) -> Void
     let onReschedule: (ProjectTask) -> Void
     let onCancel: (ProjectTask) -> Void
+    let onScheduleTap: ((ProjectTask) -> Void)?
+    @Binding var selectedTeamMemberIds: Set<String>
+    let allTeamMembers: [TeamMember]
+    var isProjectCompleted: Bool = false
 
-    @Environment(\.dismiss) private var dismiss
+    @State private var showReopenAlert = false
+    @State private var showCancelAlert = false
+    @State private var showTeamPicker = false
+
+    private var isInactive: Bool {
+        task.status == .completed || task.status == .cancelled
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,22 +38,36 @@ struct TaskDetailPopupSheet: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    // MARK: - Header
                     header
-
-                    // MARK: - Info Rows
                     infoCard
-
-                    // MARK: - Actions
                     actionButtons
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 32)
             }
         }
+        .frame(maxWidth: .infinity)
         .background(OPSStyle.Colors.background)
-        .presentationDetents([.medium])
+        .environment(\.colorScheme, .dark)
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.hidden)
+        .presentationBackground(OPSStyle.Colors.background)
+        .alert("Reopen Task?", isPresented: $showReopenAlert) {
+            Button("Reopen", role: .destructive) {
+                onComplete(task)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Are you sure you want to reopen this task? It will be set back to active status.")
+        }
+        .alert("Cancel Task?", isPresented: $showCancelAlert) {
+            Button("Confirm", role: .destructive) {
+                onCancel(task)
+            }
+            Button("Leave Open", role: .cancel) {}
+        } message: {
+            Text("This task will be marked as cancelled.")
+        }
     }
 
     // MARK: - Header
@@ -65,6 +89,51 @@ struct TaskDetailPopupSheet: View {
             )
 
             Spacer()
+
+            // Inline status toggle
+            if task.status == .active {
+                Button(action: {
+                    onComplete(task)
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                        Text("COMPLETE")
+                            .font(OPSStyle.Typography.smallCaption)
+                    }
+                    .foregroundColor(OPSStyle.Colors.successStatus)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(OPSStyle.Colors.successStatus.opacity(0.1))
+                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                            .stroke(OPSStyle.Colors.successStatus.opacity(0.3), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+            } else if task.status == .completed {
+                Button(action: {
+                    showReopenAlert = true
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                        Text("REOPEN")
+                            .font(OPSStyle.Typography.smallCaption)
+                    }
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(OPSStyle.Colors.warningStatus.opacity(0.1))
+                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                            .stroke(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
         }
     }
 
@@ -72,16 +141,10 @@ struct TaskDetailPopupSheet: View {
 
     private var infoCard: some View {
         VStack(spacing: 0) {
-            // Dates row
-            infoRow(
-                icon: "calendar",
-                label: "DATES",
-                value: dateRangeText
-            )
+            datesRow
 
             divider
 
-            // Completed date (only if completed)
             if task.status == .completed, let completionDate = task.completionDate {
                 infoRow(
                     icon: "checkmark.circle",
@@ -91,17 +154,11 @@ struct TaskDetailPopupSheet: View {
                 divider
             }
 
-            // Team row
-            teamRow
+            teamHeader
 
-            divider
-
-            // Address row
-            infoRow(
-                icon: "mappin",
-                label: "ADDRESS",
-                value: task.project?.address ?? "No address"
-            )
+            if showTeamPicker {
+                teamMemberList
+            }
         }
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
@@ -111,12 +168,168 @@ struct TaskDetailPopupSheet: View {
         )
     }
 
+    // MARK: - Dates Row (tappable — opens scheduler)
+
+    private var datesRow: some View {
+        Button(action: {
+            onScheduleTap?(task)
+        }) {
+            HStack(spacing: 12) {
+                Image(systemName: "calendar")
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .frame(width: 20, alignment: .center)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("DATES")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text(dateRangeText)
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+
+                Spacer()
+
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
     private var dateRangeText: String {
         if let start = task.startDate, let end = task.endDate {
             return "\(DateHelper.simpleDateString(from: start)) → \(DateHelper.simpleDateString(from: end))"
         }
         return "Not scheduled"
     }
+
+    // MARK: - Team Header (tap to expand inline picker)
+
+    private var teamHeader: some View {
+        Button(action: {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showTeamPicker.toggle()
+            }
+        }) {
+            HStack(spacing: 12) {
+                Image(systemName: "person.2")
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .frame(width: 20, alignment: .center)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("TEAM")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                    if selectedTeamMemberIds.isEmpty {
+                        Text("Tap to assign team")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    } else {
+                        let selectedMembers = allTeamMembers.filter { selectedTeamMemberIds.contains($0.id) }
+                        if selectedMembers.isEmpty {
+                            // IDs exist but members not loaded yet — show count
+                            Text("\(selectedTeamMemberIds.count) assigned")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        } else {
+                            HStack(spacing: -6) {
+                                ForEach(selectedMembers.prefix(5), id: \.id) { member in
+                                    Circle()
+                                        .fill(OPSStyle.Colors.primaryAccent.opacity(0.3))
+                                        .frame(width: 28, height: 28)
+                                        .overlay(
+                                            Text(member.initials)
+                                                .font(OPSStyle.Typography.miniLabel)
+                                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                        )
+                                        .overlay(
+                                            Circle()
+                                                .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: 2)
+                                        )
+                                }
+                                if selectedMembers.count > 5 {
+                                    Text("+\(selectedMembers.count - 5)")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                        .padding(.leading, 8)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: showTeamPicker ? "chevron.down" : OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Inline Team Member List
+
+    private var teamMemberList: some View {
+        VStack(spacing: 0) {
+            ForEach(allTeamMembers, id: \.id) { member in
+                let isSelected = selectedTeamMemberIds.contains(member.id)
+
+                Button(action: {
+                    if isSelected {
+                        selectedTeamMemberIds.remove(member.id)
+                    } else {
+                        selectedTeamMemberIds.insert(member.id)
+                    }
+                }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+
+                        Circle()
+                            .fill(OPSStyle.Colors.primaryAccent.opacity(0.3))
+                            .frame(width: 32, height: 32)
+                            .overlay(
+                                Text(member.initials)
+                                    .font(OPSStyle.Typography.microLabel)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                            )
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(member.fullName)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                            Text(member.role)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(.bottom, 4)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    // MARK: - Static Info Row
 
     private func infoRow(icon: String, label: String, value: String) -> some View {
         HStack(spacing: 12) {
@@ -141,55 +354,6 @@ struct TaskDetailPopupSheet: View {
         .padding(.vertical, 12)
     }
 
-    private var teamRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "person.2")
-                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .frame(width: 20, alignment: .center)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("TEAM")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                if task.teamMembers.isEmpty {
-                    Text("No team assigned")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                } else {
-                    HStack(spacing: -6) {
-                        ForEach(task.teamMembers.prefix(5), id: \.id) { member in
-                            let memberInitials = "\(member.firstName.prefix(1).uppercased())\(member.lastName.prefix(1).uppercased())"
-                            Circle()
-                                .fill(OPSStyle.Colors.primaryAccent.opacity(0.3))
-                                .frame(width: 28, height: 28)
-                                .overlay(
-                                    Text(memberInitials)
-                                        .font(.custom("Kosugi-Regular", size: 10))
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                )
-                                .overlay(
-                                    Circle()
-                                        .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: 2)
-                                )
-                        }
-                        if task.teamMembers.count > 5 {
-                            Text("+\(task.teamMembers.count - 5)")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                .padding(.leading, 8)
-                        }
-                    }
-                }
-            }
-
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-
     private var divider: some View {
         Rectangle()
             .fill(OPSStyle.Colors.cardBorder)
@@ -201,84 +365,59 @@ struct TaskDetailPopupSheet: View {
 
     private var actionButtons: some View {
         VStack(spacing: 10) {
-            // SELECT THIS TASK
-            Button(action: {
-                onSelect(task)
-                dismiss()
-            }) {
-                Text("SELECT THIS TASK")
-                    .font(OPSStyle.Typography.captionBold)
-                    .tracking(0.5)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(OPSStyle.Colors.primaryAccent)
-                    .cornerRadius(OPSStyle.Layout.buttonRadius)
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            HStack(spacing: 10) {
-                // COMPLETE / REOPEN
-                let isCompleted = task.status == .completed
+            if isInactive {
                 Button(action: {
-                    onComplete(task)
-                    dismiss()
+                    showReopenAlert = true
                 }) {
-                    Text(isCompleted ? "REOPEN" : "COMPLETE")
+                    Text("REOPEN TO SELECT")
                         .font(OPSStyle.Typography.captionBold)
                         .tracking(0.5)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .foregroundColor(OPSStyle.Colors.warningStatus)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(OPSStyle.Colors.warningStatus.opacity(0.1))
                         .cornerRadius(OPSStyle.Layout.buttonRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                .stroke(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: 1)
                         )
                 }
                 .buttonStyle(PlainButtonStyle())
-
-                // RESCHEDULE
+            } else {
                 Button(action: {
-                    onReschedule(task)
-                    dismiss()
+                    onSelect(task)
                 }) {
-                    Text("RESCHEDULE")
+                    Text("SELECT THIS TASK")
                         .font(OPSStyle.Typography.captionBold)
                         .tracking(0.5)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .background(OPSStyle.Colors.primaryAccent)
                         .cornerRadius(OPSStyle.Layout.buttonRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                        )
                 }
                 .buttonStyle(PlainButtonStyle())
             }
 
-            // CANCEL TASK
-            Button(action: {
-                onCancel(task)
-                dismiss()
-            }) {
-                Text("CANCEL TASK")
-                    .font(OPSStyle.Typography.captionBold)
-                    .tracking(0.5)
-                    .foregroundColor(OPSStyle.Colors.errorStatus)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(OPSStyle.Colors.errorStatus.opacity(0.1))
-                    .cornerRadius(OPSStyle.Layout.buttonRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                            .stroke(OPSStyle.Colors.errorStatus.opacity(0.3), lineWidth: 1)
-                    )
+            if task.status == .active && !isProjectCompleted {
+                Button(action: {
+                    showCancelAlert = true
+                }) {
+                    Text("CANCEL TASK")
+                        .font(OPSStyle.Typography.captionBold)
+                        .tracking(0.5)
+                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(OPSStyle.Colors.errorStatus.opacity(0.1))
+                        .cornerRadius(OPSStyle.Layout.buttonRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                                .stroke(OPSStyle.Colors.errorStatus.opacity(0.3), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
             }
-            .buttonStyle(PlainButtonStyle())
         }
     }
 }

@@ -17,23 +17,22 @@ struct ProjectMapHeader: View {
     let nearbyProjects: [NearbyProjectPin]
     let onMapTap: () -> Void
 
-    static let mapHeight: CGFloat = 280
+    static let mapHeight: CGFloat = 320
 
     var body: some View {
         ZStack(alignment: .bottom) {
             mapView
-            // Gradient at bottom — covers Mapbox watermark and softens map edge
+            // Gradient at bottom — just enough to cover Mapbox watermark
             LinearGradient(
                 gradient: Gradient(stops: [
                     .init(color: .clear, location: 0),
-                    .init(color: OPSStyle.Colors.background.opacity(0.4), location: 0.3),
-                    .init(color: OPSStyle.Colors.background.opacity(0.8), location: 0.7),
+                    .init(color: OPSStyle.Colors.background.opacity(0.6), location: 0.5),
                     .init(color: OPSStyle.Colors.background, location: 1.0)
                 ]),
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: Self.mapHeight * 0.4)
+            .frame(height: 40)
             .allowsHitTesting(false)
         }
         .frame(height: Self.mapHeight)
@@ -80,21 +79,80 @@ struct ProjectMapHeader: View {
 
 struct ProjectTitleOverlay: View {
     let project: Project
+    var isEditingTitle: Bool = false
+    @Binding var editedTitle: String
+    var canEdit: Bool = false
+    var onStartEditingTitle: (() -> Void)? = nil
+    var onSaveTitle: (() -> Void)? = nil
+    var onClientLongPress: (() -> Void)? = nil
+
+    @FocusState private var titleFieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(project.title.uppercased())
-                .font(.custom("Mohave-SemiBold", size: 28))
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .lineLimit(2)
+            if isEditingTitle {
+                // Editable title field
+                HStack(spacing: 8) {
+                    TextField("", text: $editedTitle)
+                        .font(OPSStyle.Typography.title)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .textInputAutocapitalization(.characters)
+                        .focused($titleFieldFocused)
+                        .onAppear { titleFieldFocused = true }
+                        .onSubmit {
+                            onSaveTitle?()
+                        }
 
+                    Button(action: { onSaveTitle?() }) {
+                        Text("SAVE")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(OPSStyle.Colors.primaryAccent.opacity(0.15))
+                            .cornerRadius(OPSStyle.Layout.buttonRadius)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .padding(.bottom, 2)
+            } else {
+                // Static title — long press to edit
+                Text(project.title.uppercased())
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .lineLimit(2)
+                    .onLongPressGesture {
+                        if canEdit {
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.impactOccurred()
+                            onStartEditingTitle?()
+                        }
+                    }
+            }
+
+            // Client name — long press to change
             Text(project.effectiveClientName.uppercased())
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .lineLimit(1)
+                .onLongPressGesture {
+                    if canEdit {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                        onClientLongPress?()
+                    }
+                }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
+    }
+}
+
+// Convenience init for backward compatibility (no editing)
+extension ProjectTitleOverlay {
+    init(project: Project) {
+        self.project = project
+        self._editedTitle = .constant("")
     }
 }

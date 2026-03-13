@@ -172,6 +172,7 @@ struct TaskDetailsView: View {
                 }
             }
         }
+        .trackScreen("TaskDetails")
         .navigationBarHidden(true)
         .onAppear {
             // Track screen view for analytics
@@ -253,7 +254,7 @@ struct TaskDetailsView: View {
             Text("This will permanently delete this task. This action cannot be undone.")
         }
     }
-    
+
     // MARK: - Location Section
 
     private var locationSection: some View {

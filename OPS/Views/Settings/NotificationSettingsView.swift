@@ -138,6 +138,7 @@ struct NotificationSettingsView: View {
                 }
             }
         }
+        .trackScreen("Settings.Notifications")
         .navigationBarBackButtonHidden(true)
         .onAppear {
             notificationManager.getAuthorizationStatus()

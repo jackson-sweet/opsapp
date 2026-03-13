@@ -149,6 +149,7 @@ struct ProjectSettingsView: View {
                 }
             }
         }
+        .trackScreen("Settings.Projects")
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showTaskSettings) {
             NavigationStack {

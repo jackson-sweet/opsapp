@@ -76,23 +76,13 @@ struct FeatureRequestView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                 
                                 ZStack(alignment: .topLeading) {
-                                    // iOS 16 compatibility handling 
-                                    ZStack {
-                                        OPSStyle.Colors.cardBackgroundDark
-                                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                        
-                                        TextEditor(text: $featureDescription)
-                                            .font(OPSStyle.Typography.body)
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
-                                            .background(Color.clear)
-                                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                    }
-                                    .frame(height: 150)
-                                    .padding(12)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                    )
+                                    TextEditor(text: $featureDescription)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .scrollContentBackground(.hidden)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .frame(minHeight: 150)
 
                                     if featureDescription.isEmpty {
                                         Text("Please describe the feature you'd like to see and how it would help you...")
@@ -103,6 +93,12 @@ struct FeatureRequestView: View {
                                             .allowsHitTesting(false)
                                     }
                                 }
+                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                )
                             }
                             .padding(.horizontal, 20)
                             

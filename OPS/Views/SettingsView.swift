@@ -36,7 +36,10 @@ struct SettingsView: View {
     @State private var showReportIssue = false
     @State private var showDeveloperDashboard = false
     @State private var showAllPhotosGallery = false
+    @State private var showMyExpenses = false
+    @State private var showReviewExpenses = false
     @State private var showPermissions = false
+    @State private var showFeatureGateAlert = false
 
     // Role checks
     private var isAdmin: Bool {
@@ -49,6 +52,10 @@ struct SettingsView: View {
 
     private var hasPipelineAccess: Bool {
         permissionStore.can("pipeline.view")
+    }
+
+    private var isPipelineGated: Bool {
+        !permissionStore.isFeatureEnabled("pipeline")
     }
 
     private var shouldShowDeveloperOptions: Bool {
@@ -136,6 +143,18 @@ struct SettingsView: View {
                 destination: AnyView(AllPhotosGalleryView().environmentObject(dataController).environmentObject(appState))
             )
         )
+
+        if permissionStore.can("expenses.view", requiredScope: "own") {
+            items.append(
+                SearchableSettingItem(
+                    title: "My Expenses",
+                    categoryTitle: "Data",
+                    categoryIcon: "dollarsign.circle",
+                    keywords: ["expenses", "receipts", "spending", "money"],
+                    destination: AnyView(MyExpensesView().environmentObject(dataController))
+                )
+            )
+        }
 
         // Business items (pipeline permission-gated)
         if hasPipelineAccess {
@@ -286,11 +305,31 @@ struct SettingsView: View {
                                     title: "Photos",
                                     action: { showAllPhotosGallery = true }
                                 )
+
+                                if permissionStore.can("expenses.view", requiredScope: "own") {
+                                    sectionDivider
+
+                                    settingsRow(
+                                        icon: "dollarsign.circle",
+                                        title: "My Expenses",
+                                        action: { showMyExpenses = true }
+                                    )
+                                }
+
+                                if permissionStore.can("expenses.approve") {
+                                    sectionDivider
+
+                                    settingsRow(
+                                        icon: "doc.text.magnifyingglass",
+                                        title: "Review Expenses",
+                                        action: { showReviewExpenses = true }
+                                    )
+                                }
                             }
                             .padding(.horizontal, 20)
 
                             // Business section (admin/office crew, or pipeline permission holders)
-                            if isAdminOrOffice || hasPipelineAccess {
+                            if isAdminOrOffice || hasPipelineAccess || isPipelineGated {
                                 settingsSection(title: "BUSINESS") {
                                     if hasPipelineAccess {
                                         settingsRow(
@@ -307,7 +346,23 @@ struct SettingsView: View {
                                             action: { showIntegrations = true }
                                         )
 
-                                        if isAdminOrOffice {
+                                        if isAdminOrOffice || isAdmin {
+                                            sectionDivider
+                                        }
+                                    } else if isPipelineGated {
+                                        gatedSettingsRow(
+                                            icon: OPSStyle.Icons.productTag,
+                                            title: "Products & Services"
+                                        )
+
+                                        sectionDivider
+
+                                        gatedSettingsRow(
+                                            icon: OPSStyle.Icons.accountingChart,
+                                            title: "Integrations"
+                                        )
+
+                                        if isAdminOrOffice || isAdmin {
                                             sectionDivider
                                         }
                                     }
@@ -349,13 +404,14 @@ struct SettingsView: View {
                                     action: { showReportIssue = true }
                                 )
 
-                                sectionDivider
-
-                                settingsRow(
-                                    icon: "graduationcap",
-                                    title: "Restart Tutorial",
-                                    action: { restartTutorial() }
-                                )
+                                // Hidden for now — uncomment to re-enable
+                                // sectionDivider
+                                //
+                                // settingsRow(
+                                //     icon: "graduationcap",
+                                //     title: "Restart Tutorial",
+                                //     action: { restartTutorial() }
+                                // )
                             }
                             .padding(.horizontal, 20)
 
@@ -386,6 +442,7 @@ struct SettingsView: View {
                 }
             }
         }
+        .trackScreen("Settings")
         .onAppear {
             AnalyticsManager.shared.trackScreenView(screenName: .settings, screenClass: "SettingsView")
             developerModeEnabled = UserDefaults.standard.bool(forKey: "developerModeEnabled")
@@ -406,6 +463,11 @@ struct SettingsView: View {
             }
         } message: {
             Text("Are you sure you want to log out of your account?")
+        }
+        .alert("In Testing", isPresented: $showFeatureGateAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("This feature is currently in testing. Reach out if you'd like to be added to the testing group.")
         }
         // MARK: - Navigation Covers
         .fullScreenCover(isPresented: $showProfileSettings) {
@@ -492,6 +554,18 @@ struct SettingsView: View {
                 AllPhotosGalleryView()
                     .environmentObject(dataController)
                     .environmentObject(appState)
+            }
+        }
+        .fullScreenCover(isPresented: $showMyExpenses) {
+            NavigationStack {
+                MyExpensesView()
+                    .environmentObject(dataController)
+            }
+        }
+        .fullScreenCover(isPresented: $showReviewExpenses) {
+            NavigationStack {
+                ExpensesListView()
+                    .environmentObject(dataController)
             }
         }
         .fullScreenCover(isPresented: $showPermissions) {
@@ -701,6 +775,40 @@ struct SettingsView: View {
             .padding(.vertical, 14)
             .padding(.horizontal, 16)
             .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Gated Row (feature-flagged)
+
+    private func gatedSettingsRow(icon: String, title: String) -> some View {
+        Button(action: { showFeatureGateAlert = true }) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .frame(width: 28, alignment: .center)
+
+                Text(title)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                Spacer()
+
+                Text("IN TESTING")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule()
+                            .fill(OPSStyle.Colors.tertiaryText.opacity(0.15))
+                    )
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .contentShape(Rectangle())
+            .opacity(0.4)
         }
         .buttonStyle(PlainButtonStyle())
     }

@@ -18,9 +18,11 @@ struct AppSettingsView: View {
     @State private var showProjectSettings = false
     @State private var showInventorySettings = false
     @State private var showDeveloperDashboard = false
+    @State private var showWizardManagement = false
     @State private var developerModeEnabled: Bool = false
     @State private var developerModeExplicitlyDisabled: Bool = false
     @State private var isRestartingTutorial = false
+    @Environment(\.wizardStateManager) private var wizardStateManager
 
     private var shouldShowDeveloperOptions: Bool {
         // If explicitly disabled, hide even in DEBUG builds
@@ -84,6 +86,15 @@ struct AppSettingsView: View {
                             settingsSection(title: "MANAGEMENT") {
                                 settingsRow(icon: "shippingbox", title: "Inventory Settings") {
                                     showInventorySettings = true
+                                }
+                            }
+                        }
+
+                        // SETUP GUIDES section
+                        if wizardStateManager != nil {
+                            settingsSection(title: "SETUP GUIDES") {
+                                settingsRow(icon: "book.circle", title: "Setup Guides") {
+                                    showWizardManagement = true
                                 }
                             }
                         }
@@ -160,6 +171,16 @@ struct AppSettingsView: View {
             NavigationStack {
                 DeveloperDashboard()
                     .environmentObject(dataController)
+                    .environment(\.wizardStateManager, wizardStateManager)
+            }
+        }
+        .fullScreenCover(isPresented: $showWizardManagement) {
+            if let stateManager = wizardStateManager {
+                NavigationStack {
+                    WizardManagementView(stateManager: stateManager)
+                        .environmentObject(dataController)
+                        .environmentObject(permissionStore)
+                }
             }
         }
         // Re-check developer mode state when dashboard dismisses (in case user tapped "Exit Dev Mode")

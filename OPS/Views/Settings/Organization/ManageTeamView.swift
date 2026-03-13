@@ -182,6 +182,7 @@ struct ManageTeamView: View {
                 }
             }
         }
+        .trackScreen("Settings.ManageTeam")
         .navigationBarBackButtonHidden(true)
         .onAppear {
             loadTeamMembers()
@@ -278,8 +279,8 @@ struct ManageTeamView: View {
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         }
 
-                        if member.role == .admin {
-                            Text("ADMIN")
+                        if member.role == .admin || member.role == .owner {
+                            Text(member.role.displayName.uppercased())
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
                                 .padding(.horizontal, 6)
@@ -411,8 +412,8 @@ struct ManageTeamView: View {
                 // Sort: current user first, then admins, then alphabetical
                 if user1.id == dataController.currentUser?.id { return true }
                 if user2.id == dataController.currentUser?.id { return false }
-                if user1.role == .admin && user2.role != .admin { return true }
-                if user1.role != .admin && user2.role == .admin { return false }
+                if user1.role.hierarchy < user2.role.hierarchy { return true }
+                if user1.role.hierarchy > user2.role.hierarchy { return false }
                 return user1.firstName < user2.firstName
             }
 
@@ -424,15 +425,7 @@ struct ManageTeamView: View {
     private func updateMemberRole(_ member: User, newRole: UserRole) async {
         errorMessage = nil
 
-        let employeeTypeValue: String
-        switch newRole {
-        case .fieldCrew:
-            employeeTypeValue = "Field Crew"
-        case .officeCrew:
-            employeeTypeValue = "Office Crew"
-        case .admin:
-            employeeTypeValue = "Admin"
-        }
+        let employeeTypeValue = newRole.displayName
 
         do {
             try await dataController.syncManager.updateUserFields(
@@ -789,9 +782,9 @@ struct EditTeamMemberSheet: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
-                OPSStyle.Colors.background
+                OPSStyle.Colors.backgroundGradient
                     .ignoresSafeArea()
 
                 ScrollView {
@@ -822,30 +815,14 @@ struct EditTeamMemberSheet: View {
                             title: "Employee Role"
                         ) {
                             VStack(spacing: 12) {
-                                roleOption(
-                                    role: .fieldCrew,
-                                    title: "Field Crew",
-                                    description: "Works on job sites. Can view assigned projects, update task status, and log work. Limited access to scheduling and client info."
-                                )
-
-                                roleOption(
-                                    role: .officeCrew,
-                                    title: "Office Crew",
-                                    description: "Manages operations from the office. Full access to scheduling, client management, project creation, and team coordination."
-                                )
+                                ForEach(UserRole.allCases.sorted(by: { $0.hierarchy < $1.hierarchy }), id: \.rawValue) { role in
+                                    roleOption(
+                                        role: role,
+                                        title: role.displayName,
+                                        description: role.roleDescription
+                                    )
+                                }
                             }
-                        }
-                        .padding(.horizontal, 20)
-
-                        // Info text
-                        HStack(spacing: 8) {
-                            Image(systemName: "info.circle")
-                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                            Text("Admin status is managed separately through company settings.")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
                         .padding(.horizontal, 20)
                     }

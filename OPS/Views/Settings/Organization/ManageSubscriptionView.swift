@@ -92,6 +92,7 @@ struct ManageSubscriptionView: View {
                 }
             }
         }
+        .trackScreen("Settings.Subscription")
         .navigationBarBackButtonHidden(true)
         .sheet(isPresented: $showSeatManagement) {
             SeatManagementView()

@@ -54,6 +54,7 @@ struct PermissionsManagementView: View {
                 }
             }
         }
+        .trackScreen("Settings.Permissions")
         .navigationBarBackButtonHidden(true)
     }
 }

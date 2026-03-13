@@ -65,6 +65,7 @@ struct IntegrationsSettingsView: View {
                 }
             }
         }
+        .trackScreen("Settings.Integrations")
         .navigationBarHidden(true)
         .sheet(isPresented: $showQuickBooksAuth) {
             oauthPlaceholder(provider: "QuickBooks Online")
@@ -144,7 +145,7 @@ struct IntegrationsSettingsView: View {
 
     private func oauthPlaceholder(provider: String) -> some View {
         ZStack {
-            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
 
             VStack(spacing: 24) {
                 Spacer()

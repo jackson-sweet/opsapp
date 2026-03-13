@@ -206,6 +206,7 @@ struct OrganizationDetailsView: View {
                 }
             }
         }
+        .trackScreen("Settings.OrganizationDetails")
         .standardSheetToolbar(
             title: "Organization Details",
             actionText: "Save",

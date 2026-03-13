@@ -24,6 +24,9 @@ struct MapSettingsView: View {
     @AppStorage("mapAutoCenter") private var mapAutoCenter = true
     @AppStorage("mapAutoCenterTime") private var mapAutoCenterTime = "10"
 
+    // ── Default Filter ──
+    @AppStorage("mapDefaultFilter") private var mapDefaultFilter = ""
+
     // ── Navigation ──
     @AppStorage("mapSpeedZoom") private var mapSpeedZoom = true
 
@@ -70,6 +73,24 @@ struct MapSettingsView: View {
                                 description: "Buildings appear in 3D when you tilt the map",
                                 isOn: $map3DBuildings
                             )
+                        }
+
+                        // ── DEFAULT VIEW ──
+                        settingsSection(title: "DEFAULT VIEW") {
+                            settingsRow(
+                                title: "Default Filter",
+                                description: "Which projects show when you open the map"
+                            ) {
+                                SegmentedControl(
+                                    selection: $mapDefaultFilter,
+                                    options: [
+                                        ("", "Auto"),
+                                        ("today", "Today"),
+                                        ("active", "Active"),
+                                        ("all", "All")
+                                    ]
+                                )
+                            }
                         }
 
                         // ── CAMERA BEHAVIOR ──
@@ -169,6 +190,7 @@ struct MapSettingsView: View {
                 }
             }
         }
+        .trackScreen("Settings.Map")
         .navigationBarBackButtonHidden(true)
         .onAppear {
             locationManager.requestPermissionIfNeeded(requestAlways: false)
@@ -202,18 +224,18 @@ struct MapSettingsView: View {
                 // Pipeline status colors
                 VStack(alignment: .leading, spacing: 12) {
                     Text("CENTER DOT — PIPELINE STATUS")
-                        .font(Font.custom("Kosugi-Regular", size: 10))
+                        .font(OPSStyle.Typography.miniLabel)
                         .tracking(0.3)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
                     legendColorGrid(items: [
-                        ("RFQ", "#BCBCBC"),
-                        ("Estimated", "#B5A381"),
-                        ("Accepted", "#9DB582"),
-                        ("In Progress", "#8195B5"),
-                        ("Completed", "#B58289"),
-                        ("Closed", "#E9E9E9"),
-                        ("Archived", "#A182B5"),
+                        ("RFQ", OPSStyle.Colors.statusColor(for: .rfq)),
+                        ("Estimated", OPSStyle.Colors.statusColor(for: .estimated)),
+                        ("Accepted", OPSStyle.Colors.statusColor(for: .accepted)),
+                        ("In Progress", OPSStyle.Colors.statusColor(for: .inProgress)),
+                        ("Completed", OPSStyle.Colors.statusColor(for: .completed)),
+                        ("Closed", OPSStyle.Colors.statusColor(for: .closed)),
+                        ("Archived", OPSStyle.Colors.statusColor(for: .archived)),
                     ])
                 }
                 .padding(16)
@@ -223,17 +245,17 @@ struct MapSettingsView: View {
                 // Task type colors
                 VStack(alignment: .leading, spacing: 12) {
                     Text("OUTER RING — TASK TYPES")
-                        .font(Font.custom("Kosugi-Regular", size: 10))
+                        .font(OPSStyle.Typography.miniLabel)
                         .tracking(0.3)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
                     legendColorGrid(items: [
-                        ("Site Estimate", "#A5B368"),
-                        ("Quote/Proposal", "#59779F"),
-                        ("Material Order", "#C4A868"),
-                        ("Installation", "#931A32"),
-                        ("Inspection", "#7B68A6"),
-                        ("Completion", "#4A4A4A"),
+                        ("Site Estimate", OPSStyle.Colors.successStatus),
+                        ("Quote/Proposal", OPSStyle.Colors.primaryAccent),
+                        ("Material Order", OPSStyle.Colors.warningStatus),
+                        ("Installation", OPSStyle.Colors.errorStatus),
+                        ("Inspection", Color(hex: "#7B68A6") ?? OPSStyle.Colors.primaryAccent),
+                        ("Completion", OPSStyle.Colors.tertiaryText),
                     ])
 
                     Text("Task type colors are customizable in your company settings.")
@@ -260,25 +282,25 @@ struct MapSettingsView: View {
                 // Outer ring — segmented
                 Circle()
                     .trim(from: 0, to: 0.3)
-                    .stroke(Color(hex: "#A5B368") ?? .green, lineWidth: 4)
+                    .stroke(OPSStyle.Colors.successStatus, lineWidth: 4)
                     .frame(width: 56, height: 56)
                     .rotationEffect(.degrees(-90))
 
                 Circle()
                     .trim(from: 0.33, to: 0.63)
-                    .stroke(Color(hex: "#59779F") ?? .blue, lineWidth: 4)
+                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 4)
                     .frame(width: 56, height: 56)
                     .rotationEffect(.degrees(-90))
 
                 Circle()
                     .trim(from: 0.66, to: 0.96)
-                    .stroke(Color(hex: "#931A32") ?? .red, lineWidth: 4)
+                    .stroke(OPSStyle.Colors.errorStatus, lineWidth: 4)
                     .frame(width: 56, height: 56)
                     .rotationEffect(.degrees(-90))
 
                 // Center dot — status color
                 Circle()
-                    .fill(Color(hex: "#8195B5") ?? .blue)
+                    .fill(OPSStyle.Colors.pipelineStageColor(for: .quoting))
                     .frame(width: 32, height: 32)
             }
 
@@ -289,7 +311,7 @@ struct MapSettingsView: View {
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Text("OUTER RING = TASK TYPES")
-                        .font(Font.custom("Kosugi-Regular", size: 10))
+                        .font(OPSStyle.Typography.miniLabel)
                         .tracking(0.3)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
@@ -299,7 +321,7 @@ struct MapSettingsView: View {
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Text("CENTER DOT = STATUS")
-                        .font(Font.custom("Kosugi-Regular", size: 10))
+                        .font(OPSStyle.Typography.miniLabel)
                         .tracking(0.3)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
@@ -308,7 +330,7 @@ struct MapSettingsView: View {
     }
 
     /// Grid of color swatches with labels.
-    private func legendColorGrid(items: [(String, String)]) -> some View {
+    private func legendColorGrid(items: [(String, Color)]) -> some View {
         let columns = [
             GridItem(.flexible(), spacing: 8),
             GridItem(.flexible(), spacing: 8)
@@ -318,11 +340,11 @@ struct MapSettingsView: View {
             ForEach(items, id: \.0) { item in
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(Color(hex: item.1) ?? .gray)
+                        .fill(item.1)
                         .frame(width: 10, height: 10)
 
                     Text(item.0)
-                        .font(Font.custom("Mohave-Regular", size: 13))
+                        .font(OPSStyle.Typography.cardBody)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
                 }
@@ -508,6 +530,7 @@ struct MapSettingsView: View {
     private func resetToDefaults() {
         mapStyleRaw = "dark"
         map3DBuildings = true
+        mapDefaultFilter = ""
         mapOrientationRaw = "northUp"
         mapAutoZoom = true
         mapZoomLevel = "medium"

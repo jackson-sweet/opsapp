@@ -293,6 +293,8 @@ struct PhotoGalleryViewer: View {
 
 // MARK: - Zoomable Photo View
 
+/// Gallery variant of ZoomablePhotoView with download-prompt for remote photos.
+/// Uses UIScrollView under the hood for native iOS Photos zoom/pan behavior.
 struct GalleryZoomablePhotoView: View {
     let url: String
     let isOnDevice: Bool
@@ -301,69 +303,13 @@ struct GalleryZoomablePhotoView: View {
 
     @State private var image: UIImage?
     @State private var isLoading = true
-    @State private var scale: CGFloat = 1.0
-    @State private var lastScale: CGFloat = 1.0
-    @State private var offset: CGSize = .zero
-    @State private var lastOffset: CGSize = .zero
 
     var body: some View {
         ZStack {
             OPSStyle.Colors.background
 
             if let image = image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .scaleEffect(scale)
-                    .offset(offset)
-                    .gesture(
-                        SimultaneousGesture(
-                            MagnificationGesture()
-                                .onChanged { value in
-                                    let newScale = lastScale * value
-                                    scale = min(max(newScale, 1), 5)
-                                }
-                                .onEnded { _ in
-                                    lastScale = scale
-                                    if scale <= 1 {
-                                        withAnimation(OPSStyle.Animation.fast) {
-                                            scale = 1
-                                            lastScale = 1
-                                            offset = .zero
-                                            lastOffset = .zero
-                                        }
-                                    }
-                                },
-                            DragGesture()
-                                .onChanged { value in
-                                    if scale > 1 {
-                                        offset = CGSize(
-                                            width: lastOffset.width + value.translation.width,
-                                            height: lastOffset.height + value.translation.height
-                                        )
-                                    }
-                                }
-                                .onEnded { _ in
-                                    lastOffset = offset
-                                }
-                        )
-                    )
-                    .onTapGesture(count: 2) {
-                        withAnimation(OPSStyle.Animation.fast) {
-                            if scale > 1 {
-                                scale = 1
-                                lastScale = 1
-                                offset = .zero
-                                lastOffset = .zero
-                            } else {
-                                scale = 2
-                                lastScale = 2
-                            }
-                        }
-                    }
-                    .onTapGesture(count: 1) {
-                        onTap()
-                    }
+                GalleryNativeZoomableImageView(image: image, onSingleTap: onTap)
             } else if !isOnDevice {
                 // Remote photo — download prompt
                 VStack(spacing: OPSStyle.Layout.spacing3) {
@@ -373,9 +319,7 @@ struct GalleryZoomablePhotoView: View {
 
                     Button(action: {
                         Task {
-                            // Download via manager (handles caching + progress)
                             _ = await PhotoDownloadManager.shared.downloadPhoto(url)
-                            // Reload from disk after download completes
                             loadImage()
                         }
                     }) {
@@ -404,21 +348,18 @@ struct GalleryZoomablePhotoView: View {
         isLoading = true
         let cacheKey = url.hasPrefix("//") ? "https:" + url : url
 
-        // Check asset catalog
         if !url.contains("://") && !url.hasPrefix("//"), let assetImage = UIImage(named: url) {
             image = assetImage
             isLoading = false
             return
         }
 
-        // Memory cache
         if let cached = ImageCache.shared.get(forKey: cacheKey) {
             image = cached
             isLoading = false
             return
         }
 
-        // File system
         if let loaded = ImageFileManager.shared.loadImage(localID: url) ?? ImageFileManager.shared.loadImage(localID: cacheKey) {
             image = loaded
             ImageCache.shared.set(loaded, forKey: cacheKey)
@@ -426,7 +367,6 @@ struct GalleryZoomablePhotoView: View {
             return
         }
 
-        // Network fallback
         guard let imageURL = URL(string: cacheKey) else { isLoading = false; return }
         URLSession.shared.dataTask(with: imageURL) { data, _, _ in
             DispatchQueue.main.async {
@@ -438,6 +378,180 @@ struct GalleryZoomablePhotoView: View {
                 }
             }
         }.resume()
+    }
+}
+
+/// UIKit-backed zoomable image for the gallery viewer.
+/// Identical behavior to NativeZoomableImageView in ZoomablePhotoView.swift.
+private struct GalleryNativeZoomableImageView: UIViewRepresentable {
+    let image: UIImage
+    var onSingleTap: (() -> Void)?
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onSingleTap: onSingleTap)
+    }
+
+    func makeUIView(context: Context) -> GalleryZoomingScrollView {
+        let scrollView = GalleryZoomingScrollView()
+        scrollView.delegate = context.coordinator
+        scrollView.minimumZoomScale = 1.0
+        scrollView.maximumZoomScale = 5.0
+        scrollView.bouncesZoom = true
+        scrollView.isScrollEnabled = false
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.backgroundColor = .clear
+        scrollView.contentInsetAdjustmentBehavior = .never
+
+        let imageView = UIImageView(image: image)
+        imageView.contentMode = .scaleAspectFit
+        scrollView.addSubview(imageView)
+        scrollView.zoomImageView = imageView
+        context.coordinator.imageView = imageView
+
+        // Snap back to 1× when pinch ends
+        if let pinchGR = scrollView.pinchGestureRecognizer {
+            pinchGR.addTarget(
+                context.coordinator,
+                action: #selector(Coordinator.handlePinch(_:))
+            )
+        }
+
+        let doubleTap = UITapGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleDoubleTap(_:))
+        )
+        doubleTap.numberOfTapsRequired = 2
+        scrollView.addGestureRecognizer(doubleTap)
+
+        let singleTap = UITapGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleSingleTap(_:))
+        )
+        singleTap.numberOfTapsRequired = 1
+        singleTap.require(toFail: doubleTap)
+        scrollView.addGestureRecognizer(singleTap)
+
+        return scrollView
+    }
+
+    func updateUIView(_ scrollView: GalleryZoomingScrollView, context: Context) {
+        context.coordinator.onSingleTap = onSingleTap
+        guard let imageView = context.coordinator.imageView else { return }
+
+        if imageView.image !== image {
+            imageView.image = image
+            scrollView.zoomScale = 1.0
+            scrollView.isScrollEnabled = false
+            scrollView.setNeedsLayout()
+        }
+    }
+
+    class GalleryZoomingScrollView: UIScrollView {
+        weak var zoomImageView: UIImageView?
+        var lastLayoutSize: CGSize = .zero
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            guard let imageView = zoomImageView, let image = imageView.image else { return }
+            let boundsSize = bounds.size
+            guard boundsSize.width > 0, boundsSize.height > 0 else { return }
+            guard zoomScale <= minimumZoomScale + 0.01 else { return }
+            guard boundsSize != lastLayoutSize else { return }
+            lastLayoutSize = boundsSize
+
+            let imageSize = image.size
+            let wScale = boundsSize.width / imageSize.width
+            let hScale = boundsSize.height / imageSize.height
+            let fitScale = min(wScale, hScale)
+            let fittedW = imageSize.width * fitScale
+            let fittedH = imageSize.height * fitScale
+
+            imageView.frame = CGRect(
+                x: (boundsSize.width - fittedW) / 2,
+                y: (boundsSize.height - fittedH) / 2,
+                width: fittedW,
+                height: fittedH
+            )
+            contentSize = CGSize(width: fittedW, height: fittedH)
+        }
+    }
+
+    class Coordinator: NSObject, UIScrollViewDelegate {
+        weak var imageView: UIImageView?
+        var onSingleTap: (() -> Void)?
+
+        init(onSingleTap: (() -> Void)?) {
+            self.onSingleTap = onSingleTap
+        }
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+            imageView
+        }
+
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            guard let imageView = imageView else { return }
+            let boundsSize = scrollView.bounds.size
+            let frameSize = imageView.frame.size
+            let atMinimum = scrollView.zoomScale <= scrollView.minimumZoomScale + 0.01
+
+            if atMinimum {
+                scrollView.contentInset = .zero
+                scrollView.isScrollEnabled = false
+            } else {
+                let xInset = max(0, (boundsSize.width - frameSize.width) / 2)
+                let yInset = max(0, (boundsSize.height - frameSize.height) / 2)
+                scrollView.contentInset = UIEdgeInsets(
+                    top: yInset, left: xInset, bottom: yInset, right: xInset
+                )
+                scrollView.isScrollEnabled = true
+            }
+        }
+
+        func scrollViewDidEndZooming(
+            _ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat
+        ) {
+            if scale <= scrollView.minimumZoomScale + 0.01 {
+                scrollView.contentInset = .zero
+                scrollView.isScrollEnabled = false
+                if let sv = scrollView as? GalleryZoomingScrollView {
+                    sv.lastLayoutSize = .zero
+                    sv.setNeedsLayout()
+                    sv.layoutIfNeeded()
+                }
+            }
+        }
+
+        /// Snaps back to 1× when pinch gesture ends.
+        @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+            guard gesture.state == .ended || gesture.state == .cancelled else { return }
+            guard let scrollView = gesture.view as? UIScrollView else { return }
+
+            scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
+        }
+
+        @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
+            guard let scrollView = gesture.view as? UIScrollView else { return }
+            if scrollView.zoomScale > scrollView.minimumZoomScale + 0.01 {
+                scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
+            } else {
+                let location = gesture.location(in: imageView)
+                let targetScale: CGFloat = 2.5
+                let w = scrollView.bounds.width / targetScale
+                let h = scrollView.bounds.height / targetScale
+                let rect = CGRect(
+                    x: location.x - w / 2,
+                    y: location.y - h / 2,
+                    width: w,
+                    height: h
+                )
+                scrollView.zoom(to: rect, animated: true)
+            }
+        }
+
+        @objc func handleSingleTap(_ gesture: UITapGestureRecognizer) {
+            onSingleTap?()
+        }
     }
 }
 

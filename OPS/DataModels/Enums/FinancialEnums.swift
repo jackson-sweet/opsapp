@@ -131,6 +131,45 @@ enum ExpenseStatus: String, Codable, CaseIterable {
     var isTerminal: Bool { self == .approved || self == .reimbursed }
 }
 
+// MARK: - Expense Batch Status
+
+enum ExpenseBatchStatus: String, Codable, CaseIterable {
+    case pendingReview     = "pending_review"
+    case submitted         = "submitted"
+    case approved          = "approved"
+    case partiallyApproved = "partially_approved"
+    case rejected          = "rejected"
+    case autoApproved      = "auto_approved"
+
+    var displayName: String {
+        switch self {
+        case .pendingReview:     return "PENDING"
+        case .submitted:         return "SUBMITTED"
+        case .approved:          return "APPROVED"
+        case .partiallyApproved: return "PARTIAL"
+        case .rejected:          return "REJECTED"
+        case .autoApproved:      return "AUTO-APPROVED"
+        }
+    }
+
+    var needsReview: Bool { self == .pendingReview || self == .submitted }
+    var isApproved: Bool { self == .approved || self == .autoApproved || self == .partiallyApproved }
+}
+
+// MARK: - Auto-Approve Rule Type
+
+enum AutoApproveRuleType: String, Codable, CaseIterable {
+    case invoice  = "invoice"
+    case lineItem = "line_item"
+
+    var displayName: String {
+        switch self {
+        case .invoice:  return "INVOICE"
+        case .lineItem: return "LINE ITEM"
+        }
+    }
+}
+
 // MARK: - Expense Payment Method
 
 enum ExpensePaymentMethod: String, Codable, CaseIterable {
@@ -150,7 +189,6 @@ enum ExpensePaymentMethod: String, Codable, CaseIterable {
 // MARK: - Review Frequency
 
 enum ReviewFrequency: String, Codable, CaseIterable {
-    case perJob    = "per_job"
     case weekly    = "weekly"
     case biweekly  = "biweekly"
     case monthly   = "monthly"
@@ -158,7 +196,6 @@ enum ReviewFrequency: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .perJob:    return "PER JOB"
         case .weekly:    return "WEEKLY"
         case .biweekly:  return "BI-WEEKLY"
         case .monthly:   return "MONTHLY"

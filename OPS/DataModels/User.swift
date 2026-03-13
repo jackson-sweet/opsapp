@@ -105,6 +105,8 @@ final class User {
             return .cyan
         case .crew:
             return .blue
+        case .unassigned:
+            return .gray
         }
     }
 

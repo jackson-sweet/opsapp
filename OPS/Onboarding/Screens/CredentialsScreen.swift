@@ -203,6 +203,12 @@ struct CredentialsScreen: View {
                 await MainActor.run {
                     manager.goForward()
                 }
+            } catch OnboardingManagerError.existingUserLoggedIn {
+                // Existing user successfully logged in — exit onboarding to main app
+                await MainActor.run {
+                    isSigningUp = false
+                    dataController.isAuthenticated = true
+                }
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription

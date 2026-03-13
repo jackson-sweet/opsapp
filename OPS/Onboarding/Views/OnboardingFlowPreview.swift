@@ -77,7 +77,7 @@ struct OnboardingFlowPreview: View {
                                         .font(OPSStyle.Typography.caption)
                                         .foregroundColor(.secondary)
                                     Text(screen.name)
-                                        .font(.headline)
+                                        .font(OPSStyle.Typography.bodyEmphasis)
                                     Spacer()
                                 }
                                 .padding(.horizontal)
@@ -199,8 +199,7 @@ struct OnboardingScreenPreview<Content: View>: View {
             // Title and controls
             VStack(spacing: 12) {
                 Text(title)
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                    .font(OPSStyle.Typography.heading)
                 
                 HStack {
                     Text("Scale:")

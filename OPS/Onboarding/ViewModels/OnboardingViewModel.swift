@@ -533,7 +533,7 @@ class OnboardingViewModel: ObservableObject {
                 role: nil,
                 userType: (selectedUserType ?? .employee).rawValue,
                 isCompanyAdmin: nil,
-                hasCompletedOnboarding: false,
+                onboardingCompleted: nil,
                 hasCompletedTutorial: nil,
                 devPermission: nil,
                 latitude: nil,
@@ -682,7 +682,7 @@ class OnboardingViewModel: ObservableObject {
                 "first_name": .string(firstName),
                 "last_name": .string(lastName),
                 "phone": .string(formattedPhone),
-                "role": .string("Crew"),
+                "role": .string("unassigned"),
                 "is_company_admin": .bool(false)
             ])
 
@@ -1203,12 +1203,31 @@ class OnboardingViewModel: ObservableObject {
             let userRepo = UserRepository(companyId: companyId)
             try await userRepo.updateFields(userId: userId, fields: [
                 "company_id": .string(companyId),
-                "role": .string("admin"),
+                "role": .string("owner"),
                 "is_company_admin": .bool(true),
                 "first_name": .string(firstName),
                 "last_name": .string(lastName),
                 "phone": .string(phoneNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression))
             ])
+
+            // Assign Owner role in user_roles table for permission system
+            do {
+                let ownerRoleRows: [[String: String]] = try await SupabaseService.shared.client
+                    .from("roles")
+                    .select("id")
+                    .eq("name", value: "Owner")
+                    .execute()
+                    .value
+                if let roleId = ownerRoleRows.first?["id"] {
+                    try await SupabaseService.shared.client
+                        .from("user_roles")
+                        .upsert(["user_id": userId, "role_id": roleId])
+                        .execute()
+                    print("[ONBOARDING] ✅ Owner role assigned in user_roles")
+                }
+            } catch {
+                print("[ONBOARDING] ⚠️ Failed to assign Owner role: \(error)")
+            }
 
             // Seed default task types, inventory units, and company settings (non-fatal)
             do {
@@ -1252,7 +1271,7 @@ class OnboardingViewModel: ObservableObject {
                     )
                     if let userObject = try? modelContext.fetch(userDescriptor).first {
                         userObject.companyId = companyId
-                        userObject.role = .admin
+                        userObject.role = .owner
                         userObject.firstName = firstName
                         userObject.lastName = lastName
                         userObject.phone = phoneNumber
@@ -1431,10 +1450,20 @@ class OnboardingViewModel: ObservableObject {
             if let userId = UserDefaults.standard.string(forKey: "user_id"),
                let dataController = dataController {
                 do {
-                    let fields: [String: AnyJSON] = [
-                        "has_completed_onboarding": .bool(true)
-                    ]
-                    try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
+                    // Read-modify-write to perform JSONB merge for onboarding_completed
+                    let userRepo = UserRepository(companyId: "")
+                    let currentDTO = try await userRepo.fetchOne(userId)
+                    var merged = currentDTO.onboardingCompleted ?? [:]
+                    merged["ios"] = true
+
+                    var mergedJSON: [String: AnyJSON] = [:]
+                    for (key, value) in merged {
+                        mergedJSON[key] = .bool(value)
+                    }
+
+                    try await dataController.syncManager.updateUserFields(userId: userId, fields: [
+                        "onboarding_completed": .object(mergedJSON)
+                    ])
 
                     // Update the local user model
                     await MainActor.run {

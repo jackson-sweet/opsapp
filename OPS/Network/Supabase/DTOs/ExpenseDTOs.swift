@@ -32,6 +32,9 @@ struct ExpenseDTO: Codable, Identifiable {
     let rejectedBy: String?
     let rejectedAt: String?
     let rejectionReason: String?
+    let flagComment: String?
+    let flaggedBy: String?
+    let flaggedAt: String?
     let accountingSyncStatus: String?
     let accountingSyncId: String?
     let accountingSyncedAt: String?
@@ -64,6 +67,9 @@ struct ExpenseDTO: Codable, Identifiable {
         case rejectedBy           = "rejected_by"
         case rejectedAt           = "rejected_at"
         case rejectionReason      = "rejection_reason"
+        case flagComment          = "flag_comment"
+        case flaggedBy            = "flagged_by"
+        case flaggedAt            = "flagged_at"
         case accountingSyncStatus = "accounting_sync_status"
         case accountingSyncId     = "accounting_sync_id"
         case accountingSyncedAt   = "accounting_synced_at"
@@ -217,21 +223,51 @@ struct ExpenseBatchDTO: Codable, Identifiable {
     let reviewedAt: String?
     let totalAmount: Double?
     let approvedAmount: Double?
+    let parentBatchId: String?
+    let amendmentNumber: Int?
+    let reviewNotes: String?
     let createdAt: String
 
     enum CodingKeys: String, CodingKey {
         case id
-        case companyId     = "company_id"
-        case batchNumber   = "batch_number"
-        case periodStart   = "period_start"
-        case periodEnd     = "period_end"
+        case companyId       = "company_id"
+        case batchNumber     = "batch_number"
+        case periodStart     = "period_start"
+        case periodEnd       = "period_end"
         case status
-        case submittedBy   = "submitted_by"
-        case reviewedBy    = "reviewed_by"
-        case reviewedAt    = "reviewed_at"
-        case totalAmount   = "total_amount"
-        case approvedAmount = "approved_amount"
-        case createdAt     = "created_at"
+        case submittedBy     = "submitted_by"
+        case reviewedBy      = "reviewed_by"
+        case reviewedAt      = "reviewed_at"
+        case totalAmount     = "total_amount"
+        case approvedAmount  = "approved_amount"
+        case parentBatchId   = "parent_batch_id"
+        case amendmentNumber = "amendment_number"
+        case reviewNotes     = "review_notes"
+        case createdAt       = "created_at"
+    }
+}
+
+struct CreateExpenseBatchDTO: Codable {
+    let companyId: String
+    let batchNumber: String
+    let periodStart: String?
+    let periodEnd: String?
+    let status: String
+    let submittedBy: String?
+    let totalAmount: Double?
+    let parentBatchId: String?
+    let amendmentNumber: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case companyId       = "company_id"
+        case batchNumber     = "batch_number"
+        case periodStart     = "period_start"
+        case periodEnd       = "period_end"
+        case status
+        case submittedBy     = "submitted_by"
+        case totalAmount     = "total_amount"
+        case parentBatchId   = "parent_batch_id"
+        case amendmentNumber = "amendment_number"
     }
 }
 
@@ -290,5 +326,71 @@ struct CreateAccountingCategoryMappingDTO: Codable {
         case provider
         case externalAccountId    = "external_account_id"
         case externalAccountName  = "external_account_name"
+    }
+}
+
+// MARK: - Auto-Approve Rule DTOs
+
+struct AutoApproveRuleDTO: Codable, Identifiable {
+    let id: String
+    let companyId: String
+    let createdBy: String
+    let ruleType: String
+    let thresholdAmount: Double
+    let appliesToAll: Bool
+    let isActive: Bool
+    let createdAt: String
+    let updatedAt: String
+    let members: [AutoApproveRuleMemberDTO]?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case companyId       = "company_id"
+        case createdBy       = "created_by"
+        case ruleType        = "rule_type"
+        case thresholdAmount = "threshold_amount"
+        case appliesToAll    = "applies_to_all"
+        case isActive        = "is_active"
+        case createdAt       = "created_at"
+        case updatedAt       = "updated_at"
+        case members         = "expense_auto_approve_rule_members"
+    }
+}
+
+struct AutoApproveRuleMemberDTO: Codable, Identifiable {
+    let id: String
+    let ruleId: String
+    let userId: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case ruleId  = "rule_id"
+        case userId  = "user_id"
+    }
+}
+
+struct CreateAutoApproveRuleDTO: Codable {
+    let companyId: String
+    let createdBy: String
+    let ruleType: String
+    let thresholdAmount: Double
+    let appliesToAll: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case companyId       = "company_id"
+        case createdBy       = "created_by"
+        case ruleType        = "rule_type"
+        case thresholdAmount = "threshold_amount"
+        case appliesToAll    = "applies_to_all"
+    }
+}
+
+struct CreateAutoApproveRuleMemberDTO: Codable {
+    let ruleId: String
+    let userId: String
+
+    enum CodingKeys: String, CodingKey {
+        case ruleId  = "rule_id"
+        case userId  = "user_id"
     }
 }

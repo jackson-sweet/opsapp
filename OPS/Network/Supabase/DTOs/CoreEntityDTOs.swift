@@ -82,7 +82,7 @@ struct SupabaseUserDTO: Codable, Identifiable {
     let role: String?
     let userType: String?
     let isCompanyAdmin: Bool?
-    let hasCompletedOnboarding: Bool?
+    let onboardingCompleted: [String: Bool]?
     let hasCompletedTutorial: Bool?
     let devPermission: Bool?
     let latitude: Double?
@@ -106,7 +106,7 @@ struct SupabaseUserDTO: Codable, Identifiable {
         case userColor             = "user_color"
         case userType              = "user_type"
         case isCompanyAdmin        = "is_company_admin"
-        case hasCompletedOnboarding = "has_completed_onboarding"
+        case onboardingCompleted    = "onboarding_completed"
         case hasCompletedTutorial  = "has_completed_tutorial"
         case devPermission         = "dev_permission"
         case locationName          = "location_name"

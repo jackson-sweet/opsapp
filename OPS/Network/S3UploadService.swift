@@ -277,6 +277,45 @@ class S3UploadService {
         return (url: fullUrl, thumbnailUrl: thumbUrl)
     }
 
+    /// Upload a bug report screenshot to S3
+    func uploadBugReportScreenshot(_ image: UIImage, reportId: String, companyId: String) async throws -> String {
+        print("[S3_UPLOAD] Starting bug report screenshot upload for report: \(reportId)")
+
+        // Resize if needed (max 1024px for screenshots)
+        let maxSize: CGFloat = 1024
+        let processedImage: UIImage
+        if image.size.width > maxSize || image.size.height > maxSize {
+            let aspectRatio = image.size.width / image.size.height
+            let newSize: CGSize
+            if image.size.width > image.size.height {
+                newSize = CGSize(width: maxSize, height: maxSize / aspectRatio)
+            } else {
+                newSize = CGSize(width: maxSize * aspectRatio, height: maxSize)
+            }
+            UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+            image.draw(in: CGRect(origin: .zero, size: newSize))
+            processedImage = UIGraphicsGetImageFromCurrentImageContext() ?? image
+            UIGraphicsEndImageContext()
+        } else {
+            processedImage = image
+        }
+
+        guard let imageData = processedImage.jpegData(compressionQuality: 0.7) else {
+            print("[S3_UPLOAD] ❌ Failed to compress bug report screenshot")
+            throw S3Error.imageConversionFailed
+        }
+
+        let sizeInKB = Double(imageData.count) / 1024
+        print("[S3_UPLOAD] Bug report screenshot size: \(String(format: "%.1f", sizeInKB))KB")
+
+        let filename = "screenshot.jpg"
+        let objectKey = "company-\(companyId)/bug-reports/\(reportId)/\(filename)"
+        let s3URL = try await uploadToS3(imageData: imageData, objectKey: objectKey)
+
+        print("[S3_UPLOAD] ✅ Bug report screenshot uploaded: \(s3URL)")
+        return s3URL
+    }
+
     // MARK: - Private Methods
 
     /// Generic S3 upload method

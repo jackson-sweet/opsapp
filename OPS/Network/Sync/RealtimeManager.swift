@@ -403,7 +403,7 @@ class RealtimeManager: ObservableObject {
             existing.userColor = model.userColor
             existing.role = model.role
             existing.userType = model.userType
-            existing.isCompanyAdmin = model.isCompanyAdmin
+
             existing.hasCompletedAppOnboarding = model.hasCompletedAppOnboarding
             existing.hasCompletedAppTutorial = model.hasCompletedAppTutorial
             existing.devPermission = model.devPermission

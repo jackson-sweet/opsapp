@@ -16,6 +16,38 @@ class NotificationRepository {
         self.client = SupabaseService.shared.client
     }
 
+    // MARK: - Create
+
+    struct CreateNotificationDTO: Codable {
+        let userId: String
+        let companyId: String
+        let type: String
+        let title: String
+        let body: String
+        let expenseId: String?
+        let batchId: String?
+        let deepLinkType: String?
+
+        enum CodingKeys: String, CodingKey {
+            case userId      = "user_id"
+            case companyId   = "company_id"
+            case type
+            case title
+            case body
+            case expenseId   = "expense_id"
+            case batchId     = "batch_id"
+            case deepLinkType = "deep_link_type"
+        }
+    }
+
+    /// Insert a new notification row (used for expense/invoice events)
+    func createNotification(_ dto: CreateNotificationDTO) async throws {
+        try await client
+            .from("notifications")
+            .insert(dto)
+            .execute()
+    }
+
     // MARK: - Fetch
 
     /// Fetch unread notification count for a user (server-side count, no row transfer)

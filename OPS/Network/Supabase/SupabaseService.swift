@@ -1,89 +1,45 @@
 // OPS/Network/Supabase/SupabaseService.swift
 import Foundation
 import Supabase
+import FirebaseAuth
 
-/// Central Supabase client with native auth (Apple Sign-In + Google Sign-In).
+/// Central Supabase data client that bridges Firebase Auth via the `accessToken` callback.
 ///
-/// Authentication flow:
-/// 1. User signs in with Apple or Google via native SDK (existing flow)
-/// 2. The same ID token is passed to Supabase Auth via `signInWithIdToken`
-/// 3. Supabase creates/matches a user and returns a session
-/// 4. All subsequent Supabase requests use the session JWT automatically
+/// Authentication flow (post-migration):
+/// 1. User signs in via Firebase Auth (email, Google, or Apple)
+/// 2. The Supabase client's `accessToken` callback fetches the Firebase ID token
+/// 3. Supabase validates the Firebase JWT against its configured JWKS endpoint
+/// 4. All Supabase queries include the Firebase JWT for RLS policy evaluation
 ///
-/// SETUP REQUIRED (Supabase Dashboard):
-/// - Enable Apple provider in Authentication → Providers → Apple
-/// - Enable Google provider in Authentication → Providers → Google
-/// - Configure the same OAuth client IDs used by the iOS app
+/// NOTE: With `accessToken` set, `client.auth` is NOT available.
+/// All authentication operations go through `FirebaseAuthService`.
 @MainActor
 class SupabaseService: ObservableObject {
     static let shared = SupabaseService()
 
     let client: SupabaseClient
 
-    @Published var isAuthenticated: Bool = false
-    @Published var currentUserId: String?
-
     private init() {
         client = SupabaseClient(
             supabaseURL: SupabaseConfig.url,
-            supabaseKey: SupabaseConfig.anonKey
+            supabaseKey: SupabaseConfig.anonKey,
+            options: SupabaseClientOptions(
+                auth: .init(
+                    accessToken: {
+                        // Bridge Firebase Auth → Supabase
+                        // Same pattern as OPS-Web/src/lib/supabase/client.ts
+                        //
+                        // Fix #10: Throw when unauthenticated instead of returning nil.
+                        // Returning nil would send anonymous requests using the anon key,
+                        // potentially bypassing RLS policies during sign-out transitions.
+                        guard let user = Auth.auth().currentUser else {
+                            throw SupabaseService.ServiceError.notAuthenticated
+                        }
+                        return try await user.getIDToken()
+                    }
+                )
+            )
         )
-
-        // Check for existing session on init
-        Task {
-            await restoreSession()
-        }
-    }
-
-    // MARK: - Session Restoration
-
-    /// Attempt to restore a previous Supabase session from disk.
-    func restoreSession() async {
-        do {
-            let session = try await client.auth.session
-            isAuthenticated = true
-            currentUserId = session.user.id.uuidString.lowercased()
-        } catch {
-            isAuthenticated = false
-            currentUserId = nil
-        }
-    }
-
-    // MARK: - Sign In
-
-    /// Authenticate with Supabase using a Google ID token.
-    /// Call this after GoogleSignIn completes successfully.
-    /// - Parameter idToken: The Google ID token string from `GIDGoogleUser.idToken.tokenString`
-    func signInWithGoogle(idToken: String) async throws {
-        let session = try await client.auth.signInWithIdToken(
-            credentials: .init(provider: .google, idToken: idToken)
-        )
-        isAuthenticated = true
-        currentUserId = session.user.id.uuidString.lowercased()
-    }
-
-    /// Authenticate with Supabase using an Apple identity token.
-    /// Call this after Apple Sign-In completes successfully.
-    /// - Parameter identityToken: The Apple identity token JWT string
-    func signInWithApple(identityToken: String) async throws {
-        let session = try await client.auth.signInWithIdToken(
-            credentials: .init(provider: .apple, idToken: identityToken)
-        )
-        isAuthenticated = true
-        currentUserId = session.user.id.uuidString.lowercased()
-    }
-
-    // MARK: - Sign Out
-
-    /// Sign out of Supabase. Call alongside existing sign-out flow.
-    func signOut() async {
-        do {
-            try await client.auth.signOut()
-        } catch {
-            print("[SupabaseService] Sign-out error: \(error.localizedDescription)")
-        }
-        isAuthenticated = false
-        currentUserId = nil
     }
 
     // MARK: - Errors
@@ -95,7 +51,7 @@ class SupabaseService: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .notAuthenticated:
-                return "Not authenticated with Supabase"
+                return "Not authenticated"
             case .networkError(let error):
                 return "Network error: \(error.localizedDescription)"
             }

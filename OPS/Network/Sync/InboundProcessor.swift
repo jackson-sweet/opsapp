@@ -337,7 +337,7 @@ final class InboundProcessor {
                 existing.userType = dto.userType.flatMap { UserType(rawValue: $0) }
             }
             if accept.contains("hasCompletedAppOnboarding") {
-                existing.hasCompletedAppOnboarding = dto.hasCompletedOnboarding ?? false
+                existing.hasCompletedAppOnboarding = dto.onboardingCompleted?["ios"] ?? false
             }
             if accept.contains("hasCompletedAppTutorial") {
                 existing.hasCompletedAppTutorial = dto.hasCompletedTutorial ?? false

@@ -62,9 +62,9 @@ extension SupabaseUserDTO {
     /// Deviations from plan template:
     /// - User.init requires (id:firstName:lastName:role:companyId:) — role and companyId are NOT optional.
     /// - User.profileImageURL (not profileImageUrl).
-    /// - User.hasCompletedAppOnboarding / hasCompletedAppTutorial (not hasCompletedOnboarding/Tutorial).
+    /// - User.hasCompletedAppOnboarding reads onboardingCompleted["ios"] (JSONB column).
     func toModel() -> User {
-        let resolvedRole = role.flatMap { UserRole(rawValue: $0) } ?? .crew
+        let resolvedRole = role.flatMap { UserRole(rawValue: $0) } ?? .unassigned
         let resolvedCompanyId = companyId ?? ""
         let user = User(
             id: id,
@@ -80,7 +80,9 @@ extension SupabaseUserDTO {
         user.userColor = userColor
         user.userType = userType.flatMap { UserType(rawValue: $0) }
 
-        user.hasCompletedAppOnboarding = hasCompletedOnboarding ?? false
+        let onboardingIos = onboardingCompleted?["ios"] ?? false
+        print("[DTO] User \(id): onboarding_completed raw=\(String(describing: onboardingCompleted)), ios=\(onboardingIos)")
+        user.hasCompletedAppOnboarding = onboardingIos
         user.hasCompletedAppTutorial = hasCompletedTutorial ?? false
         user.devPermission = devPermission ?? false
         user.latitude = latitude

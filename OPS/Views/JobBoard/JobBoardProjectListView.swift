@@ -16,6 +16,7 @@ struct JobBoardProjectListView: View {
     let searchText: String
     @Binding var showingFilters: Bool
     @Binding var showingFilterSheet: Bool
+    var activeOnly: Bool = false
     @State private var selectedStatuses: Set<Status> = []
     @State private var selectedTeamMemberIds: Set<String> = []
     @State private var sortOption: ProjectSortOption = .statusAscending
@@ -41,6 +42,11 @@ struct JobBoardProjectListView: View {
         // Tutorial mode only shows demo projects
         if tutorialMode {
             filtered = filtered.filter { $0.id.hasPrefix("DEMO_") }
+        }
+
+        // Active-only toggle: in progress + accepted
+        if activeOnly {
+            filtered = filtered.filter { $0.status.isActive }
         }
 
         if !selectedStatuses.isEmpty {
@@ -112,15 +118,21 @@ struct JobBoardProjectListView: View {
     }
 
     private var activeProjects: [Project] {
-        filteredProjects.filter { $0.status != .closed && $0.status != .archived }
+        filteredProjects
+            .filter { $0.status != .closed && $0.status != .archived }
+            .sorted { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
     }
 
     private var closedProjects: [Project] {
-        filteredProjects.filter { $0.status == .closed }
+        filteredProjects
+            .filter { $0.status == .closed }
+            .sorted { ($0.completedAt ?? $0.endDate ?? .distantPast) > ($1.completedAt ?? $1.endDate ?? .distantPast) }
     }
 
     private var archivedProjects: [Project] {
-        filteredProjects.filter { $0.status == .archived }
+        filteredProjects
+            .filter { $0.status == .archived }
+            .sorted { ($0.completedAt ?? $0.endDate ?? .distantPast) > ($1.completedAt ?? $1.endDate ?? .distantPast) }
     }
 
     var body: some View {
@@ -238,6 +250,7 @@ struct JobBoardProjectListView: View {
                 } // End ScrollViewReader
             }
         }
+        .trackScreen("JobBoard.ProjectList")
         // Tutorial: Start status animation when entering projectListStatusDemo phase
         .onChange(of: tutorialPhase) { oldPhase, newPhase in
             if newPhase == .projectListStatusDemo && !hasStartedStatusAnimation {

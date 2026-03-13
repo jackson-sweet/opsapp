@@ -93,6 +93,7 @@ struct JobBoardMyTasksView: View {
                 taskList
             }
         }
+        .trackScreen("JobBoard.MyTasks")
     }
 
     // MARK: - Filter Chips

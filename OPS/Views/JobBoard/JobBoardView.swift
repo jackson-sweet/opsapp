@@ -24,8 +24,22 @@ struct JobBoardView: View {
 
     // Payment review state
     @State private var showPaymentReview: Bool = false
-    @State private var reviewProjects: [Project] = []
+    @State private var overdueProjects: [Project] = []
+    @State private var completedProjects: [Project] = []
     @State private var overdueCount: Int = 0
+
+    // Task review state
+    @State private var showTaskReview: Bool = false
+    @State private var reviewableTasks: [ProjectTask] = []
+    @State private var reviewableTaskCount: Int = 0
+
+    // Review unlock thresholds
+    private static let paymentReviewThreshold = 5
+    private static let taskReviewThreshold = 5
+
+    // First-open dialogue keys
+    @State private var showPaymentReviewIntro: Bool = false
+    @State private var showTaskReviewIntro: Bool = false
 
     // Preloading state (legacy — client query now filtered at DB level)
     @State private var isPreloadingClients = false
@@ -49,6 +63,22 @@ struct JobBoardView: View {
 
     private var isAdmin: Bool {
         return permissionStore.can("job_board.manage_sections")
+    }
+
+    private var completedProjectCount: Int {
+        dataController.getProjects().filter { $0.status == .completed || $0.status == .closed }.count
+    }
+
+    private var completedTaskCount: Int {
+        dataController.getAllTasks().filter { $0.status == .completed }.count
+    }
+
+    private var isPaymentReviewLocked: Bool {
+        completedProjectCount < Self.paymentReviewThreshold
+    }
+
+    private var isTaskReviewLocked: Bool {
+        completedTaskCount < Self.taskReviewThreshold
     }
 
     private var sections: [JobBoardSection] {
@@ -80,8 +110,34 @@ struct JobBoardView: View {
                     .ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    AppHeader(headerType: .jobBoard)
-                        .padding(.bottom, 8)
+                    AppHeader(
+                        headerType: .jobBoard,
+                        onPaymentReviewTapped: (permissionStore.can("projects.edit") || permissionStore.hasFullAccess("projects.view")) ? {
+                            if !UserDefaults.standard.bool(forKey: "review_payment_intro_shown") {
+                                UserDefaults.standard.set(true, forKey: "review_payment_intro_shown")
+                                showPaymentReviewIntro = true
+                            } else {
+                                computeReviewProjects()
+                                showPaymentReview = true
+                            }
+                        } : nil,
+                        paymentReviewBadgeCount: overdueCount,
+                        isPaymentReviewLocked: isPaymentReviewLocked,
+                        paymentReviewLockedMessage: "Complete \(Self.paymentReviewThreshold) projects to unlock payment review. You've completed \(completedProjectCount) so far.",
+                        onTaskReviewTapped: {
+                            if !UserDefaults.standard.bool(forKey: "review_task_intro_shown") {
+                                UserDefaults.standard.set(true, forKey: "review_task_intro_shown")
+                                showTaskReviewIntro = true
+                            } else {
+                                computeReviewableTasks()
+                                showTaskReview = true
+                            }
+                        },
+                        taskReviewBadgeCount: reviewableTaskCount,
+                        isTaskReviewLocked: isTaskReviewLocked,
+                        taskReviewLockedMessage: "Complete \(Self.taskReviewThreshold) tasks to unlock task review. You've completed \(completedTaskCount) so far."
+                    )
+                    .padding(.bottom, 8)
 
                     // Section selector — shown whenever the role has more than one section
                     if sections.count > 1 {
@@ -103,7 +159,7 @@ struct JobBoardView: View {
                             .allowsHitTesting(!(tutorialMode && tutorialPhase == .dragToAccepted))
                     }
 
-                    // Action row: filter + active toggle
+                    // Action row: filter + active toggle (project sections only)
                     if !tutorialMode && (selectedSection == .projects || selectedSection == .myProjects) {
                         HStack(spacing: 12) {
                             Button(action: { showingProjectFilterSheet = true }) {
@@ -138,35 +194,6 @@ struct JobBoardView: View {
                             }
 
                             Spacer()
-
-                            // Payment review button — always visible for permitted users
-                            if permissionStore.can("projects.manage") || permissionStore.hasFullAccess("projects.manage") {
-                                Button(action: { showPaymentReview = true }) {
-                                    ZStack(alignment: .topTrailing) {
-                                        Image(systemName: "rectangle.stack.fill")
-                                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
-                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                            .frame(width: 36, height: 36)
-                                            .background(OPSStyle.Colors.cardBackgroundDark)
-                                            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                            )
-
-                                        if overdueCount > 0 {
-                                            Text("\(overdueCount)")
-                                                .font(.system(size: 11, weight: .bold))
-                                                .foregroundColor(.white)
-                                                .padding(.horizontal, 5)
-                                                .padding(.vertical, 2)
-                                                .background(OPSStyle.Colors.errorStatus)
-                                                .clipShape(Capsule())
-                                                .offset(x: 6, y: -6)
-                                        }
-                                    }
-                                }
-                            }
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
@@ -237,24 +264,12 @@ struct JobBoardView: View {
                         // Client preloading no longer needed — @Query is filtered at DB level
                     }
                     .task {
-                        // Compute projects for payment review
-                        let allProjects = dataController.getProjects()
-                        let threshold: Int
-                        if let companyId = dataController.currentUser?.companyId,
-                           let company = dataController.getCompany(id: companyId) {
-                            threshold = company.overdueReviewThresholdDays
-                        } else {
-                            threshold = 14
-                        }
-                        let overdue = OverdueProjectDetector.overdueProjects(from: allProjects, thresholdDays: threshold)
-                        overdueCount = overdue.count
-
-                        // If overdue projects exist, show those first; otherwise show all completed
-                        if !overdue.isEmpty {
-                            reviewProjects = overdue
-                        } else {
-                            reviewProjects = allProjects.filter { $0.status == .completed }
-                        }
+                        // Compute overdue count for badge
+                        computeReviewProjects()
+                    }
+                    .task {
+                        // Compute reviewable task count for badge
+                        computeReviewableTasks()
                     }
                     .onAppear {
                         selectedSection = defaultSection(for: dataController.currentUser)
@@ -264,6 +279,7 @@ struct JobBoardView: View {
                 }
 
             }
+            .trackScreen("JobBoard")
             .sheet(isPresented: $appState.showingJobBoardSearch) {
                 UniversalSearchSheet()
                     .environmentObject(dataController)
@@ -271,18 +287,84 @@ struct JobBoardView: View {
                     .environmentObject(PermissionStore.shared)
             }
             .sheet(isPresented: $showPaymentReview) {
-                ProjectPaymentReviewView(overdueProjects: reviewProjects)
+                ProjectPaymentReviewView(
+                    overdueProjects: overdueProjects,
+                    completedProjects: completedProjects
+                )
+                .environmentObject(appState)
+                .environmentObject(permissionStore)
+            }
+            .sheet(isPresented: $showTaskReview) {
+                TaskCompletionReviewView(tasks: reviewableTasks)
                     .environmentObject(appState)
                     .environmentObject(permissionStore)
             }
+            .alert("Payment Review", isPresented: $showPaymentReviewIntro) {
+                Button("Got It") {
+                    computeReviewProjects()
+                    showPaymentReview = true
+                }
+            } message: {
+                Text("Completed projects with outstanding payments will show up here for review.")
+            }
+            .alert("Task Review", isPresented: $showTaskReviewIntro) {
+                Button("Got It") {
+                    computeReviewableTasks()
+                    showTaskReview = true
+                }
+            } message: {
+                Text("Tasks with end dates in the past will show up here so you can complete, reschedule, or cancel them.")
+            }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenPaymentReview"))) { _ in
+                computeReviewProjects()
                 showPaymentReview = true
             }
         }
 
-    // MARK: - Background Data Preloading
-    // Client preloading removed — @Query in ClientListView now filters at DB level,
-    // eliminating the need for eager relationship traversal.
+    // MARK: - Payment Review
+
+    private func computeReviewProjects() {
+        let allProjects = dataController.getProjects()
+        let threshold: Int
+        if let companyId = dataController.currentUser?.companyId,
+           let company = dataController.getCompany(id: companyId) {
+            threshold = company.overdueReviewThresholdDays
+        } else {
+            threshold = 14
+        }
+        let overdue = OverdueProjectDetector.overdueProjects(from: allProjects, thresholdDays: threshold)
+        overdueCount = overdue.count
+        overdueProjects = overdue
+        completedProjects = allProjects.filter { $0.status == .completed }
+    }
+
+    // MARK: - Task Review
+
+    private func computeReviewableTasks() {
+        let calendar = Calendar.current
+        let endOfToday = calendar.startOfDay(for: calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date())
+
+        let allTasks: [ProjectTask]
+        if PermissionStore.shared.hasFullAccess("tasks.view") {
+            allTasks = dataController.getAllTasks()
+        } else if let userId = dataController.currentUser?.id {
+            allTasks = dataController.getAllTasks().filter { task in
+                task.getTeamMemberIds().contains(userId)
+            }
+        } else {
+            allTasks = []
+        }
+
+        reviewableTasks = allTasks.filter { task in
+            task.status == .active
+                && task.deletedAt == nil
+                && task.startDate != nil
+                && task.startDate! < endOfToday
+        }
+        .sorted { ($0.startDate ?? .distantPast) < ($1.startDate ?? .distantPast) }
+
+        reviewableTaskCount = reviewableTasks.count
+    }
 }
 
 // MARK: - Floating Action Item

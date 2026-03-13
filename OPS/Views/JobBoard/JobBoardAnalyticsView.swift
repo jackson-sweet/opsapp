@@ -76,6 +76,7 @@ struct JobBoardAnalyticsView: View {
                 }
             }
         }
+        .trackScreen("JobBoard.Analytics")
     }
 }
 

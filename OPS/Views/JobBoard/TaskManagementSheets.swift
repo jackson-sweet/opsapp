@@ -408,7 +408,22 @@ struct TaskTeamChangeSheet: View {
 
     private func loadAvailableMembers() {
         guard let companyId = dataController.currentUser?.companyId else { return }
-        availableMembers = dataController.getTeamMembers(companyId: companyId)
+
+        // Try local User fetch first
+        let users = dataController.getTeamMembers(companyId: companyId)
+        if !users.isEmpty {
+            availableMembers = users.sorted { $0.fullName < $1.fullName }
+            return
+        }
+
+        // Fallback: trigger async sync then retry
+        Task {
+            try? await dataController.syncManager?.syncCompanyTeamMembers(companyId: companyId)
+            await MainActor.run {
+                let retryUsers = dataController.getTeamMembers(companyId: companyId)
+                availableMembers = retryUsers.sorted { $0.fullName < $1.fullName }
+            }
+        }
     }
 
     private func toggleMember(_ memberId: String) {

@@ -79,11 +79,12 @@ struct ClientListView: View {
                     }
                     .overlay(alignment: .trailing) {
                         alphabetIndex(proxy: proxy)
- 
+
                     }
                 }
             }
         }
+        .trackScreen("JobBoard.Clients")
     }
 
     private func sectionHeader(letter: String) -> some View {

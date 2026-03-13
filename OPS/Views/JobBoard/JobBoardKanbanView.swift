@@ -2,8 +2,8 @@
 //  JobBoardKanbanView.swift
 //  OPS
 //
-//  Kanban overview: proportional fill bars showing project distribution by status.
-//  Tap a bar to expand it and reveal project cards inline.
+//  Status board overview: proportional fill bars showing project distribution by status.
+//  Tap a bar to expand it and reveal compact project cards inline.
 //
 
 import SwiftUI
@@ -37,7 +37,7 @@ struct JobBoardKanbanView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 1) {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(displayStatuses, id: \.self) { status in
                     KanbanStatusBar(
                         status: status,
@@ -53,8 +53,11 @@ struct JobBoardKanbanView: View {
                     )
                 }
             }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.top, OPSStyle.Layout.spacing2)
             .padding(.bottom, 120)
         }
+        .trackScreen("JobBoard.Kanban")
     }
 }
 
@@ -70,85 +73,73 @@ private struct KanbanStatusBar: View {
 
     @EnvironmentObject private var dataController: DataController
 
-    private let collapsedHeight: CGFloat = 56
+    private let barHeight: CGFloat = 56
 
     var body: some View {
         VStack(spacing: 0) {
-            // Bar row
+            // Bar row — styled like a large status badge
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    // Background track
+                    // Proportional fill — mild opacity vs no fill
                     Rectangle()
-                        .fill(OPSStyle.Colors.cardBackgroundDark)
-
-                    // Proportional fill — full width at low opacity when expanded
-                    Rectangle()
-                        .fill(status.color.opacity(isExpanded ? 0.15 : 1.0))
-                        .frame(width: isExpanded
-                               ? geo.size.width
-                               : geo.size.width * fillFraction)
-                        .animation(.accessibleEaseInOut(), value: isExpanded)
+                        .fill(status.color.opacity(0.15))
+                        .frame(width: geo.size.width * fillFraction)
                         .animation(.accessibleEaseInOut(), value: fillFraction)
 
-                    // Label + count overlay
+                    // Label + count
                     HStack {
                         Text(status.displayName.uppercased())
                             .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(labelColor)
-                            .padding(.leading, 16)
+                            .foregroundColor(status.color)
+                            .padding(.leading, OPSStyle.Layout.spacing3)
 
                         Spacer()
 
                         Text("\(count)")
                             .font(OPSStyle.Typography.title)
-                            .foregroundColor(labelColor)
-                            .padding(.trailing, 16)
+                            .foregroundColor(status.color)
+                            .padding(.trailing, OPSStyle.Layout.spacing3)
                     }
                 }
             }
-            .frame(height: collapsedHeight)
+            .frame(height: barHeight)
             .contentShape(Rectangle())
             .onTapGesture(perform: onTap)
 
-            // Divider
-            Rectangle()
-                .fill(OPSStyle.Colors.cardBorder)
-                .frame(height: 1)
-
-            // Expanded project cards
+            // Expanded project cards — inside the same border
             if isExpanded {
+                Divider()
+                    .background(status.color.opacity(0.2))
+
                 expandedContent
                     .transition(.opacity)
             }
         }
+        .background(status.color.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(status.color, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
 
     private var expandedContent: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             if projects.isEmpty {
                 Text("No projects")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .padding(.vertical, 20)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
             } else {
                 ForEach(projects) { project in
-                    UniversalJobBoardCard(cardType: .project(project))
+                    UniversalJobBoardCard(cardType: .project(project), compact: true)
                         .environmentObject(dataController)
-                        .padding(.horizontal, 16)
                 }
             }
         }
-        .padding(.vertical, 12)
-        .background(status.color.opacity(0.08))
-    }
-
-    /// Label color that reads against fill
-    private var labelColor: Color {
-        // When expanded, fill is very low opacity — use primaryText
-        // When collapsed with wide fill, use dark text for contrast
-        if isExpanded { return OPSStyle.Colors.primaryText }
-        return fillFraction > 0.6 ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.primaryText
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
     }
 }

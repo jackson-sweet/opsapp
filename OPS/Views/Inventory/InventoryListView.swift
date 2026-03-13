@@ -50,6 +50,7 @@ struct InventoryListView: View {
             }
             .padding(.top, 8 * scale)
         }
+        .trackScreen("Inventory.List")
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.top, OPSStyle.Layout.spacing2)
         .padding(.bottom, OPSStyle.Layout.spacing3)

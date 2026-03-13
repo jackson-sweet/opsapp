@@ -136,7 +136,7 @@ struct QuantityAdjustmentSheet: View {
 
     // MARK: - Quantity Display
 
-    private let quantityFont = Font.custom("Mohave-Bold", size: 56)
+    private let quantityFont = OPSStyle.Typography.displayQuantity
 
     private var quantityDisplay: some View {
         VStack(spacing: OPSStyle.Layout.spacing1) {
@@ -290,7 +290,7 @@ struct QuantityAdjustmentSheet: View {
             adjustQuantity(by: Double(value))
         }) {
             Text(isPositive ? "+\(value)" : "\(value)")
-                .font(Font.custom("Mohave-SemiBold", size: 22))
+                .font(OPSStyle.Typography.heading)
                 .foregroundColor(color)
                 .frame(minWidth: 72)
                 .padding(.vertical, 14)

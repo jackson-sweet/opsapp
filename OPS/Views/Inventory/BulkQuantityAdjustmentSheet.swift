@@ -109,7 +109,7 @@ struct BulkQuantityAdjustmentSheet: View {
 
     // MARK: - Adjustment Display
 
-    private let adjustmentFont = Font.custom("Mohave-Bold", size: 56)
+    private let adjustmentFont = OPSStyle.Typography.displayQuantity
 
     private var adjustmentDisplay: some View {
         VStack(spacing: OPSStyle.Layout.spacing1) {
@@ -158,7 +158,7 @@ struct BulkQuantityAdjustmentSheet: View {
                         generator.impactOccurred()
                     }) {
                         Text("Reset")
-                            .font(Font.custom("Mohave-SemiBold", size: 18))
+                            .font(OPSStyle.Typography.buttonLarge)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .padding(.vertical, 14)
                             .padding(.horizontal, 16)
@@ -202,7 +202,7 @@ struct BulkQuantityAdjustmentSheet: View {
             generator.impactOccurred()
         }) {
             Text(isPositive ? "+\(value)" : "\(value)")
-                .font(Font.custom("Mohave-SemiBold", size: 22))
+                .font(OPSStyle.Typography.heading)
                 .foregroundColor(color)
                 .frame(minWidth: 72)
                 .padding(.vertical, 14)

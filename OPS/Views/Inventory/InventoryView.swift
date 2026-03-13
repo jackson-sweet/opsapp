@@ -164,15 +164,13 @@ struct InventoryView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
+        ZStack {
             OPSStyle.Colors.background
                 .ignoresSafeArea()
 
-            AppHeader(headerType: .inventory)
-
             VStack(spacing: 0) {
-                Spacer()
-                    .frame(height: 70)
+                AppHeader(headerType: .inventory)
+                    .padding(.bottom, 8)
 
                 // Search and Sort
                 HStack(spacing: OPSStyle.Layout.spacing2) {
@@ -247,6 +245,7 @@ struct InventoryView: View {
                 selectionFooter
             }
         }
+        .trackScreen("Inventory")
         .sheet(isPresented: $showingAddItemSheet) {
             InventoryFormSheet(item: selectedItem)
                 .environmentObject(dataController)

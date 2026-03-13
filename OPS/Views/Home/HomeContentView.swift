@@ -46,7 +46,9 @@ struct HomeContentView: View {
     @State private var showingEditProject = false
     @State private var projectToEdit: Project?
 
-    // Map filter mode (today / all projects)
+    // Map filter mode — defaults based on user role (crew = today, others = active)
+    // Can be overridden by user preference in Map Settings
+    @AppStorage("mapDefaultFilter") private var mapDefaultFilterRaw = ""
     @State private var mapFilterMode: MapFilterMode = .today
 
     // State for random quote - only set once on view creation
@@ -95,6 +97,16 @@ struct HomeContentView: View {
                 TacticalInitialLoadingView(dataController: dataController)
                     .transition(.opacity)
                     .zIndex(999)
+            }
+        }
+        .onAppear {
+            // Set initial map filter from saved preference or role-based default
+            if !mapDefaultFilterRaw.isEmpty,
+               let saved = MapFilterMode(rawValue: mapDefaultFilterRaw) {
+                mapFilterMode = saved
+            } else if permissionStore.hasFullAccess("projects.view") {
+                // Users with full project access default to showing all active projects
+                mapFilterMode = .active
             }
         }
         // Sheet for editing projects (admin/office crew only)
@@ -269,7 +281,7 @@ struct HomeContentView: View {
     
     private var projectCarouselView: some View {
         Group {
-            if !appState.isInProjectMode {
+            if !appState.isInProjectMode && mapFilterMode == .today {
                 if !todaysScheduledTasks.isEmpty {
                     EventCarousel(
                         tasks: todaysScheduledTasks,

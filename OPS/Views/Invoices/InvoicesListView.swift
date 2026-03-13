@@ -18,6 +18,8 @@ struct InvoicesListView: View {
     @State private var paymentInvoice: Invoice? = nil
     @State private var showVoidConfirm = false
     @State private var voidTarget: Invoice? = nil
+    @State private var showWriteOffConfirm = false
+    @State private var writeOffTarget: Invoice? = nil
     @State private var searchText = ""
 
     var body: some View {
@@ -84,6 +86,10 @@ struct InvoicesListView: View {
                                 onSwipeLeft: {
                                     voidTarget = invoice
                                     showVoidConfirm = true
+                                },
+                                onWriteOff: {
+                                    writeOffTarget = invoice
+                                    showWriteOffConfirm = true
                                 }
                             )
                         }
@@ -95,6 +101,7 @@ struct InvoicesListView: View {
                 .refreshable { await viewModel.loadInvoices() }
             }
         }
+        .trackScreen("Invoices")
         .background(embedded ? Color.clear : OPSStyle.Colors.background)
         .navigationDestination(item: $selectedInvoice) { invoice in
             InvoiceDetailView(invoice: invoice, viewModel: viewModel)
@@ -113,6 +120,18 @@ struct InvoicesListView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will void the invoice. This action cannot be undone.")
+        }
+        .confirmationDialog("Write Off as Bad Debt?", isPresented: $showWriteOffConfirm, titleVisibility: .visible) {
+            Button("Write Off", role: .destructive) {
+                if let inv = writeOffTarget {
+                    Task { await viewModel.writeOffInvoice(inv) }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let inv = writeOffTarget {
+                Text("This will write off \(inv.invoiceNumber) (\(inv.balanceDue, format: .currency(code: "USD"))) as bad debt. This action cannot be undone.")
+            }
         }
         .alert("Error", isPresented: Binding(
             get: { viewModel.error != nil },

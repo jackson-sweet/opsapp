@@ -351,11 +351,10 @@ struct SeatManagementView: View {
         // Load all team members
         allTeamMembers = dataController.getTeamMembers(companyId: company.id)
             .sorted { user1, user2 in
-                // Sort by: current user first, then admins, then alphabetical
+                // Sort by: current user first, then by role hierarchy (admin/owner first), then alphabetical
                 if user1.id == dataController.currentUser?.id { return true }
                 if user2.id == dataController.currentUser?.id { return false }
-                if user1.role == .admin && user2.role != .admin { return true }
-                if user1.role != .admin && user2.role == .admin { return false }
+                if user1.role.hierarchy != user2.role.hierarchy { return user1.role.hierarchy < user2.role.hierarchy }
                 return user1.firstName < user2.firstName
             }
 
@@ -487,8 +486,8 @@ struct TeamMemberRow: View {
                             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                     }
                     
-                    if user.isCompanyAdmin {
-                        Text("ADMIN")
+                    if user.role == .admin || user.role == .owner {
+                        Text(user.role.displayName.uppercased())
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                             .padding(.horizontal, 6)

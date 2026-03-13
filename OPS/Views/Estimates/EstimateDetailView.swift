@@ -36,6 +36,7 @@ struct EstimateDetailView: View {
             // Sticky footer
             stickyFooter
         }
+        .trackScreen("EstimateDetail")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

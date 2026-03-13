@@ -45,12 +45,12 @@ struct NavigationManeuverCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 // Distance to next maneuver
                 Text(formatDistanceShort(navigationManager.distanceToNextManeuver))
-                    .font(Font.custom("Mohave-SemiBold", size: 22))
+                    .font(OPSStyle.Typography.heading)
                     .foregroundColor(.white)
 
                 // Instruction text
                 Text(navigationManager.currentInstruction)
-                    .font(Font.custom("Mohave-Regular", size: 15))
+                    .font(OPSStyle.Typography.body)
                     .foregroundColor(Color.white.opacity(0.85))
                     .lineLimit(2)
             }
@@ -96,7 +96,7 @@ struct NavigationManeuverCard: View {
                 .foregroundColor(OPSStyle.Colors.successStatus)
 
             Text("ARRIVED")
-                .font(Font.custom("Mohave-SemiBold", size: 20))
+                .font(OPSStyle.Typography.heading)
                 .foregroundColor(.white)
 
             Spacer()
@@ -176,10 +176,10 @@ struct NavigationTripStrip: View {
     private func statItem(value: String, label: String) -> some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(Font.custom("Mohave-SemiBold", size: 16))
+                .font(OPSStyle.Typography.bodyEmphasis)
                 .foregroundColor(.white)
             Text(label)
-                .font(Font.custom("Kosugi-Regular", size: 9))
+                .font(OPSStyle.Typography.miniLabel)
                 .tracking(0.3)
                 .foregroundColor(Color.white.opacity(0.5))
         }

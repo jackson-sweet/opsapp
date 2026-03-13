@@ -21,12 +21,12 @@ struct MapLocationPermissionView: View {
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
 
             Text("LOCATION SHARING")
-                .font(Font.custom("Kosugi-Regular", size: 16))
+                .font(OPSStyle.Typography.cardSubtitle)
                 .tracking(1)
                 .foregroundColor(.white)
 
             Text("OPS uses your location during your shift so your manager can coordinate the team. Location sharing only works when you are clocked in.")
-                .font(Font.custom("Mohave-Regular", size: 16))
+                .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .lineSpacing(4)
 
@@ -34,7 +34,7 @@ struct MapLocationPermissionView: View {
                 // Enable button (solid white primary CTA)
                 Button(action: onEnable) {
                     Text("ENABLE LOCATION")
-                        .font(Font.custom("Kosugi-Regular", size: 13))
+                        .font(OPSStyle.Typography.caption)
                         .tracking(0.5)
                         .foregroundColor(OPSStyle.Colors.background)
                         .frame(maxWidth: .infinity)
@@ -49,7 +49,7 @@ struct MapLocationPermissionView: View {
                 // Skip button (ghost)
                 Button(action: onSkip) {
                     Text("NOT NOW")
-                        .font(Font.custom("Kosugi-Regular", size: 13))
+                        .font(OPSStyle.Typography.caption)
                         .tracking(0.5)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }

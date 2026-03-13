@@ -45,7 +45,7 @@ struct ProjectPinCard: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(project.title.uppercased())
-                            .font(Font.custom("Kosugi-Regular", size: 13))
+                            .font(OPSStyle.Typography.caption)
                             .tracking(0.5)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .lineLimit(1)
@@ -53,7 +53,7 @@ struct ProjectPinCard: View {
                         // Client name
                         if let client = project.client {
                             Text(client.displayName)
-                                .font(Font.custom("Mohave-Regular", size: 14))
+                                .font(OPSStyle.Typography.cardBody)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .lineLimit(1)
                         }
@@ -61,7 +61,7 @@ struct ProjectPinCard: View {
                         // Address (street + city only)
                         if let address = project.address, !address.isEmpty {
                             Text(simplifiedAddress(address))
-                                .font(Font.custom("Mohave-Light", size: 14))
+                                .font(OPSStyle.Typography.smallBody)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 .lineLimit(1)
                         }
@@ -81,7 +81,7 @@ struct ProjectPinCard: View {
                 HStack(spacing: 12) {
                     Button(action: onNavigate) {
                         Text("NAVIGATE")
-                            .font(Font.custom("Kosugi-Regular", size: 13))
+                            .font(OPSStyle.Typography.caption)
                             .tracking(0.5)
                             .foregroundColor(OPSStyle.Colors.background)
                             .frame(maxWidth: .infinity)
@@ -95,7 +95,7 @@ struct ProjectPinCard: View {
 
                     Button(action: onDetails) {
                         Text("DETAILS")
-                            .font(Font.custom("Kosugi-Regular", size: 13))
+                            .font(OPSStyle.Typography.caption)
                             .tracking(0.5)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity)
@@ -114,7 +114,7 @@ struct ProjectPinCard: View {
                     HStack {
                         Spacer()
                         Text("SWIPE UP FOR MORE")
-                            .font(Font.custom("Kosugi-Regular", size: 9))
+                            .font(OPSStyle.Typography.miniLabel)
                             .tracking(0.3)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Image(systemName: "chevron.up")
@@ -157,23 +157,34 @@ struct ProjectPinCard: View {
             DragGesture()
                 .onChanged { value in
                     let translation = value.translation.height
-                    if translation > 0 {
+                    if translation > 0 && !isExpanded {
+                        // Only allow downward drag offset when collapsed
                         dragOffset = translation
-                    } else if translation < -10 && !isExpanded {
+                    } else if translation < -30 && !isExpanded {
+                        // Swipe up to expand (collapsed → expanded)
                         withAnimation(OPSStyle.Animation.standard) {
                             isExpanded = true
                         }
                     }
                 }
                 .onEnded { value in
-                    if value.translation.height > 50 {
+                    let translation = value.translation.height
+                    if isExpanded && translation > 40 {
+                        // Swipe down while expanded → collapse back to minimized
+                        withAnimation(OPSStyle.Animation.standard) {
+                            isExpanded = false
+                            dragOffset = 0
+                        }
+                    } else if !isExpanded && translation > 50 {
+                        // Swipe down while collapsed → dismiss
                         withAnimation(OPSStyle.Animation.standard) {
                             dragOffset = 400
                         }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             onDismiss()
                         }
-                    } else if value.translation.height > 0 {
+                    } else {
+                        // Snap back
                         withAnimation(OPSStyle.Animation.standard) {
                             dragOffset = 0
                         }
@@ -193,7 +204,7 @@ struct ProjectPinCard: View {
 
     private var statusBadge: some View {
         Text(project.status.displayName.uppercased())
-            .font(Font.custom("Kosugi-Regular", size: 10))
+            .font(OPSStyle.Typography.miniLabel)
             .tracking(0.3)
             .foregroundColor(project.status.color)
             .padding(.horizontal, 8)
@@ -215,7 +226,7 @@ struct ProjectPinCard: View {
                 .padding(.bottom, 12)
 
             Text("TASKS")
-                .font(Font.custom("Kosugi-Regular", size: 11))
+                .font(OPSStyle.Typography.microLabel)
                 .tracking(0.5)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -229,7 +240,7 @@ struct ProjectPinCard: View {
                 .padding(.vertical, 12)
 
             Text("TEAM")
-                .font(Font.custom("Kosugi-Regular", size: 11))
+                .font(OPSStyle.Typography.microLabel)
                 .tracking(0.5)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -260,7 +271,7 @@ struct ProjectPinCard: View {
                 .frame(width: 6, height: 6)
 
             Text(task.displayTitle.uppercased())
-                .font(Font.custom("Kosugi-Regular", size: 9))
+                .font(OPSStyle.Typography.miniLabel)
                 .tracking(0.3)
                 .foregroundColor(isDone ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
                 .strikethrough(isDone, color: OPSStyle.Colors.tertiaryText)
@@ -292,7 +303,7 @@ struct ProjectPinCard: View {
             // Overflow count
             if teamMembers.count > 6 {
                 Text("+\(teamMembers.count - 6)")
-                    .font(Font.custom("Mohave-SemiBold", size: 11))
+                    .font(OPSStyle.Typography.status)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(width: 28, height: 28)
                     .background(
@@ -338,7 +349,7 @@ struct ProjectPinCard: View {
         let color = userColor(user)
 
         return Text(initials.uppercased())
-            .font(Font.custom("Mohave-SemiBold", size: 10))
+            .font(OPSStyle.Typography.status)
             .foregroundColor(.white)
             .frame(width: 28, height: 28)
             .background(
@@ -366,7 +377,7 @@ struct ProjectPinCard: View {
                 .padding(.vertical, 12)
 
             Text("PHOTOS")
-                .font(Font.custom("Kosugi-Regular", size: 11))
+                .font(OPSStyle.Typography.microLabel)
                 .tracking(0.5)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .padding(.bottom, 6)

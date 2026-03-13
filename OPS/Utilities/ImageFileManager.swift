@@ -198,6 +198,14 @@ class ImageFileManager {
         return true // Return true if file didn't exist
     }
     
+    /// Get the file size in bytes without loading data into memory
+    func imageFileSize(localID: String) -> Int64? {
+        guard let fileURL = getFileURL(for: localID) else { return nil }
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+              let size = attrs[.size] as? Int64 else { return nil }
+        return size
+    }
+
     /// Get the raw data for an image
     func getImageData(localID: String) -> Data? {
         guard let fileURL = getFileURL(for: localID) else {

@@ -24,6 +24,12 @@ enum NotificationCategory: String {
     case projectCompletion = "PROJECT_COMPLETION_NOTIFICATION"
     case projectAdvance = "PROJECT_ADVANCE_NOTIFICATION"
     case projectPaymentReview = "PROJECT_PAYMENT_REVIEW_NOTIFICATION"
+    case expenseApproved = "EXPENSE_APPROVED_NOTIFICATION"
+    case expenseRejected = "EXPENSE_REJECTED_NOTIFICATION"
+    case expenseSubmitted = "EXPENSE_SUBMITTED_NOTIFICATION"
+    case invoiceReady = "INVOICE_READY_NOTIFICATION"
+    case invoiceRevisions = "INVOICE_REVISIONS_NOTIFICATION"
+    case invoiceApproved = "INVOICE_APPROVED_NOTIFICATION"
 }
 
 /// Notification actions that can be taken on notifications
@@ -200,6 +206,49 @@ class NotificationManager: NSObject, ObservableObject {
             options: []
         )
 
+        // Expense / Invoice notification categories
+        let expenseApprovedCategory = UNNotificationCategory(
+            identifier: NotificationCategory.expenseApproved.rawValue,
+            actions: [viewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        let expenseRejectedCategory = UNNotificationCategory(
+            identifier: NotificationCategory.expenseRejected.rawValue,
+            actions: [viewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        let expenseSubmittedCategory = UNNotificationCategory(
+            identifier: NotificationCategory.expenseSubmitted.rawValue,
+            actions: [viewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        let invoiceReadyCategory = UNNotificationCategory(
+            identifier: NotificationCategory.invoiceReady.rawValue,
+            actions: [viewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        let invoiceRevisionsCategory = UNNotificationCategory(
+            identifier: NotificationCategory.invoiceRevisions.rawValue,
+            actions: [viewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        let invoiceApprovedCategory = UNNotificationCategory(
+            identifier: NotificationCategory.invoiceApproved.rawValue,
+            actions: [viewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
         // Register all categories
         notificationCenter.setNotificationCategories([
             projectCategory,
@@ -210,7 +259,13 @@ class NotificationManager: NSObject, ObservableObject {
             projectUpdateCategory,
             projectCompletionCategory,
             projectAdvanceCategory,
-            paymentReviewCategory
+            paymentReviewCategory,
+            expenseApprovedCategory,
+            expenseRejectedCategory,
+            expenseSubmittedCategory,
+            invoiceReadyCategory,
+            invoiceRevisionsCategory,
+            invoiceApprovedCategory
         ])
     }
     
@@ -358,6 +413,38 @@ class NotificationManager: NSObject, ObservableObject {
 
         schedulePaymentReviewNotification(overdueCount: overdueCount)
         UserDefaults.standard.set(Date(), forKey: lastNotifiedKey)
+    }
+
+    // MARK: - Expense Notifications
+
+    /// Schedule a local notification for expense/invoice events
+    func scheduleExpenseNotification(
+        category: NotificationCategory,
+        title: String,
+        body: String,
+        batchId: String? = nil,
+        expenseId: String? = nil
+    ) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        content.categoryIdentifier = category.rawValue
+
+        var userInfo: [String: String] = ["type": category.rawValue]
+        if let batchId { userInfo["batchId"] = batchId }
+        if let expenseId { userInfo["expenseId"] = expenseId }
+        content.userInfo = userInfo
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let identifier = "expense-\(UUID().uuidString)"
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+
+        notificationCenter.add(request) { error in
+            if let error = error {
+                print("[NOTIFICATIONS] Failed to schedule expense notification: \(error)")
+            }
+        }
     }
 
     /// Schedule a team notification
@@ -762,6 +849,14 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
                     handleProjectNotificationResponse(userInfo: userInfo, actionIdentifier: actionIdentifier)
                 }
 
+            case NotificationCategory.expenseApproved.rawValue,
+                 NotificationCategory.expenseRejected.rawValue,
+                 NotificationCategory.expenseSubmitted.rawValue,
+                 NotificationCategory.invoiceReady.rawValue,
+                 NotificationCategory.invoiceRevisions.rawValue,
+                 NotificationCategory.invoiceApproved.rawValue:
+                handleExpenseNotificationResponse(userInfo: userInfo)
+
             default:
                 print("[NOTIFICATIONS] Unknown category: \(categoryIdentifier)")
             }
@@ -990,6 +1085,26 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             
         default:
             break
+        }
+    }
+
+    /// Handle tap on expense/invoice notification
+    private func handleExpenseNotificationResponse(userInfo: [AnyHashable: Any]) {
+        let batchId = userInfo["batchId"] as? String
+        let expenseId = userInfo["expenseId"] as? String
+
+        print("[NOTIFICATIONS] Expense notification tapped - batch: \(batchId ?? "none"), expense: \(expenseId ?? "none")")
+
+        var deepLinkInfo: [String: Any] = [:]
+        if let batchId { deepLinkInfo["batchId"] = batchId }
+        if let expenseId { deepLinkInfo["expenseId"] = expenseId }
+
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenExpenseDetail"),
+                object: nil,
+                userInfo: deepLinkInfo
+            )
         }
     }
 

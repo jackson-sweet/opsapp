@@ -144,13 +144,13 @@ class PhotoDownloadManager: ObservableObject {
 
     // MARK: - Storage Estimation (cached — call sparingly, not in computed properties)
 
-    /// Estimate total on-device photo storage in bytes
+    /// Estimate total on-device photo storage in bytes (lightweight — uses file attributes, not data loading)
     func estimateStorageBytes(urls: [String]) -> Int64 {
         var total: Int64 = 0
         for url in urls {
             let cacheKey = url.hasPrefix("//") ? "https:" + url : url
-            if let data = ImageFileManager.shared.getImageData(localID: cacheKey) {
-                total += Int64(data.count)
+            if let size = ImageFileManager.shared.imageFileSize(localID: cacheKey) {
+                total += size
             }
         }
         return total

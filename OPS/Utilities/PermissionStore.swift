@@ -4,6 +4,8 @@
 //
 //  Holds the current user's RBAC permissions in memory and provides
 //  a `can()` method for permission checks throughout the app.
+//  Integrates feature flags: permissions blocked by disabled flags
+//  are treated as not granted, even if the role has them.
 //  Persists to Keychain for offline access.
 //
 
@@ -18,6 +20,10 @@ struct CachedPermissions: Codable {
     let roleId: String
     let userId: String
     let fetchedAt: Date
+    /// Permissions blocked by disabled feature flags. Nil = legacy cache (use fail-closed fallback).
+    let blockedByFlags: [String]?
+    /// Feature flag slugs that are disabled. Nil = legacy cache (use fail-closed fallback).
+    let disabledFlags: [String]?
 }
 
 class PermissionStore: ObservableObject {
@@ -32,6 +38,12 @@ class PermissionStore: ObservableObject {
     @Published var roleId: String?
     @Published var initialized: Bool = false
 
+    /// Permissions blocked by disabled feature flags.
+    @Published var blockedByFlags: Set<String> = []
+
+    /// Feature flag slugs that are currently disabled for this user.
+    @Published var disabledFlags: Set<String> = []
+
     // MARK: - Private
 
     private let keychainManager = KeychainManager()
@@ -40,20 +52,37 @@ class PermissionStore: ObservableObject {
     // MARK: - Permission Checks
 
     /// Check if user has a permission, optionally at a required scope level.
-    /// Default requiredScope is "all" — pass "assigned" or "own" for relaxed checks.
+    /// Returns false if the permission is blocked by a disabled feature flag,
+    /// even if the user's role grants it.
     func can(_ permission: String, requiredScope: String = "all") -> Bool {
+        // Feature flag gate — sits above RBAC
+        if blockedByFlags.contains(permission) { return false }
+
         guard let grantedScope = permissions[permission] else { return false }
         return scopeSatisfies(granted: grantedScope, required: requiredScope)
     }
 
-    /// Get the granted scope for a permission (nil if not granted)
+    /// Get the granted scope for a permission (nil if not granted or flag-blocked)
     func scope(for permission: String) -> String? {
+        if blockedByFlags.contains(permission) { return nil }
         return permissions[permission]
     }
 
     /// Check if the user has "all" scope for a permission (sees everything, not just assigned)
     func hasFullAccess(_ permission: String) -> Bool {
+        if blockedByFlags.contains(permission) { return false }
         return permissions[permission] == "all"
+    }
+
+    /// Check if a permission is blocked by a feature flag (for UI messaging)
+    func isBlockedByFlag(_ permission: String) -> Bool {
+        return blockedByFlags.contains(permission)
+    }
+
+    /// Check if a feature flag is enabled for this user.
+    /// Use this to gate entire feature groups (e.g., the FAB "Money" section).
+    func isFeatureEnabled(_ slug: String) -> Bool {
+        return !disabledFlags.contains(slug)
     }
 
     // MARK: - Scope Hierarchy
@@ -73,6 +102,10 @@ class PermissionStore: ObservableObject {
     func loadCachedPermissions() -> Bool {
         guard let data = keychainManager.retrievePermissions(),
               let cached = try? JSONDecoder().decode(CachedPermissions.self, from: data) else {
+            // No cache at all — fail closed on feature flags
+            let failClosed = FeatureFlagService.failClosedResult()
+            self.blockedByFlags = failClosed.blockedPermissions
+            self.disabledFlags = failClosed.disabledFlags
             return false
         }
 
@@ -83,7 +116,17 @@ class PermissionStore: ObservableObject {
         self.currentUserId = cached.userId
         self.initialized = true
 
-        print("[PERMISSIONS] Loaded \(cached.permissions.count) permissions from cache (role: \(cached.roleName), cached at: \(cached.fetchedAt))")
+        // Restore flag state from cache, or fail closed if legacy cache format
+        if let cachedBlocked = cached.blockedByFlags, let cachedDisabled = cached.disabledFlags {
+            self.blockedByFlags = Set(cachedBlocked)
+            self.disabledFlags = Set(cachedDisabled)
+        } else {
+            let failClosed = FeatureFlagService.failClosedResult()
+            self.blockedByFlags = failClosed.blockedPermissions
+            self.disabledFlags = failClosed.disabledFlags
+        }
+
+        print("[PERMISSIONS] Loaded \(cached.permissions.count) permissions from cache (role: \(cached.roleName), \(blockedByFlags.count) flag-blocked, \(disabledFlags.count) flags disabled, cached at: \(cached.fetchedAt))")
         return true
     }
 
@@ -110,38 +153,53 @@ class PermissionStore: ObservableObject {
             roleHierarchy: roleHierarchy,
             roleId: roleId,
             userId: userId,
-            fetchedAt: Date()
+            fetchedAt: Date(),
+            blockedByFlags: Array(blockedByFlags),
+            disabledFlags: Array(disabledFlags)
         )
 
         if let data = try? JSONEncoder().encode(cached) {
             keychainManager.storePermissions(data)
-            print("[PERMISSIONS] Saved \(permissions.count) permissions to Keychain cache")
+            print("[PERMISSIONS] Saved \(permissions.count) permissions to Keychain cache (\(blockedByFlags.count) flag-blocked, \(disabledFlags.count) flags disabled)")
         }
     }
 
     // MARK: - Fetch from Supabase
 
-    /// Fetch fresh permissions from Supabase and update both in-memory and Keychain cache.
+    /// Fetch fresh permissions and feature flags from Supabase.
+    /// Updates both in-memory state and Keychain cache.
     func fetchPermissions(userId: String) async {
         self.currentUserId = userId
 
         do {
-            let payload = try await PermissionService.fetchPermissions(userId: userId)
+            // Fetch RBAC permissions and feature flags in parallel
+            async let permissionsFetch = PermissionService.fetchPermissions(userId: userId)
+            async let flagsFetch = FeatureFlagService.fetchFlags(userId: userId)
+
+            let payload = try await permissionsFetch
+            let flagResult = await flagsFetch
 
             await MainActor.run {
                 self.permissions = payload.permissions
                 self.roleName = payload.roleName
                 self.roleHierarchy = payload.roleHierarchy
                 self.roleId = payload.roleId
+                self.blockedByFlags = flagResult.blockedPermissions
+                self.disabledFlags = flagResult.disabledFlags
                 self.initialized = true
                 self.saveToCache(userId: userId)
 
-                print("[PERMISSIONS] Fetched \(payload.permissions.count) permissions from Supabase (role: \(payload.roleName))")
+                print("[PERMISSIONS] Fetched \(payload.permissions.count) permissions from Supabase (role: \(payload.roleName), \(flagResult.blockedPermissions.count) flag-blocked, \(flagResult.disabledFlags.count) flags disabled)")
             }
         } catch {
             print("[PERMISSIONS] Failed to fetch permissions from Supabase: \(error)")
 
             await MainActor.run {
+                // Fail closed on feature flags even if permissions fetch fails
+                let failClosed = FeatureFlagService.failClosedResult()
+                self.blockedByFlags = failClosed.blockedPermissions
+                self.disabledFlags = failClosed.disabledFlags
+
                 if !self.initialized {
                     self.loadCachedPermissions()
                 }
@@ -159,6 +217,9 @@ class PermissionStore: ObservableObject {
         roleId = nil
         initialized = false
         currentUserId = nil
+        let failClosed = FeatureFlagService.failClosedResult()
+        blockedByFlags = failClosed.blockedPermissions
+        disabledFlags = failClosed.disabledFlags
         keychainManager.deletePermissions()
         print("[PERMISSIONS] Cleared all permissions and cache")
     }

@@ -53,6 +53,9 @@ class DataController: ObservableObject {
     private var pendingSyncRetryTimer: Timer?
     private let syncRetryInterval: TimeInterval = 180 // 3 minutes
 
+    // Cancellable data wipe scheduled during logout — cancelled if re-login starts
+    private var pendingDataWipeWork: DispatchWorkItem?
+
     // MARK: - Public Access
     var syncManager: SupabaseSyncManager!
     var imageSyncManager: ImageSyncManager!
@@ -393,20 +396,29 @@ class DataController: ObservableObject {
             return
         }
         
-        // Fall back to Supabase session restoration
-        do {
-            let session = try await SupabaseService.shared.client.auth.session
-            let supabaseUserId = session.user.id.uuidString.lowercased()
-            let email = session.user.email ?? ""
+        // Fall back to Firebase session restoration
+        FirebaseAuthService.shared.restoreSession()
 
-            // Load user identifiers from Supabase users table
-            try? await authManager.loadUserFromSupabase(userId: supabaseUserId, email: email)
-            let userId = authManager.getUserId() ?? supabaseUserId
+        guard FirebaseAuthService.shared.isAuthenticated,
+              let email = FirebaseAuthService.shared.currentUserEmail else {
+            // No valid Firebase session — clear auth
+            clearAuthentication()
+            return
+        }
+
+        do {
+            // Load user identifiers from Supabase users table via email
+            let firebaseUID = FirebaseAuthService.shared.firebaseUID ?? ""
+            try? await authManager.loadUserFromSupabase(userId: firebaseUID, email: email)
+            let userId = authManager.getUserId() ?? firebaseUID
 
             // Set authentication flags
             UserDefaults.standard.set(true, forKey: "is_authenticated")
             UserDefaults.standard.set(userId, forKey: "user_id")
             UserDefaults.standard.set(userId, forKey: "currentUserId")
+
+            // Backfill firebase_uid in users table
+            Task { await authManager.backfillFirebaseUID(usersTableId: userId) }
 
             // Try to find user in local SwiftData
             if let context = modelContext {
@@ -426,7 +438,8 @@ class DataController: ObservableObject {
                     NotificationManager.shared.linkUserToOneSignal()
                     Task { await OneSignalService.shared.configure() }
 
-                    if user.hasCompletedAppOnboarding {
+                    let localHasCompany = !(user.companyId ?? "").isEmpty
+                    if user.hasCompletedAppOnboarding || localHasCompany {
                         self.isAuthenticated = true
                         UserDefaults.standard.set(true, forKey: "onboarding_completed")
                     }
@@ -449,7 +462,7 @@ class DataController: ObservableObject {
                 self.isAuthenticated = onboardingCompleted
             }
         } catch {
-            // No valid Supabase session — clear auth
+            // Failed to load user data — clear auth
             clearAuthentication()
         }
         
@@ -458,18 +471,23 @@ class DataController: ObservableObject {
     @discardableResult
     @MainActor
     func login(username: String, password: String) async -> Bool {
-        
+        // Cancel any pending data wipe from a prior logout
+        cancelPendingDataWipe()
+
         do {
-            // Sign in via Supabase Auth (handles session, stores userId + companyId)
+            // Sign in via Firebase Auth (handles session, stores userId + companyId)
             try await authManager.loginWithEmail(username, password: password)
-            
-            
+
+
             if let userId = authManager.getUserId() {
                 // Set the authentication flags immediately
                 UserDefaults.standard.set(true, forKey: "is_authenticated")
                 // Don't automatically set onboarding_completed - we'll check from server
                 UserDefaults.standard.set(userId, forKey: "user_id")
                 UserDefaults.standard.set(userId, forKey: "currentUserId")
+
+                // Backfill firebase_uid in users table
+                Task { await authManager.backfillFirebaseUID(usersTableId: userId) }
                 
                 
                 // Fetch user data
@@ -505,28 +523,32 @@ class DataController: ObservableObject {
     /// Apple login
     @MainActor
     func loginWithApple(appleResult: AppleSignInManager.AppleSignInResult) async -> Bool {
-        do {
-            // Authenticate with Supabase using Apple identity token
-            try await SupabaseService.shared.signInWithApple(identityToken: appleResult.identityToken)
+        // Cancel any pending data wipe from a prior logout
+        cancelPendingDataWipe()
 
-            // Get session info from Supabase
-            let session = try await SupabaseService.shared.client.auth.session
-            let supabaseUserId = session.user.id.uuidString.lowercased()
-            let email = session.user.email ?? appleResult.email ?? ""
+        do {
+            // Authenticate with Firebase using Apple identity token
+            try await FirebaseAuthService.shared.signInWithApple(identityToken: appleResult.identityToken)
+
+            let firebaseUID = FirebaseAuthService.shared.firebaseUID ?? ""
+            let email = FirebaseAuthService.shared.currentUserEmail ?? appleResult.email ?? ""
 
             // Store Apple user identifier for future logins
             UserDefaults.standard.set(appleResult.userIdentifier, forKey: "apple_user_identifier")
 
             // Look up existing user in Supabase users table by email
-            try await authManager.loadUserFromSupabase(userId: supabaseUserId, email: email)
+            try await authManager.loadUserFromSupabase(userId: firebaseUID, email: email)
 
-            // Use the user ID from users table (may differ from auth UUID for migrated users)
-            let userId = authManager.getUserId() ?? supabaseUserId
+            // Use the user ID from users table (may differ from Firebase UID for migrated users)
+            let userId = authManager.getUserId() ?? firebaseUID
 
             // Set authentication flags
             UserDefaults.standard.set(true, forKey: "is_authenticated")
             UserDefaults.standard.set(userId, forKey: "user_id")
             UserDefaults.standard.set(userId, forKey: "currentUserId")
+
+            // Backfill firebase_uid in users table
+            Task { await authManager.backfillFirebaseUID(usersTableId: userId) }
 
             // Try to fetch full user data - may fail for brand new users
             do {
@@ -585,34 +607,48 @@ class DataController: ObservableObject {
     @MainActor
     func loginWithGoogle(googleUser: GIDGoogleUser) async -> Bool {
         guard let idToken = googleUser.idToken?.tokenString,
+              let accessToken = googleUser.accessToken.tokenString as String?,
               let email = googleUser.profile?.email else {
             return false
         }
 
-        do {
-            // Authenticate with Supabase using Google ID token
-            try await SupabaseService.shared.signInWithGoogle(idToken: idToken)
+        // Cancel any pending data wipe from a prior logout — prevents race condition
+        // where the wipe fires mid-login and destroys freshly-loaded user data
+        cancelPendingDataWipe()
 
-            // Get session info from Supabase
-            let session = try await SupabaseService.shared.client.auth.session
-            let supabaseUserId = session.user.id.uuidString.lowercased()
+        do {
+            // Authenticate with Firebase using Google credentials
+            try await FirebaseAuthService.shared.signInWithGoogle(idToken: idToken, accessToken: accessToken)
+
+            let firebaseUID = FirebaseAuthService.shared.firebaseUID ?? ""
 
             // Look up existing user in Supabase users table by email
-            try await authManager.loadUserFromSupabase(userId: supabaseUserId, email: email)
+            try await authManager.loadUserFromSupabase(userId: firebaseUID, email: email)
 
-            // Use the user ID from users table (may differ from auth UUID for migrated users)
-            let userId = authManager.getUserId() ?? supabaseUserId
+            // Use the user ID from users table (may differ from Firebase UID for migrated users).
+            // getUserId() returns nil if loadUserFromSupabase didn't find the user.
+            let supabaseUserId = authManager.getUserId()
+            let userId = supabaseUserId ?? firebaseUID
+            let userExistsInSupabase = supabaseUserId != nil
 
             // Set authentication flags
             UserDefaults.standard.set(true, forKey: "is_authenticated")
             UserDefaults.standard.set(userId, forKey: "user_id")
             UserDefaults.standard.set(userId, forKey: "currentUserId")
 
+            // Backfill firebase_uid in users table
+            Task { await authManager.backfillFirebaseUID(usersTableId: userId) }
+
             // Try to fetch full user data - may fail for brand new users
             do {
                 try await fetchUserFromAPI(userId: userId)
             } catch {
-                print("[AUTH] User not found in users table — likely a new user, will need onboarding")
+                print("[AUTH] fetchUserFromAPI failed: \(error)")
+                if userExistsInSupabase {
+                    print("[AUTH] ⚠️ User exists in Supabase but fetch failed — treating as returning user")
+                } else {
+                    print("[AUTH] User not found in users table — likely a new user, will need onboarding")
+                }
             }
 
             // Check onboarding status
@@ -620,8 +656,19 @@ class DataController: ObservableObject {
                 let hasCompany = !(user.companyId ?? "").isEmpty
                 let hasCompletedAppOnboarding = user.hasCompletedAppOnboarding
 
-                // Determine if onboarding is needed (indicates new user)
-                let needsOnboarding = !hasCompany || !hasCompletedAppOnboarding
+                // A user with a company has definitively completed onboarding,
+                // even if onboarding_completed JSONB is empty (pre-migration users).
+                let needsOnboarding = !hasCompany
+
+                print("[AUTH] 🔍 Onboarding check: hasCompany=\(hasCompany) (companyId='\(user.companyId ?? "nil")'), hasCompletedAppOnboarding=\(hasCompletedAppOnboarding), needsOnboarding=\(needsOnboarding)")
+
+                // Backfill: if user has a company but onboarding_completed["ios"] is false,
+                // patch Supabase so future logins don't hit this path
+                if hasCompany && !hasCompletedAppOnboarding {
+                    print("[AUTH] 📝 Backfilling onboarding_completed for pre-migration user")
+                    user.hasCompletedAppOnboarding = true
+                    Task { await self.backfillOnboardingCompleted(userId: user.id) }
+                }
 
                 // Store user type if available
                 if let userTypeString = user.userType?.rawValue {
@@ -649,14 +696,51 @@ class DataController: ObservableObject {
                 }
 
                 return true
+            } else if userExistsInSupabase {
+                // User exists in Supabase but fetchUserFromAPI failed to populate currentUser.
+                // Treat as returning user to avoid incorrectly routing to onboarding.
+                print("[AUTH] ⚠️ User exists in Supabase but currentUser is nil — setting authenticated")
+                UserDefaults.standard.set(true, forKey: "onboarding_completed")
+                self.isAuthenticated = true
+                // Re-attempt fetch in background so data loads
+                Task {
+                    try? await self.fetchUserFromAPI(userId: userId)
+                }
+                return true
             }
 
             // No user found — new user, needs onboarding
+            print("[AUTH] No user found in Supabase — new user, needs onboarding")
             UserDefaults.standard.set(false, forKey: "onboarding_completed")
             return true
         } catch {
             print("[AUTH] Google login failed: \(error)")
             return false
+        }
+    }
+
+    /// Backfill onboarding_completed JSONB with {"ios": true} for pre-migration users
+    /// who completed onboarding before this column was introduced.
+    @MainActor
+    private func backfillOnboardingCompleted(userId: String) async {
+        do {
+            let userRepo = UserRepository(companyId: "")
+            let currentDTO = try await userRepo.fetchOne(userId)
+            var merged = currentDTO.onboardingCompleted ?? [:]
+            merged["ios"] = true
+
+            var mergedJSON: [String: AnyJSON] = [:]
+            for (key, value) in merged {
+                mergedJSON[key] = .bool(value)
+            }
+
+            try await userRepo.updateFields(userId: userId, fields: [
+                "onboarding_completed": .object(mergedJSON)
+            ])
+            print("[AUTH] ✅ Backfilled onboarding_completed with ios:true → \(merged)")
+        } catch {
+            // Non-fatal — will retry on next login
+            print("[AUTH] ⚠️ Failed to backfill onboarding_completed: \(error)")
         }
     }
 
@@ -689,6 +773,7 @@ class DataController: ObservableObject {
         }
 
         let user = fetchedUser
+        print("[AUTH] 🔍 fetchUserFromAPI: user.id=\(user.id), companyId='\(user.companyId ?? "nil")', hasCompletedAppOnboarding=\(user.hasCompletedAppOnboarding)")
 
         // Update app state with the current user
         self.currentUser = user
@@ -736,12 +821,12 @@ class DataController: ObservableObject {
             isPerformingInitialSync = true
         }
 
-        // Only set isAuthenticated if user has completed onboarding
-        // This ensures LandingView can show onboarding overlay if needed
-        if user.hasCompletedAppOnboarding {
+        // Set isAuthenticated if user has completed onboarding OR has a company
+        // (having a company is definitive proof of completed onboarding, even if the
+        // onboarding_completed JSONB column was never populated for pre-migration users).
+        let hasCompany = !(user.companyId ?? "").isEmpty
+        if user.hasCompletedAppOnboarding || hasCompany {
             self.isAuthenticated = true
-        } else {
-            self.isAuthenticated = false
         }
 
         // Fetch company data if needed
@@ -856,12 +941,14 @@ class DataController: ObservableObject {
         // IMPORTANT: Clear auth state to trigger view dismissal
         clearAuthentication()
 
-        // Sign out from auth manager
-        authManager.signOut()
+        // Sign out from Firebase and Google synchronously — we're already on MainActor.
+        // Must happen synchronously to prevent race: if done via async Task, the signout
+        // could execute AFTER the user starts a new login, invalidating the fresh session.
+        FirebaseAuthService.shared.signOut()
+        GoogleSignInManager.shared.signOut()
+        // Clear keychain credentials (authManager keychain ops are synchronous)
+        authManager.clearCredentials()
 
-        // Sign out from Supabase
-        Task { await SupabaseService.shared.signOut() }
-        
         // Clear PIN settings
         simplePINManager.removePIN()
 
@@ -869,17 +956,35 @@ class DataController: ObservableObject {
         OnboardingState.clear()
         UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.completed)
 
-        // Give views MORE time to fully dismiss and release references
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        // Schedule data wipe with a cancellable work item.
+        // If the user re-logs in before this fires, loginWithGoogle/loginWithEmail
+        // will cancel it to prevent wiping freshly-loaded data.
+        cancelPendingDataWipe()
+        let wipeWork = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
-            
-            print("[LOGOUT] Performing complete data wipe...")
-            
-            // Perform complete data wipe on main thread
-            Task { @MainActor in
-                self.performCompleteDataWipe()
-                print("[LOGOUT] Data wipe complete")
+
+            // Double-check: if user re-authenticated while waiting, skip the wipe
+            guard !self.isAuthenticated else {
+                print("[LOGOUT] Skipping data wipe — user re-authenticated")
+                return
             }
+
+            print("[LOGOUT] Performing complete data wipe...")
+            self.performCompleteDataWipe()
+            print("[LOGOUT] Data wipe complete")
+        }
+        pendingDataWipeWork = wipeWork
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: wipeWork)
+    }
+
+    /// Cancel any pending data wipe from a prior logout.
+    /// Called at the start of login flows to prevent race conditions.
+    @MainActor
+    private func cancelPendingDataWipe() {
+        if let work = pendingDataWipeWork {
+            work.cancel()
+            pendingDataWipeWork = nil
+            print("[AUTH] Cancelled pending data wipe from prior logout")
         }
     }
     
@@ -1419,6 +1524,20 @@ class DataController: ObservableObject {
         print("[MANUAL_SYNC] ✅ Manual sync completed")
     }
     
+    // MARK: - All Tasks
+
+    /// Get all non-deleted tasks in the local store
+    func getAllTasks() -> [ProjectTask] {
+        guard let context = modelContext else { return [] }
+        do {
+            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+            return allTasks.filter { $0.deletedAt == nil }
+        } catch {
+            print("[DataController] Failed to fetch all tasks: \(error)")
+            return []
+        }
+    }
+
     // MARK: - Scheduled Task Methods
 
     /// Get scheduled tasks that overlap with a date range (optimized for scheduler)
@@ -3696,7 +3815,7 @@ class DataController: ObservableObject {
 
             // Filter for users with default role (no assigned employee type) excluding current user
             let unassignedLocalUsers = companyUsers.filter { localUser in
-                localUser.role == .crew && localUser.id != user.id
+                (localUser.role == .unassigned || localUser.role == .crew) && localUser.id != user.id
             }
 
             print("[UNASSIGNED_ROLES] Found \(unassignedLocalUsers.count) users without assigned role")

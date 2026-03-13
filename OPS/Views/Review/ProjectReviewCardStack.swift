@@ -42,8 +42,8 @@ struct ProjectReviewCardStack: View {
                         }
                     }
                     .frame(
-                        width: geometry.size.width - 32,
-                        height: min(geometry.size.height - 20, 500)
+                        width: geometry.size.width,
+                        height: geometry.size.height
                     )
                     .scaleEffect(scale(for: relativeIndex))
                     .offset(y: yOffset(for: relativeIndex))

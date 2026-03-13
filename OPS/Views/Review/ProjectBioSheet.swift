@@ -4,12 +4,16 @@
 //
 
 import SwiftUI
+import SwiftData
 
 /// Condensed project detail view -- the "Tinder bio" shown when tapping a review card.
 struct ProjectBioSheet: View {
     let project: Project
     let showFinancialInfo: Bool
     let onDismiss: () -> Void
+
+    @Query private var allUsers: [User]
+    @State private var resolvedMembers: [User] = []
 
     var body: some View {
         NavigationStack {
@@ -52,6 +56,16 @@ struct ProjectBioSheet: View {
             }
             .toolbarBackground(OPSStyle.Colors.background, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .onAppear { resolveTeamMembers() }
+        }
+    }
+
+    private func resolveTeamMembers() {
+        let ids = project.getTeamMemberIds()
+        if !ids.isEmpty && project.teamMembers.isEmpty {
+            resolvedMembers = ids.compactMap { id in allUsers.first { $0.id == id } }
+        } else {
+            resolvedMembers = Array(project.teamMembers)
         }
     }
 
@@ -162,29 +176,28 @@ struct ProjectBioSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             sectionHeader("TEAM")
 
-            let members = project.teamMembers
-            if members.isEmpty {
+            if resolvedMembers.isEmpty {
                 Text("No team members assigned")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             } else {
-                HStack(spacing: -8) {
-                    ForEach(Array(members.prefix(6).enumerated()), id: \.offset) { _, member in
-                        Circle()
-                            .fill(OPSStyle.Colors.cardBackground)
-                            .frame(width: 36, height: 36)
-                            .overlay(
-                                Text(String(member.firstName.prefix(1)).uppercased())
-                                    .font(.system(size: 14, weight: .semibold))
+                VStack(spacing: 0) {
+                    ForEach(resolvedMembers, id: \.id) { member in
+                        HStack(spacing: 12) {
+                            UserAvatar(user: member, size: 36)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(member.firstName) \(member.lastName)")
+                                    .font(OPSStyle.Typography.body)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
-                            )
-                            .overlay(Circle().stroke(OPSStyle.Colors.background, lineWidth: 2))
-                    }
-                    if members.count > 6 {
-                        Text("+\(members.count - 6)")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .padding(.leading, 12)
+                                Text(member.role.displayName)
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+
+                            Spacer()
+                        }
+                        .padding(.vertical, 6)
                     }
                 }
             }

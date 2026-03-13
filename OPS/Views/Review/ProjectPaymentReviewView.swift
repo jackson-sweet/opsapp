@@ -14,6 +14,11 @@ struct ProjectPaymentReviewView: View {
     @EnvironmentObject var permissionStore: PermissionStore
 
     let overdueProjects: [Project]
+    let completedProjects: [Project]
+
+    /// Which list is actively being reviewed
+    @State private var activeProjects: [Project] = []
+    @State private var reviewingCompleted: Bool = false
 
     @State private var reviewedCount: Int = 0
     @State private var showBio: Bool = false
@@ -32,35 +37,56 @@ struct ProjectPaymentReviewView: View {
         ZStack {
             OPSStyle.Colors.background.ignoresSafeArea()
 
+            // Full-bleed card stack when actively reviewing
+            if (!activeProjects.isEmpty || reviewingCompleted) && !showAllCaughtUp {
+                ProjectReviewCardStack(
+                    projects: activeProjects,
+                    hasFinancialAccess: hasFinancialAccess,
+                    onSwipe: handleSwipe,
+                    onTapCard: { project in
+                        selectedProject = project
+                        showBio = true
+                    }
+                )
+                .ignoresSafeArea()
+            }
+
+            // UI overlay
             VStack(spacing: 0) {
                 header
                     .padding(.top, 8)
 
-                if overdueProjects.isEmpty || showAllCaughtUp {
+                if activeProjects.isEmpty && !reviewingCompleted {
+                    if !completedProjects.isEmpty {
+                        noOverdueView
+                    } else {
+                        allCaughtUpView
+                    }
+                } else if showAllCaughtUp {
                     allCaughtUpView
                 } else {
-                    directionHints
-                        .padding(.top, 12)
-                        .padding(.bottom, 8)
-
-                    ProjectReviewCardStack(
-                        projects: overdueProjects,
-                        hasFinancialAccess: hasFinancialAccess,
-                        onSwipe: handleSwipe,
-                        onTapCard: { project in
-                            selectedProject = project
-                            showBio = true
-                        }
-                    )
-
                     Spacer()
 
                     // Counter
-                    Text("\(reviewedCount) OF \(overdueProjects.count) REVIEWED")
+                    Text("\(reviewedCount) OF \(activeProjects.count) REVIEWED")
                         .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .padding(.bottom, 24)
+                        .foregroundColor(.white.opacity(0.7))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.4))
+                        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                        .padding(.bottom, 8)
+
+                    directionHints
+                        .padding(.bottom, 8)
+                        .ignoresSafeArea(.container, edges: .bottom)
                 }
+            }
+        }
+        .onAppear {
+            // Start with overdue if any
+            if !overdueProjects.isEmpty {
+                activeProjects = overdueProjects
             }
         }
         .sheet(isPresented: $showBio) {
@@ -105,12 +131,14 @@ struct ProjectPaymentReviewView: View {
             Spacer()
 
             VStack(spacing: 2) {
-                Text("PAYMENT REVIEW")
+                Text("COMPLETION REVIEW")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                Text("\(overdueProjects.count) COMPLETED")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                if !activeProjects.isEmpty {
+                    Text("\(activeProjects.count) \(reviewingCompleted ? "COMPLETED" : "OVERDUE")")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
             }
 
             Spacer()
@@ -145,7 +173,87 @@ struct ProjectPaymentReviewView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(color.opacity(0.1))
-        .clipShape(Capsule())
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+    }
+
+    // MARK: - No Overdue (but has completed)
+
+    private var noOverdueView: some View {
+        VStack(spacing: 16) {
+            Spacer()
+
+            // Icon with accent ring
+            ZStack {
+                Circle()
+                    .stroke(OPSStyle.Colors.successStatus.opacity(0.15), lineWidth: 1.5)
+                    .frame(width: 120, height: 120)
+
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 56, weight: .light))
+                    .foregroundColor(OPSStyle.Colors.successStatus)
+            }
+
+            Text("NO OVERDUE PROJECTS")
+                .font(OPSStyle.Typography.headingLarge)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+
+            Text("You have \(completedProjects.count) completed project\(completedProjects.count == 1 ? "" : "s") to review")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+
+            Spacer()
+
+            VStack(spacing: 12) {
+                // Primary CTA
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        activeProjects = completedProjects
+                        reviewingCompleted = true
+                    }
+                }) {
+                    HStack {
+                        Text("REVIEW COMPLETED PROJECTS")
+                            .font(OPSStyle.Typography.button)
+
+                        Spacer()
+
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                    }
+                    .foregroundColor(OPSStyle.Colors.invertedText)
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: OPSStyle.Layout.touchTargetStandard)
+                    .background(OPSStyle.Colors.primaryText)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                }
+
+                // Secondary dismiss
+                Button(action: { dismiss() }) {
+                    HStack {
+                        Text("DISMISS")
+                            .font(OPSStyle.Typography.button)
+
+                        Spacer()
+
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: OPSStyle.Layout.touchTargetStandard)
+                    .background(Color.clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.buttonBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                }
+            }
+            .padding(.horizontal, 40)
+            .padding(.bottom, 40)
+        }
     }
 
     // MARK: - All Caught Up
@@ -154,17 +262,25 @@ struct ProjectPaymentReviewView: View {
         VStack(spacing: 16) {
             Spacer()
 
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 64))
-                .foregroundColor(OPSStyle.Colors.successStatus)
-                .scaleEffect(celebrationScale)
+            // Icon with accent ring
+            ZStack {
+                Circle()
+                    .stroke(OPSStyle.Colors.successStatus.opacity(0.15), lineWidth: 1.5)
+                    .frame(width: 140, height: 140)
+                    .scaleEffect(celebrationScale)
+
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 64, weight: .light))
+                    .foregroundColor(OPSStyle.Colors.successStatus)
+                    .scaleEffect(celebrationScale)
+            }
 
             Text("ALL CAUGHT UP")
-                .font(.custom("Mohave-Bold", size: 28))
+                .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .opacity(celebrationOpacity)
 
-            Text("No projects need payment review")
+            Text("No projects need review")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .opacity(celebrationOpacity)
@@ -172,28 +288,33 @@ struct ProjectPaymentReviewView: View {
             Spacer()
 
             Button(action: { dismiss() }) {
-                Text("DONE")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(OPSStyle.Colors.primaryAccent)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                HStack {
+                    Text("DONE")
+                        .font(OPSStyle.Typography.button)
+
+                    Spacer()
+
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                }
+                .foregroundColor(OPSStyle.Colors.invertedText)
+                .padding(.horizontal, 20)
+                .frame(maxWidth: .infinity)
+                .frame(height: OPSStyle.Layout.touchTargetStandard)
+                .background(OPSStyle.Colors.primaryText)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 32)
+            .padding(.horizontal, 40)
+            .padding(.bottom, 40)
             .opacity(celebrationOpacity)
         }
         .onAppear {
-            // Success haptic
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
 
-            // Checkmark scales in
             withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) {
                 celebrationScale = 1.0
             }
-            // Text and button fade in after delay
             withAnimation(.easeOut(duration: 0.4).delay(0.3)) {
                 celebrationOpacity = 1.0
             }
@@ -271,7 +392,7 @@ struct ProjectPaymentReviewView: View {
     }
 
     private func checkCompletion() {
-        if reviewedCount >= overdueProjects.count {
+        if reviewedCount >= activeProjects.count {
             withAnimation(.spring().delay(0.3)) {
                 showAllCaughtUp = true
             }

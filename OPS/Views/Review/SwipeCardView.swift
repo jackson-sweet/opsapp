@@ -2,6 +2,9 @@
 //  SwipeCardView.swift
 //  OPS
 //
+//  Full-bleed photo card for project payment review.
+//  Loads up to 3 most recent project photos; stacks non-portrait images vertically.
+//
 
 import SwiftUI
 
@@ -11,15 +14,26 @@ struct SwipeCardView: View {
     let showFinancialInfo: Bool
     let onTap: () -> Void
 
-    @State private var heroImage: UIImage?
+    @State private var heroImages: [UIImage] = []
     @State private var isLoadingImage = true
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            // Background: most recent project photo or fallback
+            // Full-bleed photo(s)
             projectPhoto
 
-            // Bottom gradient overlay for text readability
+            // Top gradient for header/hints visibility
+            VStack {
+                LinearGradient(
+                    gradient: Gradient(colors: [.black.opacity(0.55), .clear]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 120)
+                Spacer()
+            }
+
+            // Bottom gradient for text readability
             LinearGradient(
                 gradient: Gradient(colors: [.clear, .black.opacity(0.85)]),
                 startPoint: .center,
@@ -37,7 +51,7 @@ struct SwipeCardView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
                     .background(
-                        Capsule().fill(daysSinceCompleted > 30
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius).fill(daysSinceCompleted > 30
                             ? OPSStyle.Colors.errorStatus
                             : OPSStyle.Colors.warningStatus)
                     )
@@ -54,24 +68,37 @@ struct SwipeCardView: View {
                     .foregroundColor(.white.opacity(0.7))
             }
             .padding(20)
+            .padding(.bottom, 40)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-        )
+        .background(Color.black)
+        .clipped()
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
-        .onAppear { loadHeroImage() }
+        .onAppear { loadHeroImages() }
     }
 
-    // MARK: - Photo
+    // MARK: - Photo Display
 
     @ViewBuilder
     private var projectPhoto: some View {
-        if let image = heroImage {
+        let stackable = heroImages.filter { $0.size.width >= $0.size.height }
+
+        if stackable.count >= 2 {
+            // Stack non-portrait photos vertically
+            GeometryReader { geo in
+                let count = min(stackable.count, 3)
+                VStack(spacing: 0) {
+                    ForEach(0..<count, id: \.self) { i in
+                        Image(uiImage: stackable[i])
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: geo.size.width, height: geo.size.height / CGFloat(count))
+                            .clipped()
+                    }
+                }
+            }
+        } else if let image = heroImages.first {
             GeometryReader { geo in
                 Image(uiImage: image)
                     .resizable()
@@ -103,51 +130,51 @@ struct SwipeCardView: View {
 
     // MARK: - Image Loading
 
-    private func loadHeroImage() {
+    private func loadHeroImages() {
         let photos = project.getProjectImages()
-        guard let lastPhoto = photos.last else {
+        guard !photos.isEmpty else {
             isLoadingImage = false
             return
         }
 
-        let cacheKey = lastPhoto.hasPrefix("//") ? "https:" + lastPhoto : lastPhoto
-
-        // Check cache first
-        if let cached = ImageCache.shared.get(forKey: cacheKey) {
-            heroImage = cached
-            isLoadingImage = false
-            return
-        }
-
-        // Try file system
-        if let loadedImage = ImageFileManager.shared.loadImage(localID: lastPhoto) {
-            ImageCache.shared.set(loadedImage, forKey: cacheKey)
-            heroImage = loadedImage
-            isLoadingImage = false
-            return
-        }
-
-        // Load from network
-        guard let url = URL(string: cacheKey) else {
-            isLoadingImage = false
-            return
-        }
+        let recentPhotos = Array(photos.suffix(3))
 
         Task {
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let img = UIImage(data: data) {
-                    ImageCache.shared.set(img, forKey: cacheKey)
-                    await MainActor.run {
-                        heroImage = img
-                        isLoadingImage = false
-                    }
-                } else {
-                    await MainActor.run { isLoadingImage = false }
+            var loaded: [UIImage] = []
+            for photoKey in recentPhotos {
+                if let img = await loadSingleImage(photoKey) {
+                    loaded.append(img)
                 }
-            } catch {
-                await MainActor.run { isLoadingImage = false }
+            }
+            await MainActor.run {
+                heroImages = loaded
+                isLoadingImage = false
             }
         }
+    }
+
+    private func loadSingleImage(_ photoKey: String) async -> UIImage? {
+        let cacheKey = photoKey.hasPrefix("//") ? "https:" + photoKey : photoKey
+
+        if let cached = ImageCache.shared.get(forKey: cacheKey) {
+            return cached
+        }
+
+        if let loaded = ImageFileManager.shared.loadImage(localID: photoKey) {
+            ImageCache.shared.set(loaded, forKey: cacheKey)
+            return loaded
+        }
+
+        guard let url = URL(string: cacheKey) else { return nil }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let img = UIImage(data: data) {
+                ImageCache.shared.set(img, forKey: cacheKey)
+                return img
+            }
+        } catch {}
+
+        return nil
     }
 }

@@ -23,10 +23,10 @@ enum SwipeDirection {
 
     var icon: String {
         switch self {
-        case .right: return "checkmark.circle.fill"
+        case .right: return "checkmark.circle"
         case .left:  return "arrow.right.circle"
-        case .up:    return "bell.fill"
-        case .down:  return "xmark.circle.fill"
+        case .up:    return "bell"
+        case .down:  return "xmark.circle"
         }
     }
 
@@ -44,6 +44,30 @@ enum SwipeDirection {
         case .right: return -15
         case .left:  return 15
         case .up, .down: return 0
+        }
+    }
+}
+
+/// Configurable labels/icons/colors for swipe directions.
+struct SwipeActionConfig {
+    let label: String
+    let icon: String
+    let color: Color
+
+    static func paymentConfig(for direction: SwipeDirection) -> SwipeActionConfig {
+        SwipeActionConfig(label: direction.label, icon: direction.icon, color: direction.color)
+    }
+
+    static func taskConfig(for direction: SwipeDirection) -> SwipeActionConfig {
+        switch direction {
+        case .right:
+            return SwipeActionConfig(label: "COMPLETE", icon: "checkmark.circle", color: OPSStyle.Colors.successStatus)
+        case .left:
+            return SwipeActionConfig(label: "SKIP", icon: "arrow.right.circle", color: OPSStyle.Colors.tertiaryText)
+        case .up:
+            return SwipeActionConfig(label: "RESCHEDULE", icon: "calendar.badge.clock", color: OPSStyle.Colors.primaryAccent)
+        case .down:
+            return SwipeActionConfig(label: "CANCEL", icon: "xmark.circle", color: OPSStyle.Colors.errorStatus)
         }
     }
 }

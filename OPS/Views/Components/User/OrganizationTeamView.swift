@@ -274,7 +274,7 @@ struct OrganizationTeamView_Previews: PreviewProvider {
             id: "2", 
             firstName: "Jane", 
             lastName: "Smith", 
-            role: "Field Crew",
+            role: "Crew",
             email: "jane.smith@example.com",
             phone: "555-987-6543"
         )
@@ -292,7 +292,7 @@ struct OrganizationTeamView_Previews: PreviewProvider {
             id: "4", 
             firstName: "Sarah", 
             lastName: "Williams", 
-            role: "Field Crew",
+            role: "Crew",
             email: "sarah.w@example.com",
             phone: "555-555-5555"
         )

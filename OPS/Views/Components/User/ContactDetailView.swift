@@ -21,6 +21,7 @@ struct ContactDetailView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Query private var allClients: [Client]
 
     @State private var showFullContact = false // For animating contact display
@@ -1136,9 +1137,7 @@ struct ContactDetailView: View {
     }
     
     private var canEditClient: Bool {
-        // Only office crew and admin can edit client info
-        guard let currentUser = dataController.currentUser else { return false }
-        return currentUser.role == UserRole.admin || currentUser.role == UserRole.officeCrew
+        permissionStore.can("clients.edit")
     }
     
     private var fullName: String {
@@ -1422,7 +1421,7 @@ struct ContactDetailView: View {
 
 struct ContactDetailView_Previews: PreviewProvider {
     static var previews: some View {
-        let user = User(id: "123", firstName: "John", lastName: "Doe", role: .fieldCrew, companyId: "company123")
+        let user = User(id: "123", firstName: "John", lastName: "Doe", role: .crew, companyId: "company123")
         user.email = "john.doe@example.com"
         user.phone = "555-123-4567"
         
@@ -1430,7 +1429,7 @@ struct ContactDetailView_Previews: PreviewProvider {
             id: "456",
             firstName: "Jane",
             lastName: "Smith",
-            role: "Office Crew",
+            role: "Office",
             avatarURL: nil,
             email: "jane.smith@example.com",
             phone: "555-987-6543"

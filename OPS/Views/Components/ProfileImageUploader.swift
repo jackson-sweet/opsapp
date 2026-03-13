@@ -161,7 +161,7 @@ struct ProfileImageUploader: View {
                     .clipShape(Circle())
             } else {
                 Text(config.placeholderText)
-                    .font(.custom("Mohave-Bold", size: config.size * 0.35))
+                    .font(.avatarInitials(size: config.size * 0.35))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
 
@@ -223,7 +223,7 @@ struct ProfileImageUploader: View {
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             } else {
                 Text(config.placeholderText)
-                    .font(.custom("Mohave-Bold", size: config.size * 0.35))
+                    .font(.avatarInitials(size: config.size * 0.35))
                     .foregroundColor(config.backgroundColor)
             }
 

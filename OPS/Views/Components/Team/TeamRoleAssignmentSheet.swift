@@ -61,7 +61,7 @@ struct TeamRoleAssignmentSheet: View {
                                     TeamMemberRoleRow(
                                         member: member,
                                         selectedRole: Binding(
-                                            get: { roleAssignments[member.id] ?? .fieldCrew },
+                                            get: { roleAssignments[member.id] ?? .crew },
                                             set: { roleAssignments[member.id] = $0 }
                                         )
                                     )
@@ -169,9 +169,9 @@ struct TeamRoleAssignmentSheet: View {
         DispatchQueue.main.async {
             self.teamMembers = users
 
-            // Initialize role assignments with Field Crew as default
+            // Initialize role assignments with Crew as default
             for member in users {
-                roleAssignments[member.id] = .fieldCrew
+                roleAssignments[member.id] = .crew
             }
 
             isLoading = false
@@ -195,12 +195,7 @@ struct TeamRoleAssignmentSheet: View {
                 }
 
                 // Update via Supabase
-                let roleString: String
-                switch role {
-                case .fieldCrew: roleString = "Field Crew"
-                case .officeCrew: roleString = "Office Crew"
-                case .admin: roleString = "Admin"
-                }
+                let roleString = role.displayName
                 try await dataController.syncManager.updateUserFields(
                     userId: userId,
                     fields: ["employee_type": .string(roleString)]
@@ -270,9 +265,9 @@ struct TeamMemberRoleRow: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
                 HStack(spacing: 12) {
-                    roleButton(.fieldCrew)
-                    roleButton(.officeCrew)
-                    roleButton(.admin)
+                    ForEach(UserRole.allCases.sorted(by: { $0.hierarchy < $1.hierarchy }), id: \.rawValue) { role in
+                        roleButton(role)
+                    }
                 }
             }
         }
@@ -312,12 +307,18 @@ struct TeamMemberRoleRow: View {
 
     private func iconForRole(_ role: UserRole) -> String {
         switch role {
-        case .fieldCrew:
-            return "hammer.fill"
-        case .officeCrew:
-            return "building.2.fill"
         case .admin:
-            return "star.fill"
+            return "shield.checkered"
+        case .owner:
+            return "crown.fill"
+        case .office:
+            return "building.2.fill"
+        case .operator:
+            return "wrench.and.screwdriver.fill"
+        case .crew:
+            return "hammer.fill"
+        case .unassigned:
+            return "person.badge.clock"
         }
     }
 }
@@ -325,14 +326,7 @@ struct TeamMemberRoleRow: View {
 // Helper extension for converting Swift enum to Supabase string
 extension UserRole {
     var supabaseEmployeeType: String {
-        switch self {
-        case .fieldCrew:
-            return "Field Crew"
-        case .officeCrew:
-            return "Office Crew"
-        case .admin:
-            return "Admin"
-        }
+        displayName
     }
 }
 

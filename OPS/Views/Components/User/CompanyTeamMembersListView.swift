@@ -133,11 +133,11 @@ struct CompanyTeamMemberListRow: View {
     let company = Company(id: "sample-company", name: "Sample Company")
     
     // Add sample team members
-    let member1 = TeamMember(id: "1", firstName: "John", lastName: "Doe", role: "Field Crew", email: "john@example.com", phone: "555-123-4567")
+    let member1 = TeamMember(id: "1", firstName: "John", lastName: "Doe", role: "Crew", email: "john@example.com", phone: "555-123-4567")
     member1.company = company
     company.teamMembers.append(member1)
     
-    let member2 = TeamMember(id: "2", firstName: "Jane", lastName: "Smith", role: "Office Crew", email: "jane@example.com", phone: "555-987-6543")
+    let member2 = TeamMember(id: "2", firstName: "Jane", lastName: "Smith", role: "Office", email: "jane@example.com", phone: "555-987-6543")
     member2.company = company
     company.teamMembers.append(member2)
     

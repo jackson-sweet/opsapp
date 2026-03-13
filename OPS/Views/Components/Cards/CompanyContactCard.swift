@@ -130,7 +130,7 @@ struct CompanyContactCard: View {
                 .frame(width: logoSize, height: logoSize)
                 .overlay(
                     Text(String(name.prefix(1)).uppercased())
-                        .font(.custom("Mohave-Bold", size: logoSize * 0.4))
+                        .font(.avatarInitials(size: logoSize * 0.4))
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 )
         } else {

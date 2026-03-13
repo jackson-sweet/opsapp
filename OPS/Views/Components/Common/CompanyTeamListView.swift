@@ -159,7 +159,7 @@ struct CompanyTeamListView_Previews: PreviewProvider {
             id: "2", 
             firstName: "Jane", 
             lastName: "Smith", 
-            role: "Field Crew",
+            role: "Crew",
             email: "jane.smith@example.com",
             phone: "555-987-6543"
         )

@@ -3,6 +3,8 @@
 //  OPS
 //
 //  Full-screen photo annotation view with PencilKit drawing and text notes.
+//  Used by ProjectPhotosGrid (fullScreenCover entry point).
+//  PhotoCommentViewer uses inline annotation via AnnotationCanvas directly.
 //
 
 import SwiftUI
@@ -20,10 +22,8 @@ struct PhotoAnnotationView: View {
 
     @State private var drawing = PKDrawing()
     @State private var noteText: String = ""
-    @State private var isEditing = false
     @State private var isSaving = false
-    @State private var imageSize: CGSize = CGSize(width: 1080, height: 1920)
-    @State private var showToolPicker = false
+    @State private var imageSize: CGSize = .zero
     @State private var error: String? = nil
 
     init(photoURL: String, projectId: String, existingAnnotation: PhotoAnnotation? = nil) {
@@ -60,13 +60,17 @@ struct PhotoAnnotationView: View {
                                     .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
                                     .background(
                                         GeometryReader { imageGeometry in
-                                            Color.clear.onAppear {
-                                                imageSize = imageGeometry.size
-                                            }
+                                            Color.clear
+                                                .onAppear {
+                                                    imageSize = imageGeometry.size
+                                                }
+                                                .onChange(of: imageGeometry.size) { _, newSize in
+                                                    imageSize = newSize
+                                                }
                                         }
                                     )
                             case .failure:
-                                                Image(systemName: OPSStyle.Icons.photo)
+                                Image(systemName: OPSStyle.Icons.photo)
                                     .font(OPSStyle.Typography.largeTitle)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             case .empty:
@@ -77,26 +81,10 @@ struct PhotoAnnotationView: View {
                             }
                         }
 
-                        // Layer 2: Existing annotation overlay (when not editing)
-                        if !isEditing, let annotationURL = existingAnnotation?.annotationURL,
-                           let url = URL(string: annotationURL) {
-                            AsyncImage(url: url) { phase in
-                                if case .success(let image) = phase {
-                                    image
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fit)
-                                        .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
-                                }
-                            }
-                        }
-
-                        // Layer 3: PencilKit canvas (editing mode)
-                        if isEditing {
-                            PencilKitCanvas(
-                                drawing: $drawing,
-                                showToolPicker: $showToolPicker
-                            )
-                            .frame(width: imageSize.width, height: imageSize.height)
+                        // Layer 2: PencilKit canvas — only appears once image size is known
+                        if imageSize.width > 0 && imageSize.height > 0 {
+                            AnnotationCanvas(drawing: $drawing)
+                                .frame(width: imageSize.width, height: imageSize.height)
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -113,65 +101,45 @@ struct PhotoAnnotationView: View {
     private var toolbar: some View {
         HStack {
             Button(action: { dismiss() }) {
-                Image(systemName: OPSStyle.Icons.close)
-                    .font(OPSStyle.Typography.bodyBold)
+                Text("CANCEL")
+                    .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
             .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
 
             Spacer()
 
-            if isEditing {
-                Button(action: { undoLastStroke() }) {
-                    Image(systemName: OPSStyle.Icons.undo)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-                .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
-
-                Button(action: { clearDrawing() }) {
-                    Text("CLEAR")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.errorStatus)
-                }
-                .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+            Button(action: { undoLastStroke() }) {
+                Image(systemName: OPSStyle.Icons.undo)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(drawing.strokes.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
             }
+            .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+            .disabled(drawing.strokes.isEmpty)
+
+            Button(action: { clearDrawing() }) {
+                Text("CLEAR")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(drawing.strokes.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.errorStatus)
+            }
+            .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+            .disabled(drawing.strokes.isEmpty)
 
             Spacer()
 
-            if isEditing {
-                Button(action: { cancelEditing() }) {
-                    Text("CANCEL")
+            Button(action: { Task { await saveAnnotation() } }) {
+                if isSaving {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .frame(width: 20, height: 20)
+                } else {
+                    Text("DONE")
                         .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
-                .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
-
-                Button(action: { Task { await saveAnnotation() } }) {
-                    if isSaving {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .frame(width: 20, height: 20)
-                    } else {
-                        Text("DONE")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                }
-                .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
-                .disabled(isSaving)
-            } else {
-                Button(action: { startEditing() }) {
-                    HStack(spacing: OPSStyle.Layout.spacing1) {
-                        Image(systemName: OPSStyle.Icons.pencilTip)
-                            .font(OPSStyle.Typography.caption)
-                        Text("ANNOTATE")
-                            .font(OPSStyle.Typography.captionBold)
-                    }
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
-                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
             }
+            .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+            .disabled(isSaving)
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
@@ -210,27 +178,6 @@ struct PhotoAnnotationView: View {
 
     // MARK: - Actions
 
-    private func startEditing() {
-        withAnimation(OPSStyle.Animation.fast) {
-            isEditing = true
-            showToolPicker = true
-        }
-    }
-
-    private func cancelEditing() {
-        withAnimation(OPSStyle.Animation.fast) {
-            // Restore original drawing if we had one
-            if let data = existingAnnotation?.localDrawingData,
-               let restored = try? PKDrawing(data: data) {
-                drawing = restored
-            } else {
-                drawing = PKDrawing()
-            }
-            isEditing = false
-            showToolPicker = false
-        }
-    }
-
     private func undoLastStroke() {
         guard !drawing.strokes.isEmpty else { return }
         var strokes = drawing.strokes
@@ -261,8 +208,7 @@ struct PhotoAnnotationView: View {
                 existingAnnotationId: existingAnnotation?.id,
                 modelContext: modelContext
             )
-            isEditing = false
-            showToolPicker = false
+            dismiss()
         } catch {
             self.error = error.localizedDescription
         }
@@ -271,61 +217,102 @@ struct PhotoAnnotationView: View {
     }
 }
 
-// MARK: - PencilKit Canvas (UIViewRepresentable)
+// MARK: - AnnotationCanvas (UIViewRepresentable)
 
-struct PencilKitCanvas: UIViewRepresentable {
+/// PencilKit canvas with proper PKToolPicker lifecycle.
+///
+/// Key fixes over old PencilKitCanvas:
+/// 1. Creates and retains its own PKToolPicker (deprecated .shared(for:) returned nil)
+/// 2. Shows picker after canvas is in the window hierarchy (delayed becomeFirstResponder)
+/// 3. Uses internal-update flag to prevent SwiftUI re-render loop when user draws
+///
+struct AnnotationCanvas: UIViewRepresentable {
     @Binding var drawing: PKDrawing
-    @Binding var showToolPicker: Bool
 
     func makeUIView(context: Context) -> PKCanvasView {
         let canvas = PKCanvasView()
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
         canvas.drawing = drawing
-        canvas.delegate = context.coordinator
-        canvas.drawingPolicy = .anyInput  // Works with finger and pencil
-
-        // Default tool: thin white pen
+        canvas.drawingPolicy = .anyInput
         canvas.tool = PKInkingTool(.pen, color: .white, width: 3)
+        canvas.delegate = context.coordinator
+        canvas.contentInsetAdjustmentBehavior = .never
+        canvas.showsVerticalScrollIndicator = false
+        canvas.showsHorizontalScrollIndicator = false
+        canvas.overrideUserInterfaceStyle = .dark
+        context.coordinator.canvasView = canvas
+
+        // Show tool picker after the canvas is in the view hierarchy.
+        // The canvas needs a window to attach the tool picker — use a
+        // slightly longer delay to ensure the view is fully installed.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            context.coordinator.showToolPicker()
+        }
 
         return canvas
     }
 
     func updateUIView(_ canvas: PKCanvasView, context: Context) {
-        if canvas.drawing != drawing {
-            canvas.drawing = drawing
+        // If the drawing changed from user input (canvasViewDrawingDidChange),
+        // skip re-assigning — the canvas already has the correct drawing.
+        if context.coordinator.isInternalUpdate {
+            context.coordinator.isInternalUpdate = false
+            return
         }
 
-        // Show/hide tool picker
-        if showToolPicker {
-            if let window = canvas.window {
-                let toolPicker = PKToolPicker.shared(for: window)
-                toolPicker?.setVisible(true, forFirstResponder: canvas)
-                toolPicker?.addObserver(canvas)
-                canvas.becomeFirstResponder()
-            }
-        } else {
-            if let window = canvas.window {
-                let toolPicker = PKToolPicker.shared(for: window)
-                toolPicker?.setVisible(false, forFirstResponder: canvas)
-                toolPicker?.removeObserver(canvas)
-                canvas.resignFirstResponder()
-            }
-        }
+        // External change (undo, clear) — apply to the canvas.
+        context.coordinator.isProgrammaticUpdate = true
+        canvas.drawing = drawing
+        context.coordinator.isProgrammaticUpdate = false
+    }
+
+    static func dismantleUIView(_ canvas: PKCanvasView, coordinator: Coordinator) {
+        coordinator.hideToolPicker()
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(self)
+        Coordinator(parent: self)
     }
 
     class Coordinator: NSObject, PKCanvasViewDelegate {
-        let parent: PencilKitCanvas
+        let parent: AnnotationCanvas
+        weak var canvasView: PKCanvasView?
 
-        init(_ parent: PencilKitCanvas) {
+        /// Strong reference to the tool picker — if this is released, the picker disappears.
+        private var toolPicker: PKToolPicker?
+
+        /// Set by canvasViewDrawingDidChange to tell updateUIView to skip re-assignment.
+        var isInternalUpdate = false
+
+        /// Set by updateUIView when programmatically setting drawing, so the delegate ignores it.
+        var isProgrammaticUpdate = false
+
+        init(parent: AnnotationCanvas) {
             self.parent = parent
         }
 
+        func showToolPicker() {
+            guard let canvas = canvasView else { return }
+            let picker = PKToolPicker()
+            picker.setVisible(true, forFirstResponder: canvas)
+            picker.addObserver(canvas)
+            canvas.becomeFirstResponder()
+            self.toolPicker = picker
+        }
+
+        func hideToolPicker() {
+            guard let canvas = canvasView else { return }
+            toolPicker?.setVisible(false, forFirstResponder: canvas)
+            toolPicker?.removeObserver(canvas)
+            canvas.resignFirstResponder()
+            toolPicker = nil
+        }
+
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            // Ignore delegate calls triggered by programmatic drawing assignment
+            guard !isProgrammaticUpdate else { return }
+            isInternalUpdate = true
             parent.drawing = canvasView.drawing
         }
     }

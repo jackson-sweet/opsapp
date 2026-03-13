@@ -117,13 +117,13 @@ struct PushInMessage: View {
             // Text content
             VStack(alignment: .leading, spacing: 2) {
                 Text(title.uppercased())
-                    .font(.custom("Kosugi-Regular", size: 16))
+                    .font(OPSStyle.Typography.cardSubtitle)
                     .fontWeight(.semibold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
                 if let subtitle = subtitle {
                     Text(subtitle)
-                        .font(.custom("Kosugi-Regular", size: 14))
+                        .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }

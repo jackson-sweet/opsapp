@@ -276,12 +276,7 @@ struct TeamRoleManagementSheet: View {
                 }
 
                 // Update via Supabase
-                let roleString: String
-                switch newRole {
-                case .fieldCrew: roleString = "Field Crew"
-                case .officeCrew: roleString = "Office Crew"
-                case .admin: roleString = "Admin"
-                }
+                let roleString = newRole.displayName
                 try await dataController.syncManager.updateUserFields(
                     userId: userId,
                     fields: ["employee_type": .string(roleString)]
@@ -390,12 +385,18 @@ struct TeamMemberRoleEditRow: View {
 
     private func iconForRole(_ role: UserRole) -> String {
         switch role {
-        case .fieldCrew:
-            return "hammer.fill"
-        case .officeCrew:
-            return "building.2.fill"
         case .admin:
-            return "star.fill"
+            return "shield.checkered"
+        case .owner:
+            return "crown.fill"
+        case .office:
+            return "building.2.fill"
+        case .operator:
+            return "wrench.and.screwdriver.fill"
+        case .crew:
+            return "hammer.fill"
+        case .unassigned:
+            return "person.badge.clock"
         }
     }
 }
@@ -429,9 +430,9 @@ struct RolePickerSheet: View {
 
                     // Role options
                     VStack(spacing: 12) {
-                        roleOption(.fieldCrew)
-                        roleOption(.officeCrew)
-                        roleOption(.admin)
+                        ForEach(UserRole.allCases.sorted(by: { $0.hierarchy < $1.hierarchy }), id: \.rawValue) { role in
+                            roleOption(role)
+                        }
                     }
                     .padding(.horizontal, 20)
 
@@ -494,23 +495,22 @@ struct RolePickerSheet: View {
 
     private func iconForRole(_ role: UserRole) -> String {
         switch role {
-        case .fieldCrew:
-            return "hammer.fill"
-        case .officeCrew:
-            return "building.2.fill"
         case .admin:
-            return "star.fill"
+            return "shield.checkered"
+        case .owner:
+            return "crown.fill"
+        case .office:
+            return "building.2.fill"
+        case .operator:
+            return "wrench.and.screwdriver.fill"
+        case .crew:
+            return "hammer.fill"
+        case .unassigned:
+            return "person.badge.clock"
         }
     }
 
     private func descriptionForRole(_ role: UserRole) -> String {
-        switch role {
-        case .fieldCrew:
-            return "Works in the field, assigned to tasks and projects"
-        case .officeCrew:
-            return "Office staff, manages projects and schedules"
-        case .admin:
-            return "Full access to all features and settings"
-        }
+        role.roleDescription
     }
 }

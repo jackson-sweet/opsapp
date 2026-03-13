@@ -100,7 +100,7 @@ struct ProjectPhotosGrid: View {
                         HStack {
                             Image(systemName: OPSStyle.Icons.photo)
                             Text("Add Photo")
-                                .font(.headline)
+                                .font(OPSStyle.Typography.bodyEmphasis)
                         }
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(height: 56)
@@ -199,7 +199,7 @@ struct ProjectPhotosGrid: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             Text("No Photos")
-                .font(.title2)
+                .font(OPSStyle.Typography.heading)
                 .foregroundColor(OPSStyle.Colors.primaryText)
 
             Text("Add photos to document this project")
@@ -214,7 +214,7 @@ struct ProjectPhotosGrid: View {
                 HStack {
                     Image(systemName: OPSStyle.Icons.photo)
                     Text("Add Photo")
-                        .font(.headline)
+                        .font(OPSStyle.Typography.bodyEmphasis)
                 }
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(height: 56)
@@ -240,22 +240,26 @@ struct PhotoThumbnail: View {
     @State private var image: UIImage?
     @State private var isLoading = true
     private let id = UUID() // Unique identifier to prevent view reuse
-    
+
     var body: some View {
         ZStack {
             OPSStyle.Colors.cardBorder
-            
+
             if let image = image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                
+                GeometryReader { geo in
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                }
+
                 // Overlay a cloud with slash icon if image is not synced
                 if let project = project, !project.isImageSynced(url) {
                     VStack {
                         HStack {
                             Spacer()
-                            
+
                             // Unsynced indicator
                             Image(systemName: "icloud.slash")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
@@ -265,7 +269,7 @@ struct PhotoThumbnail: View {
                                 .clipShape(Circle())
                                 .padding(4)
                         }
-                        
+
                         Spacer()
                     }
                 }
@@ -278,24 +282,32 @@ struct PhotoThumbnail: View {
             }
         }
         .onAppear(perform: loadImage)
+        .onReceive(NotificationCenter.default.publisher(for: .annotationsComposited)) { _ in
+            reloadFromCache()
+        }
         .id("\(url)-\(id)") // Force unique view identity with URL and UUID
+    }
+
+    /// Re-read the image from the in-memory cache (may now include annotation overlay).
+    private func reloadFromCache() {
+        let cacheKey = url.hasPrefix("//") ? "https:" + url : url
+        if let updated = ImageCache.shared.get(forKey: cacheKey) {
+            image = updated
+        }
     }
 
     private func loadImage() {
         guard image == nil else { return }
 
         isLoading = true
-        print("[PhotoThumbnail] Loading image with URL: \(url)")
 
         // Check if this is an asset catalog name (no URL prefix)
         // Asset catalog names don't contain "://" or start with "//"
         let isAssetName = !url.contains("://") && !url.hasPrefix("//")
-        print("[PhotoThumbnail] Is asset name: \(isAssetName)")
 
         if isAssetName {
             // Try to load from asset catalog (demo images)
             if let assetImage = UIImage(named: url) {
-                print("[PhotoThumbnail] Successfully loaded from asset catalog: \(url)")
                 DispatchQueue.main.async {
                     self.isLoading = false
                     self.image = assetImage
@@ -303,8 +315,6 @@ struct PhotoThumbnail: View {
                     ImageCache.shared.set(assetImage, forKey: url)
                 }
                 return
-            } else {
-                print("[PhotoThumbnail] Failed to load from asset catalog: \(url)")
             }
         }
 

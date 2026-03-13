@@ -139,7 +139,7 @@ struct UnassignedRolesOverlay: View {
                 // Role selection or current selection display
                 if let role = user.wrappedValue.selectedRole {
                     HStack(spacing: 6) {
-                        Text(role == .fieldCrew ? "FIELD" : "OFFICE")
+                        Text(role.displayName.uppercased())
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -173,41 +173,24 @@ struct UnassignedRolesOverlay: View {
             // Expanded role selection
             if isExpanded {
                 VStack(spacing: 16) {
-                    // Field Crew option
-                    roleOption(
-                        title: "FIELD CREW",
-                        description: "Works on job sites. Can view assigned projects, update task status, and log work. Limited access to scheduling and client info.",
-                        isSelected: user.wrappedValue.selectedRole == .fieldCrew,
-                        action: {
-                            withAnimation(OPSStyle.Animation.faster) {
-                                user.wrappedValue.selectedRole = .fieldCrew
-                                // Auto-collapse after brief delay
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    withAnimation(OPSStyle.Animation.fast) {
-                                        expandedUserId = nil
+                    ForEach(UserRole.allCases.sorted(by: { $0.hierarchy < $1.hierarchy }), id: \.rawValue) { role in
+                        roleOption(
+                            title: role.displayName.uppercased(),
+                            description: role.roleDescription,
+                            isSelected: user.wrappedValue.selectedRole == role,
+                            action: {
+                                withAnimation(OPSStyle.Animation.faster) {
+                                    user.wrappedValue.selectedRole = role
+                                    // Auto-collapse after brief delay
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                        withAnimation(OPSStyle.Animation.fast) {
+                                            expandedUserId = nil
+                                        }
                                     }
                                 }
                             }
-                        }
-                    )
-
-                    // Office Crew option
-                    roleOption(
-                        title: "OFFICE CREW",
-                        description: "Manages operations from the office. Full access to scheduling, client management, project creation, and team coordination.",
-                        isSelected: user.wrappedValue.selectedRole == .officeCrew,
-                        action: {
-                            withAnimation(OPSStyle.Animation.faster) {
-                                user.wrappedValue.selectedRole = .officeCrew
-                                // Auto-collapse after brief delay
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    withAnimation(OPSStyle.Animation.fast) {
-                                        expandedUserId = nil
-                                    }
-                                }
-                            }
-                        }
-                    )
+                        )
+                    }
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 16)
@@ -313,15 +296,7 @@ struct UnassignedRolesOverlay: View {
             for user in unassignedUsers {
                 guard let role = user.selectedRole else { continue }
 
-                let employeeTypeValue: String
-                switch role {
-                case .fieldCrew:
-                    employeeTypeValue = "Field Crew"
-                case .officeCrew:
-                    employeeTypeValue = "Office Crew"
-                case .admin:
-                    employeeTypeValue = "Admin"
-                }
+                let employeeTypeValue = role.displayName
 
                 try await dataController.syncManager.updateUserFields(
                     userId: user.id,

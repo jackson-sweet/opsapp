@@ -37,6 +37,9 @@ class CalendarViewModel: ObservableObject {
     @Published var selectedTeamMemberId: String? = nil  // Single selection for backward compatibility
     @Published var availableTeamMembers: [TeamMember] = []
     
+    // Schedule scope (ALL / MINE / specific member)
+    @Published var scheduleScope: ScheduleScope = .all
+
     // New comprehensive filter properties
     @Published var selectedTeamMemberIds: Set<String> = []
     @Published var selectedTaskTypeIds: Set<String> = []
@@ -50,6 +53,12 @@ class CalendarViewModel: ObservableObject {
     enum CalendarViewMode {
         case week
         case month
+    }
+
+    enum ScheduleScope: Equatable {
+        case all
+        case mine
+        case member(String)  // team member ID
     }
     
     // MARK: - Initialization
@@ -68,9 +77,9 @@ class CalendarViewModel: ObservableObject {
 
     /// Force reload of calendar data (called after scheduling changes)
     func reloadCalendarData() {
-        loadProjectsForDate(selectedDate)
-        // Clear cache to force refresh
+        // Clear caches first to force fresh data
         clearProjectCountCache()
+        loadProjectsForDate(selectedDate)
     }
     
     // Check if current user should see team member filter
@@ -194,21 +203,35 @@ class CalendarViewModel: ObservableObject {
     }
     
     private var projectCountCache: [String: Int] = [:]
-    
-    // Get scheduled tasks for a specific date (for border display)
+    private var dayTaskCache: [String: [ProjectTask]] = [:]
+    private var cachedWeekStart: Date?
+
+    // Get scheduled tasks for a specific date — reads from week cache
     func scheduledTasks(for date: Date) -> [ProjectTask] {
-        // If it's the currently selected date, return cached tasks
-        if Calendar.current.isDate(date, inSameDayAs: selectedDate) {
-            return scheduledTasksForSelectedDate
+        let dateKey = formatDateKey(date)
+
+        // Return from cache (populated by rebuildWeekCache)
+        if let cached = dayTaskCache[dateKey] {
+            return cached
         }
 
-        // Otherwise fetch from DataController
+        // Cache miss (rare — only for far-off DayCanvasView pages)
         if let dataController = dataController {
-            var tasks = dataController.getScheduledTasksForCurrentUser(for: date)
-
-            // Apply comprehensive filters
+            var tasks: [ProjectTask]
+            switch scheduleScope {
+            case .all:
+                if shouldShowTeamMemberFilter {
+                    tasks = dataController.getScheduledTasksForCompany(for: date)
+                } else {
+                    tasks = dataController.getScheduledTasksForCurrentUser(for: date)
+                }
+            case .mine:
+                tasks = dataController.getScheduledTasksForCurrentUser(for: date)
+            case .member(let memberId):
+                tasks = dataController.getScheduledTasksForMember(for: date, memberId: memberId)
+            }
             tasks = applyTaskFilters(to: tasks)
-
+            dayTaskCache[dateKey] = tasks
             return tasks
         }
 
@@ -234,16 +257,41 @@ class CalendarViewModel: ObservableObject {
         return scheduledTasks(for: date)
     }
 
+    private static let dateKeyFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
     private func formatDateKey(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+        Self.dateKeyFormatter.string(from: date)
     }
     
     func clearProjectCountCache() {
         projectCountCache = [:]
+        dayTaskCache = [:]
+        cachedWeekStart = nil
     }
     
+    // Update schedule scope (ALL / MINE / specific member)
+    func updateScheduleScope(_ scope: ScheduleScope) {
+        scheduleScope = scope
+        // Sync team member filter state with scope
+        switch scope {
+        case .all:
+            selectedTeamMemberIds = []
+            selectedTeamMemberId = nil
+        case .mine:
+            selectedTeamMemberIds = []
+            selectedTeamMemberId = nil
+        case .member(let memberId):
+            selectedTeamMemberIds = [memberId]
+            selectedTeamMemberId = memberId
+        }
+        clearProjectCountCache()
+        loadProjectsForDate(selectedDate)
+    }
+
     // Update selected team member filter (legacy single selection)
     func updateTeamMemberFilter(_ memberId: String?) {
         selectedTeamMemberId = memberId
@@ -265,17 +313,28 @@ class CalendarViewModel: ObservableObject {
 
         selectedTeamMemberId = teamMemberIds.first
 
+        // Sync scope with team member filter changes from filter sheet
+        if teamMemberIds.isEmpty {
+            // No team member filter — revert scope to .all
+            if case .member = scheduleScope {
+                scheduleScope = .all
+            }
+        } else if teamMemberIds.count == 1, let memberId = teamMemberIds.first {
+            // Single team member selected — match scope
+            scheduleScope = .member(memberId)
+        }
+
         clearProjectCountCache()
         loadProjectsForDate(selectedDate)
     }
     
     var hasActiveFilters: Bool {
-        !selectedTeamMemberIds.isEmpty || !selectedTaskTypeIds.isEmpty || !selectedClientIds.isEmpty || !selectedStatuses.isEmpty
+        scheduleScope != .all || !selectedTaskTypeIds.isEmpty || !selectedClientIds.isEmpty || !selectedStatuses.isEmpty
     }
-    
+
     var activeFilterCount: Int {
         var count = 0
-        if !selectedTeamMemberIds.isEmpty { count += 1 }
+        if scheduleScope != .all { count += 1 }
         if !selectedTaskTypeIds.isEmpty { count += 1 }
         if !selectedClientIds.isEmpty { count += 1 }
         if !selectedStatuses.isEmpty { count += 1 }
@@ -328,8 +387,10 @@ class CalendarViewModel: ObservableObject {
     var filterSummaryText: String {
         var components: [String] = []
 
-        if !selectedTeamMemberIds.isEmpty {
-            components.append("\(selectedTeamMemberIds.count) team member\(selectedTeamMemberIds.count == 1 ? "" : "s")")
+        if case .mine = scheduleScope {
+            components.append("My tasks")
+        } else if case .member = scheduleScope {
+            components.append("1 team member")
         }
         if !selectedTaskTypeIds.isEmpty {
             components.append("\(selectedTaskTypeIds.count) task type\(selectedTaskTypeIds.count == 1 ? "" : "s")")
@@ -358,11 +419,12 @@ class CalendarViewModel: ObservableObject {
 
         isLoading = true
 
-        // Get scheduled tasks for the selected date
-        var scheduledTasks = dataController.getScheduledTasksForCurrentUser(for: date)
+        // Rebuild the week cache (single DB fetch for entire week + buffer)
+        rebuildWeekCache(around: date)
 
-        // Apply comprehensive filters
-        scheduledTasks = applyTaskFilters(to: scheduledTasks)
+        // Get tasks for selected date from cache
+        let dateKey = formatDateKey(date)
+        let scheduledTasks = dayTaskCache[dateKey] ?? []
 
         // Get unique projects from the scheduled tasks
         let projectIds = Set(scheduledTasks.compactMap { $0.projectId })
@@ -382,9 +444,116 @@ class CalendarViewModel: ObservableObject {
             self?.isLoading = false
         }
 
-        // Update the cache for this date (based on scheduled tasks)
-        let dateKey = formatDateKey(date)
+        // Update the project count cache for this date
         projectCountCache[dateKey] = scheduledTasks.count
+    }
+
+    // MARK: - Week Cache
+
+    /// Fetches all tasks from DB once and distributes them into a per-day cache.
+    /// Covers the current week ± 1 week buffer for smooth DayCanvasView swiping.
+    private func rebuildWeekCache(around centerDate: Date) {
+        guard let dataController = dataController,
+              let context = dataController.modelContext,
+              let user = dataController.currentUser else { return }
+
+        var weekCal = Calendar.current
+        weekCal.firstWeekday = 2 // Monday
+        guard let weekInterval = weekCal.dateInterval(of: .weekOfYear, for: centerDate) else { return }
+        let weekStart = weekInterval.start
+
+        // Skip rebuild if same week is already cached
+        if let cached = cachedWeekStart, weekCal.isDate(cached, inSameDayAs: weekStart) {
+            return
+        }
+
+        let cal = Calendar.current
+
+        // Fetch ALL tasks once (single DB hit)
+        let allTasks: [ProjectTask]
+        do {
+            allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+        } catch {
+            return
+        }
+
+        // Apply scope/permission filter (no date filter)
+        let scopedTasks = allTasks.filter { task in
+            guard task.deletedAt == nil else { return false }
+            guard task.startDate != nil else { return false }
+
+            switch scheduleScope {
+            case .all:
+                if shouldShowTeamMemberFilter {
+                    return task.companyId == user.companyId
+                } else {
+                    if PermissionStore.shared.hasFullAccess("tasks.view") {
+                        return task.companyId == user.companyId
+                    } else {
+                        return isUserAssignedToTask(user: user, task: task)
+                    }
+                }
+            case .mine:
+                if PermissionStore.shared.hasFullAccess("tasks.view") {
+                    return task.companyId == user.companyId
+                } else {
+                    return isUserAssignedToTask(user: user, task: task)
+                }
+            case .member(let memberId):
+                guard task.companyId == user.companyId else { return false }
+                return isMemberAssignedToTask(memberId: memberId, task: task)
+            }
+        }
+
+        // Apply additional filters (task type, client, status)
+        let filteredTasks = applyTaskFilters(to: scopedTasks)
+
+        // Build per-day cache: current week ± 1 week (21 days)
+        var newCache: [String: [ProjectTask]] = [:]
+        for dayOffset in -7..<14 {
+            guard let date = cal.date(byAdding: .day, value: dayOffset, to: weekStart) else { continue }
+            let dayStart = cal.startOfDay(for: date)
+            let dateKey = formatDateKey(date)
+
+            let tasksForDay = filteredTasks.filter { task in
+                let taskStartDay = cal.startOfDay(for: task.startDate!)
+                let taskEndDay = cal.startOfDay(for: task.endDate ?? task.startDate!)
+                return taskStartDay <= dayStart && taskEndDay >= dayStart
+            }
+            .sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
+
+            newCache[dateKey] = tasksForDay
+            projectCountCache[dateKey] = tasksForDay.count
+        }
+
+        dayTaskCache = newCache
+        cachedWeekStart = weekStart
+    }
+
+    private func isUserAssignedToTask(user: User, task: ProjectTask) -> Bool {
+        let taskTeamMemberIds = task.getTeamMemberIds()
+        if taskTeamMemberIds.contains(user.id) || task.teamMembers.contains(where: { $0.id == user.id }) {
+            return true
+        }
+        if let project = task.project {
+            let projectTeamMemberIds = project.getTeamMemberIds()
+            return projectTeamMemberIds.contains(user.id)
+                || project.teamMembers.contains(where: { $0.id == user.id })
+        }
+        return false
+    }
+
+    private func isMemberAssignedToTask(memberId: String, task: ProjectTask) -> Bool {
+        let taskTeamMemberIds = task.getTeamMemberIds()
+        if taskTeamMemberIds.contains(memberId) || task.teamMembers.contains(where: { $0.id == memberId }) {
+            return true
+        }
+        if let project = task.project {
+            let projectTeamMemberIds = project.getTeamMemberIds()
+            return projectTeamMemberIds.contains(memberId)
+                || project.teamMembers.contains(where: { $0.id == memberId })
+        }
+        return false
     }
     
     /// Load CalendarUserEvents for the current user from local SwiftData store

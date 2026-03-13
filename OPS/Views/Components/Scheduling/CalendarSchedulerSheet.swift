@@ -35,6 +35,13 @@ struct CalendarSchedulerSheet: View {
     @State private var allScheduledTasks: [ProjectTask] = []
     @State private var filteredScheduledTasks: [ProjectTask] = []
 
+    // Quick push / cascade state
+    @State private var cascadeEnabled: Bool = false
+    @State private var cascadeResult: SchedulingEngine.CascadeResult?
+    @State private var showingCascadePreview: Bool = false
+    @State private var pendingPushDays: Int = 0
+    @AppStorage("showCascadePreview") private var showCascadePreviewPref: Bool = true
+
     // Grid configuration
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
     // Start with Monday
@@ -89,6 +96,11 @@ struct CalendarSchedulerSheet: View {
                         selectedDatesHeader
                             .padding(.top, 8)
 
+                        // Quick push bar (only for tasks with existing dates)
+                        if case .task = itemType, currentStartDate != nil {
+                            quickPushBar
+                        }
+
                         // Calendar Grid
                         calendarSectionFullWidth
 
@@ -116,6 +128,26 @@ struct CalendarSchedulerSheet: View {
         }
         .onAppear {
             loadScheduledTasks()
+        }
+        .sheet(isPresented: $showingCascadePreview) {
+            if let cascade = cascadeResult, case .task(let task) = itemType {
+                CascadePreviewSheet(
+                    pushedTaskName: task.displayTitle,
+                    pushedTaskOldStart: task.startDate,
+                    pushedTaskNewStart: SchedulingEngine.pushByDays(task: task, days: pendingPushDays).newStart,
+                    pushedTaskNewEnd: SchedulingEngine.pushByDays(task: task, days: pendingPushDays).newEnd,
+                    cascadeChanges: cascade.changes,
+                    onConfirm: {
+                        Task {
+                            try? await dataController.pushTaskWithCascade(task, byDays: pendingPushDays)
+                        }
+                        isPresented = false
+                    },
+                    onCancel: { }
+                )
+                .environmentObject(dataController)
+                .presentationDetents([.medium])
+            }
         }
     }
 
@@ -487,6 +519,97 @@ struct CalendarSchedulerSheet: View {
             }
         }
         .animation(OPSStyle.Animation.fast, value: hasSelectedDates)
+    }
+
+    // MARK: - Quick Push Bar
+
+    private var quickPushBar: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                ForEach([1, 2, 3], id: \.self) { days in
+                    quickPushButton(label: "+\(days)", days: days)
+                }
+                quickPushButton(label: "+1W", days: 7)
+            }
+
+            // Cascade toggle (only for tasks with dependents)
+            if case .task(let task) = itemType {
+                let dependentCount = countDependentTasks(for: task)
+                if dependentCount > 0 {
+                    HStack {
+                        Toggle(isOn: $cascadeEnabled) {
+                            HStack(spacing: 6) {
+                                Text("Push dependent tasks")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                Text("\(dependentCount)")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(OPSStyle.Colors.primaryAccent)
+                                    .cornerRadius(8)
+                            }
+                        }
+                        .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private func quickPushButton(label: String, days: Int) -> some View {
+        Button(action: {
+            handleQuickPush(days: days)
+        }) {
+            Text(label)
+                .font(OPSStyle.Typography.button)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .background(OPSStyle.Colors.primaryAccent)
+                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        }
+    }
+
+    private func handleQuickPush(days: Int) {
+        guard case .task(let task) = itemType else { return }
+
+        let result = SchedulingEngine.pushByDays(task: task, days: days)
+
+        if cascadeEnabled {
+            let allTasks = dataController.getTasksForProject(task.projectId)
+            let cascade = SchedulingEngine.calculateCascade(
+                pushedTaskId: task.id,
+                newStartDate: result.newStart,
+                newEndDate: result.newEnd,
+                allProjectTasks: allTasks
+            )
+
+            if showCascadePreviewPref && !cascade.changes.isEmpty {
+                cascadeResult = cascade
+                pendingPushDays = days
+                showingCascadePreview = true
+            } else {
+                onScheduleUpdate(result.newStart, result.newEnd)
+                Task {
+                    try? await dataController.pushTaskWithCascade(task, byDays: days)
+                }
+                isPresented = false
+            }
+        } else {
+            onScheduleUpdate(result.newStart, result.newEnd)
+            isPresented = false
+        }
+    }
+
+    private func countDependentTasks(for task: ProjectTask) -> Int {
+        let allTasks = dataController.getTasksForProject(task.projectId)
+        return allTasks.filter { other in
+            other.id != task.id &&
+            other.effectiveDependencies.contains { $0.dependsOnTaskTypeId == task.taskTypeId }
+        }.count
     }
 
     // MARK: - Helper Methods

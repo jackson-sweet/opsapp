@@ -31,8 +31,6 @@ struct ScheduleView: View {
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
     @StateObject private var viewModel = CalendarViewModel()
-    @State private var showingPersonalEventSheet = false
-    @State private var showingTimeOffSheet = false
     @State private var hasPostedWeekScrollNotification = false
     @State private var hasPostedMonthExploredNotification = false
     @State private var hasUserScrolledInWeekView = false
@@ -45,13 +43,17 @@ struct ScheduleView: View {
     @State private var showFilterSheet = false
     @State private var showSyncMessage = false
     @State private var syncedProjectsCount = 0
+    @State private var showScopeMessage = false
+    @State private var scopeMessageText = ""
+    @State private var showScheduleBanner = false
+    @State private var scheduleBannerText = ""
     
     var body: some View {
         NavigationStack {
             ZStack {
                 OPSStyle.Colors.backgroundGradient
                     .ignoresSafeArea()
-                
+
                 VStack(spacing: 0) {
                     // Header with its own internal padding of 20
                     AppHeader(
@@ -59,40 +61,18 @@ struct ScheduleView: View {
                         onSearchTapped: {
                             showSearchSheet = true
                         },
-                        onRefreshTapped: {
-                            // Show indicator immediately
-                            showingRefreshAlert = true
-
-                            // Refresh projects in background
-                            Task {
-                                // Count projects before sync (respects field crew permissions)
-                                let projectsBefore = dataController.getProjectsForCurrentUser()
-                                let countBefore = projectsBefore.count
-
-                                // Perform sync
-                                await viewModel.refreshProjects()
-
-                                // Count projects after sync
-                                let projectsAfter = dataController.getProjectsForCurrentUser()
-                                let countAfter = projectsAfter.count
-
-                                // Calculate new projects count
-                                let newProjectsCount = countAfter - countBefore
-
-                                // Hide refresh indicator
-                                await MainActor.run {
-                                    showingRefreshAlert = false
-
-                                    // Show sync message with count
-                                    syncedProjectsCount = max(0, newProjectsCount) // Ensure non-negative
-                                    showSyncMessage = true
-                                }
-                            }
-                        },
                         onFilterTapped: {
                             showFilterSheet = true
                         },
                         onMonthTapped: { viewModel.toggleMonthExpanded() },
+                        onScopeToggled: {
+                            let newScope: CalendarViewModel.ScheduleScope = viewModel.scheduleScope == .all ? .mine : .all
+                            viewModel.updateScheduleScope(newScope)
+                            scopeMessageText = newScope == .all ? "ALL PROJECTS" : "ONLY MY PROJECTS"
+                            showScopeMessage = true
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        },
+                        isScopeAll: viewModel.scheduleScope == .all,
                         hasActiveFilters: viewModel.hasActiveFilters,
                         filterCount: viewModel.activeFilterCount
                     )
@@ -107,7 +87,14 @@ struct ScheduleView: View {
                     // Week strip (or month grid when expanded) — always visible
                     CalendarDaySelector(viewModel: viewModel)
                         .padding(.horizontal, 20)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, 16)
+
+                    // Quick scope selector (ALL / MINE / team members) — admin/office only
+                    if viewModel.shouldShowTeamMemberFilter {
+                        ScheduleScopeSelector(viewModel: viewModel)
+                            .padding(.bottom, 8)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
 
                     // Day canvas — only in week mode
                     if !viewModel.isMonthExpanded {
@@ -121,7 +108,7 @@ struct ScheduleView: View {
             }
             }
         }
-        
+        .trackScreen("Schedule")
        // .ignoresSafeArea(.keyboard)
         // Monitor viewMode changes to handle view transitions
         .onChange(of: viewModel.viewMode) { _, newMode in
@@ -140,21 +127,14 @@ struct ScheduleView: View {
         .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
             viewModel.reloadCalendarData()
         }
-        // Search sheet for finding projects
+        // Universal search sheet
         .sheet(isPresented: $showSearchSheet) {
-            ProjectSearchSheet(
-                dataController: dataController,
-                onProjectSelected: { project in
-                    // Navigate to project details
-                    showSearchSheet = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        appState.viewProjectDetails(project)
-                    }
-                }
-            )
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-            .interactiveDismissDisabled(false)
+            UniversalSearchSheet()
+                .environmentObject(dataController)
+                .environmentObject(appState)
+                .environmentObject(PermissionStore.shared)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
         
         
@@ -225,6 +205,40 @@ struct ScheduleView: View {
             .zIndex(1000)
         )
 
+        // Scope change message
+        .overlay(
+            PushInMessage(
+                isPresented: $showScopeMessage,
+                title: scopeMessageText,
+                subtitle: nil,
+                type: .info,
+                autoDismissAfter: 2.0,
+                showDismissButton: false
+            )
+            .ignoresSafeArea(edges: .top)
+            .zIndex(1001)
+        )
+
+        // Schedule action banner (push/extend feedback)
+        .overlay(
+            PushInMessage(
+                isPresented: $showScheduleBanner,
+                title: scheduleBannerText,
+                subtitle: nil,
+                type: .success,
+                autoDismissAfter: 3.0,
+                showDismissButton: false
+            )
+            .ignoresSafeArea(edges: .top)
+            .zIndex(1002)
+        )
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowScheduleBanner"))) { notification in
+            if let title = notification.userInfo?["title"] as? String {
+                scheduleBannerText = title
+                showScheduleBanner = true
+            }
+        }
+
         // Filter sheet
         .sheet(isPresented: $showFilterSheet) {
             CalendarFilterView(viewModel: viewModel)
@@ -232,20 +246,9 @@ struct ScheduleView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
-        // Personal event sheet (triggered by FAB)
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowPersonalEventSheet"))) { _ in
-            showingPersonalEventSheet = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowTimeOffRequestSheet"))) { _ in
-            showingTimeOffSheet = true
-        }
-        .sheet(isPresented: $showingPersonalEventSheet) {
-            PersonalEventSheet(isPresented: $showingPersonalEventSheet, viewModel: viewModel)
-                .environmentObject(dataController)
-        }
-        .sheet(isPresented: $showingTimeOffSheet) {
-            TimeOffRequestSheet(isPresented: $showingTimeOffSheet, viewModel: viewModel)
-                .environmentObject(dataController)
+        // Refresh user events when created from FAB (which owns the sheets)
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarUserEventsDidChange"))) { _ in
+            viewModel.loadUserEvents()
         }
         // Tutorial mode: Listen for scroll in week view
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarWeekViewScrolled"))) { _ in

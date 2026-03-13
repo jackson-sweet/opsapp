@@ -21,7 +21,7 @@ struct DayCell: View {
                 VStack(spacing: 6) {
                     // Day number
                     Text(DateHelper.dayString(from: date))
-                        .font(.custom("Mohave-SemiBold", size: 13))
+                        .font(OPSStyle.Typography.cardBody)
                         .foregroundColor(textColor)
 
                     // Day name (e.g., "We")

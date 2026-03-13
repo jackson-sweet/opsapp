@@ -28,6 +28,9 @@ class AppState: ObservableObject {
     // Track when schedule view is in selection mode (hides FAB)
     @Published var isScheduleSelectionMode: Bool = false
 
+    // Track when a map pin card/tooltip is showing (hides FAB)
+    @Published var isShowingMapOverlay: Bool = false
+
     // Tutorial restart flag - when true, ContentView should show the tutorial
     @Published var shouldRestartTutorial: Bool = false
 
@@ -40,6 +43,10 @@ class AppState: ObservableObject {
 
     // MARK: - Payment Review
     @Published var showPaymentReview: Bool = false
+
+    // MARK: - Bug Reporting
+    @Published var showingBugReport: Bool = false
+    @Published var bugReportScreenshot: UIImage?
 
     /// Refresh unread notification count from Supabase
     func refreshUnreadCount() {
@@ -210,6 +217,8 @@ class AppState: ObservableObject {
         self.showingGlobalCompletionChecklist = false
         self.unreadNotificationCount = 0
         self.showingNotifications = false
+        self.showingBugReport = false
+        self.bugReportScreenshot = nil
     }
     
     // Helper method to dismiss project details without exiting project mode

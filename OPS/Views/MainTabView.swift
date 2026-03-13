@@ -210,13 +210,15 @@ struct MainTabView: View {
             FloatingActionMenu(currentTab: selectedTab, hasInventoryAccess: hasInventoryAccess, isScheduleTab: selectedTab == scheduleTabIndex, isInventoryTab: inventoryTabIndex != nil && selectedTab == inventoryTabIndex)
                 .environmentObject(dataController)
                 .environmentObject(appState)
-                .opacity(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects && !appState.isScheduleSelectionMode ? 1 : 0)
-                .allowsHitTesting(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects && !appState.isScheduleSelectionMode)
+                .opacity(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects && !appState.isScheduleSelectionMode && !appState.isShowingMapOverlay && !appState.isInProjectMode ? 1 : 0)
+                .allowsHitTesting(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects && !appState.isScheduleSelectionMode && !appState.isShowingMapOverlay && !appState.isInProjectMode)
                 .animation(OPSStyle.Animation.fast, value: isSettingsTab)
                 .animation(OPSStyle.Animation.fast, value: dataController.isPerformingInitialSync)
                 .animation(OPSStyle.Animation.fast, value: appState.isLoadingProjects)
                 .animation(OPSStyle.Animation.fast, value: appState.isInventorySelectionMode)
                 .animation(OPSStyle.Animation.fast, value: appState.isScheduleSelectionMode)
+                .animation(OPSStyle.Animation.fast, value: appState.isShowingMapOverlay)
+                .animation(OPSStyle.Animation.fast, value: appState.isInProjectMode)
 
             // Project sheet container that overlays the whole app
             ProjectSheetContainer()

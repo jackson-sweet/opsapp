@@ -27,6 +27,7 @@ struct ContentView: View {
     @State private var showABTestOnboarding = false
     @State private var showExistingLogin = false
     @State private var onboardingManagerInstance: OnboardingManager?
+    @State private var hasCompletedInitialAuthCheck = false
 
     var body: some View {
         Group {
@@ -95,6 +96,9 @@ struct ContentView: View {
             let onboardingCompleted = UserDefaults.standard.bool(forKey: "onboarding_completed")
             
             
+            // Guard against re-running after Google auth UI dismissal triggers onAppear again
+            guard !hasCompletedInitialAuthCheck else { return }
+
             // Wait longer to ensure auth check completes
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 print("[CONTENT_VIEW] ========== AUTH CHECK ==========")
@@ -131,14 +135,20 @@ struct ContentView: View {
 
                 // Finish the loading phase to show the appropriate screen
                 isCheckingAuth = false
+                hasCompletedInitialAuthCheck = true
                 print("[CONTENT_VIEW] ========== END AUTH CHECK ==========")
             }
         }
         // Watch for authentication changes
         .onChange(of: dataController.isAuthenticated) { _, isAuthenticated in
             if isAuthenticated && !isCheckingAuth {
-                // Clear A/B test login routing flag so user proceeds to main app
+                // Clear ALL onboarding routing flags so user proceeds to main app.
+                // Fixes race condition where onAppear timer fires after Google auth UI
+                // dismissal but before loginWithGoogle completes, incorrectly routing
+                // to onboarding.
                 showExistingLogin = false
+                showABTestOnboarding = false
+                onboardingManagerInstance = nil
             }
         }
         // Watch for changes to the location denied state
@@ -207,6 +217,14 @@ struct PINGatedView: View {
     @State private var showClientCreatedMessage = false
     @State private var createdClientName: String = ""
 
+    // Bug reporting
+    @State private var lastShakeTime: Date = .distantPast
+
+    // Wizard system
+    @StateObject private var wizardStateManager = WizardStateManager()
+    @StateObject private var wizardTriggerService = WizardTriggerService()
+    @State private var hasConfiguredWizards = false
+
     init(dataController: DataController, appState: AppState, locationManager: LocationManager) {
         self.dataController = dataController
         self.pinManager = dataController.simplePINManager
@@ -235,6 +253,11 @@ struct PINGatedView: View {
                 MainTabView()
                     .environmentObject(appState)
                     .environmentObject(locationManager)
+                    .wizardActive(wizardStateManager.isActive)
+                    .environment(\.wizardStateManager, wizardStateManager)
+                    .wizardBanner(stateManager: wizardStateManager)
+                    .wizardPromptOverlay(stateManager: wizardStateManager)
+                    .wizardInstructionBar(stateManager: wizardStateManager)
                     .gracePeriodBanner() // Add grace period banner overlay
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TaskCreatedSuccess"))) { notification in
                         // Show success message when task is created
@@ -273,6 +296,24 @@ struct PINGatedView: View {
                     .onAppear {
                         // Set the appState reference in DataController for cross-component access
                         dataController.appState = appState
+
+                        // Configure wizard system (once per session)
+                        if !hasConfiguredWizards,
+                           let context = dataController.modelContext,
+                           let user = dataController.currentUser {
+                            let role = user.role
+                            wizardStateManager.configure(
+                                modelContext: context,
+                                userId: user.id,
+                                userRole: role
+                            )
+                            wizardTriggerService.configure(
+                                stateManager: wizardStateManager,
+                                userRole: role,
+                                permissionCheck: { PermissionStore.shared.can($0) }
+                            )
+                            hasConfiguredWizards = true
+                        }
 
                         // Check for unassigned employee roles (only once per session)
                         if !hasCheckedForUnassignedRoles {
@@ -409,6 +450,53 @@ struct PINGatedView: View {
                 .environmentObject(dataController)
             }
         }
+        // MARK: - Bug Report Sheet (Shake-to-Report)
+        .sheet(isPresented: $appState.showingBugReport, onDismiss: {
+            appState.bugReportScreenshot = nil
+        }) {
+            BugReportSheet(screenshot: appState.bugReportScreenshot)
+                .environmentObject(appState)
+                .environmentObject(dataController)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
+            handleShake()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ConnectivityManager.connectivityChangedNotification)) { _ in
+            // Drain offline bug report queue when connectivity returns
+            if dataController.connectivity?.shouldAttemptSync ?? false {
+                Task {
+                    await BugReportSubmissionService.shared.drainOfflineQueue(dataController: dataController)
+                }
+            }
+        }
+    }
+
+    // MARK: - Shake Handler
+
+    private func handleShake() {
+        // Debounce: ignore shakes within 3 seconds
+        let now = Date()
+        guard now.timeIntervalSince(lastShakeTime) > 3.0 else { return }
+
+        // Don't trigger during tutorial
+        // TutorialStateManager is not available here as EnvironmentObject,
+        // but we can check via the dataController or UserDefaults
+        if appState.shouldRestartTutorial { return }
+
+        // Don't trigger if already showing
+        guard !appState.showingBugReport else { return }
+
+        // Don't trigger if not authenticated
+        guard dataController.isAuthenticated else { return }
+
+        lastShakeTime = now
+
+        // Capture screenshot BEFORE showing the sheet
+        let screenshot = BugReportCaptureService.shared.captureScreenshot()
+        appState.bugReportScreenshot = screenshot
+        appState.showingBugReport = true
+
+        DebugLogger.shared.log("Bug report triggered via shake", level: .info, category: "BugReport")
     }
 
     /// Check for active app messages and filter by user role

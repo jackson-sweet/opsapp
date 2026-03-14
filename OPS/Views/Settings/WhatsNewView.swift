@@ -515,7 +515,7 @@ private struct WhatsNewFeatureCard: View {
                     if status == .shipped || status == .completed {
                         // Green checkmark
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 20))
+                            .font(.system(size: OPSStyle.Layout.IconSize.lg))
                             .foregroundColor(OPSStyle.Colors.successStatus)
                     } else if status == .inTesting {
                         // Request Access button

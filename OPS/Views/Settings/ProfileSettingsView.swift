@@ -48,7 +48,7 @@ struct ProfileSettingsView: View {
         ZStack {
             // Background gradient
             OPSStyle.Colors.backgroundGradient
-                .edgesIgnoringSafeArea(.all)
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Header area with back button and title
@@ -308,7 +308,7 @@ struct ProfileSettingsView: View {
     private var resetPasswordSheet: some View {
         ZStack {
             OPSStyle.Colors.backgroundGradient
-                .edgesIgnoringSafeArea(.all)
+                .ignoresSafeArea()
 
             VStack(spacing: 24) {
                 Text("Reset Password")
@@ -441,7 +441,7 @@ struct ProfileSettingsView: View {
     private var deleteAccountSheet: some View {
         ZStack {
             OPSStyle.Colors.backgroundGradient
-                .edgesIgnoringSafeArea(.all)
+                .ignoresSafeArea()
 
             VStack(spacing: 24) {
                 // Header

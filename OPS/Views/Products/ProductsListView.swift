@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ProductsListView: View {
     @EnvironmentObject private var dataController: DataController
+    @Environment(\.dismiss) private var dismiss
 
     @State private var products: [Product] = []
     @State private var isLoading = true
@@ -51,9 +52,16 @@ struct ProductsListView: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            OPSStyle.Colors.background.ignoresSafeArea()
+            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
 
             VStack(spacing: 0) {
+                // Header
+                SettingsHeader(
+                    title: "Products & Services",
+                    onBackTapped: { dismiss() }
+                )
+                .padding(.bottom, 8)
+
                 // Search
                 HStack {
                     Image(systemName: "magnifyingglass")
@@ -89,7 +97,7 @@ struct ProductsListView: View {
                     .padding(.vertical, OPSStyle.Layout.spacing2)
                 }
 
-                Divider().background(OPSStyle.Colors.separator)
+                Rectangle().fill(OPSStyle.Colors.separator).frame(height: 1)
 
                 // Content
                 if isLoading {
@@ -129,8 +137,7 @@ struct ProductsListView: View {
             .accessibilityLabel("New Product")
         }
         .trackScreen("Products")
-        .navigationTitle("PRODUCTS & SERVICES")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
         .sheet(isPresented: $showFormSheet) {
             ProductFormSheet(
                 editing: editingProduct,

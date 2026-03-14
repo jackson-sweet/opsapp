@@ -67,9 +67,9 @@ struct ComingSoonView: View {
                         }
                         .padding(20)
                         .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .padding(.horizontal, 32)
@@ -102,9 +102,9 @@ struct ComingSoonView: View {
                         }
                         .padding(20)
                         .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.largeCornerRadius)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
                         .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.largeCornerRadius)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                         .padding(.horizontal, 32)

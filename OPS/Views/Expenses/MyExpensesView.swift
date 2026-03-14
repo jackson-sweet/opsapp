@@ -171,7 +171,7 @@ struct MyExpensesView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
                 Rectangle()
-                    .fill(OPSStyle.Colors.secondaryText.opacity(0.3))
+                    .fill(OPSStyle.Colors.separator)
                     .frame(height: 1)
 
                 Text("[ \(monthGroup.totalCount) ]")

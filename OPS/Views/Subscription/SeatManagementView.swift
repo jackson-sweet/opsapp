@@ -40,7 +40,7 @@ struct SeatManagementView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 OPSStyle.Colors.background
                     .ignoresSafeArea()
@@ -250,7 +250,7 @@ struct SeatManagementView: View {
         VStack(alignment: .leading, spacing: 12) {
             // Minimal section header
             Text("TEAM MEMBERS")
-                .font(OPSStyle.Typography.smallCaption)
+                .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .padding(.horizontal, 24)
             
@@ -269,8 +269,9 @@ struct SeatManagementView: View {
                     
                     // Divider between rows
                     if user.id != allTeamMembers.last?.id {
-                        Divider()
-                            .background(OPSStyle.Colors.subtleBackground)
+                        Rectangle()
+                            .fill(OPSStyle.Colors.separator)
+                            .frame(height: 1)
                             .padding(.horizontal, 24)
                     }
                 }

@@ -14,7 +14,7 @@ struct IntegrationsSettingsView: View {
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 SettingsHeader(
@@ -145,7 +145,7 @@ struct IntegrationsSettingsView: View {
 
     private func oauthPlaceholder(provider: String) -> some View {
         ZStack {
-            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
 
             VStack(spacing: 24) {
                 Spacer()

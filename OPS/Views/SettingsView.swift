@@ -77,26 +77,57 @@ struct SettingsView: View {
                 title: "Profile Information",
                 categoryTitle: "Account",
                 categoryIcon: OPSStyle.Icons.person,
-                keywords: ["name", "contact", "personal", "information", "profile", "phone", "email", "address"],
+                keywords: [
+                    "name", "first name", "last name", "contact", "personal", "information",
+                    "profile", "phone", "email", "address", "home address", "avatar",
+                    "photo", "picture", "edit profile", "my info", "my profile",
+                    "password", "reset password", "change password", "delete account"
+                ],
                 destination: AnyView(ProfileSettingsView().environmentObject(dataController))
             ),
             SearchableSettingItem(
                 title: "Organization",
                 categoryTitle: "Account",
                 categoryIcon: "building.2",
-                keywords: ["company", "business", "organization", "team", "members"],
+                keywords: [
+                    "company", "business", "organization", "org", "company details",
+                    "company name", "company logo", "logo", "company code",
+                    "company phone", "company email", "company address", "website"
+                ],
                 destination: AnyView(OrganizationSettingsView().environmentObject(dataController))
             )
         ])
 
+        // Manage Team — separate entry for discoverability
         if isAdmin {
+            items.append(
+                SearchableSettingItem(
+                    title: "Manage Team",
+                    categoryTitle: "Account",
+                    categoryIcon: "person.3.fill",
+                    keywords: [
+                        "team", "members", "employees", "crew", "staff", "people",
+                        "add team", "invite team", "invite member", "invite employee",
+                        "add member", "add employee", "add crew", "add people",
+                        "remove member", "remove employee", "fire", "delete member",
+                        "edit role", "change role", "assign role", "team management",
+                        "hire", "onboard", "seats", "seat management"
+                    ],
+                    destination: AnyView(ManageTeamView().environmentObject(dataController).environmentObject(SubscriptionManager.shared).environmentObject(permissionStore))
+                )
+            )
+
             items.append(
                 SearchableSettingItem(
                     title: "Subscription",
                     categoryTitle: "Account",
                     categoryIcon: "creditcard",
-                    keywords: ["subscription", "plan", "billing", "seats", "payment"],
-                    destination: AnyView(OrganizationSettingsView().environmentObject(dataController))
+                    keywords: [
+                        "subscription", "plan", "billing", "seats", "payment",
+                        "upgrade", "downgrade", "cancel", "pricing", "cost",
+                        "renewal", "trial", "free", "pro", "premium"
+                    ],
+                    destination: AnyView(ManageSubscriptionView().environmentObject(dataController).environmentObject(SubscriptionManager.shared))
                 )
             )
         }
@@ -107,28 +138,45 @@ struct SettingsView: View {
                 title: "Notifications",
                 categoryTitle: "App",
                 categoryIcon: OPSStyle.Icons.bellFill,
-                keywords: ["notifications", "alerts", "reminders", "quiet", "mute"],
+                keywords: [
+                    "notifications", "alerts", "reminders", "quiet", "mute",
+                    "push notifications", "do not disturb", "quiet hours",
+                    "notification settings", "advance notice", "priority",
+                    "sounds", "badges", "banner"
+                ],
                 destination: AnyView(NotificationSettingsView().environmentObject(dataController).environmentObject(NotificationManager.shared))
             ),
             SearchableSettingItem(
                 title: "Map Settings",
                 categoryTitle: "App",
                 categoryIcon: OPSStyle.Icons.map,
-                keywords: ["map", "navigation", "display", "zoom", "location"],
+                keywords: [
+                    "map", "navigation", "display", "zoom", "location",
+                    "gps", "directions", "map style", "satellite", "traffic",
+                    "geofence", "map type"
+                ],
                 destination: AnyView(MapSettingsView().environmentObject(dataController))
             ),
             SearchableSettingItem(
                 title: "Data & Storage",
                 categoryTitle: "App",
                 categoryIcon: "externaldrive",
-                keywords: ["data", "sync", "storage", "cache"],
+                keywords: [
+                    "data", "sync", "storage", "cache", "clear cache",
+                    "offline", "download", "upload", "refresh", "reset",
+                    "clear data", "free space", "disk", "memory"
+                ],
                 destination: AnyView(DataStorageSettingsView().environmentObject(dataController))
             ),
             SearchableSettingItem(
                 title: "Security & Privacy",
                 categoryTitle: "App",
                 categoryIcon: "lock",
-                keywords: ["security", "privacy", "pin", "biometric", "protection"],
+                keywords: [
+                    "security", "privacy", "pin", "biometric", "protection",
+                    "face id", "touch id", "lock", "unlock", "passcode",
+                    "app lock", "authentication", "secure"
+                ],
                 destination: AnyView(SecuritySettingsView().environmentObject(dataController))
             )
         ])
@@ -139,7 +187,11 @@ struct SettingsView: View {
                 title: "Photos",
                 categoryTitle: "Data",
                 categoryIcon: "photo.on.rectangle.angled",
-                keywords: ["photos", "images", "pictures", "gallery", "project photos"],
+                keywords: [
+                    "photos", "images", "pictures", "gallery", "project photos",
+                    "camera", "media", "attachments", "all photos", "photo gallery",
+                    "browse photos", "view photos"
+                ],
                 destination: AnyView(AllPhotosGalleryView().environmentObject(dataController).environmentObject(appState))
             )
         )
@@ -150,8 +202,28 @@ struct SettingsView: View {
                     title: "My Expenses",
                     categoryTitle: "Data",
                     categoryIcon: "dollarsign.circle",
-                    keywords: ["expenses", "receipts", "spending", "money"],
+                    keywords: [
+                        "expenses", "receipts", "spending", "money",
+                        "my expenses", "expense report", "submit expense",
+                        "reimbursement", "mileage", "cost"
+                    ],
                     destination: AnyView(MyExpensesView().environmentObject(dataController))
+                )
+            )
+        }
+
+        if permissionStore.can("expenses.approve") {
+            items.append(
+                SearchableSettingItem(
+                    title: "Review Expenses",
+                    categoryTitle: "Data",
+                    categoryIcon: "doc.text.magnifyingglass",
+                    keywords: [
+                        "review expenses", "approve expenses", "expense approval",
+                        "pending expenses", "expense review", "reject expense",
+                        "expense management", "submitted expenses"
+                    ],
+                    destination: AnyView(ExpensesListView().environmentObject(dataController))
                 )
             )
         }
@@ -163,14 +235,22 @@ struct SettingsView: View {
                     title: "Products & Services",
                     categoryTitle: "Business",
                     categoryIcon: OPSStyle.Icons.productTag,
-                    keywords: ["products", "services", "catalog", "pricing", "labor", "material"],
+                    keywords: [
+                        "products", "services", "catalog", "pricing", "labor", "material",
+                        "line items", "price list", "service list", "add product",
+                        "create product", "manage products"
+                    ],
                     destination: AnyView(ProductsListView())
                 ),
                 SearchableSettingItem(
                     title: "Integrations",
                     categoryTitle: "Business",
                     categoryIcon: OPSStyle.Icons.accountingChart,
-                    keywords: ["integrations", "quickbooks", "sage", "accounting", "sync"],
+                    keywords: [
+                        "integrations", "quickbooks", "sage", "accounting", "sync",
+                        "connect", "xero", "bookkeeping", "export", "import",
+                        "third party", "api"
+                    ],
                     destination: AnyView(IntegrationsSettingsView())
                 )
             ])
@@ -182,8 +262,30 @@ struct SettingsView: View {
                     title: "Project Settings",
                     categoryTitle: "Business",
                     categoryIcon: "hammer.circle",
-                    keywords: ["task", "types", "project", "defaults", "scheduling"],
+                    keywords: [
+                        "task", "types", "project", "defaults", "scheduling",
+                        "task types", "project defaults", "overdue", "threshold",
+                        "reminder", "project configuration", "status", "workflow"
+                    ],
                     destination: AnyView(ProjectSettingsView().environmentObject(dataController).environmentObject(permissionStore))
+                )
+            )
+        }
+
+        // Inventory settings
+        if permissionStore.can("inventory.view") {
+            items.append(
+                SearchableSettingItem(
+                    title: "Inventory Settings",
+                    categoryTitle: "Business",
+                    categoryIcon: "shippingbox.fill",
+                    keywords: [
+                        "inventory", "stock", "units", "tags", "snapshots",
+                        "inventory units", "inventory tags", "warehouse",
+                        "materials", "supplies", "quantity", "threshold",
+                        "inventory management", "adjustment"
+                    ],
+                    destination: AnyView(InventorySettingsView().environmentObject(dataController))
                 )
             )
         }
@@ -194,7 +296,11 @@ struct SettingsView: View {
                     title: "Permissions",
                     categoryTitle: "Business",
                     categoryIcon: "person.badge.key.fill",
-                    keywords: ["permissions", "roles", "access", "rbac", "admin", "override"],
+                    keywords: [
+                        "permissions", "roles", "access", "rbac", "admin", "override",
+                        "role management", "user permissions", "access control",
+                        "who can", "restrict", "allow", "deny", "grant"
+                    ],
                     destination: AnyView(PermissionsManagementView().environmentObject(dataController).environmentObject(permissionStore))
                 )
             )
@@ -206,14 +312,21 @@ struct SettingsView: View {
                 title: "What's New",
                 categoryTitle: "Support",
                 categoryIcon: "sparkles",
-                keywords: ["new", "updates", "features", "changelog", "release"],
+                keywords: [
+                    "new", "updates", "features", "changelog", "release",
+                    "version", "what changed", "latest", "recent", "news"
+                ],
                 destination: AnyView(WhatsNewView())
             ),
             SearchableSettingItem(
                 title: "Report Issue",
                 categoryTitle: "Support",
                 categoryIcon: OPSStyle.Icons.alert,
-                keywords: ["report", "issue", "bug", "problem", "help"],
+                keywords: [
+                    "report", "issue", "bug", "problem", "help",
+                    "feedback", "support", "contact", "broken", "error",
+                    "not working", "crash", "fix"
+                ],
                 destination: AnyView(ReportIssueView())
             )
         ])

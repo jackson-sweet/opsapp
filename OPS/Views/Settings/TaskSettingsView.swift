@@ -22,7 +22,7 @@ struct TaskSettingsView: View {
     var body: some View {
         ZStack {
             OPSStyle.Colors.backgroundGradient
-                .edgesIgnoringSafeArea(.all)
+                .ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Header

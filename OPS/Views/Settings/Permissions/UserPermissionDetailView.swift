@@ -254,12 +254,12 @@ struct UserPermissionDetailView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .background(Color.white.opacity(0.04))
+            .background(OPSStyle.Colors.subtleBackground)
 
             // Individual permission rows (darker)
             ForEach(permissions) { perm in
                 Rectangle()
-                    .fill(Color.white.opacity(0.06))
+                    .fill(OPSStyle.Colors.cardBorderSubtle)
                     .frame(height: 1)
 
                 overrideRow(perm)
@@ -332,10 +332,10 @@ struct UserPermissionDetailView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .fill(
                                     !isMixed && selection == level
-                                        ? Color.white.opacity(0.12)
+                                        ? OPSStyle.Colors.subtleBackground
                                         : Color.clear
                                 )
                         )
@@ -345,12 +345,12 @@ struct UserPermissionDetailView: View {
         }
         .padding(2)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.white.opacity(0.03))
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .fill(OPSStyle.Colors.subtleBackground)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .opacity(isMixed ? 0.4 : 1.0)
     }

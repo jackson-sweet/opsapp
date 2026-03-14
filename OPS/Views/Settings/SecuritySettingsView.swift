@@ -26,7 +26,7 @@ struct SecuritySettingsView: View {
     var body: some View {
         ZStack {
             // Background
-            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Header
@@ -145,7 +145,7 @@ struct SecuritySettingsView: View {
     private var resetPasswordSheet: some View {
         ZStack {
             OPSStyle.Colors.backgroundGradient
-                .edgesIgnoringSafeArea(.all)
+                .ignoresSafeArea()
 
             VStack(spacing: 24) {
                 Text("Reset Password")
@@ -388,7 +388,7 @@ struct PINSetupSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
 
                 VStack(spacing: 24) {
                     if !showConfirmation {

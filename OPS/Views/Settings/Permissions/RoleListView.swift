@@ -199,7 +199,7 @@ struct RoleListView: View {
                                 .padding(.vertical, 2)
                                 .background(
                                     RoundedRectangle(cornerRadius: 3)
-                                        .fill(Color.white.opacity(0.05))
+                                        .fill(OPSStyle.Colors.subtleBackground)
                                 )
                         }
                     }
@@ -279,7 +279,7 @@ struct RoleListView: View {
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
                             .autocorrectionDisabled()
                     }

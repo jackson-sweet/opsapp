@@ -153,7 +153,7 @@ struct ProductFormSheet: View {
                     // Taxable toggle
                     VStack(spacing: 0) {
                         Toggle(isOn: $taxable) {
-                            Text("Taxable?")
+                            Text("TAXABLE")
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                         }

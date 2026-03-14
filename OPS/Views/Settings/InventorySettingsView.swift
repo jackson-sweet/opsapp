@@ -173,7 +173,7 @@ struct InventorySettingsView: View {
                 Button(action: { showingSnapshots = true }) {
                     HStack {
                         Image(systemName: "folder")
-                            .font(OPSStyle.Typography.body)
+                            .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .frame(width: 24)
 
@@ -184,7 +184,7 @@ struct InventorySettingsView: View {
                         Spacer()
 
                         Image(systemName: OPSStyle.Icons.chevronRight)
-                            .font(OPSStyle.Typography.caption)
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -200,7 +200,7 @@ struct InventorySettingsView: View {
                 // Frequency picker row
                 HStack {
                     Image(systemName: "clock")
-                        .font(OPSStyle.Typography.body)
+                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .frame(width: 24)
 
@@ -232,7 +232,7 @@ struct InventorySettingsView: View {
                 if let lastDate = SnapshotSettings.load().lastSnapshotDate {
                     HStack {
                         Image(systemName: "checkmark.circle")
-                            .font(OPSStyle.Typography.body)
+                            .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.successStatus)
                             .frame(width: 24)
 
@@ -263,7 +263,7 @@ struct InventorySettingsView: View {
                                 .frame(width: 24)
                         } else {
                             Image(systemName: snapshotSuccess ? "checkmark.circle.fill" : "camera")
-                                .font(OPSStyle.Typography.body)
+                                .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                                 .foregroundColor(snapshotSuccess ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent)
                                 .frame(width: 24)
                         }
@@ -306,7 +306,7 @@ struct InventorySettingsView: View {
                 Button(action: { showingImportSheet = true }) {
                     HStack {
                         Image(systemName: "square.and.arrow.down")
-                            .font(OPSStyle.Typography.body)
+                            .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .frame(width: 24)
 
@@ -317,7 +317,7 @@ struct InventorySettingsView: View {
                         Spacer()
 
                         Image(systemName: OPSStyle.Icons.chevronRight)
-                            .font(OPSStyle.Typography.caption)
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -371,7 +371,7 @@ struct InventorySettingsView: View {
                 // Default units
                 if !defaultUnits.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Default")
+                        Text("DEFAULT")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -401,7 +401,7 @@ struct InventorySettingsView: View {
                 // Custom units
                 if !customUnits.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Custom")
+                        Text("CUSTOM")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -458,7 +458,7 @@ struct InventorySettingsView: View {
             if canDelete {
                 Button(action: { deleteUnit(unit) }) {
                     Image(systemName: OPSStyle.Icons.trash)
-                        .font(OPSStyle.Typography.body)
+                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.errorStatus)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 }
@@ -557,7 +557,7 @@ struct InventorySettingsView: View {
 
                                     Button(action: { deleteTag(tag) }) {
                                         Image(systemName: OPSStyle.Icons.trash)
-                                            .font(OPSStyle.Typography.body)
+                                            .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                                             .foregroundColor(OPSStyle.Colors.errorStatus)
                                     }
                                 }
@@ -754,7 +754,7 @@ struct InventorySettingsView: View {
 
                 // Add value input
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                    Text("Add Value")
+                    Text("ADD VALUE")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
 
@@ -773,7 +773,7 @@ struct InventorySettingsView: View {
 
                         Button(action: { addValue() }) {
                             Image(systemName: OPSStyle.Icons.plus)
-                                .font(OPSStyle.Typography.body)
+                                .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                                 .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                                 .overlay(

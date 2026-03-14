@@ -32,12 +32,13 @@ class CompanyRepository {
     }
 
     /// Look up a company by its human-readable company_code (used in the join flow).
+    ///
+    /// Uses the `lookup_company_by_code` SECURITY DEFINER function to bypass RLS,
+    /// since new users during onboarding don't have a users row yet and RLS would
+    /// block direct table queries.
     func fetchByCode(_ code: String) async throws -> SupabaseCompanyDTO? {
         let results: [SupabaseCompanyDTO] = try await client
-            .from("companies")
-            .select()
-            .ilike("company_code", value: code)
-            .limit(1)
+            .rpc("lookup_company_by_code", params: ["lookup_code": code])
             .execute()
             .value
         return results.first
@@ -126,6 +127,7 @@ struct NewCompanyPayload: Codable {
     let address: String?
     let company_code: String
     let admin_ids: [String]
+    let seated_employee_ids: [String]
     let account_holder_id: String
     let industries: [String]?
     let company_size: String?

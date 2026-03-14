@@ -231,7 +231,7 @@ struct LoginScreen: View {
         errorMessage = nil
 
         Task {
-            let success = await dataController.login(username: email, password: password)
+            let (success, loginError) = await dataController.login(username: email, password: password)
 
             await MainActor.run {
                 isLoading = false
@@ -240,7 +240,7 @@ struct LoginScreen: View {
                     // Check if user needs to complete onboarding
                     manager.resume()
                 } else {
-                    errorMessage = "Wrong email or password. Try again."
+                    errorMessage = loginError ?? "Wrong email or password. Try again."
                 }
             }
         }

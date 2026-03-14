@@ -617,7 +617,7 @@ class OnboardingManager: ObservableObject {
                 // Account exists — attempt to log them in with the same credentials
                 print("[ONBOARDING_MANAGER] Email already registered, attempting login instead...")
                 do {
-                    let loginSuccess = await dataController.login(username: email, password: password)
+                    let (loginSuccess, _) = await dataController.login(username: email, password: password)
                     if loginSuccess, let user = dataController.currentUser {
                         let hasCompany = !(user.companyId ?? "").isEmpty
                         if hasCompany {
@@ -737,6 +737,7 @@ class OnboardingManager: ObservableObject {
                 address: state.companyData.address.isEmpty ? nil : state.companyData.address,
                 company_code: newCompanyCode,
                 admin_ids: [userId],
+                seated_employee_ids: [userId],
                 account_holder_id: userId,
                 industries: state.companyData.industry.isEmpty ? nil : [state.companyData.industry],
                 company_size: state.companyData.size.isEmpty ? nil : state.companyData.size,
@@ -831,6 +832,8 @@ class OnboardingManager: ObservableObject {
                 companyObject.trialStartDate = Date()
                 companyObject.trialEndDate = Calendar.current.date(byAdding: .day, value: 30, to: Date())
                 companyObject.maxSeats = 10
+                companyObject.seatedEmployeeIds = userId
+                companyObject.adminIdsString = userId
                 modelContext.insert(companyObject)
                 try? modelContext.save()
                 print("[ONBOARDING_MANAGER] ✅ Company saved to SwiftData")

@@ -74,6 +74,7 @@ struct FloatingActionMenu: View {
     // Review sheet states
     @State private var showTaskReviewFromFAB: Bool = false
     @State private var showPaymentReviewFromFAB: Bool = false
+    @State private var showIncompleteReviewFromFAB: Bool = false
     @State private var showLockedAlert: Bool = false
     @State private var lockedAlertMessage: String = ""
     @State private var showPaymentReviewIntroFAB: Bool = false
@@ -168,6 +169,7 @@ struct FloatingActionMenu: View {
         guard dataController.currentUser != nil else { return false }
         if appState.isInventorySelectionMode { return false }
         if isScheduleTab { return true }
+        if isInventoryTab && hasInventoryAccess { return true }
         return permissionStore.can("projects.create")
             || permissionStore.can("tasks.create")
             || permissionStore.can("clients.create")
@@ -302,6 +304,25 @@ struct FloatingActionMenu: View {
             ])
         )
 
+        // Inventory — shown when user has inventory access
+        if hasInventoryAccess {
+            groups.append(
+                FABMenuGroup(id: "inventory", title: "INVENTORY", items: [
+                    FABMenuItem(
+                        id: "new-inventory-item",
+                        icon: "shippingbox.fill",
+                        label: "New Inventory Item",
+                        permission: "inventory.manage",
+                        disabledInTutorial: true,
+                        action: {
+                            showCreateMenu = false
+                            showingCreateInventoryItem = true
+                        }
+                    ),
+                ])
+            )
+        }
+
         groups.append(
             FABMenuGroup(id: "scheduling", title: "SCHEDULING", items: [
                 FABMenuItem(
@@ -353,6 +374,17 @@ struct FloatingActionMenu: View {
                         } else {
                             showTaskReviewFromFAB = true
                         }
+                    }
+                ),
+                FABMenuItem(
+                    id: "incomplete-review",
+                    icon: "calendar.badge.exclamationmark",
+                    label: "Incomplete Review",
+                    permission: nil,
+                    disabledInTutorial: true,
+                    action: {
+                        showCreateMenu = false
+                        showIncompleteReviewFromFAB = true
                     }
                 ),
                 FABMenuItem(
@@ -577,6 +609,12 @@ struct FloatingActionMenu: View {
             .environmentObject(appState)
             .environmentObject(PermissionStore.shared)
         }
+        .sheet(isPresented: $showIncompleteReviewFromFAB) {
+            UnscheduledTaskReviewView(tasks: computeFABIncompleteTasks())
+                .environmentObject(dataController)
+                .environmentObject(appState)
+                .environmentObject(PermissionStore.shared)
+        }
         .alert("Locked", isPresented: $showLockedAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -623,10 +661,6 @@ struct FloatingActionMenu: View {
 
     private var fabButton: some View {
         Button(action: {
-            if isInventoryTab {
-                showingCreateInventoryItem = true
-                return
-            }
             if tutorialMode && !showCreateMenu {
                 NotificationCenter.default.post(
                     name: Notification.Name("TutorialFABTapped"),
@@ -859,6 +893,26 @@ struct FloatingActionMenu: View {
 
     private func computeFABCompletedProjects() -> [Project] {
         return dataController.getProjects().filter { $0.status == .completed }
+    }
+
+    private func computeFABIncompleteTasks() -> [ProjectTask] {
+        let allTasks: [ProjectTask]
+        if PermissionStore.shared.hasFullAccess("tasks.view") {
+            allTasks = dataController.getAllTasks()
+        } else if let userId = dataController.currentUser?.id {
+            allTasks = dataController.getAllTasks().filter { task in
+                task.getTeamMemberIds().contains(userId)
+            }
+        } else {
+            allTasks = []
+        }
+
+        return allTasks.filter { task in
+            task.status == .active
+                && task.deletedAt == nil
+                && (task.startDate == nil || task.getTeamMemberIds().isEmpty)
+        }
+        .sorted { ($0.project?.title ?? "") < ($1.project?.title ?? "") }
     }
 
     // MARK: - Item Drag Reorder (within section)

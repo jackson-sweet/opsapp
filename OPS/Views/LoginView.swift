@@ -212,7 +212,7 @@ struct LoginView: View {
         errorMessage = nil
 
         Task {
-            let success = await dataController.login(username: username, password: password)
+            let (success, loginError) = await dataController.login(username: username, password: password)
 
             await MainActor.run {
                 isLoggingIn = false
@@ -227,7 +227,7 @@ struct LoginView: View {
                         dataController.isAuthenticated = true
                     }
                 } else {
-                    errorMessage = "Invalid username or password. Please try again."
+                    errorMessage = loginError ?? "Incorrect email or password. Please try again."
                     showError = true
                 }
             }

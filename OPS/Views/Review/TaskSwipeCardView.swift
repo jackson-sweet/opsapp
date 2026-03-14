@@ -12,6 +12,7 @@ struct TaskSwipeCardView: View {
     let task: ProjectTask
     let scheduledDaysAgo: Int
     let onTap: () -> Void
+    var badgeOverride: (text: String, color: Color)? = nil
 
     @State private var heroImages: [UIImage] = []
     @State private var isLoadingImage = true
@@ -95,6 +96,7 @@ struct TaskSwipeCardView: View {
     // MARK: - Date Badge
 
     private var dateBadgeText: String {
+        if let override = badgeOverride { return override.text }
         if scheduledDaysAgo == 0 {
             return "TODAY"
         } else {
@@ -103,6 +105,7 @@ struct TaskSwipeCardView: View {
     }
 
     private var dateBadgeColor: Color {
+        if let override = badgeOverride { return override.color }
         if scheduledDaysAgo == 0 {
             return OPSStyle.Colors.successStatus
         } else if scheduledDaysAgo < 7 {

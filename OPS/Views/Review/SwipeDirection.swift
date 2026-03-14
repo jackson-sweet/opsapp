@@ -70,4 +70,17 @@ struct SwipeActionConfig {
             return SwipeActionConfig(label: "CANCEL", icon: "xmark.circle", color: OPSStyle.Colors.errorStatus)
         }
     }
+
+    static func unscheduledTaskConfig(for direction: SwipeDirection) -> SwipeActionConfig {
+        switch direction {
+        case .right:
+            return SwipeActionConfig(label: "AUTO SCHEDULE", icon: "calendar.badge.plus", color: OPSStyle.Colors.successStatus)
+        case .left:
+            return SwipeActionConfig(label: "SKIP", icon: "arrow.right.circle", color: OPSStyle.Colors.tertiaryText)
+        case .up:
+            return SwipeActionConfig(label: "ASSIGN CREW", icon: "person.badge.plus", color: OPSStyle.Colors.primaryAccent)
+        case .down:
+            return SwipeActionConfig(label: "CANCEL", icon: "xmark.circle", color: OPSStyle.Colors.errorStatus)
+        }
+    }
 }

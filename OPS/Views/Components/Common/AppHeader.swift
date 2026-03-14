@@ -36,6 +36,8 @@ struct AppHeader: View {
     var taskReviewBadgeCount: Int = 0
     var isTaskReviewLocked: Bool = false
     var taskReviewLockedMessage: String = ""
+    var onUnscheduledReviewTapped: (() -> Void)? = nil
+    var unscheduledReviewBadgeCount: Int = 0
     var isScopeAll: Bool = true
     var hasActiveFilters: Bool = false
     var filterCount: Int = 0
@@ -298,6 +300,32 @@ struct AppHeader: View {
                     }
 
                     if headerType == .jobBoard {
+                        // Unscheduled task review button
+                        if let onUnscheduledReviewTapped {
+                            Button(action: { onUnscheduledReviewTapped() }) {
+                                ZStack(alignment: .topTrailing) {
+                                    Image(systemName: "calendar.badge.exclamationmark")
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .frame(width: 44, height: 44)
+                                        .background(OPSStyle.Colors.cardBackground)
+                                        .clipShape(Circle())
+
+                                    if unscheduledReviewBadgeCount > 0 {
+                                        Text("\(unscheduledReviewBadgeCount)")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.invertedText)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 2)
+                                            .background(OPSStyle.Colors.warningStatus)
+                                            .clipShape(Capsule())
+                                            .offset(x: 6, y: -4)
+                                    }
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+
                         // Task review button
                         if onTaskReviewTapped != nil || isTaskReviewLocked {
                             Button(action: {

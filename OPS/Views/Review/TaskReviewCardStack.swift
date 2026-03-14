@@ -13,6 +13,11 @@ struct TaskReviewCardStack: View {
     let hasCalendarAccess: Bool
     let onSwipe: (ProjectTask, SwipeDirection) -> Void
     let onTapCard: (ProjectTask) -> Void
+    var actionConfigProvider: (SwipeDirection) -> SwipeActionConfig = SwipeActionConfig.taskConfig
+    /// Per-task config override — takes precedence over actionConfigProvider when set
+    var taskActionConfigProvider: ((ProjectTask, SwipeDirection) -> SwipeActionConfig)? = nil
+    var blockedDirections: Set<SwipeDirection> = []
+    var badgeProvider: ((ProjectTask) -> (text: String, color: Color)?)? = nil
 
     @State private var currentIndex: Int = 0
     @State private var dragOffset: CGSize = .zero
@@ -32,14 +37,16 @@ struct TaskReviewCardStack: View {
                         TaskSwipeCardView(
                             task: tasks[index],
                             scheduledDaysAgo: daysSinceScheduled(tasks[index]),
-                            onTap: { onTapCard(tasks[index]) }
+                            onTap: { onTapCard(tasks[index]) },
+                            badgeOverride: badgeProvider?(tasks[index])
                         )
 
                         if index == currentIndex, let direction = dragDirection {
+                            let config = taskActionConfigProvider?(tasks[index], direction) ?? actionConfigProvider(direction)
                             SwipeStampOverlay(
                                 direction: direction,
                                 progress: swipeProgress,
-                                actionConfig: SwipeActionConfig.taskConfig(for: direction)
+                                actionConfig: config
                             )
                         }
                     }
@@ -111,8 +118,9 @@ struct TaskReviewCardStack: View {
                 let magnitude = max(abs(translation.width), abs(translation.height))
 
                 if magnitude > swipeThreshold, let dir = direction {
-                    // Block UP swipe without calendar access
-                    if dir == .up && !hasCalendarAccess {
+                    // Block UP swipe without calendar access (legacy behavior)
+                    let effectiveBlocked = blockedDirections.union(hasCalendarAccess ? [] : [.up])
+                    if effectiveBlocked.contains(dir) {
                         withAnimation(.spring()) {
                             dragOffset = .zero
                             dragDirection = nil

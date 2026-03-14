@@ -103,24 +103,18 @@ struct NotificationListView: View {
         Group {
             if let user = dataController.currentUser {
                 VStack(spacing: 12) {
-                    // Initials circle
-                    Circle()
-                        .fill(OPSStyle.Colors.primaryAccent.opacity(0.2))
-                        .frame(width: 56, height: 56)
-                        .overlay(
-                            Text(String(user.firstName.prefix(1)) + String(user.lastName.prefix(1)))
-                                .font(OPSStyle.Typography.previewLabel)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        )
+                    // Avatar (uses profile image or initials)
+                    UserAvatar(user: user, size: 56)
 
                     // Name
                     Text("\(user.firstName) \(user.lastName)")
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
 
-                    // Email
-                    if let email = user.email, !email.isEmpty {
-                        Text(email)
+                    // Company name
+                    if let companyName = UserDefaults.standard.string(forKey: "Company Name"),
+                       !companyName.isEmpty {
+                        Text(companyName.uppercased())
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -142,11 +136,6 @@ struct NotificationListView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-
-                Rectangle()
-                    .fill(OPSStyle.Colors.cardBorder)
-                    .frame(height: 1)
             }
         }
     }

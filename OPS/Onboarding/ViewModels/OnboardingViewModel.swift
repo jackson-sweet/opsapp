@@ -1184,6 +1184,7 @@ class OnboardingViewModel: ObservableObject {
                 address: companyAddress.isEmpty ? nil : companyAddress,
                 company_code: newCompanyCode,
                 admin_ids: [userId],
+                seated_employee_ids: [userId],
                 account_holder_id: userId,
                 industries: companyIndustry != nil ? [industry.rawValue] : nil,
                 company_size: size.rawValue,
@@ -1261,6 +1262,8 @@ class OnboardingViewModel: ObservableObject {
                     companyObject.trialStartDate = Date()
                     companyObject.trialEndDate = Calendar.current.date(byAdding: .day, value: 30, to: Date())
                     companyObject.maxSeats = 10
+                    companyObject.seatedEmployeeIds = userId
+                    companyObject.adminIdsString = userId
                     modelContext.insert(companyObject)
                     try? modelContext.save()
                     print("[ONBOARDING] ✅ Company saved to SwiftData")

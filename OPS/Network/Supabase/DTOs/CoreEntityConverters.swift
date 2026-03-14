@@ -182,6 +182,11 @@ extension SupabaseTaskTypeDTO {
             tt.dependenciesJSON = json
         }
 
+        // Store default team member IDs as comma-separated string
+        if let ids = defaultTeamMemberIds, !ids.isEmpty {
+            tt.defaultTeamMemberIdsString = ids.joined(separator: ",")
+        }
+
         tt.deletedAt = deletedAt.flatMap { SupabaseDate.parse($0) }
         return tt
     }

@@ -11,6 +11,7 @@ import SwiftData
 import Combine
 import GoogleSignIn
 import Supabase
+import FirebaseAuth
 
 /// Main controller for managing data, authentication, and app state
 class DataController: ObservableObject {
@@ -384,14 +385,16 @@ class DataController: ObservableObject {
                             await OneSignalService.shared.configure()
                         }
 
-                        // Initialize sync manager
+                        // Initialize sync manager and reconfigure with confirmed companyId
                         initializeSyncManager()
+                        syncEngine.reconfigureForCompany()
+                        syncManager?.reconfigureRepositories()
                         return
                     }
                 } catch {
                 }
             }
-            
+
             // Even without a user object, maintain authentication
             return
         }
@@ -450,6 +453,8 @@ class DataController: ObservableObject {
                     }
 
                     initializeSyncManager()
+                    syncEngine.reconfigureForCompany()
+                    syncManager?.reconfigureRepositories()
                     return
                 }
             }
@@ -470,7 +475,7 @@ class DataController: ObservableObject {
     
     @discardableResult
     @MainActor
-    func login(username: String, password: String) async -> Bool {
+    func login(username: String, password: String) async -> (Bool, String?) {
         // Cancel any pending data wipe from a prior logout
         cancelPendingDataWipe()
 
@@ -478,21 +483,18 @@ class DataController: ObservableObject {
             // Sign in via Firebase Auth (handles session, stores userId + companyId)
             try await authManager.loginWithEmail(username, password: password)
 
-
             if let userId = authManager.getUserId() {
                 // Set the authentication flags immediately
                 UserDefaults.standard.set(true, forKey: "is_authenticated")
-                // Don't automatically set onboarding_completed - we'll check from server
                 UserDefaults.standard.set(userId, forKey: "user_id")
                 UserDefaults.standard.set(userId, forKey: "currentUserId")
 
                 // Backfill firebase_uid in users table
                 Task { await authManager.backfillFirebaseUID(usersTableId: userId) }
-                
-                
+
                 // Fetch user data
                 try await fetchUserFromAPI(userId: userId)
-                
+
                 // Check if user has completed onboarding from server data
                 if let user = currentUser {
                     UserDefaults.standard.set(user.hasCompletedAppOnboarding, forKey: "onboarding_completed")
@@ -501,22 +503,16 @@ class DataController: ObservableObject {
                     AnalyticsManager.shared.trackLogin(userType: user.userType, method: .email)
                     AnalyticsManager.shared.setUserType(user.userType)
                     AnalyticsManager.shared.setUserId(userId)
-
-                    // Log what will happen next
-                    if !user.hasCompletedAppOnboarding {
-                    } else {
-                        // Projects sync already triggered in fetchUserFromAPI after company fetch
-                    }
                 }
 
-                // Return true because login succeeded, even if onboarding is needed
-                // LandingView will check onboarding status separately
-                return true
+                return (true, nil)
             } else {
-                return false
+                return (false, "No account found for this email. Please check your email or sign up.")
             }
+        } catch let error as FirebaseAuthService.FirebaseAuthServiceError {
+            return (false, error.errorDescription)
         } catch {
-            return false
+            return (false, "Incorrect email or password. Please try again.")
         }
     }
     
@@ -812,8 +808,15 @@ class DataController: ObservableObject {
             await OneSignalService.shared.configure()
         }
 
-        // Initialize sync managers first
+        // Initialize sync managers (may already be initialized from line 751)
         initializeSyncManager()
+
+        // Reconfigure all sync processors with the now-confirmed companyId.
+        // This is critical: if initializeSyncManager() ran before companyId was
+        // in UserDefaults (line 751), the InboundProcessor and SupabaseSyncManager
+        // repositories will have been built with companyId="" and would fetch 0 rows.
+        syncEngine.reconfigureForCompany()
+        syncManager?.reconfigureRepositories()
 
         // IMPORTANT: Set isPerformingInitialSync BEFORE isAuthenticated
         // This ensures the loading screen is ready when HomeView first appears
@@ -1076,6 +1079,9 @@ class DataController: ObservableObject {
             print("[LOGOUT] Error saving after data wipe: \(error)")
         }
         
+        // Clear sync timestamps so next login does a full sync, not a delta
+        syncEngine.clearAllTimestamps()
+
         // Clear any cached data
         clearAllCaches()
     }
@@ -2259,19 +2265,37 @@ class DataController: ObservableObject {
     
     /// Delete the current user's account
     /// - Parameter userId: The ID of the user to delete
-    /// - Returns: Success boolean
+    /// - Returns: Tuple of (success, errorMessage)
     @MainActor
-    func deleteUserAccount(userId: String) async -> Bool {
+    func deleteUserAccount(userId: String) async -> (Bool, String?) {
         do {
-            // Call the sync manager to delete the user account
-            try await syncManager.deleteUser(userId: userId)
+            // 1. Delete the Firebase Auth account first (requires active session)
+            do {
+                try await FirebaseAuthService.shared.deleteAccount()
+                print("[DELETE_ACCOUNT] Firebase Auth account deleted")
+            } catch {
+                let nsError = error as NSError
+                let authErrorCode = AuthErrorCode(rawValue: nsError.code)
+                if authErrorCode == .requiresRecentLogin {
+                    print("[DELETE_ACCOUNT] Firebase requires re-authentication")
+                    return (false, "Please sign out and sign back in, then try deleting your account again.")
+                }
+                // If Firebase deletion fails for other reasons, still proceed with soft delete
+                // The Firebase account will be orphaned but the user can't access the app
+                print("[DELETE_ACCOUNT] Firebase deletion failed (proceeding with soft delete): \(error.localizedDescription)")
+            }
 
-            // If successful, clean up local data and log out
+            // 2. Soft-delete the user row in Supabase
+            try await syncManager.deleteUser(userId: userId)
+            print("[DELETE_ACCOUNT] User soft-deleted in Supabase")
+
+            // 3. Clean up local data and log out
             logout()
 
-            return true
+            return (true, nil)
         } catch {
-            return false
+            print("[DELETE_ACCOUNT] Failed: \(error.localizedDescription)")
+            return (false, "Failed to delete account. Please try again.")
         }
     }
 
@@ -3241,6 +3265,7 @@ class DataController: ObservableObject {
             if task.taskIndex != currentIndex {
                 print("[TASK_INDEX]   - Task '\(task.displayTitle)': \(task.taskIndex ?? -1) → \(currentIndex)")
                 task.taskIndex = currentIndex
+                task.displayOrder = currentIndex
                 task.needsSync = true
                 tasksToSync.append((task: task, index: currentIndex))
             }
@@ -3252,6 +3277,7 @@ class DataController: ObservableObject {
             if task.taskIndex != currentIndex {
                 print("[TASK_INDEX]   - Task '\(task.displayTitle)' (unscheduled): \(task.taskIndex ?? -1) → \(currentIndex)")
                 task.taskIndex = currentIndex
+                task.displayOrder = currentIndex
                 task.needsSync = true
                 tasksToSync.append((task: task, index: currentIndex))
             }
@@ -3263,7 +3289,7 @@ class DataController: ObservableObject {
         // Save changes locally
         try modelContext?.save()
 
-        // Record task index updates for async sync
+        // Record task index updates for async sync (use display_order — the actual Supabase column)
         if !tasksToSync.isEmpty {
             print("[TASK_INDEX] 🔄 Recording \(tasksToSync.count) task index updates for sync...")
             for (task, index) in tasksToSync {
@@ -3271,9 +3297,9 @@ class DataController: ObservableObject {
                     entityType: .projectTask,
                     entityId: task.id,
                     operationType: "update",
-                    changedFields: ["task_index": index]
+                    changedFields: ["display_order": index]
                 )
-                print("[TASK_INDEX]   ✅ Recorded taskIndex=\(index) for task '\(task.displayTitle)'")
+                print("[TASK_INDEX]   ✅ Recorded displayOrder=\(index) for task '\(task.displayTitle)'")
             }
             print("[TASK_INDEX] ✅ Task index updates recorded for sync")
         }

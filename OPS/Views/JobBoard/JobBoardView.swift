@@ -33,6 +33,11 @@ struct JobBoardView: View {
     @State private var reviewableTasks: [ProjectTask] = []
     @State private var reviewableTaskCount: Int = 0
 
+    // Unscheduled task review state
+    @State private var showUnscheduledReview: Bool = false
+    @State private var unscheduledTasks: [ProjectTask] = []
+    @State private var unscheduledTaskCount: Int = 0
+
     // Review unlock thresholds
     private static let paymentReviewThreshold = 5
     private static let taskReviewThreshold = 5
@@ -135,7 +140,12 @@ struct JobBoardView: View {
                         },
                         taskReviewBadgeCount: reviewableTaskCount,
                         isTaskReviewLocked: isTaskReviewLocked,
-                        taskReviewLockedMessage: "Complete \(Self.taskReviewThreshold) tasks to unlock task review. You've completed \(completedTaskCount) so far."
+                        taskReviewLockedMessage: "Complete \(Self.taskReviewThreshold) tasks to unlock task review. You've completed \(completedTaskCount) so far.",
+                        onUnscheduledReviewTapped: {
+                            computeUnscheduledTasks()
+                            showUnscheduledReview = true
+                        },
+                        unscheduledReviewBadgeCount: unscheduledTaskCount
                     )
                     .padding(.bottom, 8)
 
@@ -271,6 +281,10 @@ struct JobBoardView: View {
                         // Compute reviewable task count for badge
                         computeReviewableTasks()
                     }
+                    .task {
+                        // Compute unscheduled/unassigned task count for badge
+                        computeUnscheduledTasks()
+                    }
                     .onAppear {
                         selectedSection = defaultSection(for: dataController.currentUser)
                         AnalyticsManager.shared.trackScreenView(screenName: .jobBoard, screenClass: "JobBoardView")
@@ -296,6 +310,12 @@ struct JobBoardView: View {
             }
             .sheet(isPresented: $showTaskReview) {
                 TaskCompletionReviewView(tasks: reviewableTasks)
+                    .environmentObject(appState)
+                    .environmentObject(permissionStore)
+            }
+            .sheet(isPresented: $showUnscheduledReview) {
+                UnscheduledTaskReviewView(tasks: unscheduledTasks)
+                    .environmentObject(dataController)
                     .environmentObject(appState)
                     .environmentObject(permissionStore)
             }
@@ -364,6 +384,30 @@ struct JobBoardView: View {
         .sorted { ($0.startDate ?? .distantPast) < ($1.startDate ?? .distantPast) }
 
         reviewableTaskCount = reviewableTasks.count
+    }
+
+    // MARK: - Unscheduled Task Review
+
+    private func computeUnscheduledTasks() {
+        let allTasks: [ProjectTask]
+        if PermissionStore.shared.hasFullAccess("tasks.view") {
+            allTasks = dataController.getAllTasks()
+        } else if let userId = dataController.currentUser?.id {
+            allTasks = dataController.getAllTasks().filter { task in
+                task.getTeamMemberIds().contains(userId)
+            }
+        } else {
+            allTasks = []
+        }
+
+        unscheduledTasks = allTasks.filter { task in
+            task.status == .active
+                && task.deletedAt == nil
+                && (task.startDate == nil || task.getTeamMemberIds().isEmpty)
+        }
+        .sorted { ($0.project?.title ?? "") < ($1.project?.title ?? "") }
+
+        unscheduledTaskCount = unscheduledTasks.count
     }
 }
 

@@ -118,6 +118,13 @@ final class SyncEngine {
         print("[SYNC_ENGINE] Configured with modelContext and connectivity")
     }
 
+    /// Reconfigure inbound processor repositories after companyId becomes available.
+    /// Call after login completes and companyId is confirmed in UserDefaults.
+    func reconfigureForCompany() {
+        inboundProcessor?.reconfigure()
+        print("[SYNC_ENGINE] Reconfigured InboundProcessor for current company")
+    }
+
     /// Starts Realtime subscriptions for the given company.
     func startRealtime(companyId: String) async {
         guard let modelContext else { return }
@@ -280,9 +287,18 @@ final class SyncEngine {
     /// Performs a full sync of all entities in dependency order.
     /// Used for initial sync or manual full-refresh.
     func fullSync() async {
-        guard !syncInProgress else {
-            print("[SYNC_ENGINE] Sync already in progress — skipping full sync")
-            return
+        // If another sync is in progress, wait briefly for it to finish
+        // rather than silently skipping this full sync request
+        if syncInProgress {
+            print("[SYNC_ENGINE] Sync in progress — waiting for it to finish before full sync")
+            for _ in 0..<30 { // Wait up to 3 seconds
+                try? await Task.sleep(for: .milliseconds(100))
+                if !syncInProgress { break }
+            }
+            guard !syncInProgress else {
+                print("[SYNC_ENGINE] Sync still in progress after wait — skipping full sync")
+                return
+            }
         }
 
         guard connectivity?.shouldAttemptSync == true else {

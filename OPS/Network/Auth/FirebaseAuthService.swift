@@ -200,6 +200,23 @@ class FirebaseAuthService: ObservableObject {
         }
     }
 
+    // MARK: - Account Deletion
+
+    /// Delete the current Firebase Auth account permanently.
+    /// Must be called BEFORE signing out, since it requires an authenticated user.
+    /// Recent authentication may be required — Firebase will throw
+    /// `.requiresRecentLogin` if the session is too old.
+    func deleteAccount() async throws {
+        guard let user = Auth.auth().currentUser else {
+            throw FirebaseAuthServiceError.notAuthenticated
+        }
+        try await user.delete()
+        isAuthenticated = false
+        currentUserEmail = nil
+        currentNonce = nil
+        print("[FIREBASE AUTH] Account deleted permanently")
+    }
+
     // MARK: - Migration (Supabase → Firebase)
 
     /// Validates credentials against Supabase Auth, then creates a Firebase account.

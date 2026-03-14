@@ -184,15 +184,17 @@ struct SupabaseTaskTypeDTO: Codable, Identifiable {
     let isDefault: Bool?
     let displayOrder: Int?
     let dependencies: [TaskTypeDependency]?
+    let defaultTeamMemberIds: [String]?
     let deletedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id, display, color, icon, dependencies
-        case bubbleId      = "bubble_id"
-        case companyId     = "company_id"
-        case isDefault     = "is_default"
-        case displayOrder  = "display_order"
-        case deletedAt     = "deleted_at"
+        case bubbleId               = "bubble_id"
+        case companyId              = "company_id"
+        case isDefault              = "is_default"
+        case displayOrder           = "display_order"
+        case defaultTeamMemberIds   = "default_team_member_ids"
+        case deletedAt              = "deleted_at"
     }
 }
 

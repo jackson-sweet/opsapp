@@ -383,6 +383,16 @@ struct TaskFormSheet: View {
             }
         }
         .loadingOverlay(isPresented: $isSaving, message: "Saving...")
+        .onChange(of: selectedTaskTypeId) { _, newId in
+            // Auto-populate default team members from task type in create mode
+            guard mode.isCreate, let newId,
+                  let taskType = allTaskTypes.first(where: { $0.id == newId }),
+                  !taskType.defaultTeamMemberIdsString.isEmpty else { return }
+            let defaultIds = Set(taskType.defaultTeamMemberIdsString.components(separatedBy: ","))
+            if !defaultIds.isEmpty {
+                selectedTeamMemberIds = defaultIds
+            }
+        }
     }
 
     // MARK: - Tutorial Mode Content

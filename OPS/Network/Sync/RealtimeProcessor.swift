@@ -510,12 +510,13 @@ final class RealtimeProcessor: ObservableObject {
     private func upsertTaskType(context: ModelContext, id: String, model: TaskType, pendingFields: Set<String>) throws {
         let descriptor = FetchDescriptor<TaskType>(predicate: #Predicate { $0.id == id })
         if let existing = try context.fetch(descriptor).first {
-            if !pendingFields.contains("display")       { existing.display = model.display }
-            if !pendingFields.contains("color")         { existing.color = model.color }
-            if !pendingFields.contains("icon")          { existing.icon = model.icon }
-            if !pendingFields.contains("isDefault")     { existing.isDefault = model.isDefault }
-            if !pendingFields.contains("displayOrder")  { existing.displayOrder = model.displayOrder }
-            if !pendingFields.contains("deletedAt")     { existing.deletedAt = model.deletedAt }
+            if !pendingFields.contains("display")                    { existing.display = model.display }
+            if !pendingFields.contains("color")                      { existing.color = model.color }
+            if !pendingFields.contains("icon")                       { existing.icon = model.icon }
+            if !pendingFields.contains("isDefault")                  { existing.isDefault = model.isDefault }
+            if !pendingFields.contains("displayOrder")               { existing.displayOrder = model.displayOrder }
+            if !pendingFields.contains("defaultTeamMemberIdsString") { existing.defaultTeamMemberIdsString = model.defaultTeamMemberIdsString }
+            if !pendingFields.contains("deletedAt")                  { existing.deletedAt = model.deletedAt }
             existing.lastSyncedAt = Date()
             existing.needsSync = false
         } else {

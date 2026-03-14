@@ -24,14 +24,14 @@ final class InboundProcessor {
 
     // MARK: - Dependencies
 
-    private let companyId: String
+    private(set) var companyId: String
 
-    private let projectRepo: ProjectRepository
-    private let taskRepo: TaskRepository
-    private let userRepo: UserRepository
-    private let clientRepo: ClientRepository
-    private let companyRepo: CompanyRepository
-    private let taskTypeRepo: TaskTypeRepository
+    private var projectRepo: ProjectRepository
+    private var taskRepo: TaskRepository
+    private var userRepo: UserRepository
+    private var clientRepo: ClientRepository
+    private var companyRepo: CompanyRepository
+    private var taskTypeRepo: TaskTypeRepository
 
     // MARK: - Init
 
@@ -47,6 +47,34 @@ final class InboundProcessor {
         self.clientRepo = ClientRepository(companyId: companyId)
         self.companyRepo = CompanyRepository()
         self.taskTypeRepo = TaskTypeRepository(companyId: companyId)
+    }
+
+    // MARK: - Reconfigure
+
+    /// Rebuild all repositories with the current companyId from UserDefaults.
+    /// Call after login completes and companyId is confirmed.
+    func reconfigure() {
+        let newCompanyId = UserDefaults.standard.string(forKey: "currentUserCompanyId")
+            ?? UserDefaults.standard.string(forKey: "company_id")
+            ?? ""
+
+        guard !newCompanyId.isEmpty else {
+            print("[InboundProcessor] reconfigure() called but companyId still empty")
+            return
+        }
+
+        guard newCompanyId != companyId || companyId.isEmpty else {
+            return // Already configured with this companyId
+        }
+
+        print("[InboundProcessor] Reconfiguring repositories for company: \(newCompanyId)")
+        self.companyId = newCompanyId
+        self.projectRepo = ProjectRepository(companyId: newCompanyId)
+        self.taskRepo = TaskRepository(companyId: newCompanyId)
+        self.userRepo = UserRepository(companyId: newCompanyId)
+        self.clientRepo = ClientRepository(companyId: newCompanyId)
+        self.companyRepo = CompanyRepository()
+        self.taskTypeRepo = TaskTypeRepository(companyId: newCompanyId)
     }
 
     // MARK: - Sync Priority Order
@@ -69,6 +97,12 @@ final class InboundProcessor {
         context: ModelContext,
         onProgress: ((SyncEntityType, Double) -> Void)? = nil
     ) async throws {
+        // Auto-reconfigure if companyId was empty at init time
+        if companyId.isEmpty { reconfigure() }
+        guard !companyId.isEmpty else {
+            print("[InboundProcessor] FULL SYNC ABORTED — no companyId available")
+            return
+        }
         print("[InboundProcessor] ======== FULL SYNC STARTED ========")
 
         let totalSteps = Double(Self.syncOrder.count)
@@ -97,6 +131,12 @@ final class InboundProcessor {
         context: ModelContext,
         since: [SyncEntityType: Date]
     ) async throws {
+        // Auto-reconfigure if companyId was empty at init time
+        if companyId.isEmpty { reconfigure() }
+        guard !companyId.isEmpty else {
+            print("[InboundProcessor] DELTA SYNC ABORTED — no companyId available")
+            return
+        }
         print("[InboundProcessor] ======== DELTA SYNC STARTED ========")
 
         for entityType in Self.syncOrder {
@@ -437,7 +477,7 @@ final class InboundProcessor {
                 entityId: id,
                 fields: [
                     "display", "color", "icon", "isDefault",
-                    "displayOrder", "dependenciesJSON", "deletedAt"
+                    "displayOrder", "dependenciesJSON", "defaultTeamMemberIdsString", "deletedAt"
                 ],
                 context: context
             )
@@ -453,6 +493,9 @@ final class InboundProcessor {
                    let json = String(data: data, encoding: .utf8) {
                     existing.dependenciesJSON = json
                 }
+            }
+            if accept.contains("defaultTeamMemberIdsString") {
+                existing.defaultTeamMemberIdsString = (dto.defaultTeamMemberIds ?? []).joined(separator: ",")
             }
             if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
 

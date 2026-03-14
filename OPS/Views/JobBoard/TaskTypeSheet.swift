@@ -851,6 +851,7 @@ struct TaskTypeSheet: View {
                         isDefault: false,
                         displayOrder: nil,
                         dependencies: dependencies.isEmpty ? nil : dependencies,
+                        defaultTeamMemberIds: nil,
                         deletedAt: nil
                     )
                     let _ = try await syncManager.createTaskType(dto: dto)

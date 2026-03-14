@@ -690,6 +690,7 @@ struct ProfileSettingsView: View {
     }
 
     private func saveChanges() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         showSaveConfirmation = true
     }
 
@@ -737,11 +738,10 @@ struct ProfileSettingsView: View {
                 }
 
 
-                // Call API to delete user
-                let success = await dataController.deleteUserAccount(userId: userId)
+                // Call API to delete user (now also deletes Firebase Auth account)
+                let (success, errorMessage) = await dataController.deleteUserAccount(userId: userId)
 
                 if success {
-
                     await MainActor.run {
                         // Clear all UserDefaults to ensure clean state
                         if let bundleID = Bundle.main.bundleIdentifier {
@@ -759,7 +759,7 @@ struct ProfileSettingsView: View {
                     }
                 } else {
                     await MainActor.run {
-                        deleteError = "Failed to delete account. Please try again or contact support."
+                        deleteError = errorMessage ?? "Failed to delete account. Please try again or contact support."
                         isDeletingAccount = false
                     }
                 }

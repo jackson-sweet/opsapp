@@ -37,6 +37,7 @@ struct LandingView: View {
     @State private var pageScale: CGFloat = 1.0
     @State private var showForgotPassword = false
     @State private var showLoginSuccess = false
+    @State private var hasAppeared = false
 
     var body: some View {
         ZStack {
@@ -369,7 +370,7 @@ struct LandingView: View {
                 .zIndex(4)
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: showLoginMode)
+        .animation(hasAppeared ? .easeInOut(duration: 0.35) : nil, value: showLoginMode)
         .animation(.easeInOut, value: showOnboarding)
         .animation(.easeInOut, value: showForgotPassword)
         .animation(.easeInOut, value: showLoginSuccess)
@@ -382,6 +383,10 @@ struct LandingView: View {
         })
         .onAppear {
             checkResumeOnboarding()
+            // Delay enabling animation to prevent initial mount transition
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                hasAppeared = true
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("DismissOnboarding"))) { _ in
             // Dismiss onboarding and return to login
@@ -400,7 +405,7 @@ struct LandingView: View {
 
         Task {
             do {
-                let success = try await attemptLogin(username: username, password: password)
+                let (success, loginError) = try await attemptLogin(username: username, password: password)
 
                 await MainActor.run {
                     isLoggingIn = false
@@ -425,7 +430,7 @@ struct LandingView: View {
                             }
                         }
                     } else {
-                        errorMessage = "Invalid username or password. Please try again."
+                        errorMessage = loginError ?? "Incorrect email or password. Please try again."
                         showError = true
                     }
                 }
@@ -445,7 +450,7 @@ struct LandingView: View {
         }
     }
 
-    private func attemptLogin(username: String, password: String) async throws -> Bool {
+    private func attemptLogin(username: String, password: String) async throws -> (Bool, String?) {
         return await dataController.login(username: username, password: password)
     }
 

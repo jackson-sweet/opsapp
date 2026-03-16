@@ -3264,7 +3264,7 @@ class DataController: ObservableObject {
             entityType: .projectTask,
             entityId: task.id,
             operationType: "update",
-            changedFields: ["team_member_ids": memberIds.joined(separator: ",")]
+            changedFields: ["team_member_ids": memberIds]
         )
 
         // Send push notifications to newly added team members
@@ -3363,7 +3363,7 @@ class DataController: ObservableObject {
             entityType: .project,
             entityId: project.id,
             operationType: "update",
-            changedFields: ["team_member_ids": memberIds.joined(separator: ",")]
+            changedFields: ["team_member_ids": memberIds]
         )
     }
 
@@ -3644,7 +3644,7 @@ class DataController: ObservableObject {
         }
         let teamMemberIds = task.getTeamMemberIds()
         if !teamMemberIds.isEmpty {
-            changedFields["team_member_ids"] = teamMemberIds.joined(separator: ",")
+            changedFields["team_member_ids"] = teamMemberIds
         }
 
         syncEngine.recordOperation(
@@ -4329,23 +4329,37 @@ class DataController: ObservableObject {
     func deleteTaskType(taskTypeId: String) async throws {
         guard let context = modelContext else { return }
 
-        // Soft delete locally
+        let deletionDate = Date()
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+
+        // Soft delete locally and cascade to associated tasks
         let descriptor = FetchDescriptor<TaskType>(predicate: #Predicate { $0.id == taskTypeId })
         if let taskType = try? context.fetch(descriptor).first {
-            taskType.deletedAt = Date()
+            // Cascade soft delete to all tasks that belong to this task type
+            for task in taskType.tasks where task.deletedAt == nil {
+                task.deletedAt = deletionDate
+                task.needsSync = true
+
+                syncEngine.recordOperation(
+                    entityType: .projectTask,
+                    entityId: task.id,
+                    operationType: "delete",
+                    changedFields: ["deleted_at": formatter.string(from: deletionDate)]
+                )
+            }
+
+            taskType.deletedAt = deletionDate
             taskType.needsSync = true
             try? context.save()
         }
-
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
 
         // Record for async sync
         syncEngine.recordOperation(
             entityType: .taskType,
             entityId: taskTypeId,
             operationType: "delete",
-            changedFields: ["deleted_at": formatter.string(from: Date())]
+            changedFields: ["deleted_at": formatter.string(from: deletionDate)]
         )
 
         print("[DataController] ✅ Task type deleted: \(taskTypeId)")
@@ -4615,6 +4629,7 @@ class DataController: ObservableObject {
 
         var purgedProjects = 0
         var purgedTasks = 0
+        var purgedClients = 0
 
         // Purge projects the user can no longer see
         if projectScope == "assigned" || projectScope == "own" {
@@ -4673,9 +4688,33 @@ class DataController: ObservableObject {
             }
         }
 
-        if purgedProjects > 0 || purgedTasks > 0 {
+        // Purge clients the user can no longer see.
+        // Client has no createdBy field, so both "assigned" and "own" scopes use the same
+        // logic: purge any client that has no locally-remaining (non-deleted) projects.
+        // This runs after the project purge so that already-purged projects are gone.
+        let clientScope = PermissionStore.shared.scope(for: "clients.view") ?? "all"
+        if clientScope == "assigned" || clientScope == "own" {
+            let allClients = (try? context.fetch(FetchDescriptor<Client>())) ?? []
+            for client in allClients {
+                // A client is permitted as long as at least one of its projects survived the purge
+                let hasPermittedProject = client.projects.contains { $0.deletedAt == nil }
+                if !hasPermittedProject {
+                    let clientId = client.id
+                    let predicate = #Predicate<SyncOperation> {
+                        $0.entityId == clientId && $0.status == "pending"
+                    }
+                    if let ops = try? context.fetch(FetchDescriptor(predicate: predicate)) {
+                        for op in ops { context.delete(op) }
+                    }
+                    context.delete(client)
+                    purgedClients += 1
+                }
+            }
+        }
+
+        if purgedProjects > 0 || purgedTasks > 0 || purgedClients > 0 {
             try? context.save()
-            print("[DataController] purgeNonPermittedData — purged \(purgedProjects) projects, \(purgedTasks) tasks")
+            print("[DataController] purgeNonPermittedData — purged \(purgedProjects) projects, \(purgedTasks) tasks, \(purgedClients) clients")
         } else {
             print("[DataController] purgeNonPermittedData — nothing to purge")
         }

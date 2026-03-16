@@ -2093,37 +2093,23 @@ class DataController: ObservableObject {
     }
     
     /// Gets lightweight team members for a company using the TeamMember model
+    /// Converts from User query since the Company.teamMembers relationship is not populated by sync.
     func getCompanyTeamMembers(companyId: String) -> [TeamMember] {
-        guard let context = modelContext else { return [] }
-        
-        do {
-            // First try to get the company
-            let companyDescriptor = FetchDescriptor<Company>(
-                predicate: #Predicate<Company> { $0.id == companyId }
-            )
-            let companies = try context.fetch(companyDescriptor)
-            
-            if let company = companies.first {
-                // Return team members from the company relationship
-                if !company.teamMembers.isEmpty {
-                    return company.teamMembers
-                }
-                
-                // If company exists but no team members, trigger a sync if we're connected
-                if isConnected && syncManager != nil {
-                    Task {
-                        await syncManager?.syncCompanyTeamMembers(company)
-                    }
-                }
-            }
-            
-            // If we got here, either company doesn't exist or has no team members yet
-            return []
-        } catch {
-            return []
+        let users = getTeamMembers(companyId: companyId)
+        if !users.isEmpty {
+            return users.map { TeamMember.fromUser($0) }
         }
+
+        // If no users found, trigger a sync if connected
+        if isConnected && syncManager != nil {
+            Task {
+                try? await syncManager?.syncCompanyTeamMembers(companyId: companyId)
+            }
+        }
+
+        return []
     }
-    
+
     private func createSampleUser(id: String, firstName: String, lastName: String, role: UserRole, companyId: String) -> User {
         let user = User(id: id, firstName: firstName, lastName: lastName, role: role, companyId: companyId)
         user.email = "\(firstName.lowercased()).\(lastName.lowercased())@example.com"

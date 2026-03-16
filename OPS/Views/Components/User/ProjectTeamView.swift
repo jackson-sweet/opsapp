@@ -325,14 +325,6 @@ struct ProjectTeamView: View {
     private func loadAvailableMembers() {
         guard let companyId = dataController.currentUser?.companyId else { return }
 
-        // Try company.teamMembers relationship first
-        let members = dataController.getCompanyTeamMembers(companyId: companyId)
-        if !members.isEmpty {
-            availableMembers = members.sorted { $0.fullName < $1.fullName }
-            return
-        }
-
-        // Fallback: fetch User objects and convert to TeamMember
         let users = dataController.getTeamMembers(companyId: companyId)
         if !users.isEmpty {
             availableMembers = users.map { TeamMember.fromUser($0) }
@@ -340,18 +332,13 @@ struct ProjectTeamView: View {
             return
         }
 
-        // Last resort: trigger async sync then retry
+        // Fallback: trigger async sync then retry
         Task {
             try? await dataController.syncManager?.syncCompanyTeamMembers(companyId: companyId)
             await MainActor.run {
-                let retryMembers = dataController.getCompanyTeamMembers(companyId: companyId)
-                if !retryMembers.isEmpty {
-                    availableMembers = retryMembers.sorted { $0.fullName < $1.fullName }
-                } else {
-                    let retryUsers = dataController.getTeamMembers(companyId: companyId)
-                    availableMembers = retryUsers.map { TeamMember.fromUser($0) }
-                        .sorted { $0.fullName < $1.fullName }
-                }
+                let retryUsers = dataController.getTeamMembers(companyId: companyId)
+                availableMembers = retryUsers.map { TeamMember.fromUser($0) }
+                    .sorted { $0.fullName < $1.fullName }
             }
         }
     }

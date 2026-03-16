@@ -125,7 +125,7 @@ struct JobBoardMyTasksView: View {
             emptyState
         } else {
             ScrollView {
-                LazyVStack(spacing: 0) {
+                LazyVStack(spacing: 12) {
                     ForEach(sortedTasks) { task in
                         UniversalJobBoardCard(cardType: .task(task))
                     }

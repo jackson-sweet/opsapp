@@ -97,7 +97,8 @@ class CalendarViewModel: ObservableObject {
             return
         }
         
-        availableTeamMembers = company.teamMembers.sorted { $0.fullName < $1.fullName }
+        let users = dataController.getTeamMembers(companyId: companyId)
+        availableTeamMembers = users.map { TeamMember.fromUser($0) }.sorted { $0.fullName < $1.fullName }
     }
     
     // Used for both programmatic and user-initiated date selection

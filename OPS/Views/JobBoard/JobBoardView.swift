@@ -725,7 +725,8 @@ struct JobBoardTasksView: View {
         VStack(spacing: 0) {
             if showingFilters && hasActiveFilters {
                 activeFilterBadges
-                    .padding(.bottom, 8)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
             }
 
             if allTasks.isEmpty {
@@ -1176,9 +1177,9 @@ struct TaskFilterBadge: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Circle()
+            RoundedRectangle(cornerRadius: 1)
                 .fill(color)
-                .frame(width: 6, height: 6)
+                .frame(width: 3, height: 12)
 
             Text(text.uppercased())
                 .font(OPSStyle.Typography.smallCaption)
@@ -1186,18 +1187,20 @@ struct TaskFilterBadge: View {
 
             Button(action: onRemove) {
                 Image(systemName: "xmark")
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                    .font(.system(size: 8, weight: .bold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .frame(width: 20, height: 20)
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.leading, 8)
+        .padding(.trailing, 4)
         .padding(.vertical, 6)
         .background(
-            Capsule()
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .fill(OPSStyle.Colors.cardBackgroundDark)
                 .overlay(
-                    Capsule()
-                        .stroke(color.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(Color.white.opacity(0.1), lineWidth: OPSStyle.Layout.Border.standard)
                 )
         )
     }

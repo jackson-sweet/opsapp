@@ -53,6 +53,13 @@ final class OPSMapCoordinator: ObservableObject {
     @Published var showingProjectCard: Bool = false
     @Published var showingCrewTooltip: Bool = false
 
+    // Stacked project groups (multiple projects at same location)
+    @Published var showingStackedGroup: Bool = false
+    @Published var stackedGroupProjects: [Project] = []
+
+    /// Maps a location group annotation ID → array of project IDs at that location
+    private var locationGroupMap: [String: [String]] = [:]
+
     // Crew locations (keyed by userId)
     @Published var crewLocations: [String: CrewLocationUpdate] = [:]
 
@@ -655,7 +662,7 @@ final class OPSMapCoordinator: ObservableObject {
     }
 
     /// Build project annotations for ACTIVE / ALL modes.
-    /// Ring = segmented by task type colors. Center dot = pipeline status color.
+    /// Groups projects at the same location and renders stacked pins for groups.
     private func buildProjectAnnotations() -> [PointAnnotation] {
         let filteredProjects: [Project]
         switch filterMode {
@@ -670,30 +677,63 @@ final class OPSMapCoordinator: ObservableObject {
             return [] // Handled separately
         }
 
-        var annotations: [PointAnnotation] = []
-
+        // Group projects by location (6 decimal places ≈ 0.1m precision)
+        var locationGroups: [String: [Project]] = [:]
         for project in filteredProjects {
             guard let coord = project.coordinate else { continue }
-
-            let isSelected = (project.id == selectedProjectId)
-
-            // Collect task type colors for ring segmentation
-            let activeTasks = project.tasks.filter { $0.status == .active }
-            let taskColorHexes = activeTasks.map { $0.effectiveColor }
-
-            let image = ProjectAnnotationRenderer.renderProject(
-                name: project.title,
-                status: project.status,
-                taskColorHexes: taskColorHexes,
-                isSelected: isSelected
-            )
-
-            var annotation = PointAnnotation(id: project.id, coordinate: coord)
-            annotation.image = .init(image: image, name: "project-\(project.id)-\(isSelected)")
-            annotation.iconAnchor = .bottom
-            annotations.append(annotation)
+            let key = "\(String(format: "%.6f", coord.latitude)),\(String(format: "%.6f", coord.longitude))"
+            locationGroups[key, default: []].append(project)
         }
 
+        var annotations: [PointAnnotation] = []
+        var newGroupMap: [String: [String]] = [:]
+
+        for (_, group) in locationGroups {
+            guard let first = group.first, let coord = first.coordinate else { continue }
+
+            if group.count == 1 {
+                // Single project — standard pin
+                let project = first
+                let isSelected = (project.id == selectedProjectId)
+                let activeTasks = project.tasks.filter { $0.status == .active }
+                let taskColorHexes = activeTasks.map { $0.effectiveColor }
+
+                let image = ProjectAnnotationRenderer.renderProject(
+                    name: project.title,
+                    status: project.status,
+                    taskColorHexes: taskColorHexes,
+                    isSelected: isSelected
+                )
+
+                var annotation = PointAnnotation(id: project.id, coordinate: coord)
+                annotation.image = .init(image: image, name: "project-\(project.id)-\(isSelected)")
+                annotation.iconAnchor = .bottom
+                annotations.append(annotation)
+            } else {
+                // Multiple projects at same location — stacked pin
+                let groupId = "group-\(first.id)"
+                let isSelected = group.contains { $0.id == selectedProjectId }
+
+                let stackedInfo = group.map {
+                    ProjectAnnotationRenderer.StackedProjectInfo(name: $0.title, status: $0.status)
+                }
+
+                let image = ProjectAnnotationRenderer.renderStackedProject(
+                    projects: stackedInfo,
+                    isSelected: isSelected
+                )
+
+                var annotation = PointAnnotation(id: groupId, coordinate: coord)
+                annotation.image = .init(image: image, name: "stacked-\(groupId)-\(isSelected)")
+                annotation.iconAnchor = .bottom
+                annotations.append(annotation)
+
+                // Track which projects belong to this group
+                newGroupMap[groupId] = group.map { $0.id }
+            }
+        }
+
+        locationGroupMap = newGroupMap
         return annotations
     }
 
@@ -921,7 +961,21 @@ extension OPSMapCoordinator: AnnotationInteractionDelegate {
 
             let tappedId = tapped.id
 
-            // Check project annotations
+            // Check if this is a stacked location group
+            if let projectIds = self.locationGroupMap[tappedId] {
+                let groupProjects = projectIds.compactMap { id in
+                    self.projects.first(where: { $0.id == id })
+                }
+                if !groupProjects.isEmpty {
+                    self.stackedGroupProjects = groupProjects
+                    self.showingStackedGroup = true
+                    self.showingProjectCard = false
+                    self.showingCrewTooltip = false
+                    return
+                }
+            }
+
+            // Check single project annotations
             if let project = self.projects.first(where: { $0.id == tappedId }) {
                 self.selectProject(project)
                 self.refreshProjectAnnotations()

@@ -276,6 +276,150 @@ enum ProjectAnnotationRenderer {
         }
     }
 
+    // MARK: - Stacked Project Pin (Multiple projects at same location)
+
+    /// Data needed for each project in a stacked pin.
+    struct StackedProjectInfo {
+        let name: String
+        let status: Status
+    }
+
+    /// Render a stacked project pin showing multiple projects at the same location.
+    /// Single teardrop colored by first project's status, count badge, and vertically stacked names.
+    /// - Parameters:
+    ///   - projects: The projects at this location (first project determines pin color).
+    ///   - isSelected: Whether this stacked pin is in the selected state.
+    /// - Returns: A rendered `UIImage`.
+    static func renderStackedProject(
+        projects: [StackedProjectInfo],
+        isSelected: Bool
+    ) -> UIImage {
+        guard let first = projects.first else {
+            return UIImage()
+        }
+
+        let maxLabels = 4
+        let labelFont = UIFont(name: "Kosugi-Regular", size: labelFontSize)
+            ?? UIFont.systemFont(ofSize: labelFontSize)
+        let smallFont = UIFont(name: "Kosugi-Regular", size: subtitleFontSize)
+            ?? UIFont.systemFont(ofSize: subtitleFontSize)
+        let countFont = UIFont(name: "Kosugi-Regular", size: 9)
+            ?? UIFont.boldSystemFont(ofSize: 9)
+        let labelAlpha: CGFloat = isSelected ? 1.0 : 0.8
+
+        // Build label lines
+        let visibleProjects = Array(projects.prefix(maxLabels))
+        let overflow = projects.count - maxLabels
+
+        // Measure label sizes
+        var labelStrings: [(NSAttributedString, UIColor)] = []
+        var maxLabelWidth: CGFloat = 0
+
+        for proj in visibleProjects {
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: labelFont,
+                .foregroundColor: UIColor.white.withAlphaComponent(labelAlpha)
+            ]
+            let str = NSAttributedString(string: proj.name, attributes: attrs)
+            maxLabelWidth = max(maxLabelWidth, str.size().width)
+            labelStrings.append((str, statusUIColor(for: proj.status)))
+        }
+
+        // "+N more" line
+        var overflowString: NSAttributedString?
+        if overflow > 0 {
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: smallFont,
+                .foregroundColor: UIColor.white.withAlphaComponent(0.5)
+            ]
+            overflowString = NSAttributedString(string: "+\(overflow) more", attributes: attrs)
+            maxLabelWidth = max(maxLabelWidth, overflowString!.size().width)
+        }
+
+        // Count badge dimensions
+        let countText = "\(projects.count)"
+        let countAttrs: [NSAttributedString.Key: Any] = [
+            .font: countFont,
+            .foregroundColor: UIColor.white
+        ]
+        let countStr = NSAttributedString(string: countText, attributes: countAttrs)
+        let countSize = countStr.size()
+        let badgeDiameter = max(countSize.width, countSize.height) + 8
+
+        // Canvas dimensions
+        let dotSpacing: CGFloat = 6  // dot-to-label gap
+        let dotSize: CGFloat = 5
+        let lineHeight = labelFont.lineHeight + 2
+        let labelsHeight = lineHeight * CGFloat(visibleProjects.count)
+            + (overflowString != nil ? smallFont.lineHeight + 2 : 0)
+
+        let labelBlockWidth = dotSize + dotSpacing + maxLabelWidth
+        let canvasWidth = max(labelBlockWidth, totalRingDiameter) + canvasPadding * 2 + badgeDiameter
+        let canvasHeight = labelsHeight + labelToRingGap + totalRingDiameter + canvasPadding * 2
+        let size = CGSize(width: ceil(canvasWidth), height: ceil(canvasHeight))
+
+        let primaryColor = statusUIColor(for: first.status)
+
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { context in
+            let cgContext = context.cgContext
+
+            // Draw stacked labels with status dots
+            var labelY = canvasPadding
+            let labelsStartX = (size.width - labelBlockWidth) / 2
+
+            for (str, color) in labelStrings {
+                // Status dot
+                let dotY = labelY + (lineHeight - dotSize) / 2
+                cgContext.setFillColor(color.withAlphaComponent(labelAlpha).cgColor)
+                cgContext.fillEllipse(in: CGRect(x: labelsStartX, y: dotY, width: dotSize, height: dotSize))
+
+                // Label text
+                str.draw(at: CGPoint(x: labelsStartX + dotSize + dotSpacing, y: labelY))
+                labelY += lineHeight
+            }
+
+            // Overflow text
+            if let overflow = overflowString {
+                overflow.draw(at: CGPoint(x: labelsStartX + dotSize + dotSpacing, y: labelY))
+                labelY += smallFont.lineHeight + 2
+            }
+
+            // Ring + dot center
+            let center = CGPoint(
+                x: size.width / 2,
+                y: canvasPadding + labelsHeight + labelToRingGap + totalRingDiameter / 2
+            )
+
+            // Draw ring (solid, first project's status color)
+            drawSegmentedRing(
+                in: cgContext,
+                center: center,
+                colors: [primaryColor],
+                alpha: isSelected ? 1.0 : 0.7
+            )
+
+            // Draw center dot
+            let dotRadius = dotDiameter / 2
+            cgContext.setFillColor(primaryColor.withAlphaComponent(1.0).cgColor)
+            cgContext.addArc(center: center, radius: dotRadius, startAngle: 0, endAngle: .pi * 2, clockwise: false)
+            cgContext.fillPath()
+
+            // Count badge (top-right corner)
+            let badgeX = size.width - badgeDiameter - canvasPadding
+            let badgeY = canvasPadding
+            let badgeRect = CGRect(x: badgeX, y: badgeY, width: badgeDiameter, height: badgeDiameter)
+
+            cgContext.setFillColor(primaryColor.cgColor)
+            cgContext.fillEllipse(in: badgeRect)
+
+            // Count text centered in badge
+            let countX = badgeRect.midX - countSize.width / 2
+            let countY = badgeRect.midY - countSize.height / 2
+            countStr.draw(at: CGPoint(x: countX, y: countY))
+        }
+    }
+
     // MARK: - Legacy Render (backward compatibility)
 
     /// Original render method — wraps `renderProject` with status color as single ring color.

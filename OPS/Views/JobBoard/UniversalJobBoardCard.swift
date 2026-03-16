@@ -836,18 +836,26 @@ struct UniversalJobBoardCard: View {
 
     @ViewBuilder
     private func taskProgressBars(project: Project) -> some View {
-        let tasks = project.tasks.filter { $0.deletedAt == nil && $0.status != .cancelled }
-        let completed = tasks.filter { $0.status == .completed }.count
-        let total = tasks.count
+        let tasks = project.tasks.filter { $0.deletedAt == nil }
+        let completedTasks = tasks.filter { $0.status == .completed }
+        let cancelledTasks = tasks.filter { $0.status == .cancelled }
+        let activeTasks = tasks.filter { $0.status != .completed && $0.status != .cancelled }
+
+        // Order: completed first, then active, then cancelled
+        let ordered = completedTasks + activeTasks + cancelledTasks
+        let total = ordered.count
 
         return Group {
             if total > 0 {
                 HStack(spacing: 2) {
                     ForEach(0..<total, id: \.self) { i in
+                        let task = ordered[i]
                         RoundedRectangle(cornerRadius: 1)
-                            .fill(i < completed
-                                  ? OPSStyle.Colors.successStatus
-                                  : OPSStyle.Colors.cardBorder)
+                            .fill(
+                                task.status == .completed ? OPSStyle.Colors.successStatus :
+                                task.status == .cancelled ? OPSStyle.Colors.errorStatus.opacity(0.5) :
+                                OPSStyle.Colors.cardBorder
+                            )
                             .frame(height: 3)
                     }
                 }

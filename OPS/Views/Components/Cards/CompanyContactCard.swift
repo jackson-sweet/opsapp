@@ -180,7 +180,7 @@ struct CompanyContactCard: View {
 // MARK: - Convenience initializer for Company model
 
 extension CompanyContactCard {
-    init(company: Company, showTeamCount: Bool = true) {
+    init(company: Company, teamCount: Int? = nil, showTeamCount: Bool = true) {
         self.name = company.name
         self.logoURL = company.logoURL
         self.logoData = company.logoData
@@ -189,7 +189,7 @@ extension CompanyContactCard {
         self.phone = company.phone ?? ""
         self.address = company.address ?? ""
         self.website = company.website ?? ""
-        self.teamMemberCount = company.teamMembers.count
+        self.teamMemberCount = teamCount ?? 0
         self.showTeamCount = showTeamCount
     }
 }

@@ -803,7 +803,7 @@ struct PhotoCommentViewer: View {
         viewModel.setup(
             companyId: companyId,
             currentUserId: user.id,
-            teamMembers: Array(company.teamMembers),
+            teamMembers: dataController.getTeamMembers(companyId: companyId).map { TeamMember.fromUser($0) },
             modelContext: modelContext
         )
     }

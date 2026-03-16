@@ -170,6 +170,94 @@ struct OPSMapContainer: View {
                 .animation(OPSStyle.Animation.standard, value: coordinator.showingProjectCard)
             }
 
+            // 5. Stacked group list — when tapping a multi-project pin
+            if coordinator.showingStackedGroup && !coordinator.stackedGroupProjects.isEmpty {
+                VStack {
+                    Spacer()
+                    VStack(spacing: 0) {
+                        // Header
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(coordinator.stackedGroupProjects.count) PROJECTS")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                Text("at this location")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                            Spacer()
+                            Button {
+                                withAnimation(OPSStyle.Animation.standard) {
+                                    coordinator.showingStackedGroup = false
+                                    coordinator.stackedGroupProjects = []
+                                }
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .frame(width: 32, height: 32)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+
+                        Divider().background(OPSStyle.Colors.cardBorder)
+
+                        // Project list
+                        ForEach(coordinator.stackedGroupProjects) { project in
+                            Button {
+                                withAnimation(OPSStyle.Animation.standard) {
+                                    coordinator.showingStackedGroup = false
+                                    coordinator.stackedGroupProjects = []
+                                    coordinator.selectProject(project)
+                                    coordinator.refreshProjectAnnotations()
+                                }
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Circle()
+                                        .fill(Color(ProjectAnnotationRenderer.statusUIColor(for: project.status)))
+                                        .frame(width: 8, height: 8)
+
+                                    Text(project.title)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .lineLimit(1)
+
+                                    Spacer()
+
+                                    Text(project.status.displayName.uppercased())
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                                    Image(systemName: OPSStyle.Icons.chevronRight)
+                                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+
+                            if project.id != coordinator.stackedGroupProjects.last?.id {
+                                Divider()
+                                    .background(OPSStyle.Colors.cardBorder)
+                                    .padding(.leading, 34)
+                            }
+                        }
+                    }
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 90)
+                }
+                .transition(.move(edge: .bottom))
+                .animation(OPSStyle.Animation.standard, value: coordinator.showingStackedGroup)
+            }
+
             // 6. Crew tooltip card — anchored to bottom
             if coordinator.showingCrewTooltip, let update = selectedCrewUpdate {
                 VStack {

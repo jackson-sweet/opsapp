@@ -160,10 +160,11 @@ struct ActivityTabView: View {
 
             // Input row
             HStack(spacing: OPSStyle.Layout.spacing1) {
-                // @ mention button
+                // @ mention button — focuses text field and inserts @
                 Button(action: {
                     notesViewModel.newNoteText += "@"
                     notesViewModel.handleMentionInput(notesViewModel.newNoteText)
+                    isTextFieldFocused = true
                 }) {
                     Image(systemName: OPSStyle.Icons.mention)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -185,6 +186,8 @@ struct ActivityTabView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .focused($isTextFieldFocused)
+                    .textInputAutocapitalization(.sentences)
+                    .autocorrectionDisabled(false)
                     .onChange(of: notesViewModel.newNoteText) { _, newValue in
                         notesViewModel.handleMentionInput(newValue)
                     }

@@ -102,8 +102,9 @@ struct CalendarFilterView: View {
         guard let companyId = dataController.currentUser?.companyId,
               let company = dataController.getCompany(id: companyId) else { return }
 
-        // Load team members
-        availableTeamMembers = company.teamMembers.sorted { $0.fullName < $1.fullName }
+        // Load team members from User query (company.teamMembers relationship not populated by sync)
+        let users = dataController.getTeamMembers(companyId: companyId)
+        availableTeamMembers = users.map { TeamMember.fromUser($0) }.sorted { $0.fullName < $1.fullName }
 
         // Load task types
         availableTaskTypes = dataController.getAllTaskTypes(for: companyId).sorted { $0.displayOrder < $1.displayOrder }

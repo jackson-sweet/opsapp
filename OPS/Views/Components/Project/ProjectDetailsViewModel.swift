@@ -498,8 +498,9 @@ class ProjectDetailsViewModel: ObservableObject {
     // MARK: - Task Team
 
     func loadTaskTeamMembers() {
-        guard let company = dataController?.getCurrentUserCompany() else { return }
-        taskTeamMembers = company.teamMembers
+        guard let companyId = dataController?.currentUser?.companyId,
+              let dc = dataController else { return }
+        taskTeamMembers = dc.getTeamMembers(companyId: companyId).map { TeamMember.fromUser($0) }
     }
 
     func saveTaskTeamChanges() {

@@ -4594,6 +4594,93 @@ class DataController: ObservableObject {
         nonExistentUserIds.contains(userId)
     }
 
+    // MARK: - Permission Scope Data Purge
+
+    /// Purges locally-cached data the user no longer has permission to see
+    /// after a scope contraction (e.g., "all" -> "assigned").
+    /// Also cancels any pending SyncOperations for purged entities.
+    @MainActor
+    func purgeNonPermittedData() async {
+        guard let context = modelContext else {
+            print("[DataController] purgeNonPermittedData — no modelContext")
+            return
+        }
+        guard let userId = currentUser?.id else {
+            print("[DataController] purgeNonPermittedData — no currentUser")
+            return
+        }
+
+        let projectScope = PermissionStore.shared.scope(for: "projects.view") ?? "all"
+        let taskScope = PermissionStore.shared.scope(for: "tasks.view") ?? "all"
+
+        var purgedProjects = 0
+        var purgedTasks = 0
+
+        // Purge projects the user can no longer see
+        if projectScope == "assigned" || projectScope == "own" {
+            let allProjects = (try? context.fetch(FetchDescriptor<Project>())) ?? []
+            for project in allProjects {
+                var shouldPurge = false
+                if projectScope == "assigned" {
+                    let teamIds = project.getTeamMemberIds()
+                    shouldPurge = !teamIds.contains(userId)
+                } else if projectScope == "own" {
+                    // Without a createdBy property, fall back to team membership check
+                    let teamIds = project.getTeamMemberIds()
+                    shouldPurge = !teamIds.contains(userId)
+                }
+
+                if shouldPurge {
+                    // Cancel pending SyncOperations for this project
+                    let projectId = project.id
+                    let predicate = #Predicate<SyncOperation> {
+                        $0.entityId == projectId && $0.status == "pending"
+                    }
+                    if let ops = try? context.fetch(FetchDescriptor(predicate: predicate)) {
+                        for op in ops { context.delete(op) }
+                    }
+                    context.delete(project)
+                    purgedProjects += 1
+                }
+            }
+        }
+
+        // Purge tasks the user can no longer see
+        if taskScope == "assigned" || taskScope == "own" {
+            let allTasks = (try? context.fetch(FetchDescriptor<ProjectTask>())) ?? []
+            for task in allTasks {
+                var shouldPurge = false
+                if taskScope == "assigned" {
+                    let teamIds = task.getTeamMemberIds()
+                    shouldPurge = !teamIds.contains(userId)
+                } else if taskScope == "own" {
+                    let teamIds = task.getTeamMemberIds()
+                    shouldPurge = !teamIds.contains(userId)
+                }
+
+                if shouldPurge {
+                    // Cancel pending SyncOperations for this task
+                    let taskId = task.id
+                    let predicate = #Predicate<SyncOperation> {
+                        $0.entityId == taskId && $0.status == "pending"
+                    }
+                    if let ops = try? context.fetch(FetchDescriptor(predicate: predicate)) {
+                        for op in ops { context.delete(op) }
+                    }
+                    context.delete(task)
+                    purgedTasks += 1
+                }
+            }
+        }
+
+        if purgedProjects > 0 || purgedTasks > 0 {
+            try? context.save()
+            print("[DataController] purgeNonPermittedData — purged \(purgedProjects) projects, \(purgedTasks) tasks")
+        } else {
+            print("[DataController] purgeNonPermittedData — nothing to purge")
+        }
+    }
+
     // MARK: - Inbound Sync Triggers (SyncEngine Migration)
 
     /// Trigger a full sync via SyncEngine - replaces syncManager.syncAll()

@@ -21,6 +21,7 @@ struct MainTabView: View {
     @State private var previousTab = 0
     @State private var keyboardIsShowing = false
     @State private var sheetIsPresented = false
+    @State private var showPermissionChangeOverlay = false
     @StateObject private var imageSyncProgressManager = ImageSyncProgressManager()
     @ObservedObject private var inProgressManager = InProgressManager.shared
     @State private var userRole: UserRole? = nil // Track user role changes explicitly
@@ -41,6 +42,10 @@ struct MainTabView: View {
     // Observer for navigating to map view
     private let navigateToMapObserver = NotificationCenter.default
         .publisher(for: Notification.Name("NavigateToMapView"))
+
+    // Permission scope contraction observer
+    private let permissionScopeContractedObserver = NotificationCenter.default
+        .publisher(for: .permissionScopeContracted)
 
     // Push notification deep linking observers
     private let openProjectDetailsObserver = NotificationCenter.default
@@ -222,6 +227,15 @@ struct MainTabView: View {
 
             // Project sheet container that overlays the whole app
             ProjectSheetContainer()
+
+            // Permission contraction overlay — blocks the entire app until user acknowledges
+            if showPermissionChangeOverlay {
+                PermissionChangeOverlay(isPresented: $showPermissionChangeOverlay) {
+                    handlePermissionRefresh()
+                }
+                .transition(.opacity)
+                .zIndex(9999)
+            }
         }
         .sheet(isPresented: $appState.showingUniversalSearch) {
             UniversalSearchSheet()
@@ -263,6 +277,13 @@ struct MainTabView: View {
             }
         }
         
+        // Handle permission scope contraction
+        .onReceive(permissionScopeContractedObserver) { _ in
+            withAnimation(OPSStyle.Animation.standard) {
+                showPermissionChangeOverlay = true
+            }
+        }
+
         // Handle navigation to map view
         .onReceive(navigateToMapObserver) { _ in
             withAnimation(OPSStyle.Animation.fast) {
@@ -393,6 +414,26 @@ struct MainTabView: View {
         }
     }
     
+    /// Called when the user taps "REFRESH APP" on the permission contraction overlay.
+    /// Purges non-permitted data, runs a full sync, dismisses the overlay, and navigates home.
+    private func handlePermissionRefresh() {
+        Task {
+            // 1. Purge data the user no longer has permission to see
+            await dataController.purgeNonPermittedData()
+
+            // 2. Run a full sync to re-fetch permitted data
+            await dataController.triggerFullSync()
+
+            // 3. Dismiss overlay and navigate to home tab
+            await MainActor.run {
+                withAnimation(OPSStyle.Animation.standard) {
+                    showPermissionChangeOverlay = false
+                    selectedTab = 0
+                }
+            }
+        }
+    }
+
     private func clearPendingImageSyncs() {
         
         // Get the image sync manager from dataController

@@ -157,6 +157,9 @@ struct ManageTeamView: View {
                             }
                         }
                         .padding(.vertical, 16)
+                        .refreshable {
+                            await refreshTeamData()
+                        }
                         .tabBarPadding()
                     }
                 }
@@ -608,6 +611,24 @@ struct ManageTeamView: View {
             }
 
         isLoading = false
+    }
+
+    /// Pull-to-refresh: sync team from server then reload local data
+    private func refreshTeamData() async {
+        guard let companyId = company?.id else { return }
+
+        // Sync users from Supabase
+        if let syncManager = dataController.syncManager {
+            try? await syncManager.syncCompanyTeamMembers(companyId: companyId)
+        }
+
+        // Reload local data
+        await MainActor.run {
+            loadTeamMembers()
+        }
+
+        // Refresh pending invitations
+        await loadPendingInvitations()
     }
 
     private func loadPendingInvitations() async {

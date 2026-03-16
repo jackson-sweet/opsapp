@@ -200,7 +200,7 @@ struct UnscheduledTaskReviewView: View {
             Spacer()
 
             VStack(spacing: 2) {
-                Text("INCOMPLETE REVIEW")
+                Text("UNASSIGNED REVIEW")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 if !tasks.isEmpty {

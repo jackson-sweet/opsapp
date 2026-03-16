@@ -286,19 +286,6 @@ struct AppHeader: View {
                         .buttonStyle(PlainButtonStyle())
                     }
 
-                    // Search button (schedule and job board)
-                    if headerType == .schedule, let onSearchTapped = onSearchTapped {
-                        Button(action: onSearchTapped) {
-                            Image(systemName: "magnifyingglass")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .frame(width: 44, height: 44)
-                                .background(OPSStyle.Colors.cardBackground)
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-
                     if headerType == .jobBoard {
                         // Unscheduled task review button
                         if let onUnscheduledReviewTapped {
@@ -392,19 +379,20 @@ struct AppHeader: View {
                             .buttonStyle(PlainButtonStyle())
                         }
 
-                        // Search button
-                        Button(action: {
-                            appState.showingJobBoardSearch = true
-                        }) {
-                            Image(systemName: "magnifyingglass")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .frame(width: 44, height: 44)
-                                .background(OPSStyle.Colors.cardBackground)
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(PlainButtonStyle())
                     }
+
+                    // Universal search button (all pages except home)
+                    Button(action: {
+                        appState.showingUniversalSearch = true
+                    }) {
+                        Image(systemName: "magnifyingglass")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .frame(width: 44, height: 44)
+                            .background(OPSStyle.Colors.cardBackground)
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
 
             }

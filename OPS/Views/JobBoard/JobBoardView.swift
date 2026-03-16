@@ -141,11 +141,11 @@ struct JobBoardView: View {
                         taskReviewBadgeCount: reviewableTaskCount,
                         isTaskReviewLocked: isTaskReviewLocked,
                         taskReviewLockedMessage: "Complete \(Self.taskReviewThreshold) tasks to unlock task review. You've completed \(completedTaskCount) so far.",
-                        onUnscheduledReviewTapped: {
+                        onUnscheduledReviewTapped: permissionStore.can("tasks.edit") ? {
                             computeUnscheduledTasks()
                             showUnscheduledReview = true
-                        },
-                        unscheduledReviewBadgeCount: unscheduledTaskCount
+                        } : nil,
+                        unscheduledReviewBadgeCount: permissionStore.can("tasks.edit") ? unscheduledTaskCount : 0
                     )
                     .padding(.bottom, 8)
 

@@ -38,8 +38,9 @@ class AppState: ObservableObject {
     @Published var unreadNotificationCount: Int = 0
     @Published var showingNotifications: Bool = false
 
-    // MARK: - Job Board
+    // MARK: - Search
     @Published var showingJobBoardSearch: Bool = false
+    @Published var showingUniversalSearch: Bool = false
 
     // MARK: - Payment Review
     @Published var showPaymentReview: Bool = false

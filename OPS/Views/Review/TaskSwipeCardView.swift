@@ -83,7 +83,7 @@ struct TaskSwipeCardView: View {
                 }
             }
             .padding(20)
-            .padding(.bottom, 40)
+            .padding(.bottom, 100)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)

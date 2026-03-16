@@ -1070,6 +1070,23 @@ class OnboardingManager: ObservableObject {
                 print("[ONBOARDING_MANAGER] Company sync triggered after join")
             }
 
+            // Mark matching team_invitations as accepted
+            let userEmail = state.userData.email
+            if !userEmail.isEmpty {
+                do {
+                    try await SupabaseService.shared.client
+                        .from("team_invitations")
+                        .update(["status": "accepted"])
+                        .eq("company_id", value: companyId)
+                        .eq("email", value: userEmail)
+                        .eq("status", value: "pending")
+                        .execute()
+                    print("[ONBOARDING_MANAGER] ✅ Marked invitation as accepted for \(userEmail)")
+                } catch {
+                    print("[ONBOARDING_MANAGER] ⚠️ Failed to update invitation status: \(error)")
+                }
+            }
+
             // Notify company admins that a new member joined
             do {
                 let notifyIds = companyDTO.adminIds ?? []
@@ -1247,6 +1264,11 @@ class OnboardingManager: ObservableObject {
             if let currentUser = dataController.currentUser {
                 currentUser.companyId = companyId
                 currentUser.userType = .employee
+                // Set local role from invitation (if assigned)
+                if let invite = selectedInvite, let roleName = invite.roleName {
+                    currentUser.role = UserRole(rawValue: roleName.lowercased()) ?? .unassigned
+                    print("[ONBOARDING_MANAGER] Set local user role to: \(roleName.lowercased())")
+                }
                 try? dataController.modelContext?.save()
                 print("[ONBOARDING_MANAGER] Updated local user - companyId: \(companyId)")
             }

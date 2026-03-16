@@ -377,10 +377,10 @@ struct FloatingActionMenu: View {
                     }
                 ),
                 FABMenuItem(
-                    id: "incomplete-review",
+                    id: "unassigned-review",
                     icon: "calendar.badge.exclamationmark",
-                    label: "Incomplete Review",
-                    permission: nil,
+                    label: "Unassigned Review",
+                    permission: "tasks.edit",
                     disabledInTutorial: true,
                     action: {
                         showCreateMenu = false

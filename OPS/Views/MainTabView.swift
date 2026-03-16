@@ -223,6 +223,11 @@ struct MainTabView: View {
             // Project sheet container that overlays the whole app
             ProjectSheetContainer()
         }
+        .sheet(isPresented: $appState.showingUniversalSearch) {
+            UniversalSearchSheet()
+                .environmentObject(dataController)
+                .environmentObject(appState)
+        }
         // Add notification handler for project fetching
         .onReceive(fetchProjectObserver) { notification in
             if let projectID = notification.userInfo?["projectID"] as? String {

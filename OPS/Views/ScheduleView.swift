@@ -58,9 +58,6 @@ struct ScheduleView: View {
                     // Header with its own internal padding of 20
                     AppHeader(
                         headerType: .schedule,
-                        onSearchTapped: {
-                            showSearchSheet = true
-                        },
                         onFilterTapped: {
                             showFilterSheet = true
                         },

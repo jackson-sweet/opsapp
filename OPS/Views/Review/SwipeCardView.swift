@@ -68,7 +68,7 @@ struct SwipeCardView: View {
                     .foregroundColor(.white.opacity(0.7))
             }
             .padding(20)
-            .padding(.bottom, 40)
+            .padding(.bottom, 100)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)

@@ -79,6 +79,10 @@ final class ConnectivityManager: ObservableObject {
     /// Timer that fires periodic health checks.
     private var healthCheckTimer: Timer?
 
+    /// Timer used to debounce connectivity state change notifications.
+    private var debounceTimer: Timer?
+    private let debounceInterval: TimeInterval = 2.0
+
     /// The REST health-check URL derived from SupabaseConfig.
     private let healthCheckURL: URL = {
         // Supabase REST endpoint — a lightweight HEAD to /rest/v1/ returns quickly.
@@ -103,6 +107,7 @@ final class ConnectivityManager: ObservableObject {
     deinit {
         monitor.cancel()
         healthCheckTimer?.invalidate()
+        debounceTimer?.invalidate()
     }
 
     // MARK: - NWPathMonitor
@@ -260,11 +265,18 @@ final class ConnectivityManager: ObservableObject {
 
         if changed {
             onStateChanged?(newState)
-            NotificationCenter.default.post(
-                name: ConnectivityManager.connectivityChangedNotification,
-                object: self,
-                userInfo: ["state": newState]
-            )
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.debounceTimer?.invalidate()
+                self.debounceTimer = Timer.scheduledTimer(withTimeInterval: self.debounceInterval, repeats: false) { [weak self] _ in
+                    guard let self else { return }
+                    NotificationCenter.default.post(
+                        name: ConnectivityManager.connectivityChangedNotification,
+                        object: self,
+                        userInfo: ["state": newState]
+                    )
+                }
+            }
         }
     }
 

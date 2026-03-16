@@ -26,6 +26,7 @@ struct AppHeader: View {
     var onSearchTapped: (() -> Void)? = nil
     var onRefreshTapped: (() -> Void)? = nil
     var onFilterTapped: (() -> Void)? = nil
+    var onInsightsTapped: (() -> Void)? = nil
     var onMonthTapped: (() -> Void)? = nil
     var onScopeToggled: (() -> Void)? = nil
     var onPaymentReviewTapped: (() -> Void)? = nil
@@ -379,6 +380,19 @@ struct AppHeader: View {
                             .buttonStyle(PlainButtonStyle())
                         }
 
+                    }
+
+                    // Insights button (inventory only)
+                    if headerType == .inventory, let onInsightsTapped = onInsightsTapped {
+                        Button(action: onInsightsTapped) {
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .frame(width: 44, height: 44)
+                                .background(OPSStyle.Colors.cardBackground)
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
 
                     // Universal search button (all pages except home)

@@ -436,21 +436,6 @@ struct InventoryView: View {
 
                     VStack(spacing: OPSStyle.Layout.spacing3) {
                         HStack(spacing: OPSStyle.Layout.spacing3) {
-                            Button(action: { Task { await refreshInventory() } }) {
-                                HStack(spacing: OPSStyle.Layout.spacing1) {
-                                    Image(systemName: OPSStyle.Icons.arrowClockwise)
-                                    Text("Refresh")
-                                }
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                                .padding(.vertical, OPSStyle.Layout.spacing2)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
-                                )
-                            }
-
                             Button(action: { showingAddItemSheet = true }) {
                                 HStack(spacing: OPSStyle.Layout.spacing1) {
                                     Image(systemName: OPSStyle.Icons.plus)

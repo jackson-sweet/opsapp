@@ -3488,12 +3488,12 @@ class DataController: ObservableObject {
         if let startDate = startDate {
             changedFields["start_date"] = formatter.string(from: startDate)
         } else {
-            changedFields["start_date"] = ""
+            changedFields["start_date"] = NSNull()
         }
         if let endDate = endDate {
             changedFields["end_date"] = formatter.string(from: endDate)
         } else {
-            changedFields["end_date"] = ""
+            changedFields["end_date"] = NSNull()
         }
 
         syncEngine.recordOperation(

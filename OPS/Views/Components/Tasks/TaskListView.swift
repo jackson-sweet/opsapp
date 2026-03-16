@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import Supabase
+import UserNotifications
 
 struct TaskListView: View {
     let project: Project
@@ -21,6 +22,13 @@ struct TaskListView: View {
 
     private var canModify: Bool {
         permissionStore.can("tasks.edit")
+    }
+
+    /// Active (non-deleted) tasks sorted by display order.
+    private var activeTasks: [ProjectTask] {
+        project.tasks
+            .filter { $0.deletedAt == nil }
+            .sorted { $0.displayOrder < $1.displayOrder }
     }
 
     var body: some View {
@@ -52,7 +60,7 @@ struct TaskListView: View {
             }
 
             // Task content
-            if project.tasks.isEmpty {
+            if activeTasks.isEmpty {
                 // Empty state with create button
                 Button(action: {
                     showingTaskForm = true
@@ -73,11 +81,11 @@ struct TaskListView: View {
             } else {
                 // Task cards in single container (matching ProjectDetailsView card style)
                 VStack(spacing: 8) {
-                    ForEach(project.tasks.sorted { $0.displayOrder < $1.displayOrder }) { task in
+                    ForEach(activeTasks) { task in
                         TaskRow(
                             task: task,
-                            isFirst: task.id == project.tasks.sorted { $0.displayOrder < $1.displayOrder }.first?.id,
-                            isLast: task.id == project.tasks.sorted { $0.displayOrder < $1.displayOrder }.last?.id,
+                            isFirst: task.id == activeTasks.first?.id,
+                            isLast: task.id == activeTasks.last?.id,
                             onTap: {
                                 // Use callback if provided, otherwise no action
                                 onTaskSelected?(task)
@@ -226,28 +234,32 @@ struct TaskRow: View {
         let taskId = task.id
         let project = task.project
 
-        // STEP 1: Delete from UI immediately (optimistic deletion)
         guard let modelContext = dataController.modelContext else { return }
-        modelContext.delete(task)
-        try? modelContext.save()
-        print("[DELETE_TASK] ✅ Task deleted from local database (UI updated)")
 
-        // STEP 2: Delete from Supabase in background
+        // STEP 1: Record the SyncOperation FIRST so the server learns about this deletion
+        // even if the app is killed or goes offline after the local delete.
+        dataController.syncEngine.recordOperation(
+            entityType: .projectTask,
+            entityId: taskId,
+            operationType: "delete",
+            changedFields: ["_deleted": true]
+        )
+        print("[DELETE_TASK] ✅ SyncOperation recorded for task: \(taskId)")
+
+        // STEP 2: Soft-delete locally and update UI
+        task.deletedAt = Date()
+        task.needsSync = true
+        try? modelContext.save()
+        print("[DELETE_TASK] ✅ Task soft-deleted locally (UI updated)")
+
+        // STEP 3: Update project dates in background
         Task {
             do {
-                // Delete the task from Supabase
-                print("[DELETE_TASK] 🗑️ Deleting task from Supabase: \(taskId)")
-                try await dataController.deleteTask(taskId: taskId)
-                print("[DELETE_TASK] ✅ Task deleted from Supabase")
-
-                // Update project dates (computed from tasks)
                 if let project = project {
                     print("[DELETE_TASK] 📅 Updating project dates after deletion...")
                     print("[DELETE_TASK] Project: \(project.title)")
                     print("[DELETE_TASK] Remaining tasks: \(project.tasks.count)")
 
-                    // Sync computed dates to Supabase
-                    print("[DELETE_TASK] 🔄 Syncing updated project dates to Supabase...")
                     try await dataController.updateProjectDates(
                         project: project,
                         startDate: project.computedStartDate,
@@ -258,27 +270,11 @@ struct TaskRow: View {
                     print("[DELETE_TASK] ⚠️ No project found - skipping date update")
                 }
 
-                // Schedule deletion notification
                 await MainActor.run {
                     scheduleDeletionNotification(itemType: "TASK", itemName: taskName)
                 }
             } catch {
-                print("[DELETE_TASK] ❌ Error deleting task from Supabase: \(error)")
-                // Task is already deleted from UI, but will reappear on next sync if deletion failed
-                await MainActor.run {
-                    let content = UNMutableNotificationContent()
-                    content.title = "Delete Failed"
-                    content.body = "Task deleted locally but failed to sync. It may reappear on next sync."
-                    content.sound = .default
-
-                    let request = UNNotificationRequest(
-                        identifier: UUID().uuidString,
-                        content: content,
-                        trigger: nil
-                    )
-
-                    UNUserNotificationCenter.current().add(request)
-                }
+                print("[DELETE_TASK] ❌ Error updating project dates after deletion: \(error)")
             }
         }
     }

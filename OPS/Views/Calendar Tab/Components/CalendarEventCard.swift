@@ -330,7 +330,7 @@ struct CalendarEventCard: View {
 
         Task {
             do {
-                try await dataController.syncManager.updateTaskFields(
+                try await dataController.updateTaskFields(
                     taskId: task.id,
                     fields: [
                         "start_date": .null,
@@ -339,18 +339,18 @@ struct CalendarEventCard: View {
                     ]
                 )
 
-                if let projId = projectId {
+                if let project = task.project {
                     if let dates = scheduledTaskDates, !dates.isEmpty {
                         let earliestStart = dates.map { $0.start }.min()
                         let latestEnd = dates.map { $0.end }.max()
                         if let start = earliestStart, let end = latestEnd {
-                            try await dataController.syncManager.updateProjectDates(
-                                projectId: projId, startDate: start, endDate: end
+                            try await dataController.updateProjectDates(
+                                project: project, startDate: start, endDate: end
                             )
                         }
                     } else {
-                        try await dataController.syncManager.updateProjectDates(
-                            projectId: projId, startDate: nil, endDate: nil
+                        try await dataController.updateProjectDates(
+                            project: project, startDate: nil, endDate: nil
                         )
                     }
                 }

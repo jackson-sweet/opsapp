@@ -399,7 +399,7 @@ struct ContactDetailView: View {
 
                                 for project in clientProjects {
                                     print("  📋 Updating project: \(project.title) (\(project.id))")
-                                    try await dataController.syncManager.updateProjectFields(
+                                    try await dataController.updateProjectFields(
                                         projectId: project.id,
                                         fields: ["client_id": .string(bulkClientId)]
                                     )
@@ -425,7 +425,7 @@ struct ContactDetailView: View {
                                 } else if let newClientId = reassignments[project.id],
                                    let newClient = availableClients.first(where: { $0.id == newClientId }) {
                                     print("  📋 Individual: Updating project \(project.title) to client \(newClient.name)")
-                                    try await dataController.syncManager.updateProjectFields(
+                                    try await dataController.updateProjectFields(
                                         projectId: project.id,
                                         fields: ["client_id": .string(newClientId)]
                                     )
@@ -446,7 +446,7 @@ struct ContactDetailView: View {
 
                         // Step 4: Trigger sync
                         print("🔄 Triggering sync to refresh client/project relationships")
-                        try? await dataController.syncManager.manualFullSync()
+                        try? await dataController.triggerManualFullSync()
                         print("✅ Sync completed")
                     }
                 )
@@ -1182,7 +1182,7 @@ struct ContactDetailView: View {
             let roleId = try await PermissionAdminService.resolveRoleId(for: newRole)
             try await PermissionAdminService.assignUserRole(userId: user.id, roleId: roleId)
 
-            try await dataController.syncManager.updateUserFields(
+            try await dataController.updateUserFields(
                 userId: user.id,
                 fields: ["role": .string(newRole.rawValue)]
             )
@@ -1326,13 +1326,8 @@ struct ContactDetailView: View {
     
     private func saveClientChanges(name: String, email: String?, phone: String?, address: String?) async {
         guard let client = client else { return }
-        
+
         do {
-            // Call the API to update client
-            guard let syncManager = dataController.syncManager else {
-                return
-            }
-            
             // Extract only digits from phone number
             let cleanedPhone: String?
             if let phone = phone, !phone.isEmpty {
@@ -1341,33 +1336,26 @@ struct ContactDetailView: View {
             } else {
                 cleanedPhone = nil
             }
-            
-            // Update the client via API (client is updated in place)
-            try await syncManager.updateClientContact(
+
+            // Update the client via DataController
+            try await dataController.updateClientContact(
                 clientId: client.id,
                 name: name,
                 email: email,
                 phone: cleanedPhone,
                 address: address
             )
-
-            // Client object is already updated by the sync manager
-            // No need to manually update UI as client is passed by reference
-            
         } catch {
         }
     }
     
     private func saveSubClient(name: String, title: String?, email: String?, phone: String?, address: String?) async {
         guard let client = client else { return }
-        guard let syncManager = dataController.syncManager else { 
-            return 
-        }
-        
+
         do {
             if let editingSubClient = subClientToEdit, !editingSubClient.name.isEmpty {
-                // Edit existing sub-client (updates local model automatically)
-                try await syncManager.editSubClient(
+                // Edit existing sub-client via DataController
+                try await dataController.editSubClient(
                     subClientId: editingSubClient.id,
                     name: name,
                     title: title,
@@ -1378,45 +1366,22 @@ struct ContactDetailView: View {
 
                 // Refresh UI
                 await MainActor.run {
-                    // Force refresh of the sub-clients view
                     subClientsRefreshKey = UUID()
-                    // Clear the editing state
                     subClientToEdit = nil
                 }
-                
+
             } else {
-                // Create new sub-client - try API first, fall back to local if offline/error
-                let newSubClient: SubClient
-                var syncSucceeded = false
-
-                do {
-                    // createSubClient now returns SubClient model directly, not DTO
-                    newSubClient = try await syncManager.createSubClient(
-                        clientId: client.id,
-                        name: name,
-                        title: title,
-                        email: email,
-                        phone: phone,
-                        address: address
-                    )
-
-                    syncSucceeded = true
-                    print("✅ Sub-client created on server successfully")
-                } catch {
-                    print("⚠️ Failed to create sub-client on server: \(error)")
-                    print("📱 Creating sub-client locally and queuing for sync")
-
-                    // Create locally with temporary ID
-                    newSubClient = SubClient(
-                        id: UUID().uuidString,
-                        name: name
-                    )
-                    newSubClient.title = title
-                    newSubClient.email = email
-                    newSubClient.phoneNumber = phone
-                    newSubClient.address = address
-                    newSubClient.needsSync = true  // Mark for sync
-                }
+                // Create new sub-client via DataController (local-first)
+                let companyId = client.companyId ?? dataController.currentUser?.companyId ?? ""
+                let newSubClient = try await dataController.createSubClient(
+                    clientId: client.id,
+                    name: name,
+                    title: title,
+                    email: email,
+                    phone: phone,
+                    address: address,
+                    companyId: companyId
+                )
 
                 // Set the parent relationship
                 newSubClient.client = client
@@ -1424,30 +1389,12 @@ struct ContactDetailView: View {
                 // Add the new sub-client to the client's array
                 await MainActor.run {
                     client.subClients.append(newSubClient)
-
-                    // Force the client to update by modifying a property
                     client.lastSyncedAt = Date()
-
-                    // Force refresh of the sub-clients view
                     subClientsRefreshKey = UUID()
-                    // Clear the editing state
                     subClientToEdit = nil
                 }
-
-                // Save to SwiftData context
-                let modelContext = syncManager.modelContext
-                modelContext.insert(newSubClient)
-                try modelContext.save()
-
-                // If sync succeeded, refresh client
-                if syncSucceeded {
-                    await MainActor.run {
-                        client.lastSyncedAt = nil
-                    }
-                    try? await syncManager.refreshSingleClient(clientId: client.id)
-                }
             }
-            
+
         } catch {
         }
     }
@@ -1455,24 +1402,16 @@ struct ContactDetailView: View {
     private func deleteSubClient(_ subClient: SubClient) {
         Task {
             do {
-                // Call the API to delete the sub-client
-                try await dataController.syncManager.deleteSubClient(subClientId: subClient.id)
-                
+                // Delete via DataController (local-first with SyncEngine)
+                try await dataController.deleteSubClient(subClientId: subClient.id)
+
                 // Remove from parent client's array
                 await MainActor.run {
                     if let index = client?.subClients.firstIndex(where: { $0.id == subClient.id }) {
                         client?.subClients.remove(at: index)
                     }
-                    
-                    // Force refresh of the sub-clients view
                     subClientsRefreshKey = UUID()
                 }
-                
-                // Delete from SwiftData context
-                let modelContext = dataController.syncManager.modelContext
-                modelContext.delete(subClient)
-                try modelContext.save()
-                
             } catch {
             }
         }

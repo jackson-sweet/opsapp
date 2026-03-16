@@ -45,7 +45,7 @@ struct OrganizationTeamView: View {
                     Button {
                         // Force a team member sync
                         Task {
-                            await dataController.syncManager?.syncCompanyTeamMembers(company)
+                            await dataController.triggerTeamMembersSync(companyId: company.id)
                         }
                     } label: {
                         Label("Load Team Members", systemImage: "arrow.clockwise")

@@ -820,26 +820,24 @@ struct TaskTypeSheet: View {
                     return newTaskType
                 }
 
-                if let syncManager = dataController.syncManager {
-                    let dto = SupabaseTaskTypeDTO(
-                        id: newTaskTypeId,
-                        bubbleId: nil,
-                        companyId: companyId,
-                        display: taskTypeName,
-                        color: taskTypeColorHex,
-                        icon: taskTypeIcon,
-                        isDefault: false,
-                        displayOrder: nil,
-                        dependencies: dependencies.isEmpty ? nil : dependencies,
-                        defaultTeamMemberIds: nil,
-                        deletedAt: nil
-                    )
-                    let _ = try await syncManager.createTaskType(dto: dto)
-                    await MainActor.run {
-                        newTaskType.needsSync = false
-                        newTaskType.lastSyncedAt = Date()
-                        try? modelContext.save()
-                    }
+                let dto = SupabaseTaskTypeDTO(
+                    id: newTaskTypeId,
+                    bubbleId: nil,
+                    companyId: companyId,
+                    display: taskTypeName,
+                    color: taskTypeColorHex,
+                    icon: taskTypeIcon,
+                    isDefault: false,
+                    displayOrder: nil,
+                    dependencies: dependencies.isEmpty ? nil : dependencies,
+                    defaultTeamMemberIds: nil,
+                    deletedAt: nil
+                )
+                let _ = try await dataController.createTaskType(dto: dto)
+                await MainActor.run {
+                    newTaskType.needsSync = false
+                    newTaskType.lastSyncedAt = Date()
+                    try? modelContext.save()
                 }
 
                 await MainActor.run {
@@ -897,7 +895,7 @@ struct TaskTypeSheet: View {
                 }
             }
 
-            dataController.syncManager?.triggerBackgroundSync()
+            dataController.triggerBackgroundSync()
         }
     }
 }

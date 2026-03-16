@@ -482,7 +482,7 @@ struct TaskDetailsView: View {
         Task {
             do {
                 // Sync team members from Supabase, then query locally
-                try await dataController.syncManager.syncCompanyTeamMembers(companyId: companyId)
+                await dataController.triggerTeamMembersSync(companyId: companyId)
 
                 await MainActor.run {
                     // Query local SwiftData for all users in the company
@@ -866,7 +866,7 @@ struct TaskDetailsView: View {
                 do {
                     // STEP 1: Clear task dates in Supabase
                     print("📡 Clearing task dates in Supabase...")
-                    try await dataController.syncManager.updateTaskFields(
+                    try await dataController.updateTaskFields(
                         taskId: task.id,
                         fields: [
                             "start_date": .null,
@@ -874,10 +874,10 @@ struct TaskDetailsView: View {
                             "duration": .integer(0)
                         ]
                     )
-                    print("✅ Task dates cleared in Supabase")
+                    print("✅ Task dates cleared")
 
                     // STEP 2: Recalculate parent project dates
-                    if let projId = projectId {
+                    if let project = task.project {
                         print("🔄 Recalculating parent project dates...")
 
                         if let dates = scheduledTaskDates, !dates.isEmpty {
@@ -885,17 +885,17 @@ struct TaskDetailsView: View {
                             let latestEnd = dates.map { $0.end }.max()
 
                             if let start = earliestStart, let end = latestEnd {
-                                try await dataController.syncManager.updateProjectDates(
-                                    projectId: projId,
+                                try await dataController.updateProjectDates(
+                                    project: project,
                                     startDate: start,
                                     endDate: end
                                 )
-                                print("✅ Project dates updated in Supabase")
+                                print("✅ Project dates updated")
                             }
                         } else {
                             print("🗑️ No scheduled tasks - clearing project dates")
-                            try await dataController.syncManager.updateProjectDates(
-                                projectId: projId,
+                            try await dataController.updateProjectDates(
+                                project: project,
                                 startDate: nil,
                                 endDate: nil
                             )
@@ -921,7 +921,7 @@ struct TaskDetailsView: View {
             let startDateString = task.startDate.map { formatter.string(from: $0) } ?? ""
             let endDateString = task.endDate.map { formatter.string(from: $0) } ?? ""
 
-            try await dataController.syncManager.updateTaskFields(
+            try await dataController.updateTaskFields(
                 taskId: task.id,
                 fields: [
                     "start_date": .string(startDateString),
@@ -1023,10 +1023,9 @@ struct TaskDetailsView: View {
                 project.status = .inProgress
                 project.needsSync = true
                 Task {
-                    try? await dataController.syncManager.updateProjectStatus(
-                        projectId: project.id,
-                        status: .inProgress,
-                        forceSync: true
+                    try? await dataController.updateProjectStatus(
+                        project: project,
+                        to: .inProgress
                     )
                 }
             }
@@ -1166,10 +1165,9 @@ struct TaskDetailsView: View {
         
         // Sync to API
         Task {
-            try? await dataController.syncManager?.updateProjectStatus(
-                projectId: project.id,
-                status: .completed,
-                forceSync: true
+            try? await dataController.updateProjectStatus(
+                project: project,
+                to: .completed
             )
             
             // Exit project mode after completing

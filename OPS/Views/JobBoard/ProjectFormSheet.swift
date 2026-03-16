@@ -1719,24 +1719,12 @@ struct ProjectFormSheet: View {
             )
 
         do {
-            if let syncManager = dataController.syncManager {
-                let _ = try await syncManager.createProject(dto: dto)
-                print("[PROJECT_CREATE] ✅ Project synced to Supabase: \(project.id)")
-                await MainActor.run {
-                    project.needsSync = false
-                    project.lastSyncedAt = Date()
-                    try? modelContext.save()
-                }
-            } else {
-                print("[PROJECT_CREATE] Project saved locally with ID: \(project.id), marked for sync")
-                project.needsSync = true
-                await MainActor.run {
-                    try? modelContext.save()
-                }
-                // Queue for SyncEngine push
-                await MainActor.run {
-                    recordProjectSyncOperation(project: project, dto: dto)
-                }
+            let _ = try await dataController.createProject(dto: dto)
+            print("[PROJECT_CREATE] ✅ Project created via DataController: \(project.id)")
+            await MainActor.run {
+                project.needsSync = false
+                project.lastSyncedAt = Date()
+                try? modelContext.save()
             }
 
             // Create tasks with local project ID
@@ -1785,7 +1773,7 @@ struct ProjectFormSheet: View {
             }
 
             // Trigger background sync so project is pushed to Supabase
-            dataController.syncManager?.triggerBackgroundSync()
+            dataController.triggerBackgroundSync()
 
         } catch is CancellationError {
             savedOffline = true
@@ -1884,7 +1872,7 @@ struct ProjectFormSheet: View {
             try? modelContext.save()
         }
 
-        dataController.syncManager?.triggerBackgroundSync()
+        dataController.triggerBackgroundSync()
     }
 
     private func createTask(for project: Project, localTask: LocalTask) async {
@@ -1980,7 +1968,7 @@ struct ProjectFormSheet: View {
                 deletedAt: nil
             )
 
-            let createdTaskId = try await dataController.syncManager.createTask(dto: supabaseTaskDTO)
+            let createdTaskId = try await dataController.createTask(dto: supabaseTaskDTO)
             remoteTaskId = createdTaskId
             print("[TASK_CREATE] ✅ Task synced to Supabase with ID: \(remoteTaskId)")
 

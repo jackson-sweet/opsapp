@@ -630,35 +630,31 @@ struct ClientSheet: View {
             dataController.saveClient(tempClient)
         }
 
-        // Sync to Supabase
-        if let syncManager = dataController.syncManager {
-            do {
-                let dto = SupabaseClientDTO(
-                    id: tempClient.id,
-                    bubbleId: nil,
-                    companyId: companyId,
-                    name: tempClient.name,
-                    email: tempClient.email,
-                    phoneNumber: tempClient.phoneNumber,
-                    address: tempClient.address,
-                    latitude: nil,
-                    longitude: nil,
-                    notes: tempClient.notes,
-                    profileImageUrl: tempClient.profileImageURL,
-                    deletedAt: nil
-                )
-                let _ = try await syncManager.createClient(dto: dto)
-                print("[CLIENT_CREATE] ✅ Client synced to Supabase: \(tempClient.id)")
-                await MainActor.run {
-                    tempClient.needsSync = false
-                    tempClient.lastSyncedAt = Date()
-                }
-            } catch {
-                print("[CLIENT_CREATE] ⚠️ Failed to sync client, saved locally: \(error)")
-                dataController.syncManager?.triggerBackgroundSync()
+        // Create via DataController (local-first with SyncEngine)
+        do {
+            let dto = SupabaseClientDTO(
+                id: tempClient.id,
+                bubbleId: nil,
+                companyId: companyId,
+                name: tempClient.name,
+                email: tempClient.email,
+                phoneNumber: tempClient.phoneNumber,
+                address: tempClient.address,
+                latitude: nil,
+                longitude: nil,
+                notes: tempClient.notes,
+                profileImageUrl: tempClient.profileImageURL,
+                deletedAt: nil
+            )
+            let _ = try await dataController.createClient(dto: dto)
+            print("[CLIENT_CREATE] ✅ Client created via DataController: \(tempClient.id)")
+            await MainActor.run {
+                tempClient.needsSync = false
+                tempClient.lastSyncedAt = Date()
             }
-        } else {
-            print("[CLIENT_CREATE] Saving client locally, marked for sync...")
+        } catch {
+            print("[CLIENT_CREATE] ⚠️ Failed to create client: \(error)")
+            dataController.triggerBackgroundSync()
         }
 
         return tempClient

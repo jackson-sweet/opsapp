@@ -229,9 +229,7 @@ struct OrganizationSettingsView: View {
                 do {
                     try await dataController.forceRefreshCompany(id: companyID)
 
-                    if let company = dataController.getCompany(id: companyID) {
-                        await dataController.syncManager?.syncCompanyTeamMembers(company)
-                    }
+                    await dataController.triggerTeamMembersSync(companyId: companyID)
                 } catch {
                     print("[ORG_SETTINGS] Error refreshing: \(error)")
                 }

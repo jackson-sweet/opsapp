@@ -100,7 +100,7 @@ struct ProjectDetailsView: View {
                                 project.needsSync = true
                                 try? dataController.modelContext?.save()
                                 Task {
-                                    try? await dataController.syncManager.updateProjectFields(
+                                    try? await dataController.updateProjectFields(
                                         projectId: project.id,
                                         fields: ["client_id": .string(client.id)]
                                     )
@@ -847,7 +847,7 @@ struct ProjectDetailsView: View {
 
         // Fallback: trigger async sync then retry
         Task {
-            try? await dataController.syncManager?.syncCompanyTeamMembers(companyId: companyId)
+            await dataController.triggerTeamMembersSync(companyId: companyId)
             await MainActor.run {
                 let retryUsers = dataController.getTeamMembers(companyId: companyId)
                 allTeamMembers = retryUsers.map { TeamMember.fromUser($0) }

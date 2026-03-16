@@ -719,7 +719,7 @@ struct TutorialLauncherView: View {
             let fields: [String: AnyJSON] = [
                 "has_completed_tutorial": .bool(true)
             ]
-            try await dataController.syncManager.updateUserFields(userId: user.id, fields: fields)
+            try await dataController.updateUserFields(userId: user.id, fields: fields)
             user.needsSync = false
             try modelContext.save()
             print("[TUTORIAL_LAUNCHER] ✅ Tutorial completion synced to Supabase successfully!")
@@ -788,7 +788,7 @@ struct TutorialLauncherView: View {
                 let fields: [String: AnyJSON] = [
                     "has_completed_tutorial": .bool(true)
                 ]
-                try await dataController.syncManager.updateUserFields(userId: user.id, fields: fields)
+                try await dataController.updateUserFields(userId: user.id, fields: fields)
                 user.needsSync = false
                 try modelContext.save()
                 print("[TUTORIAL_LAUNCHER] ✅ (legacy) Tutorial completion synced to Supabase!")

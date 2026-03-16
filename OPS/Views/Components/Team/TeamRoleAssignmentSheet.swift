@@ -196,7 +196,7 @@ struct TeamRoleAssignmentSheet: View {
 
                 // Update via Supabase
                 let roleString = role.displayName
-                try await dataController.syncManager.updateUserFields(
+                try await dataController.updateUserFields(
                     userId: userId,
                     fields: ["employee_type": .string(roleString)]
                 )
@@ -216,7 +216,7 @@ struct TeamRoleAssignmentSheet: View {
         }
 
         // Re-sync team members to update TeamMember objects
-        try? await dataController.syncManager.syncCompanyTeamMembers(companyId: companyId)
+        await dataController.triggerTeamMembersSync(companyId: companyId)
 
         isSaving = false
 

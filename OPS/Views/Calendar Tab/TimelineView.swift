@@ -144,6 +144,6 @@ struct TimelineView: View {
         task.needsSync = true
 
         try? dataController.modelContext?.save()
-        dataController.syncManager?.triggerBackgroundSync()
+        dataController.triggerBackgroundSync()
     }
 }

@@ -690,9 +690,8 @@ struct ProjectSearchSheet: View {
         
         Task {
             // First, sync team members to ensure we have the latest data
-            if let companyId = dataController.currentUser?.companyId,
-               let company = dataController.getCompany(id: companyId) {
-                await dataController.syncManager?.syncCompanyTeamMembers(company)
+            if let companyId = dataController.currentUser?.companyId {
+                await dataController.triggerTeamMembersSync(companyId: companyId)
             }
             
             await MainActor.run {

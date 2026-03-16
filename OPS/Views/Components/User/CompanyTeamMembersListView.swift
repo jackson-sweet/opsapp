@@ -51,14 +51,9 @@ struct CompanyTeamMembersListView: View {
     }
     
     private func fetchTeamMembers() {
-        // Use DataController from environment
-        guard let syncManager = dataController.syncManager else {
-            return
-        }
-        
-        // Trigger team members fetch
+        // Trigger team members fetch via DataController
         Task {
-            await syncManager.syncCompanyTeamMembers(company)
+            await dataController.triggerTeamMembersSync(companyId: company.id)
         }
     }
 }

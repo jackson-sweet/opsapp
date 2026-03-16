@@ -434,48 +434,42 @@ struct TaskTestView: View {
     // MARK: - API Sync Test Functions
     
     private func testTaskTypeSync() {
-        guard let syncManager = dataController.syncManager else {
-            statusMessage = "❌ SyncManager not available"
-            return
-        }
-        
         isSyncing = true
         statusMessage = "Testing TaskType sync..."
-        
+
         Task {
+            // Get current user's company ID
+            guard let currentUser = dataController.currentUser else {
+                await MainActor.run {
+                    statusMessage = "❌ No current user found"
+                    isSyncing = false
+                }
+                return
+            }
+
+            guard let companyId = currentUser.companyId, !companyId.isEmpty else {
+                await MainActor.run {
+                    statusMessage = "❌ No company ID found"
+                    isSyncing = false
+                }
+                return
+            }
+
+            // Sync task types via DataController
+            await dataController.triggerTaskTypesSync(companyId: companyId)
+
+            // Fetch and display synced task types
             do {
-                // Get current user's company ID
-                guard let currentUser = dataController.currentUser else {
-                    await MainActor.run {
-                        statusMessage = "❌ No current user found"
-                        isSyncing = false
-                    }
-                    return
-                }
-                
-                guard let companyId = currentUser.companyId, !companyId.isEmpty else {
-                    await MainActor.run {
-                        statusMessage = "❌ No company ID found"
-                        isSyncing = false
-                    }
-                    return
-                }
-                
-                // Sync task types
-                try await syncManager.syncCompanyTaskTypes(companyId: companyId)
-                
-                // Fetch and display synced task types
                 let descriptor = FetchDescriptor<TaskType>(
                     predicate: #Predicate<TaskType> { $0.companyId == companyId }
                 )
                 let syncedTypes = try modelContext.fetch(descriptor)
-                
+
                 await MainActor.run {
                     testTaskTypes = syncedTypes
                     statusMessage = "✅ Synced \(syncedTypes.count) task types"
                     isSyncing = false
                 }
-                
             } catch {
                 await MainActor.run {
                     statusMessage = "❌ Sync failed: \(error.localizedDescription)"
@@ -484,25 +478,24 @@ struct TaskTestView: View {
             }
         }
     }
-    
+
     private func testTaskSync() {
-        guard let syncManager = dataController.syncManager,
-              let project = testProject else {
-            statusMessage = "❌ SyncManager or project not available"
+        guard let project = testProject else {
+            statusMessage = "❌ Project not available"
             return
         }
-        
+
         isSyncing = true
         statusMessage = "Testing Task sync for project..."
-        
+
         Task {
+            let projectId = project.id
+
+            // Sync tasks for the test project via DataController
+            await dataController.triggerProjectTasksSync(projectId: projectId)
+
+            // Fetch and display synced tasks
             do {
-                let projectId = project.id
-                
-                // Sync tasks for the test project
-                try await syncManager.syncProjectTasks(projectId: projectId)
-                
-                // Fetch and display synced tasks
                 let descriptor = FetchDescriptor<ProjectTask>(
                     predicate: #Predicate<ProjectTask> { $0.projectId == projectId }
                 )

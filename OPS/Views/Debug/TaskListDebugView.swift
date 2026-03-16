@@ -152,8 +152,8 @@ struct TaskListDebugView: View {
         Task {
             do {
                 // Sync task types and tasks via Supabase
-                try await dataController.syncManager.syncCompanyTaskTypes(companyId: companyId)
-                try await dataController.syncManager.syncTasks()
+                await dataController.triggerTaskTypesSync(companyId: companyId)
+                await dataController.triggerTasksSync()
 
                 await MainActor.run {
                     errorMessage = "Synced task types and tasks from Supabase"

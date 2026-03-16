@@ -200,7 +200,7 @@ struct UniversalJobBoardCard: View {
                                 for project in clientProjects {
                                     print("  📋 Updating project: \(project.title) (\(project.id))")
                                     // In Supabase, update client_id field on the project
-                                    try await dataController.syncManager.updateProjectFields(
+                                    try await dataController.updateProjectFields(
                                         projectId: project.id,
                                         fields: ["client_id": .string(bulkClientId)]
                                     )
@@ -225,7 +225,7 @@ struct UniversalJobBoardCard: View {
                                    let newClient = availableClients.first(where: { $0.id == newClientId }) {
                                     print("  📋 Individual: Updating project \(project.title) to client \(newClient.name)")
                                     // In Supabase, update client_id field on the project
-                                    try await dataController.syncManager.updateProjectFields(
+                                    try await dataController.updateProjectFields(
                                         projectId: project.id,
                                         fields: ["client_id": .string(newClientId)]
                                     )
@@ -241,7 +241,7 @@ struct UniversalJobBoardCard: View {
                         try modelContext.save()
                         try await dataController.deleteClient(client)
                         print("🔄 Triggering sync to refresh client/project relationships")
-                        try? await dataController.syncManager.manualFullSync()
+                        try? await dataController.triggerManualFullSync()
                         print("✅ Sync completed")
                     }
                 )
@@ -1204,7 +1204,7 @@ struct UniversalJobBoardCard: View {
                                 "end_date": .null,
                                 "duration": .integer(0)
                             ]
-                            try await dataController.syncManager.updateTaskFields(taskId: task.id, fields: fields)
+                            try await dataController.updateTaskFields(taskId: task.id, fields: fields)
                             await MainActor.run {
                                 task.needsSync = false
                                 task.lastSyncedAt = Date()

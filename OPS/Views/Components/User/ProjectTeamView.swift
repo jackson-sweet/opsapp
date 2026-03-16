@@ -334,7 +334,7 @@ struct ProjectTeamView: View {
 
         // Fallback: trigger async sync then retry
         Task {
-            try? await dataController.syncManager?.syncCompanyTeamMembers(companyId: companyId)
+            await dataController.triggerTeamMembersSync(companyId: companyId)
             await MainActor.run {
                 let retryUsers = dataController.getTeamMembers(companyId: companyId)
                 availableMembers = retryUsers.map { TeamMember.fromUser($0) }
@@ -362,8 +362,8 @@ struct ProjectTeamView: View {
                 print("[TEAM_UPDATE] Selected member IDs: \(Array(selectedMemberIds))")
 
                 // Update team members via Supabase
-                try await dataController.syncManager.updateProjectTeamMembers(
-                    projectId: project.id,
+                try await dataController.updateProjectTeamMembers(
+                    project: project,
                     memberIds: Array(selectedMemberIds)
                 )
 

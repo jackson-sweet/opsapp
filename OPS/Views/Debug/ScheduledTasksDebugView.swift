@@ -241,7 +241,7 @@ struct ScheduledTasksDebugView: View {
         Task {
             do {
                 // Sync tasks via Supabase
-                try await dataController.syncManager.syncTasks()
+                await dataController.triggerTasksSync()
 
                 await MainActor.run {
                     errorMessage = "Synced tasks from Supabase"

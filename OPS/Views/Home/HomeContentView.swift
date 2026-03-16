@@ -152,10 +152,9 @@ struct HomeContentView: View {
                     if project.status != .inProgress {
                         Task {
                             do {
-                                try await dataController.syncManager.updateProjectStatus(
-                                    projectId: project.id,
-                                    status: .inProgress,
-                                    forceSync: true
+                                try await dataController.updateProjectStatus(
+                                    project: project,
+                                    to: .inProgress
                                 )
 
                                 // Update local status immediately for UI consistency

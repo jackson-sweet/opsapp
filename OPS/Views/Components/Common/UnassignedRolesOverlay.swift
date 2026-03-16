@@ -298,7 +298,7 @@ struct UnassignedRolesOverlay: View {
 
                 let employeeTypeValue = role.displayName
 
-                try await dataController.syncManager.updateUserFields(
+                try await dataController.updateUserFields(
                     userId: user.id,
                     fields: ["employee_type": .string(employeeTypeValue)]
                 )

@@ -272,7 +272,7 @@ struct TaskTypeDetailSheet: View {
                                     "task_type_id": .string(bulkTaskTypeId),
                                     "task_color": .string(newTaskType.color)
                                 ]
-                                try await dataController.syncManager.updateTaskFields(taskId: task.id, fields: fields)
+                                try await dataController.updateTaskFields(taskId: task.id, fields: fields)
                             }
                         }
                     } else if deletions.count == taskTypeTasks.count {
@@ -302,7 +302,7 @@ struct TaskTypeDetailSheet: View {
                                     "task_type_id": .string(newTaskTypeId),
                                     "task_color": .string(newTaskType.color)
                                 ]
-                                try await dataController.syncManager.updateTaskFields(taskId: task.id, fields: fields)
+                                try await dataController.updateTaskFields(taskId: task.id, fields: fields)
                             }
                         }
                     }
@@ -321,18 +321,11 @@ struct TaskTypeDetailSheet: View {
                     print("[TASK_TYPE_DELETE] Deleting task type: \(taskType.id)")
                     let taskTypeId = taskType.id
 
-                    if let syncManager = dataController.syncManager {
-                        do {
-                            try await syncManager.deleteTaskType(taskTypeId: taskTypeId)
-                            print("[TASK_TYPE_DELETE] ✅ Task type deleted and synced")
-                        } catch {
-                            print("[TASK_TYPE_DELETE] ⚠️ Failed to sync delete, deleting locally: \(error)")
-                            await MainActor.run {
-                                modelContext.delete(taskType)
-                                try? modelContext.save()
-                            }
-                        }
-                    } else {
+                    do {
+                        try await dataController.deleteTaskType(taskTypeId: taskTypeId)
+                        print("[TASK_TYPE_DELETE] ✅ Task type deleted and synced")
+                    } catch {
+                        print("[TASK_TYPE_DELETE] ⚠️ Failed to sync delete, deleting locally: \(error)")
                         await MainActor.run {
                             modelContext.delete(taskType)
                             try? modelContext.save()

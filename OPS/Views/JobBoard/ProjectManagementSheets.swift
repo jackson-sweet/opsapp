@@ -357,7 +357,7 @@ struct SchedulingModeConversionSheet: View {
         }
 
         // Trigger sync
-        dataController.syncManager?.triggerBackgroundSync()
+        dataController.triggerBackgroundSync()
     }
 
     private func updateProjectDatesFromTasks(_ project: Project) {
@@ -725,7 +725,7 @@ struct ProjectTeamChangeView: View {
         // Last resort: trigger sync then retry
         Task {
             if let companyId = dataController.currentUser?.companyId {
-                try? await dataController.syncManager?.syncCompanyTeamMembers(companyId: companyId)
+                await dataController.triggerTeamMembersSync(companyId: companyId)
             }
             await MainActor.run {
                 let retryMembers = dataController.getCompanyTeamMembers(companyId: project.companyId)
@@ -1013,7 +1013,7 @@ struct TaskTeamChangeView: View {
 
         // Fallback: trigger async sync then retry
         Task {
-            try? await dataController.syncManager?.syncCompanyTeamMembers(companyId: companyId)
+            await dataController.triggerTeamMembersSync(companyId: companyId)
             await MainActor.run {
                 let retryUsers = dataController.getTeamMembers(companyId: companyId)
                 availableMembers = retryUsers.map { TeamMember.fromUser($0) }

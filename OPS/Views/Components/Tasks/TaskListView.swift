@@ -197,8 +197,8 @@ struct TaskRow: View {
                         Task {
                             // Sync computed dates to Supabase
                             print("[RESCHEDULE_TASK] 🔄 Syncing updated project dates to Supabase...")
-                            try? await dataController.syncManager.updateProjectDates(
-                                projectId: project.id,
+                            try? await dataController.updateProjectDates(
+                                project: project,
                                 startDate: project.computedStartDate,
                                 endDate: project.computedEndDate
                             )
@@ -237,7 +237,7 @@ struct TaskRow: View {
             do {
                 // Delete the task from Supabase
                 print("[DELETE_TASK] 🗑️ Deleting task from Supabase: \(taskId)")
-                try await dataController.syncManager.deleteTask(taskId: taskId)
+                try await dataController.deleteTask(taskId: taskId)
                 print("[DELETE_TASK] ✅ Task deleted from Supabase")
 
                 // Update project dates (computed from tasks)
@@ -248,8 +248,8 @@ struct TaskRow: View {
 
                     // Sync computed dates to Supabase
                     print("[DELETE_TASK] 🔄 Syncing updated project dates to Supabase...")
-                    try await dataController.syncManager.updateProjectDates(
-                        projectId: project.id,
+                    try await dataController.updateProjectDates(
+                        project: project,
                         startDate: project.computedStartDate,
                         endDate: project.computedEndDate
                     )

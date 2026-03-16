@@ -1271,8 +1271,8 @@ struct TaskFormSheet: View {
                         endTime: nil,
                         deletedAt: nil
                     )
-                    let createdTaskId = try await dataController.syncManager.createTask(dto: supabaseTaskDTO)
-                    print("[TASK_FORM] ✅ Task created on Supabase with ID: \(createdTaskId)")
+                    let createdTaskId = try await dataController.createTask(dto: supabaseTaskDTO)
+                    print("[TASK_FORM] ✅ Task created via DataController with ID: \(createdTaskId)")
 
                     task.id = createdTaskId
                     task.needsSync = false
@@ -1284,9 +1284,9 @@ struct TaskFormSheet: View {
                     if let project = task.project {
                         print("[TASK_FORM] 📅 Project dates automatically computed from tasks...")
 
-                        print("[TASK_FORM] 🔄 Syncing project dates to Supabase...")
-                        try await dataController.syncManager.updateProjectDates(
-                            projectId: project.id,
+                        print("[TASK_FORM] 🔄 Syncing project dates...")
+                        try await dataController.updateProjectDates(
+                            project: project,
                             startDate: project.startDate,
                             endDate: project.endDate
                         )
@@ -1299,10 +1299,10 @@ struct TaskFormSheet: View {
                         }
 
                         let teamMemberIds = project.getTeamMemberIds()
-                        print("[TASK_FORM] 🔄 Syncing project team members to Supabase...")
+                        print("[TASK_FORM] 🔄 Syncing project team members...")
                         print("[TASK_FORM] Team member IDs: \(teamMemberIds)")
-                        try await dataController.syncManager.updateProjectTeamMembers(
-                            projectId: project.id,
+                        try await dataController.updateProjectTeamMembers(
+                            project: project,
                             memberIds: teamMemberIds
                         )
                         print("[TASK_FORM] ✅ Project team members update complete")

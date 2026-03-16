@@ -467,68 +467,48 @@ struct MainTabView: View {
 
     /// Sync data and then open project details
     private func syncAndOpenProject(projectId: String) async {
-        // Trigger sync
-        if let syncManager = dataController.syncManager {
-            print("[PUSH_NAVIGATION] Starting sync for project: \(projectId)")
+        print("[PUSH_NAVIGATION] Starting sync for project: \(projectId)")
 
-            // Perform a full sync
-            do {
-                try await syncManager.syncAll()
-            } catch {
-                print("[PUSH_NAVIGATION] Sync failed: \(error)")
+        // Perform a full sync via DataController
+        await dataController.triggerFullSync()
+
+        // Small delay for SwiftData to process
+        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+
+        // Try to open the project again
+        await MainActor.run {
+            if dataController.getProject(id: projectId) != nil {
+                print("[PUSH_NAVIGATION] Project found after sync, opening")
+                appState.viewProjectDetailsById(projectId)
+            } else {
+                print("[PUSH_NAVIGATION] Project still not found after sync")
             }
-
-            // Small delay for SwiftData to process
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-
-            // Try to open the project again
-            await MainActor.run {
-                if dataController.getProject(id: projectId) != nil {
-                    print("[PUSH_NAVIGATION] Project found after sync, opening")
-                    appState.viewProjectDetailsById(projectId)
-                } else {
-                    print("[PUSH_NAVIGATION] Project still not found after sync")
-                    // Could show an alert here if needed
-                }
-            }
-        } else {
-            print("[PUSH_NAVIGATION] No sync manager available")
         }
     }
 
     /// Sync data and then open task details
     private func syncAndOpenTask(taskId: String, projectId: String) async {
-        // Trigger sync
-        if let syncManager = dataController.syncManager {
-            print("[PUSH_NAVIGATION] Starting sync for task: \(taskId)")
+        print("[PUSH_NAVIGATION] Starting sync for task: \(taskId)")
 
-            // Perform a full sync
-            do {
-                try await syncManager.syncAll()
-            } catch {
-                print("[PUSH_NAVIGATION] Sync failed: \(error)")
+        // Perform a full sync via DataController
+        await dataController.triggerFullSync()
+
+        // Small delay for SwiftData to process
+        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+
+        // Try to open the task again
+        await MainActor.run {
+            if let project = dataController.getProject(id: projectId),
+               project.tasks.contains(where: { $0.id == taskId }) {
+                print("[PUSH_NAVIGATION] Task found after sync, opening")
+                NotificationCenter.default.post(
+                    name: Notification.Name("ShowTaskDetailsFromHome"),
+                    object: nil,
+                    userInfo: ["taskID": taskId, "projectID": projectId]
+                )
+            } else {
+                print("[PUSH_NAVIGATION] Task still not found after sync")
             }
-
-            // Small delay for SwiftData to process
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-
-            // Try to open the task again
-            await MainActor.run {
-                if let project = dataController.getProject(id: projectId),
-                   project.tasks.contains(where: { $0.id == taskId }) {
-                    print("[PUSH_NAVIGATION] Task found after sync, opening")
-                    NotificationCenter.default.post(
-                        name: Notification.Name("ShowTaskDetailsFromHome"),
-                        object: nil,
-                        userInfo: ["taskID": taskId, "projectID": projectId]
-                    )
-                } else {
-                    print("[PUSH_NAVIGATION] Task still not found after sync")
-                    // Could show an alert here if needed
-                }
-            }
-        } else {
-            print("[PUSH_NAVIGATION] No sync manager available")
         }
     }
 }

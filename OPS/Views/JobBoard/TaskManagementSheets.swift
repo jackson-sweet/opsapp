@@ -418,7 +418,7 @@ struct TaskTeamChangeSheet: View {
 
         // Fallback: trigger async sync then retry
         Task {
-            try? await dataController.syncManager?.syncCompanyTeamMembers(companyId: companyId)
+            await dataController.triggerTeamMembersSync(companyId: companyId)
             await MainActor.run {
                 let retryUsers = dataController.getTeamMembers(companyId: companyId)
                 availableMembers = retryUsers.sorted { $0.fullName < $1.fullName }

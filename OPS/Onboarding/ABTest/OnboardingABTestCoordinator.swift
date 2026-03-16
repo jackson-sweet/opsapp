@@ -54,6 +54,7 @@ struct OnboardingABTestCoordinator: View {
     @State private var lookupCompanyName: String = ""
     @State private var lookupCompanyLogoURL: String?
     @State private var isCheckingInvites: Bool = false
+    @State private var prefillCompanyCode: String? = nil
 
     var body: some View {
         ZStack {
@@ -240,6 +241,7 @@ struct OnboardingABTestCoordinator: View {
                 EmployeeCodeEntryView(
                     onboardingManager: onboardingManager,
                     onCompanyFound: { companyName, companyLogoURL in
+                        self.prefillCompanyCode = nil  // Clear prefill after use
                         self.lookupCompanyName = companyName
                         self.lookupCompanyLogoURL = companyLogoURL
                         OnboardingSupabaseAnalytics.shared.trackStepComplete("code_entry")
@@ -256,7 +258,8 @@ struct OnboardingABTestCoordinator: View {
                     },
                     onSignOut: {
                         onboardingManager.signOut()
-                    }
+                    },
+                    initialCode: prefillCompanyCode
                 )
                 .transition(.opacity)
 
@@ -287,12 +290,10 @@ struct OnboardingABTestCoordinator: View {
                             }
                         },
                         onCancel: {
+                            // Pre-fill the code entry with this invite's company code
+                            prefillCompanyCode = invite.companyCode
                             onboardingManager.selectedInvite = nil
-                            if onboardingManager.pendingInvites.count > 1 {
-                                withAnimation { flowStep = .employeeInvitePicker }
-                            } else {
-                                withAnimation { flowStep = .employeeCodeEntry }
-                            }
+                            withAnimation { flowStep = .employeeCodeEntry }
                         },
                         industries: invite.industries,
                         teamMembers: invite.teamMembers,

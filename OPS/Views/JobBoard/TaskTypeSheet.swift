@@ -55,92 +55,64 @@ struct TaskTypeSheet: View {
     @State private var showingDependencyPicker = false
     @State private var editingDependencyId: String?
 
-    // Colors organized in groups of 3: light, medium, dark per hue
-    // 28 hue families x 3 shades = 84 colors
-    private let availableColors: [(color: Color, hex: String)] = [
-        // Reds/Pinks
-        (Color(hex: "ceb4b4")!, "ceb4b4"),
-        (Color(hex: "b59090")!, "b59090"),
-        (Color(hex: "8c6868")!, "8c6868"),
-        (Color(hex: "ceb4bb")!, "ceb4bb"),
-        (Color(hex: "b5909a")!, "b5909a"),
-        (Color(hex: "8c6871")!, "8c6871"),
-        // Oranges
-        (Color(hex: "cebbb4")!, "cebbb4"),
-        (Color(hex: "b59a90")!, "b59a90"),
-        (Color(hex: "8c7168")!, "8c7168"),
-        (Color(hex: "cec1b4")!, "cec1b4"),
-        (Color(hex: "b5a390")!, "b5a390"),
-        (Color(hex: "8c7a68")!, "8c7a68"),
-        // Yellows/Tans
-        (Color(hex: "cec8b4")!, "cec8b4"),
-        (Color(hex: "b5ac90")!, "b5ac90"),
-        (Color(hex: "8c8368")!, "8c8368"),
-        (Color(hex: "ceceb4")!, "ceceb4"),
-        (Color(hex: "b5b590")!, "b5b590"),
-        (Color(hex: "8c8c68")!, "8c8c68"),
-        // Yellow-Greens
-        (Color(hex: "c8ceb4")!, "c8ceb4"),
-        (Color(hex: "acb590")!, "acb590"),
-        (Color(hex: "838c68")!, "838c68"),
-        (Color(hex: "c1ceb4")!, "c1ceb4"),
-        (Color(hex: "a3b590")!, "a3b590"),
-        (Color(hex: "7a8c68")!, "7a8c68"),
-        // Greens
-        (Color(hex: "bbceb4")!, "bbceb4"),
-        (Color(hex: "9ab590")!, "9ab590"),
-        (Color(hex: "718c68")!, "718c68"),
-        (Color(hex: "b4ceb4")!, "b4ceb4"),
-        (Color(hex: "90b590")!, "90b590"),
-        (Color(hex: "688c68")!, "688c68"),
-        // Green-Cyans
-        (Color(hex: "b4cebb")!, "b4cebb"),
-        (Color(hex: "90b59a")!, "90b59a"),
-        (Color(hex: "688c71")!, "688c71"),
-        (Color(hex: "b4cec1")!, "b4cec1"),
-        (Color(hex: "90b5a3")!, "90b5a3"),
-        (Color(hex: "688c7a")!, "688c7a"),
-        // Cyans
-        (Color(hex: "b4cec8")!, "b4cec8"),
-        (Color(hex: "90b5ac")!, "90b5ac"),
-        (Color(hex: "688c83")!, "688c83"),
-        (Color(hex: "b4cece")!, "b4cece"),
-        (Color(hex: "90b5b5")!, "90b5b5"),
-        (Color(hex: "688c8c")!, "688c8c"),
-        // Cyan-Blues
-        (Color(hex: "b4c8ce")!, "b4c8ce"),
-        (Color(hex: "90acb5")!, "90acb5"),
-        (Color(hex: "68838c")!, "68838c"),
-        (Color(hex: "b4c1ce")!, "b4c1ce"),
-        (Color(hex: "90a3b5")!, "90a3b5"),
-        (Color(hex: "687a8c")!, "687a8c"),
-        // Blues
-        (Color(hex: "b4bbce")!, "b4bbce"),
-        (Color(hex: "909ab5")!, "909ab5"),
-        (Color(hex: "68718c")!, "68718c"),
-        (Color(hex: "b4b4ce")!, "b4b4ce"),
-        (Color(hex: "9090b5")!, "9090b5"),
-        (Color(hex: "68688c")!, "68688c"),
-        // Blue-Purples
-        (Color(hex: "bbb4ce")!, "bbb4ce"),
-        (Color(hex: "9a90b5")!, "9a90b5"),
-        (Color(hex: "71688c")!, "71688c"),
-        (Color(hex: "c1b4ce")!, "c1b4ce"),
-        (Color(hex: "a390b5")!, "a390b5"),
-        (Color(hex: "7a688c")!, "7a688c"),
-        // Purples
-        (Color(hex: "c8b4ce")!, "c8b4ce"),
-        (Color(hex: "ac90b5")!, "ac90b5"),
-        (Color(hex: "83688c")!, "83688c"),
-        (Color(hex: "ceb4ce")!, "ceb4ce"),
-        (Color(hex: "b590b5")!, "b590b5"),
-        (Color(hex: "8c688c")!, "8c688c"),
-        (Color(hex: "ceb4c8")!, "ceb4c8"),
-        (Color(hex: "b590ac")!, "b590ac"),
-        (Color(hex: "8c6883")!, "8c6883"),
-        (Color(hex: "ceb4c1")!, "ceb4c1"),
-        (Color(hex: "b590a3")!, "b590a3"),
-        (Color(hex: "8c687a")!, "8c687a")
+    // Curated OPS color palette — 35 desaturated pastels for task type labels
+    // Grouped by family. Names from the job site — materials, weather, textures.
+    // Matches OPS-Web: src/lib/data/curated-colors.ts
+    private struct CuratedColor {
+        let hex: String
+        let name: String
+        let family: String
+    }
+
+    private let curatedColors: [CuratedColor] = [
+        // Warm (reds, terracotta, brown) — demolition, excavation, site prep
+        CuratedColor(hex: "C79A95", name: "Fired Clay", family: "warm"),
+        CuratedColor(hex: "A0837F", name: "Worn Saddle", family: "warm"),
+        CuratedColor(hex: "8B534E", name: "Rust", family: "warm"),
+        CuratedColor(hex: "A47864", name: "Terra", family: "warm"),
+        CuratedColor(hex: "B7788D", name: "Dusk", family: "warm"),
+        CuratedColor(hex: "7A6455", name: "Timber", family: "warm"),
+        CuratedColor(hex: "716354", name: "Ironbark", family: "warm"),
+        // Neutral (sand, olive, gold) — planning, permitting, admin
+        CuratedColor(hex: "E7CCB8", name: "Sandstone", family: "neutral"),
+        CuratedColor(hex: "C4B2A2", name: "Limestone", family: "neutral"),
+        CuratedColor(hex: "C4A998", name: "Adobe", family: "neutral"),
+        CuratedColor(hex: "A79473", name: "Rawhide", family: "neutral"),
+        CuratedColor(hex: "97896A", name: "Field Sage", family: "neutral"),
+        CuratedColor(hex: "948674", name: "Quarry", family: "neutral"),
+        CuratedColor(hex: "8B8A77", name: "Lichen", family: "neutral"),
+        // Earth (greens, teals) — landscaping, mechanical, HVAC
+        CuratedColor(hex: "B9BEAA", name: "Morning Fog", family: "earth"),
+        CuratedColor(hex: "BBBE9F", name: "New Growth", family: "earth"),
+        CuratedColor(hex: "73806E", name: "Patina", family: "earth"),
+        CuratedColor(hex: "6F9587", name: "Verdigris", family: "earth"),
+        CuratedColor(hex: "636F65", name: "Deep Forest", family: "earth"),
+        CuratedColor(hex: "7B8070", name: "Moss", family: "earth"),
+        CuratedColor(hex: "48929B", name: "Oxidized Copper", family: "earth"),
+        // Cool (blues, lavenders) — electrical, plumbing, finish work
+        CuratedColor(hex: "89C3EB", name: "Clear Sky", family: "cool"),
+        CuratedColor(hex: "5D8CAE", name: "Steel Blue", family: "cool"),
+        CuratedColor(hex: "7E9EA0", name: "Weathered Zinc", family: "cool"),
+        CuratedColor(hex: "90A0A6", name: "Overcast", family: "cool"),
+        CuratedColor(hex: "8595AA", name: "Blue Haze", family: "cool"),
+        CuratedColor(hex: "8990A3", name: "Drift", family: "cool"),
+        CuratedColor(hex: "89729E", name: "Last Light", family: "cool"),
+        // Muted (grays, stone) — inspection, testing, cleanup
+        CuratedColor(hex: "979CA0", name: "Pewter", family: "muted"),
+        CuratedColor(hex: "949495", name: "Raw Concrete", family: "muted"),
+        CuratedColor(hex: "748284", name: "Gunmetal", family: "muted"),
+        CuratedColor(hex: "807F79", name: "Gravel", family: "muted"),
+        CuratedColor(hex: "AF9C8B", name: "Mortar", family: "muted"),
+        CuratedColor(hex: "847B77", name: "Flint", family: "muted"),
+        CuratedColor(hex: "7A8E8D", name: "Slate", family: "muted"),
+    ]
+
+    private let colorFamilies: [(label: String, family: String)] = [
+        ("WARM", "warm"),
+        ("NEUTRAL", "neutral"),
+        ("EARTH", "earth"),
+        ("COOL", "cool"),
+        ("MUTED", "muted"),
     ]
 
     private var isValid: Bool {
@@ -308,40 +280,48 @@ struct TaskTypeSheet: View {
     }
 
     private var colorField: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let inUse = colorsInUse
+
+        return VStack(alignment: .leading, spacing: 16) {
             Text("COLOR")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                let columnCount = availableColors.count / 3
-                let inUse = colorsInUse
+            // Color families
+            ForEach(colorFamilies, id: \.family) { group in
+                let familyColors = curatedColors.filter { $0.family == group.family }
 
-                VStack(spacing: 8) {
-                    ForEach(0..<3, id: \.self) { row in
-                        HStack(spacing: 8) {
-                            ForEach(0..<columnCount, id: \.self) { col in
-                                let index = col * 3 + row
-                                if index < availableColors.count {
-                                    let colorPair = availableColors[index]
-                                    let used = inUse.contains(colorPair.hex.lowercased())
-                                    ColorOption(
-                                        color: colorPair.color,
-                                        isSelected: taskTypeColorHex.lowercased() == colorPair.hex.lowercased(),
-                                        isInUse: used,
-                                        usedByName: used ? taskTypeUsingColor(colorPair.hex) : nil,
-                                        action: {
-                                            taskTypeColor = colorPair.color
-                                            taskTypeColorHex = colorPair.hex
-                                        }
-                                    )
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(group.label)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                    // Wrap colors in a flowing grid
+                    FlowLayout(spacing: 8) {
+                        ForEach(familyColors, id: \.hex) { curated in
+                            let used = inUse.contains(curated.hex.lowercased())
+                            let isSelected = taskTypeColorHex.lowercased() == curated.hex.lowercased()
+
+                            ColorOption(
+                                color: Color(hex: curated.hex) ?? OPSStyle.Colors.primaryAccent,
+                                isSelected: isSelected,
+                                isInUse: used,
+                                usedByName: used ? taskTypeUsingColor(curated.hex) : nil,
+                                action: {
+                                    taskTypeColor = Color(hex: curated.hex) ?? OPSStyle.Colors.primaryAccent
+                                    taskTypeColorHex = curated.hex
                                 }
-                            }
+                            )
                         }
                     }
                 }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 6)
+            }
+
+            // Show selected color name
+            if let selected = curatedColors.first(where: { $0.hex.lowercased() == taskTypeColorHex.lowercased() }) {
+                Text(selected.name.uppercased())
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
         }
     }

@@ -14,6 +14,7 @@ struct EmployeeCodeEntryView: View {
     let onCompanyFound: (_ companyName: String, _ companyLogoURL: String?) -> Void
     var onBack: (() -> Void)? = nil
     var onSignOut: (() -> Void)? = nil
+    var initialCode: String? = nil
 
     @State private var companyCode: String = ""
     @State private var errorMessage: String?
@@ -122,7 +123,12 @@ struct EmployeeCodeEntryView: View {
         }
         .background(OPSStyle.Colors.background)
         .onTapGesture { isInputFocused = false }
-        .onAppear { OnboardingSupabaseAnalytics.shared.trackStepView("code_entry") }
+        .onAppear {
+            if let code = initialCode, !code.isEmpty, companyCode.isEmpty {
+                companyCode = code
+            }
+            OnboardingSupabaseAnalytics.shared.trackStepView("code_entry")
+        }
     }
 
     // MARK: - Lookup

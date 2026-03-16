@@ -50,10 +50,6 @@ class DataController: ObservableObject {
     var modelContext: ModelContext?
     private var cancellables = Set<AnyCancellable>()
 
-    // Periodic sync retry timer
-    private var pendingSyncRetryTimer: Timer?
-    private let syncRetryInterval: TimeInterval = 180 // 3 minutes
-
     // Cancellable data wipe scheduled during logout — cancelled if re-login starts
     private var pendingDataWipeWork: DispatchWorkItem?
 
@@ -2613,43 +2609,6 @@ class DataController: ObservableObject {
         let count = syncEngine.pendingOperationCount
         pendingSyncCount = count
         hasPendingSyncs = count > 0
-    }
-
-    /// Start the periodic retry timer for pending syncs
-    /// SyncEngine has its own retry timer; this just triggers a sync cycle.
-    @MainActor
-    private func startPendingSyncRetryTimer() {
-        // Don't create multiple timers
-        guard pendingSyncRetryTimer == nil else { return }
-
-        print("[SYNC] ⏱️ Starting periodic sync retry timer (every \(Int(syncRetryInterval/60)) minutes)")
-
-        pendingSyncRetryTimer = Timer.scheduledTimer(withTimeInterval: syncRetryInterval, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-
-            Task { @MainActor in
-                if self.hasPendingSyncs && self.isConnected && self.isAuthenticated {
-                    print("[SYNC] ⏱️ Retry timer triggered - attempting sync via SyncEngine")
-                    await self.syncEngine.triggerSync()
-                } else if !self.hasPendingSyncs {
-                    self.stopPendingSyncRetryTimer()
-                }
-            }
-        }
-    }
-
-    /// Stop the periodic retry timer
-    @MainActor
-    private func stopPendingSyncRetryTimer() {
-        if pendingSyncRetryTimer != nil {
-            print("[SYNC] ⏱️ Stopping periodic sync retry timer")
-            pendingSyncRetryTimer?.invalidate()
-            pendingSyncRetryTimer = nil
-        }
-    }
-
-    deinit {
-        pendingSyncRetryTimer?.invalidate()
     }
 
     /// Trigger an immediate sync attempt if connected

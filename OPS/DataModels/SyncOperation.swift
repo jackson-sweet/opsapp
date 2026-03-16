@@ -18,6 +18,7 @@ final class SyncOperation {
     var changedFields: String
     var createdAt: Date
     var retryCount: Int = 0
+    var lastAttemptedAt: Date?
     var status: String = "pending"
     var lastError: String?
 
@@ -65,8 +66,10 @@ final class SyncOperation {
     var isInProgress: Bool { status == "inProgress" }
     var isFailed: Bool { status == "failed" }
     var isCompleted: Bool { status == "completed" }
-    var canRetry: Bool { retryCount < 5 }
+    var canRetry: Bool { retryCount < 20 }
 
-    /// Exponential backoff delay capped at 60 seconds
+    /// Exponential backoff delay capped at 60 seconds.
+    /// Use this with `lastAttemptedAt` to determine the earliest eligible retry time:
+    /// `lastAttemptedAt.addingTimeInterval(backoffDelay)`
     var backoffDelay: TimeInterval { min(pow(2.0, Double(retryCount)), 60.0) }
 }

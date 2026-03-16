@@ -185,12 +185,49 @@ final class RealtimeProcessor: ObservableObject {
             switch table {
             case "projects":
                 let dto = try record.decodeRecord(as: SupabaseProjectDTO.self, decoder: decoder)
+
+                // Permission scope guard — Realtime doesn't support contains filter,
+                // so we discard records the user shouldn't see.
+                let projectScope = PermissionStore.shared.scope(for: "projects.view") ?? "all"
+                if projectScope == "assigned", let uid = self.userId {
+                    let teamIds = dto.teamMemberIds ?? []
+                    if !teamIds.contains(uid) {
+                        print("[RealtimeProcessor] Discarding project \(dto.id) — user not in team_member_ids (scope: assigned)")
+                        return
+                    }
+                } else if projectScope == "own", let uid = self.userId {
+                    // Projects don't expose createdBy in the DTO, so we can only
+                    // accept projects where the user is at least in team_member_ids.
+                    let teamIds = dto.teamMemberIds ?? []
+                    if !teamIds.contains(uid) {
+                        print("[RealtimeProcessor] Discarding project \(dto.id) — user not in team (scope: own)")
+                        return
+                    }
+                }
+
                 let model = dto.toModel()
                 let pendingFields = pendingFieldsForEntity(entityType: .project, entityId: dto.id, context: context)
                 try upsertProject(context: context, id: dto.id, model: model, pendingFields: pendingFields)
 
             case "project_tasks":
                 let dto = try record.decodeRecord(as: SupabaseProjectTaskDTO.self, decoder: decoder)
+
+                // Permission scope guard for tasks
+                let taskScope = PermissionStore.shared.scope(for: "tasks.view") ?? "all"
+                if taskScope == "assigned", let uid = self.userId {
+                    let teamIds = dto.teamMemberIds ?? []
+                    if !teamIds.contains(uid) {
+                        print("[RealtimeProcessor] Discarding task \(dto.id) — user not in team_member_ids (scope: assigned)")
+                        return
+                    }
+                } else if taskScope == "own", let uid = self.userId {
+                    let teamIds = dto.teamMemberIds ?? []
+                    if !teamIds.contains(uid) {
+                        print("[RealtimeProcessor] Discarding task \(dto.id) — user not in team (scope: own)")
+                        return
+                    }
+                }
+
                 let model = dto.toModel()
                 let pendingFields = pendingFieldsForEntity(entityType: .projectTask, entityId: dto.id, context: context)
                 try upsertProjectTask(context: context, id: dto.id, model: model, pendingFields: pendingFields)
@@ -203,6 +240,12 @@ final class RealtimeProcessor: ObservableObject {
 
             case "clients":
                 let dto = try record.decodeRecord(as: SupabaseClientDTO.self, decoder: decoder)
+
+                // Permission scope guard for clients
+                // Clients don't have team_member_ids or createdBy in the DTO,
+                // so client-side filtering is not possible. Supabase RLS handles
+                // scope enforcement for "assigned" and "own" at the server level.
+
                 let model = dto.toModel()
                 let pendingFields = pendingFieldsForEntity(entityType: .client, entityId: dto.id, context: context)
                 try upsertClient(context: context, id: dto.id, model: model, pendingFields: pendingFields)

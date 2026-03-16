@@ -19,6 +19,14 @@ extension Notification.Name {
     /// Posted when realtime reconnects after a disconnect.
     /// userInfo contains "disconnectedAt" (Date) so SyncEngine can delta-pull.
     static let realtimeNeedsCatchUp = Notification.Name("realtimeNeedsCatchUp")
+
+    /// Posted when a permission-related table changes via Realtime.
+    /// SyncEngine observes this to re-fetch permissions and compare scopes.
+    static let permissionsChanged = Notification.Name("permissionsChanged")
+
+    /// Posted when a permission scope contracts (e.g., "all" -> "assigned").
+    /// The app presents a blocking overlay requiring the user to refresh.
+    static let permissionScopeContracted = Notification.Name("permissionScopeContracted")
 }
 
 // MARK: - RealtimeProcessor
@@ -88,6 +96,13 @@ final class RealtimeProcessor: ObservableObject {
         // Notifications filtered by user_id (user-specific)
         if let userId = userId {
             subscribeToTable(channel: channel, table: "notifications", filter: "user_id=eq.\(userId)")
+
+            // Permission change detection — subscribe to tables that affect the current user's permissions
+            subscribeToTable(channel: channel, table: "user_roles", filter: "user_id=eq.\(userId)")
+            subscribeToTable(channel: channel, table: "user_permission_overrides", filter: "user_id=eq.\(userId)")
+            if let roleId = PermissionStore.shared.roleId {
+                subscribeToTable(channel: channel, table: "role_permissions", filter: "role_id=eq.\(roleId)")
+            }
         }
 
         do {
@@ -301,6 +316,10 @@ final class RealtimeProcessor: ObservableObject {
             case "notifications":
                 NotificationCenter.default.post(name: .notificationReceived, object: nil)
 
+            case "user_roles", "role_permissions", "user_permission_overrides":
+                print("[RealtimeProcessor] Permission change detected on \(table)")
+                NotificationCenter.default.post(name: .permissionsChanged, object: nil)
+
             default:
                 print("[RealtimeProcessor] Received change on \(table) (no handler)")
             }
@@ -392,6 +411,10 @@ final class RealtimeProcessor: ObservableObject {
 
             case "notifications":
                 NotificationCenter.default.post(name: .notificationReceived, object: nil)
+
+            case "user_roles", "role_permissions", "user_permission_overrides":
+                print("[RealtimeProcessor] Permission deletion detected on \(table)")
+                NotificationCenter.default.post(name: .permissionsChanged, object: nil)
 
             default:
                 print("[RealtimeProcessor] Delete on \(table) (no handler)")

@@ -32,6 +32,11 @@ final class SyncEngine {
     private var syncInProgress: Bool = false
     nonisolated(unsafe) private var syncRetryTimer: Timer?
 
+    /// The current authenticated user's ID, read from UserDefaults.
+    private var currentUserId: String? {
+        UserDefaults.standard.string(forKey: "currentUserId")
+    }
+
     /// Retry interval in seconds for the periodic sync timer.
     private let retryInterval: TimeInterval = 180
 
@@ -106,6 +111,17 @@ final class SyncEngine {
                     // Connectivity lost — mark realtime as disconnected for catch-up tracking
                     self.realtimeProcessor?.handleDisconnect()
                 }
+            }
+        }
+
+        // Listen for permission changes detected by RealtimeProcessor
+        NotificationCenter.default.addObserver(
+            forName: .permissionsChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.handlePermissionChange()
             }
         }
 
@@ -578,6 +594,58 @@ final class SyncEngine {
             }
         } catch {
             print("[SYNC_ENGINE] Failed to cleanup completed operations: \(error)")
+        }
+    }
+
+    // MARK: - Permission Change Handling
+
+    /// Handles a realtime permission change: re-fetches permissions, compares scopes,
+    /// and either triggers a full sync (expanded) or posts a contraction notification (contracted).
+    private func handlePermissionChange() async {
+        guard let userId = currentUserId else {
+            print("[SYNC_ENGINE] Permission change ignored — no currentUserId")
+            return
+        }
+
+        // 1. Capture old scopes before refresh
+        let oldProjectScope = PermissionStore.shared.scope(for: "projects.view") ?? "all"
+        let oldTaskScope = PermissionStore.shared.scope(for: "tasks.view") ?? "all"
+        let oldClientScope = PermissionStore.shared.scope(for: "clients.view") ?? "all"
+
+        // 2. Re-fetch permissions from Supabase
+        await PermissionStore.shared.fetchPermissions(userId: userId)
+
+        // 3. Read new scopes
+        let newProjectScope = PermissionStore.shared.scope(for: "projects.view") ?? "all"
+        let newTaskScope = PermissionStore.shared.scope(for: "tasks.view") ?? "all"
+        let newClientScope = PermissionStore.shared.scope(for: "clients.view") ?? "all"
+
+        // 4. Compare — did any scope expand or contract?
+        let expanded = scopeRank(newProjectScope) > scopeRank(oldProjectScope) ||
+                       scopeRank(newTaskScope) > scopeRank(oldTaskScope) ||
+                       scopeRank(newClientScope) > scopeRank(oldClientScope)
+        let contracted = scopeRank(newProjectScope) < scopeRank(oldProjectScope) ||
+                         scopeRank(newTaskScope) < scopeRank(oldTaskScope) ||
+                         scopeRank(newClientScope) < scopeRank(oldClientScope)
+
+        if contracted {
+            print("[SYNC_ENGINE] Permission scope CONTRACTED — posting contraction notification")
+            NotificationCenter.default.post(name: .permissionScopeContracted, object: nil)
+        } else if expanded {
+            print("[SYNC_ENGINE] Permission scope EXPANDED — triggering full sync")
+            await fullSync()
+        } else {
+            print("[SYNC_ENGINE] Permission scopes unchanged")
+        }
+    }
+
+    /// Returns a numeric rank for a scope string. Higher = broader access.
+    private func scopeRank(_ scope: String) -> Int {
+        switch scope {
+        case "all":      return 3
+        case "assigned": return 2
+        case "own":      return 1
+        default:         return 0
         }
     }
 

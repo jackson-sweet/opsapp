@@ -22,6 +22,13 @@ class OnboardingManager: ObservableObject {
     @Published var showError: Bool = false
     @Published var navigationDirection: NavigationDirection = .forward
 
+    // MARK: - Invite-Aware Onboarding (transient, not persisted)
+    @Published var pendingInvites: [PendingInviteDTO] = []
+    @Published var selectedInvite: PendingInviteDTO? = nil
+    @Published var companyJoinDetails: CompanyJoinDetailsDTO? = nil
+    @Published var confirmationSource: CompanyConfirmationSource = .manualCodeEntry
+    @Published var isCheckingInvites: Bool = false
+
     enum NavigationDirection {
         case forward
         case backward
@@ -210,7 +217,7 @@ class OnboardingManager: ObservableObject {
 
         let employeeScreens: [OnboardingScreen] = [
             .welcome, .signup, .preSignupTutorial, .credentials, .profile,
-            .codeEntry, .ready
+            .emergencyContact, .codeEntry, .ready
         ]
 
         // Determine which flow's screens to use
@@ -249,8 +256,8 @@ class OnboardingManager: ObservableObject {
             goToScreen(.welcome, direction: .backward)
 
         case .preSignupTutorial:
-            // Can't go back from tutorial (it has internal navigation)
-            break
+            // Go back to signup screen (account type selection)
+            goToScreen(.signup, direction: .backward)
 
         case .postTutorialCTA:
             // Legacy/unused
@@ -262,6 +269,13 @@ class OnboardingManager: ObservableObject {
 
         case .profile:
             goToScreen(.credentials, direction: .backward)
+
+        case .emergencyContact:
+            goToScreen(.profile, direction: .backward)
+
+        case .appSetup:
+            // Can't go back from app setup
+            break
 
         case .companySetup:
             goToScreen(.profile, direction: .backward)
@@ -280,7 +294,12 @@ class OnboardingManager: ObservableObject {
             // Can't go back during processing or success
 
         case .codeEntry:
-            goToScreen(.profile, direction: .backward)
+            // Go back to emergency contact (employee flow) or profile
+            if state.flow == .employee {
+                goToScreen(.emergencyContact, direction: .backward)
+            } else {
+                goToScreen(.profile, direction: .backward)
+            }
 
         case .profileJoin:
             if state.profileJoinPhase == .form {
@@ -314,6 +333,12 @@ class OnboardingManager: ObservableObject {
             goToScreen(.preSignupTutorial)
 
         case .preSignupTutorial:
+            // Guard: if flow was lost (state restoration), redirect to signup
+            guard state.flow != nil else {
+                print("[ONBOARDING_MANAGER] Flow is nil at preSignupTutorial → redirecting to signup")
+                goToScreen(.signup, direction: .backward)
+                return
+            }
             // Tutorial completed, mark flag and go straight to credentials
             state.hasCompletedPreSignupTutorial = true
             UserDefaults.standard.set(true, forKey: OnboardingStorageKeys.preSignupTutorialCompleted)
@@ -333,12 +358,16 @@ class OnboardingManager: ObservableObject {
             goToScreen(.profile)
 
         case .profile:
-            // After profile, go to company setup or join based on flow
+            // After profile, go to company setup or emergency contact based on flow
             if state.flow == .companyCreator {
                 goToScreen(.companySetup)
             } else {
-                goToScreen(.profileJoin)
+                goToScreen(.emergencyContact)
             }
+
+        case .emergencyContact:
+            // After emergency contact, go to code entry
+            goToScreen(.codeEntry)
 
         case .companySetup:
             goToScreen(.companyDetails)
@@ -376,12 +405,12 @@ class OnboardingManager: ObservableObject {
             }
 
             if preSignupDone {
-                // Pre-signup tutorial was done, mark hasCompletedAppTutorial and skip
-                print("[ONBOARDING_MANAGER]   -> Pre-signup tutorial done, marking tutorial complete and finishing")
+                // Pre-signup tutorial was done, mark hasCompletedAppTutorial and go to app setup
+                print("[ONBOARDING_MANAGER]   -> Pre-signup tutorial done, marking tutorial complete and going to app setup")
                 Task {
                     await markTutorialComplete()
                     await MainActor.run {
-                        completeOnboarding()
+                        goToScreen(.appSetup)
                     }
                 }
             } else {
@@ -396,13 +425,18 @@ class OnboardingManager: ObservableObject {
                     print("[ONBOARDING_MANAGER]   -> Navigating to tutorial")
                     goToScreen(.tutorial)
                 } else {
-                    print("[ONBOARDING_MANAGER]   -> Skipping tutorial, completing onboarding")
-                    completeOnboarding()
+                    print("[ONBOARDING_MANAGER]   -> Skipping tutorial, going to app setup")
+                    goToScreen(.appSetup)
                 }
             }
 
         case .tutorial:
-            completeOnboarding()
+            // After tutorial, show app setup loading screen
+            goToScreen(.appSetup)
+
+        case .appSetup:
+            // AppSetupScreen calls completeOnboarding() directly after its animation
+            break
         }
     }
 
@@ -553,40 +587,12 @@ class OnboardingManager: ObservableObject {
             let authManager = dataController.authManager
             try await authManager.signUpWithEmail(email, password: password)
 
-            guard let userId = authManager.getUserId(), !userId.isEmpty else {
-                throw OnboardingManagerError.serverError("Account creation failed — no user ID returned")
-            }
-
-            // Create a row in the Supabase users table
-            let userRepo = UserRepository(companyId: "")
-            let userDTO = SupabaseUserDTO(
-                id: userId,
-                bubbleId: nil,
-                companyId: nil,
-                firstName: "",
-                lastName: "",
-                email: email,
-                phone: nil,
-                homeAddress: nil,
-                profileImageUrl: nil,
-                userColor: nil,
-                role: nil,
-                userType: flow.userType.rawValue,
-                isCompanyAdmin: nil,
-                onboardingCompleted: nil,
-                hasCompletedTutorial: nil,
-                devPermission: nil,
-                latitude: nil,
-                longitude: nil,
-                locationName: nil,
-                isActive: true,
-                specialPermissions: nil,
-                emergencyContactName: nil,
-                emergencyContactPhone: nil,
-                emergencyContactRelationship: nil,
-                deletedAt: nil
-            )
-            try await userRepo.upsert(userDTO)
+            // Create user row via ops-web API (service role, bypasses RLS, generates proper UUID).
+            // Direct client-side upsert fails because Firebase UIDs are not valid UUIDs
+            // and the users.id column is UUID type.
+            let onboardingService = OnboardingService()
+            let syncResponse = try await onboardingService.syncUser(email: email)
+            let userId = syncResponse.user.id
 
             // Store credentials - CRITICAL: Set both user_id AND currentUserId
             state.userData.email = email
@@ -596,6 +602,9 @@ class OnboardingManager: ObservableObject {
             UserDefaults.standard.set(userId, forKey: "user_id")
             UserDefaults.standard.set(userId, forKey: "currentUserId")
             UserDefaults.standard.set(flow.userType.rawValue, forKey: "selected_user_type")
+
+            // Update AuthManager with the correct Supabase user ID (not Firebase UID)
+            authManager.setUserId(userId)
 
             state.isAuthenticated = true
             state.save()
@@ -651,7 +660,28 @@ class OnboardingManager: ObservableObject {
     func handleSocialAuth(userId: String, email: String, firstName: String?, lastName: String?) async throws {
         print("[ONBOARDING_MANAGER] Handling social auth for: \(email)")
 
-        state.userData.userId = userId
+        // Ensure user row exists in Supabase via the web API (service role, proper UUID).
+        // The userId passed in may be a Firebase UID — we need the actual Supabase UUID.
+        var resolvedUserId = userId
+        if !email.isEmpty {
+            do {
+                let onboardingService = OnboardingService()
+                let syncResponse = try await onboardingService.syncUser(
+                    email: email,
+                    firstName: firstName,
+                    lastName: lastName
+                )
+                resolvedUserId = syncResponse.user.id
+                print("[ONBOARDING_MANAGER] Social auth user synced — Supabase ID: \(resolvedUserId)")
+
+                // Update AuthManager with the correct Supabase user ID
+                dataController.authManager.setUserId(resolvedUserId)
+            } catch {
+                print("[ONBOARDING_MANAGER] sync-user failed for social auth, falling back to provided userId: \(error.localizedDescription)")
+            }
+        }
+
+        state.userData.userId = resolvedUserId
         state.userData.email = email
         if let firstName = firstName, !firstName.isEmpty {
             state.userData.firstName = firstName
@@ -663,17 +693,17 @@ class OnboardingManager: ObservableObject {
         state.isAuthenticated = true
 
         // Store for later - CRITICAL: Set both user_id AND currentUserId
-        UserDefaults.standard.set(userId, forKey: "user_id")
-        UserDefaults.standard.set(userId, forKey: "currentUserId") // Required for CentralizedSyncManager
+        UserDefaults.standard.set(resolvedUserId, forKey: "user_id")
+        UserDefaults.standard.set(resolvedUserId, forKey: "currentUserId") // Required for CentralizedSyncManager
         UserDefaults.standard.set(email, forKey: "user_email")
 
         // PATCH userType if we have a flow selected
         if let flow = state.flow {
             UserDefaults.standard.set(flow.userType.rawValue, forKey: "selected_user_type")
-            try await patchUserType(userId: userId, userType: flow.userType)
+            try await patchUserType(userId: resolvedUserId, userType: flow.userType)
 
             // CRITICAL: Create local User object in SwiftData
-            await createLocalUser(userId: userId, email: email, userType: flow.userType)
+            await createLocalUser(userId: resolvedUserId, email: email, userType: flow.userType)
             print("[ONBOARDING_MANAGER] Local user created for social auth")
         }
 
@@ -874,9 +904,6 @@ class OnboardingManager: ObservableObject {
         state.profileJoinPhase = .joining
 
         do {
-            // First update user profile
-            try await updateUserProfile()
-
             // Look up company by code in Supabase
             let companyRepo = CompanyRepository()
             guard let companyDTO = try await companyRepo.fetchByCode(code) else {
@@ -912,11 +939,21 @@ class OnboardingManager: ObservableObject {
                 print("[ONBOARDING_MANAGER] ⚠️ Failed to assign field crew role: \(error)")
             }
 
-            // Add user to company's seated_employee_ids
+            // Add user to company's seated_employee_ids (if seats available)
             var seatIds = companyDTO.seatedEmployeeIds ?? []
-            if !seatIds.contains(userId) {
+            let maxSeats = companyDTO.maxSeats ?? 10
+            if !seatIds.contains(userId) && seatIds.count < maxSeats {
                 seatIds.append(userId)
-                try? await companyRepo.updateSeatedEmployees(companyId: companyId, userIds: seatIds)
+                do {
+                    try await companyRepo.updateSeatedEmployees(companyId: companyId, userIds: seatIds)
+                    print("[ONBOARDING_MANAGER] ✅ User seated (\(seatIds.count)/\(maxSeats) seats used)")
+                } catch {
+                    print("[ONBOARDING_MANAGER] ⚠️ Failed to seat user: \(error)")
+                }
+            } else if seatIds.contains(userId) {
+                print("[ONBOARDING_MANAGER] User already seated")
+            } else {
+                print("[ONBOARDING_MANAGER] ⚠️ No available seats (\(seatIds.count)/\(maxSeats))")
             }
 
             state.companyData.companyId = companyId
@@ -929,11 +966,28 @@ class OnboardingManager: ObservableObject {
             UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
             UserDefaults.standard.set(companyDTO.name, forKey: "Company Name")
 
+            // Reconfigure sync repos now that company_id is set in UserDefaults
+            dataController.syncManager?.reconfigureRepositories()
+
+            // NOW update profile data — userRepo is available after repo reconfiguration
+            try await updateUserProfile()
+
+            // Also write user_type to Supabase (was missing)
+            try? await userRepo.updateFields(userId: userId, fields: [
+                "user_type": .string("employee")
+            ])
+
+            // Upload avatar if available
+            if let avatarData = state.userData.avatarData {
+                await uploadAvatarDuringOnboarding(userId: userId, imageData: avatarData)
+            }
+
             // Update local user's data before syncing company
             if let currentUser = dataController.currentUser {
                 currentUser.companyId = companyId
                 currentUser.firstName = state.userData.firstName
                 currentUser.lastName = state.userData.lastName
+                currentUser.userType = .employee
                 if !state.userData.phone.isEmpty {
                     currentUser.phone = state.userData.phone
                 }
@@ -1003,6 +1057,209 @@ class OnboardingManager: ObservableObject {
         return companyDTO
     }
 
+    // MARK: - Invite-Aware Onboarding Methods
+
+    /// Called after credentials step completes. Checks for pending invites by email.
+    func checkPendingInvites() async {
+        guard !state.userData.email.isEmpty else {
+            pendingInvites = []
+            return
+        }
+        isCheckingInvites = true
+        defer { isCheckingInvites = false }
+
+        do {
+            let invites = try await CompanyRepository().checkPendingInvites(email: state.userData.email)
+            pendingInvites = invites
+        } catch {
+            print("[ONBOARDING_MANAGER] Failed to check pending invites: \(error)")
+            pendingInvites = []
+        }
+    }
+
+    /// Called after manual code entry to fetch branded company data for confirmation.
+    func fetchCompanyJoinDetails(code: String) async throws -> CompanyJoinDetailsDTO {
+        let trimmedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let details = try await CompanyRepository().fetchJoinDetails(code: trimmedCode) else {
+            throw OnboardingManagerError.invalidCompanyCode
+        }
+        companyJoinDetails = details
+        return details
+    }
+
+    /// Joins company during onboarding flow. Unlike joinCompany(code:), this method:
+    /// 1. Accepts companyId directly (no redundant code lookup)
+    /// 2. Skips updateUserProfile() (Profile screen hasn't been filled yet)
+    /// 3. Marks the invitation as accepted (if invitationId provided)
+    /// 4. Applies prescribed role from invitation (instead of hardcoding Crew)
+    func joinCompanyFromOnboarding(companyId: String, invitationId: String? = nil) async throws {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
+            throw OnboardingManagerError.noUserId
+        }
+
+        print("[ONBOARDING_MANAGER] Joining company \(companyId) from onboarding (invitation: \(invitationId ?? "none"))")
+
+        do {
+            let companyRepo = CompanyRepository()
+            // fetch(companyId:) throws if not found — no optional
+            let companyDTO = try await companyRepo.fetch(companyId: companyId)
+
+            // Update user's company_id and type
+            let userRepo = UserRepository(companyId: companyId)
+            try await userRepo.updateFields(userId: userId, fields: [
+                "company_id": .string(companyId),
+                "is_company_admin": .bool(false),
+                "user_type": .string("employee")
+            ])
+
+            // Handle role assignment based on invitation
+            if let invitationId = invitationId, let invite = selectedInvite, let roleName = invite.roleName {
+                // Accept the invitation
+                try? await SupabaseService.shared.client
+                    .from("team_invitations")
+                    .update(["status": "accepted", "updated_at": ISO8601DateFormatter().string(from: Date())])
+                    .eq("id", value: invitationId)
+                    .execute()
+
+                // Apply prescribed role
+                let roleRows: [[String: String]] = try await SupabaseService.shared.client
+                    .from("roles")
+                    .select("id")
+                    .eq("name", value: roleName)
+                    .execute()
+                    .value
+
+                if let roleId = roleRows.first?["id"] {
+                    try await SupabaseService.shared.client
+                        .from("user_roles")
+                        .upsert(["user_id": userId, "role_id": roleId])
+                        .execute()
+
+                    try await userRepo.updateFields(userId: userId, fields: [
+                        "role": .string(roleName.lowercased())
+                    ])
+                } else {
+                    try await assignDefaultCrewRole(userId: userId, companyId: companyId)
+                }
+            } else {
+                if let invitationId = invitationId {
+                    try? await SupabaseService.shared.client
+                        .from("team_invitations")
+                        .update(["status": "accepted", "updated_at": ISO8601DateFormatter().string(from: Date())])
+                        .eq("id", value: invitationId)
+                        .execute()
+                }
+                try await assignDefaultCrewRole(userId: userId, companyId: companyId)
+            }
+
+            // Add user to company's seated_employee_ids (if seats available)
+            var seatIds = companyDTO.seatedEmployeeIds ?? []
+            let maxSeats = companyDTO.maxSeats ?? 10
+            if !seatIds.contains(userId) && seatIds.count < maxSeats {
+                seatIds.append(userId)
+                do {
+                    try await companyRepo.updateSeatedEmployees(companyId: companyId, userIds: seatIds)
+                    print("[ONBOARDING_MANAGER] ✅ User seated (\(seatIds.count)/\(maxSeats) seats used)")
+                } catch {
+                    print("[ONBOARDING_MANAGER] ⚠️ Failed to seat user: \(error)")
+                }
+            } else if seatIds.contains(userId) {
+                print("[ONBOARDING_MANAGER] User already seated")
+            } else {
+                print("[ONBOARDING_MANAGER] ⚠️ No available seats (\(seatIds.count)/\(maxSeats))")
+            }
+
+            // Store company info in state and UserDefaults
+            state.companyData.companyId = companyId
+            state.hasExistingCompany = true
+            state.save()
+
+            UserDefaults.standard.set(companyId, forKey: "company_id")
+            UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
+            UserDefaults.standard.set(companyDTO.name, forKey: "Company Name")
+
+            // Reconfigure sync repos now that company_id is set in UserDefaults
+            dataController.syncManager?.reconfigureRepositories()
+
+            // DO NOT call updateUserProfile() — Profile screen hasn't been filled yet
+
+            // Update local user's data before syncing company
+            if let currentUser = dataController.currentUser {
+                currentUser.companyId = companyId
+                currentUser.userType = .employee
+                try? dataController.modelContext?.save()
+                print("[ONBOARDING_MANAGER] Updated local user - companyId: \(companyId)")
+            }
+
+            // Create Company object in SwiftData
+            if let modelContext = dataController.modelContext {
+                let compDesc = FetchDescriptor<Company>(
+                    predicate: #Predicate<Company> { $0.id == companyId }
+                )
+                if (try? modelContext.fetch(compDesc).first) == nil {
+                    let companyObject = Company(id: companyId, name: companyDTO.name)
+                    companyObject.email = companyDTO.email
+                    companyObject.phone = companyDTO.phone
+                    companyObject.address = companyDTO.address
+                    modelContext.insert(companyObject)
+                    try? modelContext.save()
+                }
+            }
+
+            // Trigger sync to load company data
+            if let syncManager = dataController.syncManager {
+                try? await syncManager.syncCompany()
+                print("[ONBOARDING_MANAGER] Company sync triggered after join")
+            }
+
+            // Notify company admins that a new member joined
+            do {
+                let notifyIds = companyDTO.adminIds ?? []
+                let memberName = "\(state.userData.firstName) \(state.userData.lastName)"
+                try await OneSignalService.shared.notifyTeamJoin(
+                    adminUserIds: notifyIds,
+                    newMemberName: memberName,
+                    newMemberUserId: userId,
+                    companyId: companyId
+                )
+            } catch {
+                print("[ONBOARDING_MANAGER] ⚠️ Failed to send team join notification: \(error)")
+            }
+
+            print("[ONBOARDING_MANAGER] Successfully joined company \(companyId)")
+
+        } catch {
+            print("[ONBOARDING_MANAGER] Failed to join company: \(error)")
+            errorMessage = "Failed to join company. Please try again."
+            throw error
+        }
+    }
+
+    /// Helper: Assign the default "Crew" role to a user
+    private func assignDefaultCrewRole(userId: String, companyId: String) async throws {
+        let fieldRoleRows: [[String: String]] = try await SupabaseService.shared.client
+            .from("roles")
+            .select("id")
+            .eq("name", value: "Crew")
+            .execute()
+            .value
+        if let roleId = fieldRoleRows.first?["id"] {
+            try await SupabaseService.shared.client
+                .from("user_roles")
+                .upsert(["user_id": userId, "role_id": roleId])
+                .execute()
+            print("[ONBOARDING_MANAGER] ✅ Field crew role assigned in user_roles")
+        }
+        let userRepo = UserRepository(companyId: companyId)
+        try await userRepo.updateFields(userId: userId, fields: [
+            "role": .string("unassigned")
+        ])
+    }
+
     /// Update user profile to Supabase
     private func updateUserProfile() async throws {
         guard let userId = state.userData.userId ?? dataController.currentUser?.id else {
@@ -1010,6 +1267,7 @@ class OnboardingManager: ObservableObject {
         }
 
         print("[ONBOARDING_MANAGER] Updating user profile for: \(userId)")
+        print("[ONBOARDING_MANAGER]   firstName='\(state.userData.firstName)', lastName='\(state.userData.lastName)', phone='\(state.userData.phone)'")
 
         var fields: [String: AnyJSON] = [
             "first_name": .string(state.userData.firstName),
@@ -1020,9 +1278,47 @@ class OnboardingManager: ObservableObject {
             fields["phone"] = .string(state.userData.phone)
         }
 
-        try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
+        // Try via syncManager first, fall back to direct repo if syncManager repos aren't configured
+        if dataController.syncManager != nil {
+            try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
+            print("[ONBOARDING_MANAGER] ✅ User profile updated via syncManager")
+        } else {
+            // Direct fallback using UserRepository
+            let companyId = state.companyData.companyId ?? ""
+            let userRepo = UserRepository(companyId: companyId)
+            try await userRepo.updateFields(userId: userId, fields: fields)
+            print("[ONBOARDING_MANAGER] ✅ User profile updated via direct repo")
+        }
+    }
 
-        print("[ONBOARDING_MANAGER] User profile updated")
+    /// Upload avatar image to Supabase Storage during onboarding
+    private func uploadAvatarDuringOnboarding(userId: String, imageData: Data) async {
+        do {
+            let fileName = "\(userId)/profile.jpg"
+            try await SupabaseService.shared.client.storage
+                .from("profile-images")
+                .upload(
+                    path: fileName,
+                    file: imageData,
+                    options: .init(contentType: "image/jpeg", upsert: true)
+                )
+
+            let publicURL = try SupabaseService.shared.client.storage
+                .from("profile-images")
+                .getPublicURL(path: fileName)
+
+            let userRepo = UserRepository(companyId: state.companyData.companyId ?? "")
+            try await userRepo.updateProfileImageUrl(userId: userId, url: publicURL.absoluteString)
+
+            // Update local user
+            dataController.currentUser?.profileImageURL = publicURL.absoluteString
+            dataController.currentUser?.profileImageData = imageData
+            try? dataController.modelContext?.save()
+
+            print("[ONBOARDING_MANAGER] ✅ Avatar uploaded: \(publicURL.absoluteString)")
+        } catch {
+            print("[ONBOARDING_MANAGER] ⚠️ Avatar upload failed: \(error)")
+        }
     }
 
     /// Save employee profile fields including emergency contact to Supabase.

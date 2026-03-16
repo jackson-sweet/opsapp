@@ -25,7 +25,7 @@ class LocalPhoto: Identifiable {
     var latitude: Double?
     var longitude: Double?
     var uploadProgress: Double
-    var uploadResumeData: Data?
+    var uploadRetryCount: Int = 0
     var status: String
     var createdAt: Date
     var deletedAt: Date?

@@ -104,7 +104,7 @@ final class PhotoProcessor {
             return
         }
 
-        // Fetch photos that need uploading
+        // Fetch photos that need uploading (excludes permanently_failed by status match)
         let photosToUpload: [LocalPhoto]
         do {
             let descriptor = FetchDescriptor<LocalPhoto>(
@@ -143,12 +143,20 @@ final class PhotoProcessor {
             }
 
             let batchEnd = min(batchStart + maxConcurrent, photosToUpload.count)
-            let batch = Array(photosToUpload[batchStart..<batchEnd])
+            let batchSlice = Array(photosToUpload[batchStart..<batchEnd])
 
-            // Mark all in batch as uploading
-            for photo in batch {
+            // Apply retry cap and mark eligible photos as uploading
+            var batch: [LocalPhoto] = []
+            for photo in batchSlice {
+                if photo.uploadRetryCount >= 20 {
+                    photo.status = "permanently_failed"
+                    print("[PHOTO_SYNC] Photo \(photo.id) permanently failed after 20 retries")
+                    continue
+                }
+                photo.uploadRetryCount += 1
                 photo.status = "uploading"
                 photo.uploadProgress = 0
+                batch.append(photo)
             }
             try? context.save()
 
@@ -240,6 +248,27 @@ final class PhotoProcessor {
                 try? fm.removeItem(at: fullPath)
             }
         }
+    }
+
+    // MARK: - Disk Usage
+
+    /// Returns the total disk space (in bytes) consumed by all files in the
+    /// app's Documents/photos/ directory. Includes full-size images only
+    /// (thumbnails are stored separately in Documents/thumbnails/).
+    func localPhotoDiskUsage() -> Int64 {
+        let photosDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("photos")
+        guard let enumerator = FileManager.default.enumerator(
+            at: photosDir,
+            includingPropertiesForKeys: [.fileSizeKey]
+        ) else { return 0 }
+        var totalSize: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            if let size = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                totalSize += Int64(size)
+            }
+        }
+        return totalSize
     }
 
     // MARK: - Image Processing Utilities

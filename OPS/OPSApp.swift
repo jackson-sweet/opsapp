@@ -195,7 +195,8 @@ struct OPSApp: App {
                                 if dataController.isAuthenticated,
                                    let companyId = dataController.currentUser?.companyId,
                                    !companyId.isEmpty {
-                                    await dataController.syncEngine?.startRealtime(companyId: companyId)
+                                    let userId = dataController.currentUser?.id
+                                    await dataController.syncEngine?.startRealtime(companyId: companyId, userId: userId)
                                 }
                             }
                         }

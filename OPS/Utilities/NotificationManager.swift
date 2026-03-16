@@ -1650,4 +1650,7 @@ extension Notification.Name {
     static let scheduleDeclined = Notification.Name("ScheduleDeclined")
     static let projectNoteReceived = Notification.Name("projectNoteReceived")
     static let pushNotificationReceived = Notification.Name("pushNotificationReceived")
+    static let expenseUpdated = Notification.Name("expenseUpdated")
+    static let calendarEventUpdated = Notification.Name("calendarEventUpdated")
+    static let notificationReceived = Notification.Name("notificationReceived")
 }

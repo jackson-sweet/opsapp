@@ -36,6 +36,7 @@ final class RealtimeProcessor: ObservableObject {
     private var channel: RealtimeChannelV2?
     private var modelContext: ModelContext?
     private var companyId: String?
+    private var userId: String?
     private var disconnectedAt: Date?
 
     private let supabase: SupabaseClient
@@ -62,8 +63,9 @@ final class RealtimeProcessor: ObservableObject {
     // MARK: - Start Listening
 
     /// Subscribe to Supabase Realtime for all core entity tables scoped to a company.
-    func startListening(companyId: String, context: ModelContext) async {
+    func startListening(companyId: String, userId: String? = nil, context: ModelContext) async {
         self.companyId = companyId
+        self.userId = userId
         self.modelContext = context
 
         // Tear down any previous subscription
@@ -78,6 +80,15 @@ final class RealtimeProcessor: ObservableObject {
 
         // Companies table filters on `id`, not `company_id`
         subscribeToTable(channel: channel, table: "companies", filter: "id=eq.\(companyId)")
+
+        // Expenses and calendar events filtered by company_id
+        subscribeToTable(channel: channel, table: "expenses", filter: "company_id=eq.\(companyId)")
+        subscribeToTable(channel: channel, table: "calendar_user_events", filter: "company_id=eq.\(companyId)")
+
+        // Notifications filtered by user_id (user-specific)
+        if let userId = userId {
+            subscribeToTable(channel: channel, table: "notifications", filter: "user_id=eq.\(userId)")
+        }
 
         do {
             try await channel.subscribeWithError()
@@ -238,6 +249,15 @@ final class RealtimeProcessor: ObservableObject {
                 let pendingFields = pendingFieldsForEntity(entityType: .photoAnnotation, entityId: dto.id, context: context)
                 try upsertPhotoAnnotation(context: context, id: dto.id, model: model, pendingFields: pendingFields)
 
+            case "expenses":
+                NotificationCenter.default.post(name: .expenseUpdated, object: nil)
+
+            case "calendar_user_events":
+                NotificationCenter.default.post(name: .calendarEventUpdated, object: nil)
+
+            case "notifications":
+                NotificationCenter.default.post(name: .notificationReceived, object: nil)
+
             default:
                 print("[RealtimeProcessor] Received change on \(table) (no handler)")
             }
@@ -320,6 +340,15 @@ final class RealtimeProcessor: ObservableObject {
                     existing.deletedAt = Date()
                     try context.save()
                 }
+
+            case "expenses":
+                NotificationCenter.default.post(name: .expenseUpdated, object: nil)
+
+            case "calendar_user_events":
+                NotificationCenter.default.post(name: .calendarEventUpdated, object: nil)
+
+            case "notifications":
+                NotificationCenter.default.post(name: .notificationReceived, object: nil)
 
             default:
                 print("[RealtimeProcessor] Delete on \(table) (no handler)")

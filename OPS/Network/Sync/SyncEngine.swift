@@ -126,9 +126,9 @@ final class SyncEngine {
     }
 
     /// Starts Realtime subscriptions for the given company.
-    func startRealtime(companyId: String) async {
+    func startRealtime(companyId: String, userId: String? = nil) async {
         guard let modelContext else { return }
-        await realtimeProcessor?.startListening(companyId: companyId, context: modelContext)
+        await realtimeProcessor?.startListening(companyId: companyId, userId: userId, context: modelContext)
     }
 
     /// Stops Realtime subscriptions.

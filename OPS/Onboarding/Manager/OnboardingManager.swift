@@ -216,8 +216,9 @@ class OnboardingManager: ObservableObject {
         ]
 
         let employeeScreens: [OnboardingScreen] = [
-            .welcome, .signup, .preSignupTutorial, .credentials, .profile,
-            .emergencyContact, .codeEntry, .ready
+            .welcome, .signup, .preSignupTutorial, .credentials,
+            .codeEntry, .invitePicker, .companyConfirmation,
+            .profile, .emergencyContact, .ready
         ]
 
         // Determine which flow's screens to use
@@ -267,8 +268,19 @@ class OnboardingManager: ObservableObject {
             // Always go back to signup (path selection)
             goToScreen(.signup, direction: .backward)
 
-        case .profile:
+        case .invitePicker:
             goToScreen(.credentials, direction: .backward)
+
+        case .companyConfirmation:
+            // Fallback — CompanyConfirmationScreen handles its own back via handleBack()
+            goToScreen(.codeEntry, direction: .backward)
+
+        case .profile:
+            if state.flow == .employee {
+                goToScreen(.credentials, direction: .backward)
+            } else {
+                goToScreen(.credentials, direction: .backward)
+            }
 
         case .emergencyContact:
             goToScreen(.profile, direction: .backward)
@@ -294,9 +306,8 @@ class OnboardingManager: ObservableObject {
             // Can't go back during processing or success
 
         case .codeEntry:
-            // Go back to emergency contact (employee flow) or profile
             if state.flow == .employee {
-                goToScreen(.emergencyContact, direction: .backward)
+                goToScreen(.credentials, direction: .backward)
             } else {
                 goToScreen(.profile, direction: .backward)
             }
@@ -354,8 +365,30 @@ class OnboardingManager: ObservableObject {
             goToScreen(.profile)
 
         case .credentials:
-            // After auth, go to profile screen
-            goToScreen(.profile)
+            if state.flow == .employee {
+                // Employee flow: check for pending invites after credentials
+                isCheckingInvites = true
+                Task { [weak self] in
+                    guard let self = self else { return }
+                    await self.checkPendingInvites()
+                    await MainActor.run {
+                        self.isCheckingInvites = false
+                        if self.pendingInvites.count > 1 {
+                            self.goToScreen(.invitePicker)
+                        } else if self.pendingInvites.count == 1 {
+                            self.selectedInvite = self.pendingInvites.first
+                            self.confirmationSource = .singleInvite
+                            self.goToScreen(.companyConfirmation)
+                        } else {
+                            self.goToScreen(.codeEntry)
+                        }
+                    }
+                }
+                return  // Don't fall through — async navigation handles it
+            } else {
+                // Company creator flow: go to profile screen
+                goToScreen(.profile)
+            }
 
         case .profile:
             // After profile, go to company setup or emergency contact based on flow
@@ -366,8 +399,8 @@ class OnboardingManager: ObservableObject {
             }
 
         case .emergencyContact:
-            // After emergency contact, go to code entry
-            goToScreen(.codeEntry)
+            // After emergency contact, go to ready (employee flow reordered)
+            goToScreen(.ready)
 
         case .companySetup:
             goToScreen(.companyDetails)
@@ -381,8 +414,14 @@ class OnboardingManager: ObservableObject {
         case .profileCompany:
             goToScreen(.ready)
 
+        case .companyConfirmation:
+            goToScreen(.profile)
+
+        case .invitePicker:
+            goToScreen(.codeEntry)
+
         case .codeEntry:
-            goToScreen(.ready)
+            goToScreen(.companyConfirmation)
 
         case .profileJoin:
             goToScreen(.ready)
@@ -465,6 +504,13 @@ class OnboardingManager: ObservableObject {
         print("[ONBOARDING_MANAGER] - firstName: '\(user.firstName)'")
         print("[ONBOARDING_MANAGER] - lastName: '\(user.lastName)'")
         print("[ONBOARDING_MANAGER] - companyId: '\(user.companyId ?? "nil")'")
+
+        // If resuming on an invite-related screen, transient data may be lost.
+        if state.currentScreen == .invitePicker || state.currentScreen == .companyConfirmation {
+            if pendingInvites.isEmpty && selectedInvite == nil && companyJoinDetails == nil {
+                return .codeEntry
+            }
+        }
 
         // Step 1: Already completed?
         if user.hasCompletedAppOnboarding {

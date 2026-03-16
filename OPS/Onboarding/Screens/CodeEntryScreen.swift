@@ -144,13 +144,12 @@ struct CodeEntryScreen: View {
 
         Task {
             do {
-                try await manager.joinCompany(code: trimmedCode)
+                let _ = try await manager.fetchCompanyJoinDetails(code: trimmedCode)
 
                 await MainActor.run {
-                    let generator = UINotificationFeedbackGenerator()
-                    generator.notificationOccurred(.success)
                     isJoining = false
-                    manager.goToScreen(.ready)
+                    manager.confirmationSource = .manualCodeEntry
+                    manager.goToScreen(.companyConfirmation)
                 }
             } catch {
                 await MainActor.run {

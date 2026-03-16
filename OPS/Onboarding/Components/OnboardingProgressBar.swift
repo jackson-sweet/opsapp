@@ -75,13 +75,16 @@ extension OnboardingProgressBar {
             return (current, totalSteps)
 
         case .employee:
-            // profile → codeEntry
-            let totalSteps = 2
+            // Employee flow (reordered): codeEntry/invitePicker/companyConfirmation → profile → emergencyContact
+            let totalSteps = 3
             let current: Int
             switch screen {
-            case .profile: current = 1
-            case .codeEntry: current = 2
-            case .profileJoin: current = 2 // Legacy fallback
+            case .codeEntry: current = 1
+            case .invitePicker: current = 1
+            case .companyConfirmation: current = 1
+            case .profile: current = 2
+            case .emergencyContact: current = 3
+            case .profileJoin: current = 3 // Legacy fallback
             default: current = 0
             }
             return (current, totalSteps)

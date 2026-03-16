@@ -14,6 +14,7 @@
 //
 
 import SwiftUI
+import Network
 
 struct NetworkStatusIndicator: View {
     @EnvironmentObject private var dataController: DataController
@@ -78,7 +79,7 @@ struct NetworkStatusIndicator: View {
             return "antenna.radiowaves.left.and.right"
         case .wiredEthernet:
             return "network"
-        case .none:
+        default:
             return "wifi.slash"
         }
     }
@@ -100,7 +101,7 @@ struct NetworkStatusIndicator: View {
             return "Cellular"
         case .wiredEthernet:
             return "Ethernet"
-        case .none:
+        default:
             return "Offline"
         }
     }

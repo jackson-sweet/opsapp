@@ -166,10 +166,10 @@ struct OPSApp: App {
                         await performActiveChecks()
                     }
                 }
-                .onReceive(NotificationCenter.default.publisher(for: ConnectivityMonitor.connectivityChangedNotification)) { notification in
+                .onReceive(NotificationCenter.default.publisher(for: ConnectivityManager.connectivityChangedNotification)) { notification in
                     // Refresh permissions when connectivity is restored
-                    if let connectionType = notification.userInfo?["connectionType"] as? ConnectivityMonitor.ConnectionType,
-                       connectionType != .none,
+                    if let state = notification.userInfo?["state"] as? ConnectionState,
+                       state.status != .offline,
                        permissionStore.isCacheStale(),
                        let userId = dataController.currentUser?.id {
                         Task {

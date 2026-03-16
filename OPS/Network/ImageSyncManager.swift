@@ -15,35 +15,35 @@ import Network
 class ImageSyncManager: ObservableObject {
     // Dependencies
     private let modelContext: ModelContext?
-    private let connectivityMonitor: ConnectivityMonitor
+    private let connectivity: ConnectivityManager
     private let presignedURLService = PresignedURLUploadService.shared
-    
+
     // In-memory queue of pending image uploads
     private var pendingUploads: [PendingImageUpload] = []
-    
+
     // Current sync state
     @Published private var isSyncing = false
-    
+
     // Progress tracking
     @Published var syncProgress: Double = 0
     @Published var syncingProjectId: String? = nil
-    
+
     /// Initialize the ImageSyncManager with required dependencies
-    init(modelContext: ModelContext?, connectivityMonitor: ConnectivityMonitor) {
+    init(modelContext: ModelContext?, connectivity: ConnectivityManager) {
         self.modelContext = modelContext
-        self.connectivityMonitor = connectivityMonitor
-        
+        self.connectivity = connectivity
+
         // Clean up UserDefaults bloat first
         cleanupUserDefaultsImageData()
-        
+
         // Load any pending uploads from UserDefaults
         loadPendingUploads()
-        
+
         // Set up connectivity change notifications
         setupConnectivityObserver()
-        
+
         // If we're already connected and have pending uploads, try to sync them
-        if connectivityMonitor.isConnected && !pendingUploads.isEmpty {
+        if connectivity.isConnected && !pendingUploads.isEmpty {
             Task {
                 // Small delay to ensure everything is initialized
                 try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
@@ -51,23 +51,22 @@ class ImageSyncManager: ObservableObject {
             }
         }
     }
-    
+
     /// Setup observer for connectivity changes to trigger syncs when coming online
     private func setupConnectivityObserver() {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(connectivityChanged),
-            name: ConnectivityMonitor.connectivityChangedNotification,
+            name: ConnectivityManager.connectivityChangedNotification,
             object: nil
         )
     }
-    
+
     @objc private func connectivityChanged() {
-        if connectivityMonitor.isConnected {
+        if connectivity.isConnected {
             Task {
                 await syncPendingImages()
             }
-        } else {
         }
     }
     
@@ -80,7 +79,7 @@ class ImageSyncManager: ObservableObject {
 
         var savedURLs: [String] = []
 
-        if connectivityMonitor.isConnected {
+        if connectivity.isConnected {
             do {
                 // Upload to S3 via presigned URLs
                 let s3Results = try await presignedURLService.uploadProjectImages(images, for: project, companyId: companyId)
@@ -201,10 +200,10 @@ class ImageSyncManager: ObservableObject {
     /// Sync all pending images to S3 and Supabase
     func syncPendingImages() async {
         
-        guard !isSyncing, connectivityMonitor.isConnected else { 
+        guard !isSyncing, connectivity.isConnected else { 
             if isSyncing {
             }
-            if !connectivityMonitor.isConnected {
+            if !connectivity.isConnected {
             }
             return 
         }

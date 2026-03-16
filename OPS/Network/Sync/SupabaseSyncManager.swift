@@ -33,7 +33,7 @@ class SupabaseSyncManager: ObservableObject {
         syncStateSubject.eraseToAnyPublisher()
     }
 
-    var isConnected: Bool { connectivityMonitor.isConnected }
+    var isConnected: Bool { connectivity.isConnected }
     var lastSyncDate: Date = Date()
 
     // Cache of non-existent user IDs to prevent repeated fetch attempts
@@ -50,7 +50,7 @@ class SupabaseSyncManager: ObservableObject {
     // MARK: - Dependencies
 
     let modelContext: ModelContext
-    private let connectivityMonitor: ConnectivityMonitor
+    private let connectivity: ConnectivityManager
 
     private var projectRepo: ProjectRepository?
     private var taskRepo: TaskRepository?
@@ -61,9 +61,9 @@ class SupabaseSyncManager: ObservableObject {
 
     // MARK: - Init
 
-    init(modelContext: ModelContext, connectivityMonitor: ConnectivityMonitor) {
+    init(modelContext: ModelContext, connectivity: ConnectivityManager) {
         self.modelContext = modelContext
-        self.connectivityMonitor = connectivityMonitor
+        self.connectivity = connectivity
         configureRepositories()
     }
 
@@ -535,7 +535,7 @@ class SupabaseSyncManager: ObservableObject {
     /// Onboarding sync - awaitable sync for use during onboarding
     func performOnboardingSync() async {
         print("[SUPABASE_ONBOARDING_SYNC] Starting onboarding sync")
-        guard connectivityMonitor.isConnected else {
+        guard connectivity.isConnected else {
             print("[SUPABASE_ONBOARDING_SYNC] No internet, skipping")
             return
         }

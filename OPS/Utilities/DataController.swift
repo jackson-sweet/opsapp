@@ -9,6 +9,7 @@ import Foundation
 import SwiftUI
 import SwiftData
 import Combine
+import Network
 import GoogleSignIn
 import Supabase
 import FirebaseAuth
@@ -24,7 +25,7 @@ class DataController: ObservableObject {
     @Published var currentUser: User?
     @Published var isConnected = false
     @Published var isSyncing = false
-    @Published var connectionType: ConnectivityMonitor.ConnectionType = .none
+    @Published var connectionType: NWInterface.InterfaceType? = nil
     @Published var lastSyncTime: Date?
 
     // Sync status tracking
@@ -46,7 +47,6 @@ class DataController: ObservableObject {
     // MARK: - Dependencies
     let authManager: AuthManager
     private let keychainManager: KeychainManager
-    private let connectivityMonitor: ConnectivityMonitor
     var modelContext: ModelContext?
     private var cancellables = Set<AnyCancellable>()
 
@@ -79,19 +79,11 @@ class DataController: ObservableObject {
         // Create dependencies in a predictable order
         self.keychainManager = KeychainManager()
         self.authManager = AuthManager()
-        self.connectivityMonitor = ConnectivityMonitor()
 
-        // Set initial connection state
-        isConnected = connectivityMonitor.isConnected
-        connectionType = connectivityMonitor.connectionType
-        
-        // Setup connectivity monitoring
-        setupConnectivityMonitoring()
-        
         // Migrate any images from UserDefaults to FileManager
         // This prevents the "attempting to store >= 4194304 bytes" error
         ImageFileManager.shared.migrateAllImages()
-        
+
         // Check for existing authentication - plain Task for async work
         Task {
             await checkExistingAuth()
@@ -99,10 +91,15 @@ class DataController: ObservableObject {
     }
     
     // MARK: - Setup
-    private func setupConnectivityMonitoring() {
-        // Set initial state
-        isConnected = connectivityMonitor.isConnected
-        connectionType = connectivityMonitor.connectionType
+
+    /// Called from setModelContext once ConnectivityManager is created.
+    @MainActor
+    func setupConnectivityMonitoring() {
+        guard let connectivity = connectivity else { return }
+
+        // Mirror initial state
+        isConnected = connectivity.isConnected
+        connectionType = connectivity.state.type
 
         print("[SYNC] 📱 Initial connection state: \(isConnected ? "Connected" : "Disconnected")")
 
@@ -110,55 +107,48 @@ class DataController: ObservableObject {
         Task { @MainActor in
             await checkPendingSyncs()
 
-            // Start retry timer if we have pending syncs
-            if hasPendingSyncs {
-                startPendingSyncRetryTimer()
-
-                // If we have pending syncs AND we're connected, trigger immediate sync
-                // (but don't show the alert - this is initial load, not a reconnection)
-                if isConnected && isAuthenticated {
-                    print("[SYNC] 🚀 App startup with \(pendingSyncCount) pending items - triggering sync")
-                    await syncEngine.triggerSync()
-                }
+            // If we have pending syncs AND we're connected, trigger immediate sync
+            // (no alert — this is initial load, not a reconnection)
+            if hasPendingSyncs && isConnected && isAuthenticated {
+                print("[SYNC] 🚀 App startup with \(pendingSyncCount) pending items - triggering sync")
+                await syncEngine.triggerSync()
             }
 
             // Mark that we've completed initial setup
             hasCompletedInitialConnectionCheck = true
         }
 
-        // Handle connection changes
-        connectivityMonitor.onConnectionTypeChanged = { [weak self] connectionType in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
+        // Handle connection changes from ConnectivityManager
+        connectivity.onStateChanged = { [weak self] newState in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
                 let wasDisconnected = !self.isConnected
-                self.isConnected = connectionType != .none
-                self.connectionType = connectionType
+                self.isConnected = newState.status != .offline
+                self.connectionType = newState.type
 
                 print("[SYNC] 🔌 Network state changed: \(self.isConnected ? "Connected" : "Disconnected")")
 
-                if connectionType != .none, self.isAuthenticated {
-                    Task { @MainActor in
-                        // Check if we have pending syncs before triggering sync
-                        await self.checkPendingSyncs()
+                if newState.status != .offline, self.isAuthenticated {
+                    // Check if we have pending syncs before triggering sync
+                    await self.checkPendingSyncs()
 
-                        // ONLY show alert if:
-                        // 1. We've completed initial setup (not first load)
-                        // 2. We were actually disconnected before
-                        // 3. We have pending syncs
-                        // 4. At least 60s since last alert (prevent rapid flashing)
-                        let cooldownElapsed = self.lastSyncRestoredAlertTime == nil ||
-                            Date().timeIntervalSince(self.lastSyncRestoredAlertTime!) > 60
-                        if self.hasCompletedInitialConnectionCheck && wasDisconnected && self.hasPendingSyncs && cooldownElapsed {
-                            print("[SYNC] 🔄 Connection restored with \(self.pendingSyncCount) pending items - showing alert")
-                            self.showSyncRestoredAlert = true
-                            self.lastSyncRestoredAlertTime = Date()
-                        } else {
-                            print("[SYNC] 🔄 Connection active - triggering background sync (no alert)")
-                        }
-
-                        // Trigger sync via SyncEngine
-                        await self.syncEngine.triggerSync()
+                    // ONLY show alert if:
+                    // 1. We've completed initial setup (not first load)
+                    // 2. We were actually disconnected before
+                    // 3. We have pending syncs
+                    // 4. At least 60s since last alert (prevent rapid flashing)
+                    let cooldownElapsed = self.lastSyncRestoredAlertTime == nil ||
+                        Date().timeIntervalSince(self.lastSyncRestoredAlertTime!) > 60
+                    if self.hasCompletedInitialConnectionCheck && wasDisconnected && self.hasPendingSyncs && cooldownElapsed {
+                        print("[SYNC] 🔄 Connection restored with \(self.pendingSyncCount) pending items - showing alert")
+                        self.showSyncRestoredAlert = true
+                        self.lastSyncRestoredAlertTime = Date()
+                    } else {
+                        print("[SYNC] 🔄 Connection active - triggering background sync (no alert)")
                     }
+
+                    // Trigger sync via SyncEngine
+                    await self.syncEngine.triggerSync()
                 }
             }
         }
@@ -175,6 +165,8 @@ class DataController: ObservableObject {
         }
         if self.connectivity == nil {
             self.connectivity = ConnectivityManager()
+            // Wire up connectivity state changes now that the manager exists
+            setupConnectivityMonitoring()
         }
 
         // Set up in proper sequence to avoid race conditions
@@ -211,13 +203,13 @@ class DataController: ObservableObject {
         // Initialize the Supabase sync manager
         self.syncManager = SupabaseSyncManager(
             modelContext: modelContext,
-            connectivityMonitor: connectivityMonitor
+            connectivity: connectivity
         )
 
         // Initialize the image sync manager
         self.imageSyncManager = ImageSyncManager(
             modelContext: modelContext,
-            connectivityMonitor: connectivityMonitor
+            connectivity: connectivity
         )
 
         // Configure the sync engine (already created eagerly)

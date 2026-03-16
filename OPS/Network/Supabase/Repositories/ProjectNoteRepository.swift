@@ -18,6 +18,25 @@ class ProjectNoteRepository {
         self.companyId = companyId
     }
 
+    // MARK: - Fetch All (for InboundProcessor)
+
+    func fetchAll(since: Date? = nil) async throws -> [ProjectNoteDTO] {
+        var query = client
+            .from("project_notes")
+            .select()
+            .eq("company_id", value: companyId)
+
+        if let since = since {
+            query = query.gte("updated_at", value: ISO8601DateFormatter().string(from: since))
+        }
+
+        let response: [ProjectNoteDTO] = try await query
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+        return response
+    }
+
     // MARK: - Fetch
 
     func fetchForProject(_ projectId: String) async throws -> [ProjectNoteDTO] {

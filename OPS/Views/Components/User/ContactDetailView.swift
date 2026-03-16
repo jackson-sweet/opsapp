@@ -1100,27 +1100,112 @@ struct ContactDetailView: View {
 
     // MARK: - Role Section
 
+    @State private var isChangingRole = false
+
+    private var canEditRole: Bool {
+        guard let user = user else { return false }
+        let isCurrentUser = user.id == dataController.currentUser?.id
+        return !isCurrentUser && !isClient && permissionStore.can("team.manage")
+    }
+
     private var roleSection: some View {
         SectionCard(
             icon: isClient ? "building.2" : "person.badge.shield.checkmark",
-            title: "Role Information"
+            title: "Role"
         ) {
-            VStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(isClient ? "TYPE" : "EMPLOYEE TYPE")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+            VStack(spacing: 12) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("CURRENT ROLE")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                    Text(role)
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        Text(role.uppercased())
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+
+                    Spacer()
+
+                    if canEditRole {
+                        Menu {
+                            ForEach(UserRole.allCases.filter { $0 != .owner }.sorted(by: { $0.hierarchy < $1.hierarchy }), id: \.rawValue) { menuRole in
+                                Button {
+                                    Task { await changeUserRole(to: menuRole) }
+                                } label: {
+                                    HStack {
+                                        Text(menuRole.displayName)
+                                        if user?.role == menuRole {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                if isChangingRole {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                                        .scaleEffect(0.7)
+                                } else {
+                                    Text("CHANGE")
+                                        .font(OPSStyle.Typography.captionBold)
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                }
+                            }
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
+                        .disabled(isChangingRole)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let userRole = user?.role {
+                    Text(userRole.roleDescription)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
         .opacity(showFullContact ? 1 : 0)
         .offset(y: showFullContact ? 0 : 20)
         .animation(.easeInOut(duration: 0.5).delay(0.2), value: showFullContact)
+    }
+
+    private func changeUserRole(to newRole: UserRole) async {
+        guard let user = user else { return }
+
+        await MainActor.run { isChangingRole = true }
+
+        do {
+            let roleId = try await PermissionAdminService.resolveRoleId(for: newRole)
+            try await PermissionAdminService.assignUserRole(userId: user.id, roleId: roleId)
+
+            try await dataController.syncManager.updateUserFields(
+                userId: user.id,
+                fields: ["role": .string(newRole.rawValue)]
+            )
+
+            await MainActor.run {
+                user.role = newRole
+                try? dataController.modelContext?.save()
+                isChangingRole = false
+
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.success)
+            }
+
+            print("[CONTACT_DETAIL] Updated \(user.fullName) role to \(newRole.displayName)")
+
+        } catch {
+            await MainActor.run {
+                isChangingRole = false
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.error)
+            }
+            print("[CONTACT_DETAIL] Error changing role: \(error)")
+        }
     }
     
     // MARK: - Helper Computed Properties

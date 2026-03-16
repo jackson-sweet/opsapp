@@ -1005,7 +1005,9 @@ class OnboardingManager: ObservableObject {
             } else if seatIds.contains(userId) {
                 print("[ONBOARDING_MANAGER] User already seated")
             } else {
-                print("[ONBOARDING_MANAGER] ⚠️ No available seats (\(seatIds.count)/\(maxSeats))")
+                print("[ONBOARDING_MANAGER] ❌ No available seats (\(seatIds.count)/\(maxSeats))")
+                errorMessage = "This company's team is full. Contact your boss to add more seats."
+                throw OnboardingManagerError.serverError("This company's team is full. Contact your boss to add more seats.")
             }
 
             state.companyData.companyId = companyId
@@ -1222,7 +1224,9 @@ class OnboardingManager: ObservableObject {
             } else if seatIds.contains(userId) {
                 print("[ONBOARDING_MANAGER] User already seated")
             } else {
-                print("[ONBOARDING_MANAGER] ⚠️ No available seats (\(seatIds.count)/\(maxSeats))")
+                print("[ONBOARDING_MANAGER] ❌ No available seats (\(seatIds.count)/\(maxSeats))")
+                errorMessage = "This company's team is full. Contact your boss to add more seats."
+                throw OnboardingManagerError.serverError("This company's team is full. Contact your boss to add more seats.")
             }
 
             // Store company info in state and UserDefaults

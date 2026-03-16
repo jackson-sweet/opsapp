@@ -358,14 +358,62 @@ struct OnboardingABTestCoordinator: View {
                         invitedByName: invite.invitedByName
                     )
                     .transition(.opacity)
+                } else if let details = onboardingManager.companyJoinDetails {
+                    // From manual code entry with branded details
+                    EmployeeCompanyConfirmationView(
+                        companyName: details.companyName,
+                        companyLogoURL: details.companyLogoUrl,
+                        onConfirm: {
+                            OnboardingSupabaseAnalytics.shared.trackStepComplete("confirmation")
+                            // Join immediately (consistent with invite path)
+                            Task { @MainActor in
+                                do {
+                                    try await onboardingManager.joinCompanyFromOnboarding(
+                                        companyId: details.companyId
+                                    )
+                                    let generator = UINotificationFeedbackGenerator()
+                                    generator.notificationOccurred(.success)
+                                    withAnimation { flowStep = .employeeProfile }
+                                } catch {
+                                    print("[ONBOARDING_AB] Join from code entry failed: \(error)")
+                                    let generator = UINotificationFeedbackGenerator()
+                                    generator.notificationOccurred(.error)
+                                    withAnimation { flowStep = .employeeCodeEntry }
+                                }
+                            }
+                        },
+                        onCancel: {
+                            onboardingManager.companyJoinDetails = nil
+                            withAnimation { flowStep = .employeeCodeEntry }
+                        },
+                        industries: details.industries,
+                        teamMembers: details.teamMembers,
+                        teamSize: details.teamSize
+                    )
+                    .transition(.opacity)
                 } else {
-                    // From manual code entry
+                    // Legacy fallback: no branded details available
                     EmployeeCompanyConfirmationView(
                         companyName: lookupCompanyName,
                         companyLogoURL: lookupCompanyLogoURL,
                         onConfirm: {
                             OnboardingSupabaseAnalytics.shared.trackStepComplete("confirmation")
-                            withAnimation { flowStep = .employeeProfile }
+                            // Join immediately
+                            Task { @MainActor in
+                                if let code = onboardingManager.state.companyData.companyCode {
+                                    do {
+                                        try await onboardingManager.joinCompany(code: code)
+                                        let generator = UINotificationFeedbackGenerator()
+                                        generator.notificationOccurred(.success)
+                                        withAnimation { flowStep = .employeeProfile }
+                                    } catch {
+                                        print("[ONBOARDING_AB] Join from code failed: \(error)")
+                                        let generator = UINotificationFeedbackGenerator()
+                                        generator.notificationOccurred(.error)
+                                        withAnimation { flowStep = .employeeCodeEntry }
+                                    }
+                                }
+                            }
                         },
                         onCancel: {
                             withAnimation { flowStep = .employeeCodeEntry }

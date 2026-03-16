@@ -3392,6 +3392,65 @@ class DataController: ObservableObject {
         )
     }
 
+    // MARK: - ProjectNote Operations
+
+    /// Create a project note locally and record for sync - SINGLE SOURCE OF TRUTH
+    @MainActor
+    func createProjectNote(note: ProjectNote) {
+        note.needsSync = true
+        modelContext?.insert(note)
+        try? modelContext?.save()
+
+        var changedFields: [String: Any] = [
+            "id": note.id,
+            "project_id": note.projectId,
+            "company_id": note.companyId,
+            "author_id": note.authorId,
+            "content": note.content
+        ]
+        if let photoURL = note.photoURL { changedFields["photo_url"] = photoURL }
+        if !note.attachments.isEmpty { changedFields["attachments"] = note.attachments }
+        if !note.mentionedUserIds.isEmpty { changedFields["mentioned_user_ids"] = note.mentionedUserIds }
+
+        syncEngine.recordOperation(
+            entityType: .projectNote,
+            entityId: note.id,
+            operationType: "create",
+            changedFields: changedFields
+        )
+    }
+
+    /// Update a project note's content locally and record for sync - SINGLE SOURCE OF TRUTH
+    @MainActor
+    func updateProjectNoteContent(note: ProjectNote, content: String) {
+        note.content = content
+        note.updatedAt = Date()
+        note.needsSync = true
+        try? modelContext?.save()
+
+        syncEngine.recordOperation(
+            entityType: .projectNote,
+            entityId: note.id,
+            operationType: "update",
+            changedFields: ["content": content]
+        )
+    }
+
+    /// Soft-delete a project note locally and record for sync - SINGLE SOURCE OF TRUTH
+    @MainActor
+    func deleteProjectNote(note: ProjectNote) {
+        note.deletedAt = Date()
+        note.needsSync = true
+        try? modelContext?.save()
+
+        syncEngine.recordOperation(
+            entityType: .projectNote,
+            entityId: note.id,
+            operationType: "delete",
+            changedFields: ["deleted_at": ISO8601DateFormatter().string(from: note.deletedAt!)]
+        )
+    }
+
     // MARK: - Project Details Operations
 
     /// Update project notes - SINGLE SOURCE OF TRUTH

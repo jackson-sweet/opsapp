@@ -781,7 +781,7 @@ struct SettingsView: View {
 
     // MARK: - Profile Avatar
 
-    /// Normalizes a profile image URL (handles // prefix from Bubble storage).
+    /// Normalizes a profile image URL (handles // prefix from legacy storage).
     private func normalizedProfileURL(_ urlString: String) -> URL? {
         var fixed = urlString
         if fixed.hasPrefix("//") {

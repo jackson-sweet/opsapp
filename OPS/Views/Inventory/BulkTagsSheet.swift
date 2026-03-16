@@ -299,7 +299,7 @@ struct BulkTagsSheet: View {
                     tagObjectsToAdd.append(existingTag)
                 } else {
                     // Tag doesn't exist - create locally first
-                    print("[BULK_TAGS] 🆕 Tag '\(tagName)' not found, will create in Bubble...")
+                    print("[BULK_TAGS] 🆕 Tag '\(tagName)' not found, will create in Supabase...")
                     let newTag = InventoryTag(
                         id: UUID().uuidString,
                         name: tagName,
@@ -356,7 +356,7 @@ struct BulkTagsSheet: View {
                         }
                     }
 
-                    // Rebuild tagIds from current tags to ensure correct Bubble IDs
+                    // Rebuild tagIds from current tags to ensure correct Supabase IDs
                     item.tagIds = item.tags.filter { $0.deletedAt == nil }.map { $0.id }
                     item.needsSync = true
                 }

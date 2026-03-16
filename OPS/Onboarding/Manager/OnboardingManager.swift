@@ -746,7 +746,7 @@ class OnboardingManager: ObservableObject {
 
         // Store for later - CRITICAL: Set both user_id AND currentUserId
         UserDefaults.standard.set(resolvedUserId, forKey: "user_id")
-        UserDefaults.standard.set(resolvedUserId, forKey: "currentUserId") // Required for CentralizedSyncManager
+        UserDefaults.standard.set(resolvedUserId, forKey: "currentUserId") // Required for SyncEngine
         UserDefaults.standard.set(email, forKey: "user_email")
 
         // PATCH userType if we have a flow selected

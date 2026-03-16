@@ -3,7 +3,7 @@
 //  OPS
 //
 //  InventoryTag model for categorizing inventory items with optional thresholds
-//  Synced with Bubble for cross-device/user consistency
+//  Synced with Supabase for cross-device/user consistency
 //
 
 import Foundation

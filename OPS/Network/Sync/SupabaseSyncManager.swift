@@ -2,8 +2,8 @@
 //  SupabaseSyncManager.swift
 //  OPS
 //
-//  Replaces CentralizedSyncManager with Supabase-backed sync.
-//  Matches the same public API so views don't change when switched via SyncManagerFlag.
+//  Supabase-backed sync manager.
+//  Scheduled for replacement by SyncEngine in the offline-first overhaul.
 //
 //  Manages Supabase data synchronization.
 //
@@ -17,7 +17,7 @@ import Supabase
 @MainActor
 class SupabaseSyncManager: ObservableObject {
 
-    // MARK: - Published State (matches CentralizedSyncManager interface)
+    // MARK: - Published State
 
     @Published var hasError: Bool = false
     @Published var statusText: String = "Ready"
@@ -735,7 +735,7 @@ class SupabaseSyncManager: ObservableObject {
         user.needsSync = true
         try modelContext.save()
 
-        // Note: Actual image upload handled by ImageSyncManager, same as CentralizedSyncManager
+        // Note: Actual image upload handled by ImageSyncManager
         if isConnected {
             try await userRepo?.updateUser(userId: userId, firstName: user.firstName, lastName: user.lastName, phone: user.phone)
             user.needsSync = false

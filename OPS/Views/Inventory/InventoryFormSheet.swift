@@ -537,7 +537,7 @@ struct InventoryFormSheet: View {
         value.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(value)) : String(format: "%.2f", value)
     }
 
-    /// Find existing tag or create new one in Bubble (async - waits for Bubble ID)
+    /// Find existing tag or create new one in Supabase (async - waits for ID)
     private func findOrCreateTag(name: String, companyId: String) async throws -> InventoryTag {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
 
@@ -586,7 +586,7 @@ struct InventoryFormSheet: View {
         let created = try await repo.createTag(dto)
         print("[INVENTORY_FORM] ✅ Tag created with ID: \(created.id)")
 
-        // Now create local tag with Bubble's ID
+        // Now create local tag with Supabase ID
         let newTag = InventoryTag(
             id: created.id,
             name: trimmedName,
@@ -610,7 +610,7 @@ struct InventoryFormSheet: View {
             item.tagIds.removeAll()
         }
 
-        // Add each tag (creating in Bubble if needed)
+        // Add each tag (creating in Supabase if needed)
         for tagName in tagNames {
             let tag = try await findOrCreateTag(name: tagName, companyId: companyId)
             await MainActor.run {
@@ -653,7 +653,7 @@ struct InventoryFormSheet: View {
 
             Task {
                 do {
-                    // Apply tags FIRST (creates any new tags in Bubble and waits for IDs)
+                    // Apply tags FIRST (creates any new tags in Supabase and waits for IDs)
                     try await applyTagsToItem(existingItem, tagNames: parsedTags, companyId: companyId)
 
                     // Now save with valid tag IDs
@@ -714,7 +714,7 @@ struct InventoryFormSheet: View {
 
             Task {
                 do {
-                    // Apply tags FIRST (creates any new tags in Bubble and waits for IDs)
+                    // Apply tags FIRST (creates any new tags in Supabase and waits for IDs)
                     try await applyTagsToItem(newItem, tagNames: parsedTags, companyId: companyId)
 
                     // Now create item with valid tag IDs

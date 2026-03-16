@@ -557,7 +557,7 @@ class RealtimeManager: ObservableObject {
     // MARK: - Catch-Up Sync
 
     /// Placeholder for incremental catch-up after a reconnection.
-    /// Currently a no-op — callers should fall back to CentralizedSyncManager.fullSync()
+    /// Currently a no-op — callers should fall back to SyncEngine.fullSync()
     /// when data freshness is critical. A future implementation would fetch rows
     /// where updated_at > lastSyncTimestamp for each subscribed table.
     func catchUpSync() async {

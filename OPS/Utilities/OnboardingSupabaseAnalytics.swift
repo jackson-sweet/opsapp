@@ -3,7 +3,7 @@
 //  OPS
 //
 //  Tracks onboarding funnel events to Supabase onboarding_analytics table.
-//  Replaces the deprecated Bubble-based OnboardingAnalyticsService.
+//  Tracks onboarding funnel events to Supabase.
 //
 
 import Foundation

@@ -59,7 +59,7 @@ final class InventoryItem: Identifiable {
     var notes: String?
     var imageUrl: String?
 
-    // Tag IDs for sync (stores Bubble IDs)
+    // Tag IDs for sync (stores Supabase IDs)
     var tagIds: [String] = []
 
     // MARK: - Threshold Properties

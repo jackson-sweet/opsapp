@@ -242,7 +242,7 @@ struct EmergencyContactScreen: View {
                 }
 
                 if !fields.isEmpty {
-                    try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
+                    try await dataController.updateUserFields(userId: userId, fields: fields)
 
                     // Update local SwiftData user
                     if let currentUser = dataController.currentUser {

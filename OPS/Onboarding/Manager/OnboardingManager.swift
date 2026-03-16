@@ -114,13 +114,13 @@ class OnboardingManager: ObservableObject {
             print("[ONBOARDING_MANAGER] Set currentUserId in UserDefaults")
         }
 
-        // Initialize sync manager if needed
+        // Initialize sync manager if needed (legacy, will be removed)
         if dataController.syncManager == nil {
             print("[ONBOARDING_MANAGER] Initializing SyncManager for resumed session...")
             dataController.initializeSyncManager()
         }
 
-        print("[ONBOARDING_MANAGER] ✅ Local state restored - currentUser: \(dataController.currentUser?.id ?? "nil"), syncManager: \(dataController.syncManager != nil)")
+        print("[ONBOARDING_MANAGER] ✅ Local state restored - currentUser: \(dataController.currentUser?.id ?? "nil")")
     }
 
     // MARK: - Static Methods (for app integration)
@@ -769,7 +769,7 @@ class OnboardingManager: ObservableObject {
         let fields: [String: AnyJSON] = [
             "user_type": .string(userType.rawValue)
         ]
-        try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
+        try await dataController.updateUserFields(userId: userId, fields: fields)
 
         print("[ONBOARDING_MANAGER] userType PATCHed successfully")
     }
@@ -921,14 +921,10 @@ class OnboardingManager: ObservableObject {
                 print("[ONBOARDING_MANAGER] ✅ Company saved to SwiftData")
             }
 
-            // Trigger sync to load company data
-            if let syncManager = dataController.syncManager {
-                print("[ONBOARDING_MANAGER] Triggering company sync...")
-                try? await syncManager.syncCompany()
-                print("[ONBOARDING_MANAGER] Company sync triggered")
-            } else {
-                print("[ONBOARDING_MANAGER] ⚠️ SyncManager is NIL!")
-            }
+            // Trigger sync to load company data via DataController
+            print("[ONBOARDING_MANAGER] Triggering company sync...")
+            await dataController.triggerCompanySync()
+            print("[ONBOARDING_MANAGER] Company sync triggered")
 
             print("[ONBOARDING_MANAGER] ========== CREATE COMPANY END ==========")
             print("[ONBOARDING_MANAGER] Company created: \(companyId), code: \(newCompanyCode)")
@@ -1022,6 +1018,7 @@ class OnboardingManager: ObservableObject {
 
             // Reconfigure sync repos now that company_id is set in UserDefaults
             dataController.syncManager?.reconfigureRepositories()
+            dataController.syncEngine.reconfigureForCompany()
 
             // NOW update profile data — userRepo is available after repo reconfiguration
             try await updateUserProfile()
@@ -1064,11 +1061,9 @@ class OnboardingManager: ObservableObject {
                 }
             }
 
-            // Trigger sync to load company data
-            if let syncManager = dataController.syncManager {
-                try? await syncManager.syncCompany()
-                print("[ONBOARDING_MANAGER] Company sync triggered after join")
-            }
+            // Trigger sync to load company data via DataController
+            await dataController.triggerCompanySync()
+            print("[ONBOARDING_MANAGER] Company sync triggered after join")
 
             // Mark matching team_invitations as accepted
             let userEmail = state.userData.email
@@ -1257,6 +1252,7 @@ class OnboardingManager: ObservableObject {
 
             // Reconfigure sync repos now that company_id is set in UserDefaults
             dataController.syncManager?.reconfigureRepositories()
+            dataController.syncEngine.reconfigureForCompany()
 
             // DO NOT call updateUserProfile() — Profile screen hasn't been filled yet
 
@@ -1288,11 +1284,9 @@ class OnboardingManager: ObservableObject {
                 }
             }
 
-            // Trigger sync to load company data
-            if let syncManager = dataController.syncManager {
-                try? await syncManager.syncCompany()
-                print("[ONBOARDING_MANAGER] Company sync triggered after join")
-            }
+            // Trigger sync to load company data via DataController
+            await dataController.triggerCompanySync()
+            print("[ONBOARDING_MANAGER] Company sync triggered after join")
 
             // Notify company admins that a new member joined
             do {
@@ -1356,17 +1350,9 @@ class OnboardingManager: ObservableObject {
             fields["phone"] = .string(state.userData.phone)
         }
 
-        // Try via syncManager first, fall back to direct repo if syncManager repos aren't configured
-        if dataController.syncManager != nil {
-            try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
-            print("[ONBOARDING_MANAGER] ✅ User profile updated via syncManager")
-        } else {
-            // Direct fallback using UserRepository
-            let companyId = state.companyData.companyId ?? ""
-            let userRepo = UserRepository(companyId: companyId)
-            try await userRepo.updateFields(userId: userId, fields: fields)
-            print("[ONBOARDING_MANAGER] ✅ User profile updated via direct repo")
-        }
+        // Update user fields via DataController
+        try await dataController.updateUserFields(userId: userId, fields: fields)
+        print("[ONBOARDING_MANAGER] ✅ User profile updated via DataController")
     }
 
     /// Upload avatar image to Supabase Storage during onboarding
@@ -1437,7 +1423,7 @@ class OnboardingManager: ObservableObject {
             fields["emergency_contact_relationship"] = .string(rel)
         }
 
-        try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
+        try await dataController.updateUserFields(userId: userId, fields: fields)
 
         // Update local SwiftData user
         if let currentUser = dataController.currentUser {
@@ -1628,7 +1614,7 @@ class OnboardingManager: ObservableObject {
 
         do {
             let fields: [String: AnyJSON] = ["has_completed_app_tutorial": .bool(true)]
-            try await dataController.syncManager.updateUserFields(userId: userId, fields: fields)
+            try await dataController.updateUserFields(userId: userId, fields: fields)
             print("[ONBOARDING_MANAGER] hasCompletedAppTutorial synced to true (pre-signup tutorial)")
         } catch {
             print("[ONBOARDING_MANAGER] Failed to sync tutorial completion: \(error)")

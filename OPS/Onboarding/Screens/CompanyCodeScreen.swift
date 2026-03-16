@@ -229,33 +229,21 @@ struct CompanyCodeScreen: View {
                 print("[COMPANY_CODE]   - currentUser exists: \(dataController.currentUser != nil)")
             }
 
-            // Perform full sync
-            if let syncManager = dataController.syncManager {
-                print("[COMPANY_CODE] SyncManager exists, starting sync...")
-                do {
-                    // Sync company data
-                    print("[COMPANY_CODE] Calling syncCompany()...")
-                    try await syncManager.syncCompany()
-                    print("[COMPANY_CODE] ✅ Company sync complete")
+            // Perform full sync via DataController
+            print("[COMPANY_CODE] Starting sync via DataController...")
+            await dataController.triggerCompanySync()
+            print("[COMPANY_CODE] ✅ Company sync complete")
 
-                    // Sync team members
-                    if let companyId = manager.state.companyData.companyId {
-                        print("[COMPANY_CODE] Calling syncCompanyTeamMembers(\(companyId))...")
-                        try await syncManager.syncCompanyTeamMembers(companyId: companyId)
-                        print("[COMPANY_CODE] ✅ Team members sync complete")
+            if let companyId = manager.state.companyData.companyId {
+                print("[COMPANY_CODE] Syncing team members for \(companyId)...")
+                await dataController.triggerTeamMembersSync(companyId: companyId)
+                print("[COMPANY_CODE] ✅ Team members sync complete")
 
-                        // Sync task types
-                        print("[COMPANY_CODE] Calling syncCompanyTaskTypes(\(companyId))...")
-                        try await syncManager.syncCompanyTaskTypes(companyId: companyId)
-                        print("[COMPANY_CODE] ✅ Task types sync complete")
-                    } else {
-                        print("[COMPANY_CODE] ⚠️ No companyId for team/task type sync")
-                    }
-                } catch {
-                    print("[COMPANY_CODE] ❌ Sync error: \(error)")
-                }
+                print("[COMPANY_CODE] Syncing task types for \(companyId)...")
+                await dataController.triggerTaskTypesSync(companyId: companyId)
+                print("[COMPANY_CODE] ✅ Task types sync complete")
             } else {
-                print("[COMPANY_CODE] ⚠️ SyncManager is NIL!")
+                print("[COMPANY_CODE] ⚠️ No companyId for team/task type sync")
             }
 
             // Verify company was synced

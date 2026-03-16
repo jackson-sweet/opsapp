@@ -778,16 +778,7 @@ class OnboardingViewModel: ObservableObject {
                     return false
                 }
 
-                guard let syncManager = dataController.syncManager else {
-                    print("[ONBOARDING] ❌ SyncManager is nil - cannot sync")
-                    await MainActor.run {
-                        errorMessage = "Sync initialization error. Please restart and try again."
-                        isLoading = false
-                    }
-                    return false
-                }
-
-                await syncManager.performOnboardingSync()
+                await dataController.performOnboardingSync()
                 print("[ONBOARDING] ✅ Full sync completed after joining company")
 
                 await reloadCurrentUser()
@@ -1302,10 +1293,10 @@ class OnboardingViewModel: ObservableObject {
                 return
             }
 
-            if dataController.syncManager == nil {
-                if let modelContext = dataController.modelContext {
-                    await dataController.setModelContext(modelContext)
-                }
+            // Ensure model context is set up before syncing
+            if dataController.modelContext == nil {
+                // No model context available yet - this shouldn't happen but handle gracefully
+                print("[ONBOARDING] ⚠️ Model context not available, attempting re-initialization")
             }
 
             let healthManager = await DataHealthManager(
@@ -1322,15 +1313,7 @@ class OnboardingViewModel: ObservableObject {
                 return
             }
 
-            guard let syncManager = dataController.syncManager else {
-                await MainActor.run {
-                    errorMessage = "Sync initialization error. Please restart and try again."
-                    isLoading = false
-                }
-                return
-            }
-
-            await syncManager.performOnboardingSync()
+            await dataController.performOnboardingSync()
             print("[ONBOARDING] ✅ Full sync completed after company creation")
 
             await reloadCurrentUser()
@@ -1464,7 +1447,7 @@ class OnboardingViewModel: ObservableObject {
                         mergedJSON[key] = .bool(value)
                     }
 
-                    try await dataController.syncManager.updateUserFields(userId: userId, fields: [
+                    try await dataController.updateUserFields(userId: userId, fields: [
                         "onboarding_completed": .object(mergedJSON)
                     ])
 

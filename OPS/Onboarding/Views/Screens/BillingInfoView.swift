@@ -143,19 +143,10 @@ struct BillingInfoView: View {
                 return
             }
 
-            // Data is healthy, proceed with sync
-            guard let syncManager = dataController.syncManager else {
-                print("[BILLING_INFO] ❌ SyncManager still nil after health check")
-                await MainActor.run {
-                    isRefreshing = false
-                }
-                return
-            }
-
+            // Fetch latest company data via DataController
             do {
-                // Fetch latest company data from API
                 print("[BILLING_INFO] 🔄 Refreshing company data for seat info...")
-                try await syncManager.syncCompany()
+                await dataController.triggerCompanySync()
 
                 await MainActor.run {
                     isRefreshing = false

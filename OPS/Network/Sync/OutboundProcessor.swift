@@ -55,12 +55,11 @@ final class OutboundProcessor {
         // 2. Filter out operations in backoff or with unmet dependencies
         let now = Date()
         let eligible = pending.filter { op in
-            // Backoff check: if retried before, ensure enough time has elapsed
-            if op.retryCount > 0 {
-                let delay = op.backoffDelay
-                let earliestRetry = op.createdAt.addingTimeInterval(delay * Double(op.retryCount))
+            // Backoff check: if retried before, ensure enough time has elapsed since last attempt
+            if op.retryCount > 0, let lastAttempt = op.lastAttemptedAt {
+                let earliestRetry = lastAttempt.addingTimeInterval(op.backoffDelay)
                 if now < earliestRetry {
-                    print("[OutboundProcessor] Skipping \(op.entityType) \(op.entityId) — in backoff (retry \(op.retryCount), delay \(delay)s)")
+                    print("[OutboundProcessor] Skipping \(op.entityType) \(op.entityId) — in backoff (retry \(op.retryCount), delay \(op.backoffDelay)s)")
                     return false
                 }
             }
@@ -230,6 +229,7 @@ final class OutboundProcessor {
         print("[OutboundProcessor] Pushing \(operation.entityType) \(operation.entityId)...")
 
         operation.status = "inProgress"
+        operation.lastAttemptedAt = Date()
 
         do {
             // Decode payload

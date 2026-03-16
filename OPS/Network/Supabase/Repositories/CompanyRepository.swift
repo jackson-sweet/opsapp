@@ -44,6 +44,40 @@ class CompanyRepository {
         return results.first
     }
 
+    /// Check for pending team invitations matching an email address.
+    /// Uses SECURITY DEFINER RPC (bypasses RLS for onboarding users without a company).
+    func checkPendingInvites(email: String) async throws -> [PendingInviteDTO] {
+        let result: Data = try await client
+            .rpc("check_pending_invites", params: ["p_email": email])
+            .execute()
+            .data
+
+        let decoder = JSONDecoder()
+        if let array = try? decoder.decode([PendingInviteDTO].self, from: result) {
+            return array
+        }
+        return []
+    }
+
+    /// Fetch branded company details for the onboarding confirmation screen.
+    /// Uses SECURITY DEFINER RPC (bypasses RLS for onboarding users without a company).
+    func fetchJoinDetails(code: String) async throws -> CompanyJoinDetailsDTO? {
+        let result: Data = try await client
+            .rpc("get_company_join_details", params: ["p_code": code])
+            .execute()
+            .data
+
+        let decoder = JSONDecoder()
+        if let single = try? decoder.decode(CompanyJoinDetailsDTO.self, from: result) {
+            return single
+        }
+        if let array = try? decoder.decode([CompanyJoinDetailsDTO].self, from: result),
+           let first = array.first {
+            return first
+        }
+        return nil
+    }
+
     // MARK: - Insert
 
     /// Create a new company row and return the created record.

@@ -22,6 +22,10 @@ enum OnboardingScreen: String, Codable, CaseIterable {
     case companyDetails    // Company details (industry, size, age)
     case companyCode       // Company code display after creation
     case codeEntry         // Employee: Enter crew code to join
+    case invitePicker      // Employee: Choose from multiple pending invites
+    case companyConfirmation // Employee: Confirm company before joining
+    case emergencyContact  // Employee: Emergency contact (skippable)
+    case appSetup          // Full-screen loading while setting up the app
     case profileCompany    // Legacy: Profile + create company (deprecated)
     case profileJoin       // Legacy: Profile + join company with code (deprecated)
     case ready             // Welcome guide / billing
@@ -42,6 +46,10 @@ enum OnboardingScreen: String, Codable, CaseIterable {
         case .companyDetails: return "Company Details"
         case .companyCode: return "Company Code"
         case .codeEntry: return "Code Entry"
+        case .invitePicker: return "Invite Picker"
+        case .companyConfirmation: return "Company Confirmation"
+        case .emergencyContact: return "Emergency Contact"
+        case .appSetup: return "App Setup"
         case .profileCompany: return "Profile & Company"
         case .profileJoin: return "Profile & Join"
         case .ready: return "Ready"

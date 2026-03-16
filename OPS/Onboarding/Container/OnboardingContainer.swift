@@ -109,6 +109,18 @@ struct OnboardingContainer: View {
         case .codeEntry:
             CodeEntryScreen(manager: manager)
 
+        case .invitePicker:
+            InvitePickerScreen(manager: manager)
+
+        case .companyConfirmation:
+            CompanyConfirmationScreen(manager: manager)
+
+        case .emergencyContact:
+            EmergencyContactScreen(manager: manager)
+
+        case .appSetup:
+            AppSetupScreen(manager: manager)
+
         case .profileCompany:
             // Legacy - redirect to new flow
             ProfileScreen(manager: manager)
@@ -173,6 +185,14 @@ struct OnboardingContainer: View {
             return "Creating your company..."
         case .codeEntry:
             return "Joining crew..."
+        case .invitePicker:
+            return "Checking invites..."
+        case .companyConfirmation:
+            return "Loading..."
+        case .emergencyContact:
+            return "Saving contact..."
+        case .appSetup:
+            return "Setting up..."
         case .welcome, .signup, .userTypeSelection, .profile, .companyCode, .ready, .tutorial, .preSignupTutorial, .postTutorialCTA:
             return "Loading..."
         }

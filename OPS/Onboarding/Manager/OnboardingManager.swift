@@ -1662,6 +1662,15 @@ class OnboardingManager: ObservableObject {
         showError = false
         isLoading = false
 
+        // Clear invite state
+        pendingInvites = []
+        selectedInvite = nil
+        companyJoinDetails = nil
+        confirmationSource = .manualCodeEntry
+
+        // Clear A/B test flow step
+        ABTestFlowStep.clearSaved()
+
         // Clear DataController user
         dataController.currentUser = nil
 

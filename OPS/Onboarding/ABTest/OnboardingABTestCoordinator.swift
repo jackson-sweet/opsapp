@@ -20,7 +20,7 @@ import SwiftUI
 
 // MARK: - Flow Step Enum
 
-enum ABTestFlowStep {
+enum ABTestFlowStep: String {
     case splash
     case typeSelection       // JOIN A CREW / RUN A CREW
     case walkthrough         // Variant C only: animated walkthrough
@@ -35,6 +35,61 @@ enum ABTestFlowStep {
     case employeeConfirmation // Employee: "Welcome to [Company]"
     case employeeProfile     // Employee: name, phone, avatar, emergency contact
     case complete
+
+    // MARK: - Persistence
+
+    private static let userDefaultsKey = "ab_test_flow_step"
+
+    /// Save the current step to UserDefaults for resume on app relaunch
+    func save() {
+        UserDefaults.standard.set(self.rawValue, forKey: ABTestFlowStep.userDefaultsKey)
+    }
+
+    /// Load the saved step, or nil if none saved
+    static func loadSaved() -> ABTestFlowStep? {
+        guard let raw = UserDefaults.standard.string(forKey: userDefaultsKey),
+              let step = ABTestFlowStep(rawValue: raw) else { return nil }
+        return step
+    }
+
+    /// Clear the saved step (on onboarding completion or sign out)
+    static func clearSaved() {
+        UserDefaults.standard.removeObject(forKey: userDefaultsKey)
+    }
+
+    /// Determine the safe resume step. Some steps require transient data;
+    /// if that data is lost (app killed), fall back to a safe step.
+    func safeResumeStep(hasAuth: Bool, flow: OnboardingFlow?) -> ABTestFlowStep {
+        // If not authenticated, always start from splash
+        guard hasAuth else { return .splash }
+
+        switch self {
+        // Pre-auth steps: if somehow saved but user has auth, skip ahead
+        case .splash, .typeSelection:
+            if flow == .employee { return .employeeCodeEntry }
+            if flow == .companyCreator { return .companyName }
+            return .splash  // No flow selected yet
+
+        // Auth screens: user already has auth, skip past
+        case .signup, .walkthrough:
+            return .companyName
+        case .employeeSignup:
+            return .employeeCodeEntry
+
+        // Invite screens: transient data lost, fall back to code entry (will re-check invites)
+        case .employeeInviteCheck, .employeeInvitePicker, .employeeConfirmation:
+            return .employeeCodeEntry
+
+        // These are safe to resume directly
+        case .employeeCodeEntry, .employeeProfile:
+            return self
+        case .companyName, .crewCode:
+            return self
+
+        case .complete:
+            return .complete
+        }
+    }
 }
 
 // MARK: - Coordinator View
@@ -49,6 +104,7 @@ struct OnboardingABTestCoordinator: View {
     @State private var flowStep: ABTestFlowStep = .splash
     @State private var crewCode: String = ""
     @State private var hasTrackedVariant = false
+    @State private var hasResumed = false
 
     // Employee flow state
     @State private var lookupCompanyName: String = ""
@@ -334,14 +390,60 @@ struct OnboardingABTestCoordinator: View {
 
             case .complete:
                 Color.clear
-                    .onAppear { onComplete() }
+                    .onAppear {
+                        ABTestFlowStep.clearSaved()
+                        onComplete()
+                    }
             }
         }
         .animation(.easeInOut(duration: 0.35), value: flowStep)
+        .onChange(of: flowStep) { _, newStep in
+            // Persist flow step for resume on app relaunch
+            newStep.save()
+            print("[ONBOARDING_AB] Flow step changed to: \(newStep.rawValue)")
+        }
         .onAppear {
-            guard !hasTrackedVariant else { return }
-            hasTrackedVariant = true
-            AnalyticsManager.shared.trackVariantAssigned(variant: variantManager.variant.rawValue)
+            // Track variant
+            if !hasTrackedVariant {
+                hasTrackedVariant = true
+                AnalyticsManager.shared.trackVariantAssigned(variant: variantManager.variant.rawValue)
+            }
+
+            // Resume logic: check if we should skip ahead
+            guard !hasResumed else { return }
+            hasResumed = true
+
+            let hasAuth = onboardingManager.state.isAuthenticated ||
+                          onboardingManager.state.userData.userId != nil
+            let flow = onboardingManager.state.flow
+
+            if let savedStep = ABTestFlowStep.loadSaved(), savedStep != .splash {
+                let resumeStep = savedStep.safeResumeStep(hasAuth: hasAuth, flow: flow)
+                if resumeStep != .splash {
+                    print("[ONBOARDING_AB] Resuming at \(resumeStep.rawValue) (saved: \(savedStep.rawValue), hasAuth: \(hasAuth), flow: \(flow?.rawValue ?? "nil"))")
+                    flowStep = resumeStep
+
+                    // If resuming at code entry for employee, re-check invites in background
+                    if resumeStep == .employeeCodeEntry && flow == .employee {
+                        Task { @MainActor in
+                            await onboardingManager.checkPendingInvites()
+                            let count = onboardingManager.pendingInvites.count
+                            if count > 0 {
+                                print("[ONBOARDING_AB] Resume: found \(count) invites, redirecting")
+                                withAnimation {
+                                    if count > 1 {
+                                        flowStep = .employeeInvitePicker
+                                    } else {
+                                        onboardingManager.selectedInvite = onboardingManager.pendingInvites.first
+                                        onboardingManager.confirmationSource = .singleInvite
+                                        flowStep = .employeeConfirmation
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

@@ -112,6 +112,7 @@ struct OnboardingABTestCoordinator: View {
     @State private var lookupCompanyLogoURL: String?
     @State private var isCheckingInvites: Bool = false
     @State private var prefillCompanyCode: String? = nil
+    @State private var isFinishing: Bool = false
 
     var body: some View {
         ZStack {
@@ -461,7 +462,26 @@ struct OnboardingABTestCoordinator: View {
                     }
             }
         }
+        .overlay {
+            if isFinishing {
+                ZStack {
+                    OPSStyle.Colors.background
+                        .ignoresSafeArea()
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
+                            .scaleEffect(1.2)
+                        Text("SETTING UP YOUR ACCOUNT...")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .tracking(1.5)
+                    }
+                }
+                .transition(.opacity)
+            }
+        }
         .animation(.easeInOut(duration: 0.35), value: flowStep)
+        .animation(.easeInOut(duration: 0.2), value: isFinishing)
         .onChange(of: flowStep) { _, newStep in
             // Persist flow step for resume on app relaunch
             newStep.save()
@@ -528,17 +548,23 @@ struct OnboardingABTestCoordinator: View {
     // MARK: - Employee Join + Complete
 
     private func joinCrewAndComplete() {
+        isFinishing = true
+
         // Check if we joined via invite-aware flow (companyId already set by joinCompanyFromOnboarding)
         if onboardingManager.state.hasExistingCompany && onboardingManager.state.companyData.companyId != nil {
-            // Already joined via CompanyConfirmationScreen → joinCompanyFromOnboarding
+            // Already joined — just finalize
             OnboardingSupabaseAnalytics.shared.trackStepComplete("onboarding_complete")
-            withAnimation { flowStep = .complete }
+            // Brief delay so user sees the loading screen
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                withAnimation { flowStep = .complete }
+            }
             return
         }
 
         // Legacy path: join via company code
         guard let code = onboardingManager.state.companyData.companyCode else {
             print("[ONBOARDING] No crew code stored, cannot join")
+            isFinishing = false
             return
         }
 
@@ -549,6 +575,7 @@ struct OnboardingABTestCoordinator: View {
                 withAnimation { flowStep = .complete }
             } catch {
                 print("[ONBOARDING] Join failed: \(error)")
+                isFinishing = false
                 withAnimation { flowStep = .employeeCodeEntry }
             }
         }

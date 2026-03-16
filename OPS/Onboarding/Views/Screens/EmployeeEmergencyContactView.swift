@@ -132,7 +132,7 @@ struct EmployeeEmergencyContactView: View {
                             .padding(.bottom, 12)
                     }
 
-                    // Continue button
+                    // Finish button (last step of onboarding)
                     Button(action: saveAndContinue) {
                         ZStack {
                             if isLoading {
@@ -140,10 +140,10 @@ struct EmployeeEmergencyContactView: View {
                                     .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
                             } else {
                                 HStack {
-                                    Text("CONTINUE")
+                                    Text("FINISH")
                                         .font(OPSStyle.Typography.bodyBold)
                                     Spacer()
-                                    Image(systemName: "arrow.right")
+                                    Image(systemName: "checkmark")
                                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                                 }
                             }

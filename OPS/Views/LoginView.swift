@@ -17,6 +17,8 @@ struct LoginView: View {
 
     /// Called when user taps back to return to previous screen
     var onBack: (() -> Void)?
+    /// Called when login succeeds but user hasn't completed onboarding (no company)
+    var onNeedsOnboarding: (() -> Void)?
 
     @State private var username = ""
     @State private var password = ""
@@ -226,6 +228,16 @@ struct LoginView: View {
                         showLoginSuccess = false
                         dataController.isAuthenticated = true
                     }
+                } else if loginError == nil && dataController.currentUser != nil {
+                    // Login succeeded but user hasn't completed onboarding (no company).
+                    // Route them to onboarding to finish setup.
+                    showLoginSuccess = true
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        showLoginSuccess = false
+                        onNeedsOnboarding?()
+                    }
                 } else {
                     errorMessage = loginError ?? "Incorrect email or password. Please try again."
                     showError = true
@@ -257,11 +269,14 @@ struct LoginView: View {
 
                 isLoggingIn = false
 
-                if !success {
+                if success {
+                    dataController.isAuthenticated = true
+                } else if dataController.currentUser != nil {
+                    // Login succeeded but onboarding incomplete — route to onboarding
+                    onNeedsOnboarding?()
+                } else {
                     errorMessage = "No account found. Please sign up with your company first."
                     showError = true
-                } else {
-                    dataController.isAuthenticated = true
                 }
             } catch {
                 isLoggingIn = false
@@ -296,11 +311,14 @@ struct LoginView: View {
 
                 isLoggingIn = false
 
-                if !success {
+                if success {
+                    dataController.isAuthenticated = true
+                } else if dataController.currentUser != nil {
+                    // Login succeeded but onboarding incomplete — route to onboarding
+                    onNeedsOnboarding?()
+                } else {
                     errorMessage = "No account found. Please sign up with your company first."
                     showError = true
-                } else {
-                    dataController.isAuthenticated = true
                 }
             } catch {
                 isLoggingIn = false

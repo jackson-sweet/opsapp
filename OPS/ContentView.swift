@@ -61,12 +61,20 @@ struct ContentView: View {
                 .environmentObject(locationManager)
             } else if showExistingLogin {
                 // "I already have an account" from A/B test → direct login form
-                LoginView(onBack: {
-                    // Go back to A/B test splash
-                    showExistingLogin = false
-                    onboardingManagerInstance = OnboardingManager(dataController: dataController)
-                    showABTestOnboarding = true
-                })
+                LoginView(
+                    onBack: {
+                        // Go back to A/B test splash
+                        showExistingLogin = false
+                        onboardingManagerInstance = OnboardingManager(dataController: dataController)
+                        showABTestOnboarding = true
+                    },
+                    onNeedsOnboarding: {
+                        // User logged in but hasn't completed onboarding — route to A/B test
+                        showExistingLogin = false
+                        onboardingManagerInstance = OnboardingManager(dataController: dataController)
+                        showABTestOnboarding = true
+                    }
+                )
                 .environmentObject(appState)
                 .environmentObject(locationManager)
             } else if !dataController.isAuthenticated {

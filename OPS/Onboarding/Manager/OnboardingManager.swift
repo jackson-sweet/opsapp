@@ -367,19 +367,25 @@ class OnboardingManager: ObservableObject {
         case .credentials:
             if state.flow == .employee {
                 // Employee flow: check for pending invites after credentials
+                print("[ONBOARDING_MANAGER] Credentials → employee flow, checking pending invites...")
+                print("[ONBOARDING_MANAGER] Email for invite check: '\(state.userData.email)'")
                 isCheckingInvites = true
                 Task { [weak self] in
                     guard let self = self else { return }
                     await self.checkPendingInvites()
                     await MainActor.run {
                         self.isCheckingInvites = false
+                        print("[ONBOARDING_MANAGER] Invite check complete. Found \(self.pendingInvites.count) invites")
                         if self.pendingInvites.count > 1 {
+                            print("[ONBOARDING_MANAGER] Multiple invites → invitePicker")
                             self.goToScreen(.invitePicker)
                         } else if self.pendingInvites.count == 1 {
+                            print("[ONBOARDING_MANAGER] Single invite → companyConfirmation")
                             self.selectedInvite = self.pendingInvites.first
                             self.confirmationSource = .singleInvite
                             self.goToScreen(.companyConfirmation)
                         } else {
+                            print("[ONBOARDING_MANAGER] No invites → codeEntry")
                             self.goToScreen(.codeEntry)
                         }
                     }

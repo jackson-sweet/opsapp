@@ -12,7 +12,8 @@ struct EmployeeCodeEntryView: View {
     @ObservedObject var onboardingManager: OnboardingManager
 
     let onCompanyFound: (_ companyName: String, _ companyLogoURL: String?) -> Void
-    let onBack: () -> Void
+    var onBack: (() -> Void)? = nil
+    var onSignOut: (() -> Void)? = nil
 
     @State private var companyCode: String = ""
     @State private var errorMessage: String?
@@ -25,17 +26,30 @@ struct EmployeeCodeEntryView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header with back button
+            // Header with sign out button
             HStack {
-                Button {
-                    onBack()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .frame(width: 44, height: 44)
-                }
                 Spacer()
+                if let signOut = onSignOut {
+                    Button {
+                        signOut()
+                    } label: {
+                        Text("SIGN OUT")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                } else if let back = onBack {
+                    // Legacy fallback if onBack is provided
+                    Button {
+                        back()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .frame(width: 44, height: 44)
+                    }
+                    Spacer()
+                }
             }
             .padding(.horizontal, 28)
             .padding(.top, 16)

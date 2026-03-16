@@ -29,6 +29,8 @@ enum ABTestFlowStep {
     case crewCode            // Company creator: CrewCodeShareView
     // Employee flow steps
     case employeeSignup      // Employee: auth screen
+    case employeeInviteCheck // Employee: checking for pending invites (loading)
+    case employeeInvitePicker // Employee: multiple invites found, pick one
     case employeeCodeEntry   // Employee: enter crew code
     case employeeConfirmation // Employee: "Welcome to [Company]"
     case employeeProfile     // Employee: name, phone, avatar, emergency contact
@@ -51,6 +53,7 @@ struct OnboardingABTestCoordinator: View {
     // Employee flow state
     @State private var lookupCompanyName: String = ""
     @State private var lookupCompanyLogoURL: String?
+    @State private var isCheckingInvites: Bool = false
 
     var body: some View {
         ZStack {
@@ -89,6 +92,7 @@ struct OnboardingABTestCoordinator: View {
                             )
                             OnboardingSupabaseAnalytics.shared.trackStepComplete("type_selection", metadata: ["choice": "company_creator"])
                             onboardingManager.state.flow = .companyCreator
+                            onboardingManager.state.save()
                             handleCompanyCreatorSelected()
                         },
                         onSelectEmployee: {
@@ -97,6 +101,8 @@ struct OnboardingABTestCoordinator: View {
                                 flowType: "employee"
                             )
                             OnboardingSupabaseAnalytics.shared.trackStepComplete("type_selection", metadata: ["choice": "employee"])
+                            onboardingManager.state.flow = .employee
+                            onboardingManager.state.save()
                             withAnimation { flowStep = .employeeSignup }
                         }
                     )
@@ -117,8 +123,14 @@ struct OnboardingABTestCoordinator: View {
                     onboardingManager: onboardingManager,
                     variant: variantManager.variant,
                     onAuthenticated: {
-                        OnboardingSupabaseAnalytics.shared.trackStepComplete("signup", metadata: ["flow": "company_creator"])
-                        withAnimation { flowStep = .companyName }
+                        let currentFlow = onboardingManager.state.flow ?? .companyCreator
+                        OnboardingSupabaseAnalytics.shared.trackStepComplete("signup", metadata: ["flow": currentFlow == .companyCreator ? "company_creator" : "employee"])
+                        if currentFlow == .employee {
+                            // User switched flow via toggle
+                            withAnimation { flowStep = .employeeCodeEntry }
+                        } else {
+                            withAnimation { flowStep = .companyName }
+                        }
                     },
                     onExistingUserComplete: {
                         withAnimation { flowStep = .complete }
@@ -159,9 +171,15 @@ struct OnboardingABTestCoordinator: View {
                     onboardingManager: onboardingManager,
                     variant: variantManager.variant,
                     onAuthenticated: {
-                        onboardingManager.state.flow = .employee
-                        OnboardingSupabaseAnalytics.shared.trackStepComplete("signup", metadata: ["flow": "employee"])
-                        withAnimation { flowStep = .employeeCodeEntry }
+                        let currentFlow = onboardingManager.state.flow ?? .employee
+                        OnboardingSupabaseAnalytics.shared.trackStepComplete("signup", metadata: ["flow": currentFlow == .employee ? "employee" : "company_creator"])
+                        if currentFlow == .companyCreator {
+                            // User switched flow via toggle
+                            withAnimation { flowStep = .companyName }
+                        } else {
+                            // Employee flow: check for pending invites before code entry
+                            withAnimation { flowStep = .employeeInviteCheck }
+                        }
                     },
                     onExistingUserComplete: {
                         withAnimation { flowStep = .complete }
@@ -170,6 +188,54 @@ struct OnboardingABTestCoordinator: View {
                 )
                 .transition(.opacity)
 
+            case .employeeInviteCheck:
+                // Loading screen while checking for pending invites
+                ZStack {
+                    OPSStyle.Colors.background.ignoresSafeArea()
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
+                        Text("CHECKING FOR INVITES...")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .tracking(1.5)
+                    }
+                }
+                .onAppear {
+                    Task { @MainActor in
+                        await onboardingManager.checkPendingInvites()
+                        let count = onboardingManager.pendingInvites.count
+                        print("[ONBOARDING_AB] Invite check complete. Found \(count) invites")
+                        withAnimation {
+                            if count > 1 {
+                                flowStep = .employeeInvitePicker
+                            } else if count == 1 {
+                                onboardingManager.selectedInvite = onboardingManager.pendingInvites.first
+                                onboardingManager.confirmationSource = .singleInvite
+                                flowStep = .employeeConfirmation
+                            } else {
+                                flowStep = .employeeCodeEntry
+                            }
+                        }
+                    }
+                }
+                .transition(.opacity)
+
+            case .employeeInvitePicker:
+                InvitePickerScreen(manager: onboardingManager)
+                    .onReceive(onboardingManager.$confirmationSource) { source in
+                        if source == .pickerSelection && onboardingManager.selectedInvite != nil {
+                            withAnimation { flowStep = .employeeConfirmation }
+                        }
+                    }
+                    .onReceive(onboardingManager.$state) { newState in
+                        // InvitePickerScreen "Enter a different code" calls goToScreen(.codeEntry)
+                        if newState.currentScreen == .codeEntry {
+                            withAnimation { flowStep = .employeeCodeEntry }
+                        }
+                    }
+                    .transition(.opacity)
+
             case .employeeCodeEntry:
                 EmployeeCodeEntryView(
                     onboardingManager: onboardingManager,
@@ -177,27 +243,51 @@ struct OnboardingABTestCoordinator: View {
                         self.lookupCompanyName = companyName
                         self.lookupCompanyLogoURL = companyLogoURL
                         OnboardingSupabaseAnalytics.shared.trackStepComplete("code_entry")
-                        withAnimation { flowStep = .employeeConfirmation }
+                        // Fetch branded details for the confirmation screen
+                        Task { @MainActor in
+                            do {
+                                let _ = try await onboardingManager.fetchCompanyJoinDetails(code: onboardingManager.state.companyData.companyCode ?? "")
+                                onboardingManager.confirmationSource = .manualCodeEntry
+                            } catch {
+                                // Fall through to legacy confirmation with just name/logo
+                            }
+                            withAnimation { flowStep = .employeeConfirmation }
+                        }
                     },
-                    onBack: {
-                        withAnimation { flowStep = .employeeSignup }
+                    onSignOut: {
+                        onboardingManager.signOut()
                     }
                 )
                 .transition(.opacity)
 
             case .employeeConfirmation:
-                EmployeeCompanyConfirmationView(
-                    companyName: lookupCompanyName,
-                    companyLogoURL: lookupCompanyLogoURL,
-                    onConfirm: {
-                        OnboardingSupabaseAnalytics.shared.trackStepComplete("confirmation")
-                        withAnimation { flowStep = .employeeProfile }
-                    },
-                    onCancel: {
-                        withAnimation { flowStep = .employeeCodeEntry }
-                    }
-                )
-                .transition(.opacity)
+                if onboardingManager.selectedInvite != nil || onboardingManager.companyJoinDetails != nil {
+                    // Branded confirmation: from invite or manual code entry with details
+                    CompanyConfirmationScreen(manager: onboardingManager)
+                        .onReceive(onboardingManager.$state) { newState in
+                            // After joinCompanyFromOnboarding succeeds, it sets companyData.companyId
+                            // CompanyConfirmationScreen calls manager.goForward() which sets currentScreen to .profile
+                            if newState.currentScreen == .profile {
+                                OnboardingSupabaseAnalytics.shared.trackStepComplete("confirmation")
+                                withAnimation { flowStep = .employeeProfile }
+                            }
+                        }
+                        .transition(.opacity)
+                } else {
+                    // Legacy fallback: simple confirmation from code entry
+                    EmployeeCompanyConfirmationView(
+                        companyName: lookupCompanyName,
+                        companyLogoURL: lookupCompanyLogoURL,
+                        onConfirm: {
+                            OnboardingSupabaseAnalytics.shared.trackStepComplete("confirmation")
+                            withAnimation { flowStep = .employeeProfile }
+                        },
+                        onCancel: {
+                            withAnimation { flowStep = .employeeCodeEntry }
+                        }
+                    )
+                    .transition(.opacity)
+                }
 
             case .employeeProfile:
                 EmployeeProfileView(
@@ -242,6 +332,15 @@ struct OnboardingABTestCoordinator: View {
     // MARK: - Employee Join + Complete
 
     private func joinCrewAndComplete() {
+        // Check if we joined via invite-aware flow (companyId already set by joinCompanyFromOnboarding)
+        if onboardingManager.state.hasExistingCompany && onboardingManager.state.companyData.companyId != nil {
+            // Already joined via CompanyConfirmationScreen → joinCompanyFromOnboarding
+            OnboardingSupabaseAnalytics.shared.trackStepComplete("onboarding_complete")
+            withAnimation { flowStep = .complete }
+            return
+        }
+
+        // Legacy path: join via company code
         guard let code = onboardingManager.state.companyData.companyCode else {
             print("[ONBOARDING] No crew code stored, cannot join")
             return

@@ -47,15 +47,48 @@ class CompanyRepository {
     /// Check for pending team invitations matching an email address.
     /// Uses SECURITY DEFINER RPC (bypasses RLS for onboarding users without a company).
     func checkPendingInvites(email: String) async throws -> [PendingInviteDTO] {
+        print("[COMPANY_REPO] Checking pending invites for email: \(email)")
+
         let result: Data = try await client
             .rpc("check_pending_invites", params: ["p_email": email])
             .execute()
             .data
 
+        // Debug: log raw response
+        let rawString = String(data: result, encoding: .utf8) ?? "nil"
+        print("[COMPANY_REPO] Raw invite response (\(result.count) bytes): \(rawString.prefix(500))")
+
         let decoder = JSONDecoder()
+
+        // Strategy 1: Direct array decode [PendingInviteDTO]
         if let array = try? decoder.decode([PendingInviteDTO].self, from: result) {
+            print("[COMPANY_REPO] Decoded \(array.count) invites (direct array)")
             return array
         }
+
+        // Strategy 2: PostgREST wraps JSONB scalars as [{"function_name": value}]
+        // Try unwrapping [{"check_pending_invites": [...]}]
+        if let wrapped = try? JSONSerialization.jsonObject(with: result) as? [[String: Any]],
+           let firstRow = wrapped.first,
+           let innerValue = firstRow["check_pending_invites"] ?? firstRow.values.first,
+           let innerData = try? JSONSerialization.data(withJSONObject: innerValue) {
+            if let array = try? decoder.decode([PendingInviteDTO].self, from: innerData) {
+                print("[COMPANY_REPO] Decoded \(array.count) invites (unwrapped from PostgREST wrapper)")
+                return array
+            }
+        }
+
+        // Strategy 3: Single wrapped value [[{...}]]
+        if let outerArray = try? JSONSerialization.jsonObject(with: result) as? [Any],
+           let innerArray = outerArray.first,
+           let innerData = try? JSONSerialization.data(withJSONObject: innerArray) {
+            if let array = try? decoder.decode([PendingInviteDTO].self, from: innerData) {
+                print("[COMPANY_REPO] Decoded \(array.count) invites (double-wrapped)")
+                return array
+            }
+        }
+
+        print("[COMPANY_REPO] Failed to decode invites from response")
         return []
     }
 

@@ -661,7 +661,7 @@ struct OrganizationDetailsView: View {
 
             // Update in Supabase if connected and there are field changes
             if dataController.isConnected && !fieldsToUpdate.isEmpty {
-                try await dataController.syncManager.updateCompanyFields(
+                try await dataController.updateCompanyFields(
                     companyId: company.id,
                     fields: fieldsToUpdate
                 )

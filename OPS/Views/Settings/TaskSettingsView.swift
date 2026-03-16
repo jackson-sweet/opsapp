@@ -194,16 +194,12 @@ struct TaskSettingsView: View {
         print("🔄 Syncing task types for company: \(companyId)")
 
         Task {
-            do {
-                try await dataController.syncManager.syncCompanyTaskTypes(companyId: companyId)
-                print("✅ Task types synced from server")
+            await dataController.triggerTaskTypesSync(companyId: companyId)
+            print("✅ Task types synced")
 
-                // Refresh the list on main thread
-                await MainActor.run {
-                    fetchTaskTypes()
-                }
-            } catch {
-                print("❌ Failed to sync task types: \(error)")
+            // Refresh the list on main thread
+            await MainActor.run {
+                fetchTaskTypes()
             }
         }
     }

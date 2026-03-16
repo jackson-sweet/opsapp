@@ -241,69 +241,50 @@ class DataHealthManager: ObservableObject {
     }
 
     private func fetchUserFromAPI(userId: String) async -> User? {
-        print("[DATA_HEALTH] 🔄 Fetching user from Supabase: \(userId)")
+        print("[DATA_HEALTH] 🔄 Fetching user via SyncEngine: \(userId)")
 
-        do {
-            // Use SupabaseSyncManager to fetch user by ID
-            guard let user = try await dataController.syncManager?.fetchUser(id: userId) else {
-                print("[DATA_HEALTH] ⚠️ User not found in Supabase: \(userId)")
-                return nil
-            }
+        // Trigger a users sync to refresh data
+        await dataController.triggerUsersSync()
 
-            print("[DATA_HEALTH] ✅ Found user in Supabase: \(user.firstName) \(user.lastName)")
+        // Then fetch from local SwiftData
+        guard let context = dataController.modelContext else { return nil }
+        let descriptor = FetchDescriptor<User>(predicate: #Predicate { $0.id == userId })
+        if let user = try? context.fetch(descriptor).first {
+            print("[DATA_HEALTH] ✅ Found user after sync: \(user.firstName) \(user.lastName)")
             return user
-
-        } catch {
-            print("[DATA_HEALTH] ❌ Error fetching user from Supabase: \(error.localizedDescription)")
-            return nil
         }
+
+        print("[DATA_HEALTH] ⚠️ User not found after sync: \(userId)")
+        return nil
     }
 
     private func fetchAndStoreUserData() async {
-        guard let syncManager = dataController.syncManager else {
-            print("[DATA_HEALTH] ❌ Cannot fetch user - syncManager is nil")
-            return
-        }
-
         guard let userId = UserDefaults.standard.string(forKey: "user_id"), !userId.isEmpty else {
             print("[DATA_HEALTH] ❌ Cannot fetch user - no user ID")
             return
         }
 
-        do {
-            print("[DATA_HEALTH] 🔄 Fetching user data from API...")
-            try await syncManager.syncUsers()
-            print("[DATA_HEALTH] ✅ User data fetched and stored")
+        print("[DATA_HEALTH] 🔄 Fetching user data via SyncEngine...")
+        await dataController.triggerUsersSync()
+        print("[DATA_HEALTH] ✅ User data synced")
 
-            // After syncing, try to set currentUser
-            if let modelContext = dataController.modelContext {
-                let descriptor = FetchDescriptor<User>(
-                    predicate: #Predicate<User> { $0.id == userId }
-                )
-                let users = try modelContext.fetch(descriptor)
-                if let user = users.first {
-                    dataController.currentUser = user
-                    print("[DATA_HEALTH] ✅ Set currentUser: \(user.fullName)")
-                }
+        // After syncing, try to set currentUser
+        if let modelContext = dataController.modelContext {
+            let descriptor = FetchDescriptor<User>(
+                predicate: #Predicate<User> { $0.id == userId }
+            )
+            if let users = try? modelContext.fetch(descriptor),
+               let user = users.first {
+                dataController.currentUser = user
+                print("[DATA_HEALTH] ✅ Set currentUser: \(user.fullName)")
             }
-        } catch {
-            print("[DATA_HEALTH] ❌ Failed to fetch user data: \(error)")
         }
     }
 
     private func fetchAndStoreCompanyData() async {
-        guard let syncManager = dataController.syncManager else {
-            print("[DATA_HEALTH] ❌ Cannot fetch company - syncManager is nil")
-            return
-        }
-
-        do {
-            print("[DATA_HEALTH] 🔄 Fetching company data from API...")
-            try await syncManager.syncCompany()
-            print("[DATA_HEALTH] ✅ Company data fetched and stored")
-        } catch {
-            print("[DATA_HEALTH] ❌ Failed to fetch company data: \(error)")
-        }
+        print("[DATA_HEALTH] 🔄 Fetching company data via SyncEngine...")
+        await dataController.triggerCompanySync()
+        print("[DATA_HEALTH] ✅ Company data synced")
     }
 
     private func reinitializeSyncManager() async {

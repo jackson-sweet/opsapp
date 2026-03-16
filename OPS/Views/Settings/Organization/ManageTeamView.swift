@@ -617,10 +617,8 @@ struct ManageTeamView: View {
     private func refreshTeamData() async {
         guard let companyId = company?.id else { return }
 
-        // Sync users from Supabase
-        if let syncManager = dataController.syncManager {
-            try? await syncManager.syncCompanyTeamMembers(companyId: companyId)
-        }
+        // Sync users via DataController
+        await dataController.triggerTeamMembersSync(companyId: companyId)
 
         // Reload local data
         await MainActor.run {
@@ -708,7 +706,7 @@ struct ManageTeamView: View {
             try await PermissionAdminService.assignUserRole(userId: member.id, roleId: roleId)
 
             // Also update the legacy role field
-            try await dataController.syncManager.updateUserFields(
+            try await dataController.updateUserFields(
                 userId: member.id,
                 fields: ["role": .string(newRole.rawValue)]
             )
@@ -731,7 +729,7 @@ struct ManageTeamView: View {
         errorMessage = nil
 
         do {
-            try await dataController.syncManager.deleteUser(userId: member.id)
+            try await dataController.deleteUser(userId: member.id)
 
             await MainActor.run {
                 teamMembers.removeAll { $0.id == member.id }

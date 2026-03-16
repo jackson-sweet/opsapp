@@ -1270,46 +1270,32 @@ class DataController: ObservableObject {
     /// Fetch company data from API - optimized for reliability
     @MainActor
     private func fetchCompanyData(companyId: String) async throws {
-        guard let context = modelContext else { 
-            return 
+        guard let context = modelContext else {
+            return
         }
-        
-        do {
-            let descriptor = FetchDescriptor<Company>(
-                predicate: #Predicate<Company> { $0.id == companyId }
-            )
-            
-            let companies = try context.fetch(descriptor)
-            
-            if companies.isEmpty || (companies.first?.needsSync == true) {
-                // syncManager handles fetch, convert, and upsert
-                let company = try await syncManager.fetchCompany(id: companyId)
 
-                await MainActor.run {
-                    if let company = company {
-                        try? context.save()
+        let descriptor = FetchDescriptor<Company>(
+            predicate: #Predicate<Company> { $0.id == companyId }
+        )
 
-                        // If team members haven't been synced, or it's been more than a day, sync team members
-                        if !company.teamMembersSynced ||
-                           company.lastSyncedAt == nil ||
-                           Date().timeIntervalSince(company.lastSyncedAt!) > 86400 {
+        let companies = try context.fetch(descriptor)
 
-                            // Launch a task to fetch team members
-                            Task {
-                                await self.syncManager?.syncCompanyTeamMembers(company)
-                            }
-                        } else {
-                        }
-                    }
+        if companies.isEmpty || (companies.first?.needsSync == true) {
+            // Trigger a full sync via SyncEngine (fetches company, users, etc.)
+            await triggerCompanySync()
+
+            // Re-fetch the company after sync
+            let updatedCompanies = try context.fetch(descriptor)
+            if let company = updatedCompanies.first {
+                // If team members haven't been synced, or it's been more than a day, sync team members
+                if !company.teamMembersSynced ||
+                   company.lastSyncedAt == nil ||
+                   Date().timeIntervalSince(company.lastSyncedAt!) > 86400 {
+                    await triggerTeamMembersSync(companyId: companyId)
                 }
-            } else {
             }
-        } catch {
-            throw error
         }
     }
-    
-    // Note: updateCompany(from: CompanyDTO) removed - syncManager.fetchCompany handles upsert directly
     
     /// Ensures project team members are properly synchronized between IDs and User objects
     @MainActor
@@ -2262,9 +2248,9 @@ class DataController: ObservableObject {
                 print("[DELETE_ACCOUNT] Firebase deletion failed (proceeding with soft delete): \(error.localizedDescription)")
             }
 
-            // 2. Soft-delete the user row in Supabase
-            try await syncManager.deleteUser(userId: userId)
-            print("[DELETE_ACCOUNT] User soft-deleted in Supabase")
+            // 2. Soft-delete the user row via SyncEngine
+            try await deleteUser(userId: userId)
+            print("[DELETE_ACCOUNT] User soft-deleted via SyncEngine")
 
             // 3. Clean up local data and log out
             logout()
@@ -3509,6 +3495,86 @@ class DataController: ObservableObject {
         )
     }
 
+    /// Create task from DTO - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.createTask(dto:) calls. Returns the new task ID.
+    @MainActor
+    func createTask(dto: SupabaseProjectTaskDTO) async throws -> String {
+        guard let context = modelContext else {
+            throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
+        }
+
+        // Convert DTO to model and insert locally
+        let task = dto.toModel()
+        task.needsSync = true
+        context.insert(task)
+
+        // Link to project
+        let projectDescriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == dto.projectId })
+        if let project = try? context.fetch(projectDescriptor).first {
+            task.project = project
+        }
+
+        try context.save()
+        print("[DataController] Task created locally from DTO: \(dto.id)")
+
+        // Build the full payload for SyncEngine create
+        var changedFields: [String: Any] = [
+            "id": dto.id,
+            "company_id": dto.companyId,
+            "project_id": dto.projectId,
+            "status": dto.status
+        ]
+        if let v = dto.taskTypeId { changedFields["task_type_id"] = v }
+        if let v = dto.customTitle { changedFields["custom_title"] = v }
+        if let v = dto.taskNotes { changedFields["task_notes"] = v }
+        if let v = dto.taskColor { changedFields["task_color"] = v }
+        if let v = dto.displayOrder { changedFields["display_order"] = v }
+        if let v = dto.teamMemberIds { changedFields["team_member_ids"] = v }
+        if let v = dto.startDate { changedFields["start_date"] = v }
+        if let v = dto.endDate { changedFields["end_date"] = v }
+        if let v = dto.duration { changedFields["duration"] = v }
+        if let v = dto.startTime { changedFields["start_time"] = v }
+        if let v = dto.endTime { changedFields["end_time"] = v }
+        if let v = dto.sourceLineItemId { changedFields["source_line_item_id"] = v }
+        if let v = dto.sourceEstimateId { changedFields["source_estimate_id"] = v }
+
+        syncEngine.recordOperation(
+            entityType: .projectTask,
+            entityId: dto.id,
+            operationType: "create",
+            changedFields: changedFields
+        )
+
+        return dto.id
+    }
+
+    /// Delete task by ID - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.deleteTask(taskId:) calls.
+    @MainActor
+    func deleteTask(taskId: String) async throws {
+        guard let context = modelContext else { return }
+
+        // Soft delete locally
+        let descriptor = FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == taskId })
+        if let task = try? context.fetch(descriptor).first {
+            task.deletedAt = Date()
+            task.needsSync = true
+            try? context.save()
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+
+        syncEngine.recordOperation(
+            entityType: .projectTask,
+            entityId: taskId,
+            operationType: "delete",
+            changedFields: ["deleted_at": formatter.string(from: Date())]
+        )
+
+        print("[DataController] Task deleted: \(taskId)")
+    }
+
     /// Update task - SINGLE SOURCE OF TRUTH
     @MainActor
     func updateTask(task: ProjectTask) async throws {
@@ -3768,8 +3834,8 @@ class DataController: ObservableObject {
 
         do {
             print("[UNASSIGNED_ROLES] Syncing company users for company: \(companyId)")
-            // Sync users from Supabase first
-            try await syncManager.syncUsers()
+            // Sync users via SyncEngine
+            await triggerUsersSync()
 
             // Read from local SwiftData
             guard let context = modelContext else { return [] }
@@ -4471,6 +4537,18 @@ class DataController: ObservableObject {
     @MainActor
     func triggerManualFullSync() async {
         await syncEngine.fullSync()
+    }
+
+    /// Trigger project tasks sync - replaces syncManager.syncProjectTasks(projectId:)
+    @MainActor
+    func triggerProjectTasksSync(projectId: String) async {
+        await syncEngine.triggerSync()
+    }
+
+    /// Refresh a single client's data - replaces syncManager.refreshSingleClient(clientId:)
+    @MainActor
+    func refreshSingleClient(clientId: String) async throws {
+        await syncEngine.triggerSync()
     }
 
     // MARK: - AnyJSON Conversion Helper

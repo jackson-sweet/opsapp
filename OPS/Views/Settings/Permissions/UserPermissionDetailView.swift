@@ -479,7 +479,7 @@ struct UserPermissionDetailView: View {
                 try await PermissionAdminService.assignUserRole(userId: member.id, roleId: roleId)
 
                 // 2. Update role field in users table
-                try await dataController.syncManager.updateUserFields(
+                try await dataController.updateUserFields(
                     userId: member.id,
                     fields: ["role": .string(selectedRole.rawValue)]
                 )

@@ -310,10 +310,9 @@ class ProjectDetailsViewModel: ObservableObject {
                     print("[PROJECT_COMPLETE] Failed to complete task \(task.id): \(error)")
                 }
             }
-            try? await dataController?.syncManager?.updateProjectStatus(
-                projectId: project.id,
-                status: .completed,
-                forceSync: true
+            try? await dataController?.updateProjectStatus(
+                project: project,
+                to: .completed
             )
         }
     }
@@ -324,10 +323,9 @@ class ProjectDetailsViewModel: ObservableObject {
 
         Task {
             try? await Task.sleep(nanoseconds: 100_000_000)
-            try? await dataController?.syncManager?.updateProjectStatus(
-                projectId: project.id,
-                status: .closed,
-                forceSync: true
+            try? await dataController?.updateProjectStatus(
+                project: project,
+                to: .closed
             )
         }
     }
@@ -363,7 +361,7 @@ class ProjectDetailsViewModel: ObservableObject {
                 project.needsSync = true
                 try dataController?.modelContext?.save()
 
-                try await dataController?.syncManager.updateProjectFields(
+                try await dataController?.updateProjectFields(
                     projectId: project.id,
                     fields: ["title": .string(editedTitle)]
                 )
@@ -513,9 +511,10 @@ class ProjectDetailsViewModel: ObservableObject {
             try? dataController?.modelContext?.save()
 
             Task {
-                try? await dataController?.syncManager?.updateTaskTeamMembers(
+                let memberIdsString = Array(selectedTaskTeamMemberIds).joined(separator: ",")
+                try? await dataController?.updateTaskFields(
                     taskId: task.id,
-                    memberIds: Array(selectedTaskTeamMemberIds)
+                    fields: ["team_member_ids": .string(memberIdsString)]
                 )
             }
         }
@@ -528,7 +527,7 @@ class ProjectDetailsViewModel: ObservableObject {
         isRefreshingClient = true
 
         Task {
-            try? await dataController?.syncManager?.refreshSingleClient(clientId: clientId)
+            try? await dataController?.refreshSingleClient(clientId: clientId)
             isRefreshingClient = false
         }
     }

@@ -248,7 +248,7 @@ class SubscriptionManager: ObservableObject {
             // Update Supabase in background (don't block UI)
             Task {
                 do {
-                    try await dataController.syncManager.updateCompanyFields(
+                    try await dataController.updateCompanyFields(
                         companyId: company.id,
                         fields: ["subscription_status": "expired"]
                     )
@@ -404,7 +404,7 @@ class SubscriptionManager: ObservableObject {
         // Call Supabase to update seated employees
         do {
             print("[SUBSCRIPTION] Calling Supabase to update seated employees")
-            try await dataController.syncManager.updateCompanySeatedEmployees(
+            try await dataController.updateCompanySeatedEmployees(
                 companyId: company.id,
                 userIds: currentSeatedIds
             )
@@ -457,7 +457,7 @@ class SubscriptionManager: ObservableObject {
         // Call Supabase to update seated employees
         do {
             print("[SUBSCRIPTION] Calling Supabase to update seated employees")
-            try await dataController.syncManager.updateCompanySeatedEmployees(
+            try await dataController.updateCompanySeatedEmployees(
                 companyId: company.id,
                 userIds: currentSeatedIds
             )

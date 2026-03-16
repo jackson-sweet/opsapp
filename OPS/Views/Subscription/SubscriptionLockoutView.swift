@@ -782,9 +782,7 @@ struct SubscriptionLockoutView: View {
                 }
                 
                 // Trigger sync
-                if let syncManager = dataController.syncManager {
-                    syncManager.triggerBackgroundSync()
-                }
+                dataController.triggerBackgroundSync()
                 
                 // Wait a moment for sync
                 try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
@@ -910,16 +908,13 @@ struct SubscriptionLockoutView: View {
         // Run sync with timeout
         let syncTask = Task {
             do {
-                if let syncManager = dataController.syncManager {
-                    try await syncManager.syncCompany()
-                    print("[LOCKOUT] ✅ Company data synced successfully")
+                await dataController.triggerCompanySync()
+                print("[LOCKOUT] ✅ Company data synced successfully")
 
-                    await subscriptionManager.checkSubscriptionStatus()
-                    print("[LOCKOUT] ✅ Subscription status re-checked")
+                await subscriptionManager.checkSubscriptionStatus()
+                print("[LOCKOUT] ✅ Subscription status re-checked")
 
-                    return true
-                }
-                return false
+                return true
             } catch {
                 print("[LOCKOUT] ❌ Failed to refresh subscription: \(error)")
                 return false

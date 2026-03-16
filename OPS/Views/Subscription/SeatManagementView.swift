@@ -423,7 +423,7 @@ struct SeatManagementView: View {
         Task {
             do {
                 // Call Supabase to update seated employees
-                try await dataController.syncManager.updateCompanySeatedEmployees(
+                try await dataController.updateCompanySeatedEmployees(
                     companyId: company.id,
                     userIds: seatedIdsArray
                 )

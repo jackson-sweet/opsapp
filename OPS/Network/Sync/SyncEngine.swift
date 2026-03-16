@@ -284,9 +284,43 @@ final class SyncEngine {
         }
     }
 
+    // MARK: - Migration Cleanup
+
+    /// One-time cleanup on first launch after sync overhaul.
+    /// Purges stale SyncOperations that accumulated under the deleted SyncQueue
+    /// (operations that were stuck with "Not yet connected to repositories" error
+    /// or that exceeded max retries under the old system).
+    private func migrateCleanup(context: ModelContext) {
+        let failedPredicate = #Predicate<SyncOperation> { op in
+            op.status == "failed"
+        }
+        let descriptor = FetchDescriptor<SyncOperation>(predicate: failedPredicate)
+        guard let allFailed = try? context.fetch(descriptor) else { return }
+
+        let stale = allFailed.filter { op in
+            (op.lastError?.contains("Not yet connected to repositories") == true) ||
+            (op.retryCount >= 20)
+        }
+
+        for op in stale {
+            context.delete(op)
+        }
+        try? context.save()
+        if !stale.isEmpty {
+            print("[SYNC_ENGINE] Migration cleanup: purged \(stale.count) stale SyncOperations")
+        }
+    }
+
     /// Performs a full sync of all entities in dependency order.
     /// Used for initial sync or manual full-refresh.
     func fullSync() async {
+        // One-time migration cleanup (gated by UserDefaults flag)
+        let migrationKey = "sync.migrationCleanupV1"
+        if !UserDefaults.standard.bool(forKey: migrationKey), let ctx = modelContext {
+            migrateCleanup(context: ctx)
+            UserDefaults.standard.set(true, forKey: migrationKey)
+        }
+
         // If another sync is in progress, wait briefly for it to finish
         // rather than silently skipping this full sync request
         if syncInProgress {

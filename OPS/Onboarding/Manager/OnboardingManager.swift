@@ -114,9 +114,9 @@ class OnboardingManager: ObservableObject {
             print("[ONBOARDING_MANAGER] Set currentUserId in UserDefaults")
         }
 
-        // Initialize sync manager if needed (legacy, will be removed)
-        if dataController.syncManager == nil {
-            print("[ONBOARDING_MANAGER] Initializing SyncManager for resumed session...")
+        // Initialize sync system if needed
+        if dataController.imageSyncManager == nil {
+            print("[ONBOARDING_MANAGER] Initializing sync system for resumed session...")
             dataController.initializeSyncManager()
         }
 
@@ -1016,8 +1016,7 @@ class OnboardingManager: ObservableObject {
             UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
             UserDefaults.standard.set(companyDTO.name, forKey: "Company Name")
 
-            // Reconfigure sync repos now that company_id is set in UserDefaults
-            dataController.syncManager?.reconfigureRepositories()
+            // Reconfigure sync engine now that company_id is set in UserDefaults
             dataController.syncEngine.reconfigureForCompany()
 
             // NOW update profile data — userRepo is available after repo reconfiguration
@@ -1250,8 +1249,7 @@ class OnboardingManager: ObservableObject {
             UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
             UserDefaults.standard.set(companyDTO.name, forKey: "Company Name")
 
-            // Reconfigure sync repos now that company_id is set in UserDefaults
-            dataController.syncManager?.reconfigureRepositories()
+            // Reconfigure sync engine now that company_id is set in UserDefaults
             dataController.syncEngine.reconfigureForCompany()
 
             // DO NOT call updateUserProfile() — Profile screen hasn't been filled yet
@@ -1487,14 +1485,14 @@ class OnboardingManager: ObservableObject {
             }
         }
 
-        // Initialize sync manager if not already done
+        // Initialize sync system if not already done
         await MainActor.run {
-            if dataController.syncManager == nil {
-                print("[ONBOARDING_MANAGER] Initializing SyncManager...")
+            if dataController.imageSyncManager == nil {
+                print("[ONBOARDING_MANAGER] Initializing sync system...")
                 dataController.initializeSyncManager()
             }
             print("[ONBOARDING_MANAGER] ✅ DataController.currentUser: \(dataController.currentUser?.id ?? "nil")")
-            print("[ONBOARDING_MANAGER] ✅ DataController.syncManager: \(dataController.syncManager != nil ? "initialized" : "nil")")
+            print("[ONBOARDING_MANAGER] ✅ DataController.syncEngine: \(dataController.syncEngine != nil ? "initialized" : "nil")")
         }
     }
 

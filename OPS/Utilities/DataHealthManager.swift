@@ -15,7 +15,7 @@ enum DataHealthState: Equatable {
     case missingUserData
     case missingCompanyId
     case missingCompanyData
-    case syncManagerNotInitialized
+    case syncEngineNotInitialized
     case modelContextNotAvailable
 
     var isHealthy: Bool {
@@ -29,7 +29,7 @@ enum DataRecoveryAction {
     case returnToOnboarding(step: OnboardingStep)
     case fetchUserFromAPI
     case fetchCompanyFromAPI
-    case reinitializeSyncManager
+    case reinitializeSyncEngine
     case none
 }
 
@@ -159,14 +159,14 @@ class DataHealthManager: ObservableObject {
 
         print("[DATA_HEALTH] ✅ Company data exists")
 
-        // 5. Check SyncManager initialization
-        guard dataController.syncManager != nil else {
-            print("[DATA_HEALTH] ⚠️ SyncManager is nil")
-            currentHealthState = .syncManagerNotInitialized
-            return (.syncManagerNotInitialized, .reinitializeSyncManager)
+        // 5. Check SyncEngine initialization
+        guard dataController.syncEngine != nil else {
+            print("[DATA_HEALTH] ⚠️ SyncEngine is nil")
+            currentHealthState = .syncEngineNotInitialized
+            return (.syncEngineNotInitialized, .reinitializeSyncEngine)
         }
 
-        print("[DATA_HEALTH] ✅ SyncManager initialized")
+        print("[DATA_HEALTH] ✅ SyncEngine initialized")
 
         // 6. Check ModelContext
         guard dataController.modelContext != nil else {
@@ -203,8 +203,8 @@ class DataHealthManager: ObservableObject {
         case .fetchCompanyFromAPI:
             await fetchAndStoreCompanyData()
 
-        case .reinitializeSyncManager:
-            await reinitializeSyncManager()
+        case .reinitializeSyncEngine:
+            await reinitializeSyncEngine()
 
         case .none:
             print("[DATA_HEALTH] ℹ️ No recovery action needed")
@@ -287,26 +287,26 @@ class DataHealthManager: ObservableObject {
         print("[DATA_HEALTH] ✅ Company data synced")
     }
 
-    private func reinitializeSyncManager() async {
-        print("[DATA_HEALTH] 🔄 Reinitializing SyncManager...")
+    private func reinitializeSyncEngine() async {
+        print("[DATA_HEALTH] 🔄 Reinitializing SyncEngine...")
 
         guard let modelContext = dataController.modelContext else {
-            print("[DATA_HEALTH] ❌ Cannot reinitialize SyncManager - modelContext is nil")
+            print("[DATA_HEALTH] ❌ Cannot reinitialize SyncEngine - modelContext is nil")
             return
         }
 
-        // Call setModelContext again to trigger sync manager initialization
-        print("[DATA_HEALTH] 📞 Calling setModelContext to reinitialize SyncManager")
+        // Call setModelContext again to trigger sync engine initialization
+        print("[DATA_HEALTH] 📞 Calling setModelContext to reinitialize SyncEngine")
         await dataController.setModelContext(modelContext)
 
         // Wait a moment for initialization to complete
         try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
 
         // Verify it worked
-        if dataController.syncManager != nil {
-            print("[DATA_HEALTH] ✅ SyncManager successfully reinitialized")
+        if dataController.syncEngine != nil {
+            print("[DATA_HEALTH] ✅ SyncEngine successfully reinitialized")
         } else {
-            print("[DATA_HEALTH] ❌ SyncManager still nil after reinitialization attempt")
+            print("[DATA_HEALTH] ❌ SyncEngine still nil after reinitialization attempt")
         }
     }
 
@@ -365,8 +365,8 @@ class DataHealthManager: ObservableObject {
             return false
         }
 
-        guard dataController.syncManager != nil else {
-            print("[DATA_HEALTH] ❌ Cannot perform sync: SyncManager is nil")
+        guard dataController.syncEngine != nil else {
+            print("[DATA_HEALTH] ❌ Cannot perform sync: SyncEngine is nil")
             return false
         }
 

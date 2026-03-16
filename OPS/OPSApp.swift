@@ -300,7 +300,7 @@ struct OPSApp: App {
             // If recovery action was to fetch data, continue to full sync
             // For logout/return to onboarding, we should stop here
             switch recoveryAction {
-            case .fetchUserFromAPI, .fetchCompanyFromAPI, .reinitializeSyncManager:
+            case .fetchUserFromAPI, .fetchCompanyFromAPI, .reinitializeSyncEngine:
                 print("[APP_LAUNCH] ✅ Recovery action completed - continuing to full sync")
                 // Fall through to run the sync
             case .logout, .returnToOnboarding:

@@ -54,8 +54,10 @@ class DataController: ObservableObject {
     private var pendingDataWipeWork: DispatchWorkItem?
 
     // MARK: - Public Access
-    var syncManager: SupabaseSyncManager!
     var imageSyncManager: ImageSyncManager!
+
+    // Cache of non-existent user IDs to prevent repeated fetch attempts
+    private var nonExistentUserIds: Set<String> = []
 
     /// New sync engine (offline-first) — initialized in setModelContext,
     /// configured in initializeSyncManager. Safe to call methods before
@@ -184,23 +186,17 @@ class DataController: ObservableObject {
     @MainActor
     func initializeSyncManager() {
         guard let modelContext = modelContext else {
-            print("[DATA_CONTROLLER] ⚠️ Cannot initialize SyncManager - no modelContext")
+            print("[DATA_CONTROLLER] ⚠️ Cannot initialize sync system - no modelContext")
             return
         }
 
-        // Skip if already initialized
-        guard syncManager == nil else {
-            print("[DATA_CONTROLLER] SyncManager already initialized")
+        // Skip if already configured (syncEngine.isSyncing is observable after configure)
+        guard imageSyncManager == nil else {
+            print("[DATA_CONTROLLER] Sync system already initialized")
             return
         }
 
-        print("[DATA_CONTROLLER] Initializing SyncManager...")
-
-        // Initialize the Supabase sync manager
-        self.syncManager = SupabaseSyncManager(
-            modelContext: modelContext,
-            connectivity: connectivity
-        )
+        print("[DATA_CONTROLLER] Initializing sync system...")
 
         // Initialize the image sync manager
         self.imageSyncManager = ImageSyncManager(
@@ -219,17 +215,6 @@ class DataController: ObservableObject {
             }
         }
 
-        // Listen for sync state changes
-        self.syncManager.syncStatePublisher
-            .receive(on: RunLoop.main)
-            .sink { [weak self] isSyncing in
-                self?.isSyncing = isSyncing
-                if !isSyncing {
-                    self?.lastSyncTime = Date()
-                }
-            }
-            .store(in: &cancellables)
-        
         // Listen for force logout notification
         NotificationCenter.default.publisher(for: .forceLogout)
             .receive(on: RunLoop.main)
@@ -373,10 +358,9 @@ class DataController: ObservableObject {
                             await OneSignalService.shared.configure()
                         }
 
-                        // Initialize sync manager and reconfigure with confirmed companyId
+                        // Initialize sync system and reconfigure with confirmed companyId
                         initializeSyncManager()
                         syncEngine.reconfigureForCompany()
-                        syncManager?.reconfigureRepositories()
                         return
                     }
                 } catch {
@@ -442,7 +426,6 @@ class DataController: ObservableObject {
 
                     initializeSyncManager()
                     syncEngine.reconfigureForCompany()
-                    syncManager?.reconfigureRepositories()
                     return
                 }
             }
@@ -739,10 +722,10 @@ class DataController: ObservableObject {
         let descriptor = FetchDescriptor<User>(predicate: #Predicate<User> { $0.id == userId })
         let existingUsers = try context.fetch(descriptor)
         
-        // syncManager handles fetch, convert, and upsert
+        // Fetch user from API via repository and upsert locally
         initializeSyncManager()
-        guard let fetchedUser = try await syncManager?.fetchUser(id: userId) else {
-            // If syncManager couldn't fetch, try local
+        guard let fetchedUser = try await fetchAndUpsertUser(id: userId) else {
+            // If fetch failed, try local
             if let existingUser = existingUsers.first {
                 self.currentUser = existingUser
                 // Fetch permissions (will use cache if offline)
@@ -801,10 +784,9 @@ class DataController: ObservableObject {
 
         // Reconfigure all sync processors with the now-confirmed companyId.
         // This is critical: if initializeSyncManager() ran before companyId was
-        // in UserDefaults (line 751), the InboundProcessor and SupabaseSyncManager
-        // repositories will have been built with companyId="" and would fetch 0 rows.
+        // in UserDefaults, the InboundProcessor repositories will have been built
+        // with companyId="" and would fetch 0 rows.
         syncEngine.reconfigureForCompany()
-        syncManager?.reconfigureRepositories()
 
         // IMPORTANT: Set isPerformingInitialSync BEFORE isAuthenticated
         // This ensures the loading screen is ready when HomeView first appears
@@ -845,7 +827,7 @@ class DataController: ObservableObject {
                     syncStatusMessage = "SYNCING PROJECTS..."
                 }
                 do {
-                    try await syncManager?.syncAll()
+                    await syncEngine.fullSync()
                     print("[LOGIN] ✅ Full sync completed successfully")
                     await MainActor.run {
                         syncStatusMessage = "SYNC COMPLETE ✓"
@@ -871,7 +853,7 @@ class DataController: ObservableObject {
                     syncStatusMessage = "SYNCING PROJECTS..."
                 }
                 do {
-                    try await syncManager?.syncAll()
+                    await syncEngine.fullSync()
                     print("[LOGIN] ✅ Full sync completed after company fetch failure")
                     await MainActor.run {
                         syncStatusMessage = "SYNC COMPLETE ✓"
@@ -1332,8 +1314,7 @@ class DataController: ObservableObject {
                     // User exists - refresh if online
                     if isConnected {
                         do {
-                            // syncManager.fetchUser handles fetch, convert, and upsert
-                            if let refreshedUser = try await syncManager?.fetchUser(id: memberId) {
+                            if let refreshedUser = try await fetchAndUpsertUser(id: memberId) {
                                 // Check if user is still part of the company
                                 if refreshedUser.companyId == nil || refreshedUser.companyId != existingUser.companyId {
                                     // User is no longer part of the company - remove them
@@ -1358,9 +1339,9 @@ class DataController: ObservableObject {
                         existingUser.assignedProjects.append(project)
                     }
                 } else if isConnected {
-                    // User doesn't exist locally but we're online - fetch via syncManager
+                    // User doesn't exist locally but we're online - fetch via repository
                     do {
-                        if let newUser = try await syncManager?.fetchUser(id: memberId) {
+                        if let newUser = try await fetchAndUpsertUser(id: memberId) {
                             // Check if user belongs to a company
                             if newUser.companyId == nil {
                                 continue // Skip this user
@@ -1375,7 +1356,7 @@ class DataController: ObservableObject {
                             }
                         } else {
                             // User not found - add to non-existent cache
-                            syncManager?.addNonExistentUserId(memberId)
+                            addNonExistentUserId(memberId)
                             continue
                         }
                     } catch {
@@ -1766,9 +1747,9 @@ class DataController: ObservableObject {
                          userInfo: [NSLocalizedDescriptionKey: "Project not found locally and offline"])
         }
         
-        // Online and needing refresh: sync projects then read from local
+        // Online and needing refresh: sync via SyncEngine then read from local
         do {
-            try await syncManager?.syncProjects()
+            await syncEngine.triggerSync()
 
             if let localProject = try context.fetch(descriptor).first {
                 await syncProjectTeamMembers(localProject)
@@ -1817,11 +1798,7 @@ class DataController: ObservableObject {
         }
         
         // Trigger a sync to get fresh data, then use local SwiftData
-        do {
-            try await syncManager?.syncProjects()
-        } catch {
-            // Non-fatal - we still have local data
-        }
+        await syncEngine.triggerSync()
 
         // Re-fetch from local after sync
         let refreshedProjects = getProjects(for: today, assignedTo: user ?? currentUser)
@@ -2075,9 +2052,9 @@ class DataController: ObservableObject {
         }
 
         // If no users found, trigger a sync if connected
-        if isConnected && syncManager != nil {
+        if isConnected {
             Task {
-                try? await syncManager?.syncCompanyTeamMembers(companyId: companyId)
+                await syncEngine.triggerSync()
             }
         }
 
@@ -2202,18 +2179,35 @@ class DataController: ObservableObject {
         
         do {
             try context.save()
-            
-            // Sync to API if connected
-            if isConnected {
-                await syncManager?.syncUser(user)
+
+            // Record sync operation for outbound push
+            var fields: [String: Any] = [
+                "first_name": firstName,
+                "last_name": lastName,
+                "email": email,
+                "phone": phone
+            ]
+            if let homeAddress = homeAddress {
+                fields["home_address"] = homeAddress
             }
-            
+            let userId = user.id
+            let capturedFields = fields
+            await MainActor.run {
+                syncEngine.recordOperation(
+                    entityType: .user,
+                    entityId: userId,
+                    operationType: "update",
+                    changedFields: capturedFields,
+                    priority: 0
+                )
+            }
+
             return true
         } catch {
             return false
         }
     }
-    
+
     /// Request a password reset email via Supabase Auth
     /// - Parameter email: The user's email address
     /// - Returns: Tuple with success flag and optional error message
@@ -4477,6 +4471,68 @@ class DataController: ObservableObject {
         )
 
         print("[DataController] ✅ User deleted: \(userId)")
+    }
+
+    // MARK: - Single-User Fetch (replaces syncManager.fetchUser)
+
+    /// Fetch a single user from Supabase by ID, upsert into SwiftData, and return the local model.
+    /// Returns nil if the fetch fails or the repository cannot be constructed.
+    @MainActor
+    func fetchAndUpsertUser(id: String) async throws -> User? {
+        guard let companyId = currentUser?.companyId ?? UserDefaults.standard.string(forKey: "company_id"),
+              !companyId.isEmpty else {
+            print("[DATA_CONTROLLER] Cannot fetch user — no companyId")
+            return nil
+        }
+        guard let context = modelContext else {
+            print("[DATA_CONTROLLER] Cannot fetch user — no modelContext")
+            return nil
+        }
+
+        let repo = UserRepository(companyId: companyId)
+        let dto = try await repo.fetchOne(id)
+        let model = dto.toModel()
+        model.lastSyncedAt = Date()
+        model.needsSync = false
+
+        // Upsert: update existing or insert new
+        let descriptor = FetchDescriptor<User>(predicate: #Predicate { $0.id == id })
+        if let existing = try context.fetch(descriptor).first {
+            existing.firstName = model.firstName
+            existing.lastName = model.lastName
+            if let email = model.email { existing.email = email }
+            existing.phone = model.phone
+            existing.homeAddress = model.homeAddress
+            existing.profileImageURL = model.profileImageURL
+            existing.userColor = model.userColor
+            existing.role = model.role
+            existing.userType = model.userType
+            existing.hasCompletedAppOnboarding = model.hasCompletedAppOnboarding
+            existing.hasCompletedAppTutorial = model.hasCompletedAppTutorial
+            existing.devPermission = model.devPermission
+            existing.latitude = model.latitude
+            existing.longitude = model.longitude
+            existing.locationName = model.locationName
+            existing.isActive = model.isActive
+            existing.deletedAt = model.deletedAt
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            context.insert(model)
+        }
+        try context.save()
+
+        return try context.fetch(descriptor).first
+    }
+
+    /// Add a user ID to the non-existent users cache
+    func addNonExistentUserId(_ userId: String) {
+        nonExistentUserIds.insert(userId)
+    }
+
+    /// Check if a user ID is in the non-existent users cache
+    func isNonExistentUser(_ userId: String) -> Bool {
+        nonExistentUserIds.contains(userId)
     }
 
     // MARK: - Inbound Sync Triggers (SyncEngine Migration)

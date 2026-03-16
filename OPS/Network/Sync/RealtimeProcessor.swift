@@ -2,10 +2,8 @@
 //  RealtimeProcessor.swift
 //  OPS
 //
-//  Activates Supabase Realtime via RealtimeManager with field-level
-//  merge protection and reconnect catch-up. Wraps the existing
-//  RealtimeManager (which has full subscription/DTO/upsert logic)
-//  and adds:
+//  Handles Supabase Realtime subscriptions with field-level merge
+//  protection and reconnect catch-up. Features:
 //   1. Pending-operation-aware field merge (skip fields with pending SyncOperations)
 //   2. Disconnect / reconnect tracking with catch-up notification
 //   3. Clean start / stop lifecycle

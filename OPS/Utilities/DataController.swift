@@ -3803,6 +3803,717 @@ class DataController: ObservableObject {
             return []
         }
     }
+
+    // MARK: - User Field Updates (SyncEngine Migration)
+
+    /// Update user with generic AnyJSON fields - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.updateUserFields() calls throughout the app.
+    /// The AnyJSON fields are converted to [String: Any] for SyncEngine recording.
+    @MainActor
+    func updateUserFields(userId: String, fields: [String: AnyJSON]) async throws {
+        guard let context = modelContext else { return }
+
+        // Apply locally — map known AnyJSON fields to local model properties
+        let descriptor = FetchDescriptor<User>(predicate: #Predicate { $0.id == userId })
+        if let user = try? context.fetch(descriptor).first {
+            applyUserFieldsLocally(user: user, fields: fields)
+            user.needsSync = true
+            try? context.save()
+        }
+
+        // Convert AnyJSON fields to [String: Any] for SyncEngine
+        let changedFields = anyJSONToDict(fields)
+
+        // Record for async sync
+        syncEngine.recordOperation(
+            entityType: .user,
+            entityId: userId,
+            operationType: "update",
+            changedFields: changedFields
+        )
+    }
+
+    /// Apply AnyJSON field values to a local User model
+    private func applyUserFieldsLocally(user: User, fields: [String: AnyJSON]) {
+        for (key, value) in fields {
+            switch key {
+            case "first_name":
+                if case .string(let v) = value { user.firstName = v }
+            case "last_name":
+                if case .string(let v) = value { user.lastName = v }
+            case "phone":
+                if case .string(let v) = value { user.phone = v }
+            case "email":
+                if case .string(let v) = value { user.email = v }
+            case "home_address":
+                if case .string(let v) = value { user.homeAddress = v }
+            case "role":
+                if case .string(let v) = value { user.role = UserRole(rawValue: v) ?? user.role }
+            case "user_color":
+                if case .string(let v) = value { user.userColor = v }
+            case "is_active":
+                if case .bool(let v) = value { user.isActive = v }
+            case "has_completed_tutorial":
+                if case .bool(let v) = value { user.hasCompletedAppTutorial = v }
+            case "profile_image_url":
+                if case .string(let v) = value { user.profileImageURL = v }
+            case "emergency_contact_name":
+                if case .string(let v) = value { user.emergencyContactName = v }
+            case "emergency_contact_phone":
+                if case .string(let v) = value { user.emergencyContactPhone = v }
+            case "emergency_contact_relationship":
+                if case .string(let v) = value { user.emergencyContactRelationship = v }
+            default:
+                // Unknown fields are still sent to the server via SyncEngine
+                break
+            }
+        }
+    }
+
+    // MARK: - Company Field Updates (SyncEngine Migration)
+
+    /// Update company with generic string fields - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.updateCompanyFields() calls.
+    @MainActor
+    func updateCompanyFields(companyId: String, fields: [String: String]) async throws {
+        guard let context = modelContext else { return }
+
+        // Apply locally
+        let descriptor = FetchDescriptor<Company>(predicate: #Predicate { $0.id == companyId })
+        if let company = try? context.fetch(descriptor).first {
+            for (key, value) in fields {
+                switch key {
+                case "name": company.name = value
+                case "phone": company.phone = value
+                case "email": company.email = value
+                case "address": company.address = value
+                case "website": company.website = value
+                case "description": company.companyDescription = value
+                case "default_project_color": company.defaultProjectColor = value
+                default: break
+                }
+            }
+            company.needsSync = true
+            try? context.save()
+        }
+
+        // Convert to [String: Any] for SyncEngine
+        let changedFields: [String: Any] = Dictionary(uniqueKeysWithValues: fields.map { ($0.key, $0.value as Any) })
+
+        syncEngine.recordOperation(
+            entityType: .company,
+            entityId: companyId,
+            operationType: "update",
+            changedFields: changedFields
+        )
+    }
+
+    /// Update company seated employees - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.updateCompanySeatedEmployees() calls.
+    @MainActor
+    func updateCompanySeatedEmployees(companyId: String, userIds: [String]) async throws {
+        guard let context = modelContext else { return }
+
+        // Apply locally
+        let descriptor = FetchDescriptor<Company>(predicate: #Predicate { $0.id == companyId })
+        if let company = try? context.fetch(descriptor).first {
+            company.seatedEmployeeIds = userIds.joined(separator: ",")
+            company.needsSync = true
+            try? context.save()
+        }
+
+        // Record for async sync
+        syncEngine.recordOperation(
+            entityType: .company,
+            entityId: companyId,
+            operationType: "update",
+            changedFields: ["seated_employee_ids": userIds]
+        )
+    }
+
+    // MARK: - Generic Project Field Updates (SyncEngine Migration)
+
+    /// Update project with generic AnyJSON fields - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.updateProjectFields() calls.
+    /// For known fields, it applies optimistic local updates.
+    @MainActor
+    func updateProjectFields(projectId: String, fields: [String: AnyJSON]) async throws {
+        guard let context = modelContext else { return }
+
+        // Apply locally for known fields
+        let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectId })
+        if let project = try? context.fetch(descriptor).first {
+            applyProjectFieldsLocally(project: project, fields: fields)
+            project.needsSync = true
+            try? context.save()
+        }
+
+        // Convert AnyJSON to [String: Any]
+        let changedFields = anyJSONToDict(fields)
+
+        syncEngine.recordOperation(
+            entityType: .project,
+            entityId: projectId,
+            operationType: "update",
+            changedFields: changedFields
+        )
+    }
+
+    /// Apply AnyJSON field values to a local Project model
+    private func applyProjectFieldsLocally(project: Project, fields: [String: AnyJSON]) {
+        for (key, value) in fields {
+            switch key {
+            case "title":
+                if case .string(let v) = value { project.title = v }
+            case "status":
+                if case .string(let v) = value { project.status = Status(rawValue: v) ?? project.status }
+            case "address":
+                if case .string(let v) = value { project.address = v }
+            case "notes":
+                if case .string(let v) = value { project.notes = v }
+            case "description":
+                if case .string(let v) = value { project.projectDescription = v }
+            case "client_id":
+                if case .string(let v) = value { project.clientId = v }
+            default:
+                break
+            }
+        }
+    }
+
+    // MARK: - Generic Task Field Updates (SyncEngine Migration)
+
+    /// Update task with generic AnyJSON fields - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.updateTaskFields() calls.
+    @MainActor
+    func updateTaskFields(taskId: String, fields: [String: AnyJSON]) async throws {
+        guard let context = modelContext else { return }
+
+        // Apply locally for known fields
+        let descriptor = FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == taskId })
+        if let task = try? context.fetch(descriptor).first {
+            applyTaskFieldsLocally(task: task, fields: fields)
+            task.needsSync = true
+            try? context.save()
+        }
+
+        // Convert AnyJSON to [String: Any]
+        let changedFields = anyJSONToDict(fields)
+
+        syncEngine.recordOperation(
+            entityType: .projectTask,
+            entityId: taskId,
+            operationType: "update",
+            changedFields: changedFields
+        )
+    }
+
+    /// Apply AnyJSON field values to a local ProjectTask model
+    private func applyTaskFieldsLocally(task: ProjectTask, fields: [String: AnyJSON]) {
+        for (key, value) in fields {
+            switch key {
+            case "status":
+                if case .string(let v) = value { task.status = TaskStatus(rawValue: v) ?? task.status }
+            case "task_notes":
+                if case .string(let v) = value { task.taskNotes = v }
+            case "custom_title":
+                if case .string(let v) = value { task.customTitle = v }
+            case "task_color":
+                if case .string(let v) = value { task.taskColor = v }
+            case "team_member_ids":
+                if case .string(let v) = value { task.teamMemberIdsString = v }
+            case "display_order":
+                if case .integer(let v) = value { task.displayOrder = v }
+            default:
+                break
+            }
+        }
+    }
+
+    // MARK: - Create Operations (SyncEngine Migration)
+
+    /// Create a new project - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.createProject(dto:) calls.
+    /// Returns the new project ID.
+    @MainActor
+    func createProject(dto: SupabaseProjectDTO) async throws -> String {
+        guard let context = modelContext else {
+            throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        // Create local model from DTO
+        let project = Project(id: dto.id, title: dto.title, status: Status(rawValue: dto.status) ?? .rfq)
+        project.companyId = dto.companyId
+        project.clientId = dto.clientId
+        project.opportunityId = dto.opportunityId
+        project.address = dto.address
+        project.latitude = dto.latitude
+        project.longitude = dto.longitude
+        project.notes = dto.notes
+        project.projectDescription = dto.description
+        project.allDay = dto.allDay ?? true
+        project.duration = dto.duration ?? 1
+        if let startStr = dto.startDate { project.startDate = formatter.date(from: startStr) }
+        if let endStr = dto.endDate { project.endDate = formatter.date(from: endStr) }
+        if let memberIds = dto.teamMemberIds { project.setTeamMemberIds(memberIds) }
+        if let images = dto.projectImages { project.projectImagesString = images.joined(separator: ",") }
+        project.needsSync = true
+
+        // Insert locally
+        context.insert(project)
+        try context.save()
+
+        print("[DataController] ✅ Project created locally: \(dto.id)")
+
+        // Build the full payload for SyncEngine create
+        var changedFields: [String: Any] = [
+            "id": dto.id,
+            "company_id": dto.companyId,
+            "title": dto.title,
+            "status": dto.status
+        ]
+        if let v = dto.clientId { changedFields["client_id"] = v }
+        if let v = dto.opportunityId { changedFields["opportunity_id"] = v }
+        if let v = dto.address { changedFields["address"] = v }
+        if let v = dto.latitude { changedFields["latitude"] = v }
+        if let v = dto.longitude { changedFields["longitude"] = v }
+        if let v = dto.notes { changedFields["notes"] = v }
+        if let v = dto.description { changedFields["description"] = v }
+        if let v = dto.startDate { changedFields["start_date"] = v }
+        if let v = dto.endDate { changedFields["end_date"] = v }
+        if let v = dto.duration { changedFields["duration"] = v }
+        if let v = dto.allDay { changedFields["all_day"] = v }
+        if let v = dto.teamMemberIds { changedFields["team_member_ids"] = v }
+        if let v = dto.projectImages { changedFields["project_images"] = v }
+
+        syncEngine.recordOperation(
+            entityType: .project,
+            entityId: dto.id,
+            operationType: "create",
+            changedFields: changedFields
+        )
+
+        return dto.id
+    }
+
+    /// Create a new client - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.createClient(dto:) calls.
+    /// Returns the new client ID.
+    @MainActor
+    func createClient(dto: SupabaseClientDTO) async throws -> String {
+        guard let context = modelContext else {
+            throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
+        }
+
+        // Create local model
+        let client = Client(id: dto.id, name: dto.name, email: dto.email, phoneNumber: dto.phoneNumber, address: dto.address, companyId: dto.companyId, notes: dto.notes)
+        client.latitude = dto.latitude
+        client.longitude = dto.longitude
+        client.profileImageURL = dto.profileImageUrl
+        client.needsSync = true
+
+        // Insert locally
+        context.insert(client)
+        try context.save()
+
+        print("[DataController] ✅ Client created locally: \(dto.id)")
+
+        // Build payload for SyncEngine create
+        var changedFields: [String: Any] = [
+            "id": dto.id,
+            "company_id": dto.companyId,
+            "name": dto.name
+        ]
+        if let v = dto.email { changedFields["email"] = v }
+        if let v = dto.phoneNumber { changedFields["phone_number"] = v }
+        if let v = dto.address { changedFields["address"] = v }
+        if let v = dto.latitude { changedFields["latitude"] = v }
+        if let v = dto.longitude { changedFields["longitude"] = v }
+        if let v = dto.notes { changedFields["notes"] = v }
+        if let v = dto.profileImageUrl { changedFields["profile_image_url"] = v }
+
+        syncEngine.recordOperation(
+            entityType: .client,
+            entityId: dto.id,
+            operationType: "create",
+            changedFields: changedFields
+        )
+
+        return dto.id
+    }
+
+    /// Create a new task type - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.createTaskType(dto:) calls.
+    /// Returns the new task type ID.
+    @MainActor
+    func createTaskType(dto: SupabaseTaskTypeDTO) async throws -> String {
+        guard let context = modelContext else {
+            throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
+        }
+
+        // Create local model
+        let taskType = TaskType(
+            id: dto.id,
+            display: dto.display,
+            color: dto.color,
+            companyId: dto.companyId,
+            isDefault: dto.isDefault ?? false,
+            icon: dto.icon
+        )
+        taskType.displayOrder = dto.displayOrder ?? 0
+        if let deps = dto.dependencies,
+           let jsonData = try? JSONEncoder().encode(deps),
+           let jsonStr = String(data: jsonData, encoding: .utf8) {
+            taskType.dependenciesJSON = jsonStr
+        }
+        taskType.needsSync = true
+
+        // Insert locally
+        context.insert(taskType)
+        try context.save()
+
+        print("[DataController] ✅ Task type created locally: \(dto.id)")
+
+        // Build payload for SyncEngine create
+        var changedFields: [String: Any] = [
+            "id": dto.id,
+            "company_id": dto.companyId,
+            "display": dto.display,
+            "color": dto.color
+        ]
+        if let v = dto.icon { changedFields["icon"] = v }
+        if let v = dto.isDefault { changedFields["is_default"] = v }
+        if let v = dto.displayOrder { changedFields["display_order"] = v }
+        if let v = dto.defaultTeamMemberIds { changedFields["default_team_member_ids"] = v }
+        if let deps = dto.dependencies,
+           let jsonData = try? JSONEncoder().encode(deps),
+           let jsonArr = try? JSONSerialization.jsonObject(with: jsonData) {
+            changedFields["dependencies"] = jsonArr
+        }
+
+        syncEngine.recordOperation(
+            entityType: .taskType,
+            entityId: dto.id,
+            operationType: "create",
+            changedFields: changedFields
+        )
+
+        return dto.id
+    }
+
+    /// Delete a task type - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.deleteTaskType(taskTypeId:) calls.
+    @MainActor
+    func deleteTaskType(taskTypeId: String) async throws {
+        guard let context = modelContext else { return }
+
+        // Soft delete locally
+        let descriptor = FetchDescriptor<TaskType>(predicate: #Predicate { $0.id == taskTypeId })
+        if let taskType = try? context.fetch(descriptor).first {
+            taskType.deletedAt = Date()
+            taskType.needsSync = true
+            try? context.save()
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+
+        // Record for async sync
+        syncEngine.recordOperation(
+            entityType: .taskType,
+            entityId: taskTypeId,
+            operationType: "delete",
+            changedFields: ["deleted_at": formatter.string(from: Date())]
+        )
+
+        print("[DataController] ✅ Task type deleted: \(taskTypeId)")
+    }
+
+    // MARK: - SubClient Operations (SyncEngine Migration)
+
+    /// Create a new sub-client - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.createSubClient() calls.
+    @MainActor
+    func createSubClient(clientId: String, name: String, title: String?, email: String?, phone: String?, address: String?, companyId: String) async throws -> SubClient {
+        guard let context = modelContext else {
+            throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
+        }
+
+        // Generate ID locally
+        let subClientId = UUID().uuidString
+
+        // Create local model
+        let subClient = SubClient(id: subClientId, name: name)
+        subClient.title = title
+        subClient.email = email
+        subClient.phoneNumber = phone
+        subClient.address = address
+        subClient.needsSync = true
+
+        // Link to parent client
+        let clientDescriptor = FetchDescriptor<Client>(predicate: #Predicate { $0.id == clientId })
+        if let parentClient = try? context.fetch(clientDescriptor).first {
+            subClient.client = parentClient
+        }
+
+        context.insert(subClient)
+        try context.save()
+
+        print("[DataController] ✅ Sub-client created locally: \(subClientId)")
+
+        // Build payload for SyncEngine create
+        var changedFields: [String: Any] = [
+            "id": subClientId,
+            "client_id": clientId,
+            "company_id": companyId,
+            "name": name
+        ]
+        if let v = title, !v.isEmpty { changedFields["title"] = v }
+        if let v = email, !v.isEmpty { changedFields["email"] = v }
+        if let v = phone, !v.isEmpty { changedFields["phone_number"] = v }
+        if let v = address, !v.isEmpty { changedFields["address"] = v }
+
+        syncEngine.recordOperation(
+            entityType: .subClient,
+            entityId: subClientId,
+            operationType: "create",
+            changedFields: changedFields
+        )
+
+        return subClient
+    }
+
+    /// Edit an existing sub-client - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.editSubClient() calls.
+    @MainActor
+    func editSubClient(subClientId: String, name: String, title: String?, email: String?, phone: String?, address: String?) async throws {
+        guard let context = modelContext else { return }
+
+        // Update locally
+        let descriptor = FetchDescriptor<SubClient>(predicate: #Predicate { $0.id == subClientId })
+        guard let subClient = try? context.fetch(descriptor).first else {
+            throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Sub-client not found"])
+        }
+
+        subClient.name = name
+        subClient.title = title
+        subClient.email = email
+        subClient.phoneNumber = phone
+        subClient.address = address
+        subClient.updatedAt = Date()
+        subClient.needsSync = true
+        try? context.save()
+
+        // Build changed fields
+        var changedFields: [String: Any] = ["name": name]
+        if let v = title { changedFields["title"] = v }
+        if let v = email { changedFields["email"] = v }
+        if let v = phone { changedFields["phone_number"] = v }
+        if let v = address { changedFields["address"] = v }
+
+        syncEngine.recordOperation(
+            entityType: .subClient,
+            entityId: subClientId,
+            operationType: "update",
+            changedFields: changedFields
+        )
+
+        print("[DataController] ✅ Sub-client updated: \(subClientId)")
+    }
+
+    /// Delete a sub-client - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.deleteSubClient() calls.
+    @MainActor
+    func deleteSubClient(subClientId: String) async throws {
+        guard let context = modelContext else { return }
+
+        // Soft delete locally
+        let descriptor = FetchDescriptor<SubClient>(predicate: #Predicate { $0.id == subClientId })
+        if let subClient = try? context.fetch(descriptor).first {
+            subClient.deletedAt = Date()
+            subClient.needsSync = true
+            try? context.save()
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+
+        syncEngine.recordOperation(
+            entityType: .subClient,
+            entityId: subClientId,
+            operationType: "delete",
+            changedFields: ["deleted_at": formatter.string(from: Date())]
+        )
+
+        print("[DataController] ✅ Sub-client deleted: \(subClientId)")
+    }
+
+    // MARK: - Client Contact Update (SyncEngine Migration)
+
+    /// Update client contact information - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.updateClientContact() calls.
+    @MainActor
+    func updateClientContact(clientId: String, name: String, email: String?, phone: String?, address: String?) async throws {
+        guard let context = modelContext else { return }
+
+        // Apply locally
+        let descriptor = FetchDescriptor<Client>(predicate: #Predicate { $0.id == clientId })
+        if let client = try? context.fetch(descriptor).first {
+            client.name = name
+            client.email = email
+            client.phoneNumber = phone
+            client.address = address
+            client.needsSync = true
+            try? context.save()
+        }
+
+        // Build changed fields
+        var changedFields: [String: Any] = ["name": name]
+        if let v = email { changedFields["email"] = v }
+        if let v = phone { changedFields["phone_number"] = v }
+        if let v = address { changedFields["address"] = v }
+
+        syncEngine.recordOperation(
+            entityType: .client,
+            entityId: clientId,
+            operationType: "update",
+            changedFields: changedFields
+        )
+    }
+
+    // MARK: - User Delete (SyncEngine Migration)
+
+    /// Delete a user (soft delete) - SINGLE SOURCE OF TRUTH
+    /// This replaces syncManager.deleteUser() calls.
+    @MainActor
+    func deleteUser(userId: String) async throws {
+        guard let context = modelContext else { return }
+
+        // Soft delete locally
+        let descriptor = FetchDescriptor<User>(predicate: #Predicate { $0.id == userId })
+        if let user = try? context.fetch(descriptor).first {
+            user.deletedAt = Date()
+            user.needsSync = true
+            try? context.save()
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+
+        syncEngine.recordOperation(
+            entityType: .user,
+            entityId: userId,
+            operationType: "delete",
+            changedFields: ["deleted_at": formatter.string(from: Date())]
+        )
+
+        print("[DataController] ✅ User deleted: \(userId)")
+    }
+
+    // MARK: - Inbound Sync Triggers (SyncEngine Migration)
+
+    /// Trigger a full sync via SyncEngine - replaces syncManager.syncAll()
+    @MainActor
+    func triggerFullSync() async {
+        await syncEngine.fullSync()
+    }
+
+    /// Trigger a background sync via SyncEngine - replaces syncManager.triggerBackgroundSync()
+    @MainActor
+    func triggerBackgroundSync() {
+        Task {
+            await syncEngine.triggerSync()
+        }
+    }
+
+    /// Trigger a company data refresh via SyncEngine - replaces syncManager.syncCompany()
+    @MainActor
+    func triggerCompanySync() async {
+        await syncEngine.triggerSync()
+    }
+
+    /// Trigger a users sync via SyncEngine - replaces syncManager.syncUsers()
+    @MainActor
+    func triggerUsersSync() async {
+        await syncEngine.triggerSync()
+    }
+
+    /// Trigger team members sync - replaces syncManager.syncCompanyTeamMembers()
+    @MainActor
+    func triggerTeamMembersSync(companyId: String) async {
+        await syncEngine.triggerSync()
+    }
+
+    /// Trigger task types sync - replaces syncManager.syncCompanyTaskTypes()
+    @MainActor
+    func triggerTaskTypesSync(companyId: String) async {
+        await syncEngine.triggerSync()
+    }
+
+    /// Trigger tasks sync - replaces syncManager.syncTasks()
+    @MainActor
+    func triggerTasksSync() async {
+        await syncEngine.triggerSync()
+    }
+
+    /// Trigger onboarding sync - replaces syncManager.performOnboardingSync()
+    @MainActor
+    func performOnboardingSync() async {
+        // Re-configure SyncEngine in case companyId just changed during onboarding
+        syncEngine.reconfigureForCompany()
+        await syncEngine.fullSync()
+    }
+
+    /// Trigger manual full sync - replaces syncManager.manualFullSync()
+    @MainActor
+    func triggerManualFullSync() async {
+        await syncEngine.fullSync()
+    }
+
+    // MARK: - AnyJSON Conversion Helper
+
+    /// Convert [String: AnyJSON] to [String: Any] for SyncEngine payload serialization
+    private func anyJSONToDict(_ fields: [String: AnyJSON]) -> [String: Any] {
+        var result: [String: Any] = [:]
+        for (key, value) in fields {
+            switch value {
+            case .string(let v): result[key] = v
+            case .integer(let v): result[key] = v
+            case .double(let v): result[key] = v
+            case .bool(let v): result[key] = v
+            case .null: result[key] = NSNull()
+            case .array(let arr):
+                result[key] = arr.map { anyJSONToAny($0) }
+            case .object(let obj):
+                var dict: [String: Any] = [:]
+                for (k, v) in obj { dict[k] = anyJSONToAny(v) }
+                result[key] = dict
+            @unknown default:
+                result[key] = "\(value)"
+            }
+        }
+        return result
+    }
+
+    /// Convert a single AnyJSON value to Any
+    private func anyJSONToAny(_ value: AnyJSON) -> Any {
+        switch value {
+        case .string(let v): return v
+        case .integer(let v): return v
+        case .double(let v): return v
+        case .bool(let v): return v
+        case .null: return NSNull()
+        case .array(let arr): return arr.map { anyJSONToAny($0) }
+        case .object(let obj):
+            var dict: [String: Any] = [:]
+            for (k, v) in obj { dict[k] = anyJSONToAny(v) }
+            return dict
+        @unknown default: return "\(value)"
+        }
+    }
 }
 
 // MARK: - Image Upload Errors

@@ -136,8 +136,14 @@ struct CalendarDaySelector: View {
         let isLastSegment: Bool
     }
 
-    /// Compute spanning bars for the visible week, sorted multi-day first for stable row assignment
-    private func computeWeekBarSpans(weekDays: [Date]) -> [WeekBarSpan] {
+    private struct WeekBarLayout {
+        let spans: [WeekBarSpan]
+        let overflowPerDay: [Int]
+    }
+
+    /// Compute spanning bars for the visible week, sorted multi-day first for stable row assignment.
+    /// Returns both the bar spans and a per-day overflow count for "+N" indicators.
+    private func computeWeekBarLayout(weekDays: [Date]) -> WeekBarLayout {
         let cal = Calendar.current
         var processedIds = Set<String>()
 
@@ -203,6 +209,7 @@ struct CalendarDaySelector: View {
         let maxRows = 4
         var occupiedSlots: [[Bool]] = Array(repeating: Array(repeating: false, count: maxRows), count: weekDays.count)
         var result: [WeekBarSpan] = []
+        var assignedTaskIds = Set<String>()
 
         for raw in rawSpans {
             var assignedRow = -1
@@ -225,6 +232,7 @@ struct CalendarDaySelector: View {
 
             guard assignedRow >= 0 else { continue }
 
+            assignedTaskIds.insert(raw.taskId)
             result.append(WeekBarSpan(
                 id: raw.taskId,
                 color: raw.color,
@@ -236,20 +244,31 @@ struct CalendarDaySelector: View {
             ))
         }
 
-        return result
+        // Compute per-day overflow: tasks on that day that didn't get a bar
+        var overflowPerDay = Array(repeating: 0, count: weekDays.count)
+        for dayIdx in 0..<weekDays.count {
+            var uniqueTaskIds = Set<String>()
+            for task in tasksByDay[dayIdx] {
+                uniqueTaskIds.insert(task.id)
+            }
+            let displayedOnDay = uniqueTaskIds.intersection(assignedTaskIds).count
+            overflowPerDay[dayIdx] = max(0, uniqueTaskIds.count - displayedOnDay)
+        }
+
+        return WeekBarLayout(spans: result, overflowPerDay: overflowPerDay)
     }
 
     /// Overlay view rendering spanning event bars at the bottom of the week cell area
     private func weekBarsOverlay(weekDays: [Date]) -> some View {
         GeometryReader { geo in
             let dayWidth = geo.size.width / CGFloat(weekDays.count)
-            let spans = computeWeekBarSpans(weekDays: weekDays)
+            let layout = computeWeekBarLayout(weekDays: weekDays)
             let barHeight: CGFloat = 3
             let barSpacing: CGFloat = 2
             let edgeInset: CGFloat = 6
 
             ZStack(alignment: .topLeading) {
-                ForEach(spans) { span in
+                ForEach(layout.spans) { span in
                     let fullSpanWidth = dayWidth * CGFloat(span.endDayIndex - span.startDayIndex + 1)
                     let leadingInset: CGFloat = span.isFirstSegment ? edgeInset : 0
                     let trailingInset: CGFloat = span.isLastSegment ? edgeInset : 0
@@ -267,10 +286,29 @@ struct CalendarDaySelector: View {
                     .frame(width: max(barWidth, 0), height: barHeight)
                     .offset(x: xPos, y: yPos)
                 }
+
+                // "+N" overflow indicators for days with more tasks than visible bars
+                ForEach(0..<weekDays.count, id: \.self) { dayIdx in
+                    let overflow = layout.overflowPerDay[dayIdx]
+                    if overflow > 0 {
+                        // Find the highest occupied row for this day to position below it
+                        let maxOccupiedRow = layout.spans
+                            .filter { $0.startDayIndex <= dayIdx && $0.endDayIndex >= dayIdx }
+                            .map { $0.row }
+                            .max() ?? -1
+                        let yPos = CGFloat(maxOccupiedRow + 1) * (barHeight + barSpacing)
+
+                        Text("+\(overflow)")
+                            .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .frame(width: dayWidth, alignment: .center)
+                            .offset(x: dayWidth * CGFloat(dayIdx), y: yPos)
+                    }
+                }
             }
         }
         .frame(height: 20)
-        .padding(.bottom, 4)
+        .padding(.bottom, 8)
         .allowsHitTesting(false)
     }
 

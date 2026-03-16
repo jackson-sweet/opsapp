@@ -183,9 +183,39 @@ struct CredentialsScreen: View {
                 )
             }
         } footer: {
-            EmptyView()
+            // Flow toggle — lets user switch between Join/Create without going back
+            Button {
+                switchFlow()
+            } label: {
+                Text(manager.state.flow == .employee ? "CREATE A COMPANY INSTEAD" : "JOIN A CREW INSTEAD")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .tracking(0.5)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .underline()
+            }
+            .padding(.bottom, 8)
         }
         .disabled(isSigningUp || isSocialSignIn)
+        .onAppear {
+            // If flow is nil (state corruption), redirect back to signup
+            if manager.state.flow == nil {
+                print("[CREDENTIALS] Flow is nil — redirecting to signup screen")
+                manager.goToScreen(.signup, direction: .backward)
+            }
+        }
+    }
+
+    // MARK: - Flow Toggle
+
+    private func switchFlow() {
+        // Default to employee if flow was nil (treats nil as companyCreator, so toggle gives employee)
+        let newFlow: OnboardingFlow = manager.state.flow == .employee ? .companyCreator : .employee
+        manager.selectFlow(newFlow)
+        errorMessage = nil
+
+        // Haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
     }
 
     // MARK: - Account Creation

@@ -40,53 +40,62 @@ struct UserPermissionDetailView: View {
         self._originalRole = State(initialValue: member.role)
     }
 
+    @State private var showRoleListSheet = false
+
     var body: some View {
         NavigationStack {
             ZStack {
-                OPSStyle.Colors.background
+                OPSStyle.Colors.backgroundGradient
                     .ignoresSafeArea()
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        // Member header
-                        memberHeader
+                VStack(spacing: 0) {
+                    // OPS-style header
+                    SettingsHeader(
+                        title: "Permissions",
+                        onBackTapped: { dismiss() }
+                    )
+                    .padding(.bottom, 8)
 
-                        // Error
-                        if let error = errorMessage {
-                            HStack(spacing: 8) {
-                                Image(systemName: OPSStyle.Icons.alert)
-                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                    .foregroundColor(OPSStyle.Colors.errorStatus)
-                                Text(error)
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.errorStatus)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 24) {
+                            // Member header
+                            memberHeader
+
+                            // Error
+                            if let error = errorMessage {
+                                HStack(spacing: 8) {
+                                    Image(systemName: OPSStyle.Icons.alert)
+                                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                                    Text(error)
+                                        .font(OPSStyle.Typography.caption)
+                                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                                }
+                                .padding(.horizontal, 20)
                             }
-                            .padding(.horizontal, 20)
-                        }
 
-                        // Section 1: Role
-                        roleSection
+                            // Section 1: Role
+                            roleSection
 
-                        // Section 2: Permission Overrides
-                        if !isLoading {
-                            overridesSection
+                            // Section 2: Permission Overrides
+                            if !isLoading {
+                                overridesSection
+                            }
                         }
+                        .padding(.vertical, 16)
+                        .tabBarPadding()
                     }
-                    .padding(.vertical, 20)
                 }
             }
-            .navigationTitle("User Permissions")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-            }
+            .navigationBarHidden(true)
         }
         .onAppear { loadData() }
+        .sheet(isPresented: $showRoleListSheet) {
+            NavigationStack {
+                RoleListView()
+                    .environmentObject(dataController)
+            }
+        }
     }
 
     // MARK: - Member Header
@@ -164,6 +173,18 @@ struct UserPermissionDetailView: View {
                 .disabled(isSavingRole)
                 .padding(.horizontal, 20)
             }
+
+            // Edit roles link
+            Button(action: { showRoleListSheet = true }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "pencil.and.list.clipboard")
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    Text("Edit & manage roles")
+                        .font(OPSStyle.Typography.caption)
+                }
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+            }
+            .padding(.horizontal, 20)
         }
     }
 
@@ -457,12 +478,10 @@ struct UserPermissionDetailView: View {
                 let roleId = try await PermissionAdminService.resolveRoleId(for: selectedRole)
                 try await PermissionAdminService.assignUserRole(userId: member.id, roleId: roleId)
 
-                // 2. Write to legacy employee_type
-                let employeeTypeValue = selectedRole.displayName
-
+                // 2. Update role field in users table
                 try await dataController.syncManager.updateUserFields(
                     userId: member.id,
-                    fields: ["employee_type": .string(employeeTypeValue)]
+                    fields: ["role": .string(selectedRole.rawValue)]
                 )
 
                 // 3. Update local model

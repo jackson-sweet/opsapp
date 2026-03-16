@@ -299,6 +299,7 @@ struct InviteTeamSheet: View {
     @State private var showingMessageCompose = false
     @State private var showingCodeCompose = false
     @State private var messageRecipients: [String] = []
+    @State private var selectedRoleId: String = InviteRoleOption.defaultRoleId
     @FocusState private var focusedEmailIndex: Int?
 
     private let onboardingService = OnboardingService()
@@ -445,6 +446,9 @@ struct InviteTeamSheet: View {
                                     .fill(OPSStyle.Colors.cardBorder)
                                     .frame(height: 1)
                             }
+
+                            // Role picker
+                            InviteRolePicker(selectedRoleId: $selectedRoleId)
 
                             ForEach(inviteEmails.indices, id: \.self) { index in
                                 HStack(spacing: 8) {
@@ -609,7 +613,7 @@ struct InviteTeamSheet: View {
 
         Task {
             do {
-                _ = try await onboardingService.sendInvites(emails: validEmails, companyId: companyId)
+                _ = try await onboardingService.sendInvites(emails: validEmails, companyId: companyId, roleId: selectedRoleId)
 
                 await MainActor.run {
                     isSendingInvites = false

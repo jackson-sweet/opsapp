@@ -14,9 +14,9 @@ struct CompanyConfirmationScreen: View {
 
     @State private var isJoining = false
     @State private var errorMessage: String?
-    @State private var logoAppeared = false
-
-    @StateObject private var animationCoordinator = OnboardingAnimationCoordinator()
+    @State private var logoOpacity: Double = 0
+    @State private var contentOpacity: Double = 0
+    @State private var buttonOpacity: Double = 0
 
     // MARK: - Resolved Data
 
@@ -120,67 +120,64 @@ struct CompanyConfirmationScreen: View {
             Spacer()
 
             // Company card content
-            PhasedContent(coordinator: animationCoordinator) {
-                VStack(spacing: 24) {
-                    // Company logo
-                    companyLogoView
-                        .scaleEffect(logoAppeared ? 1.0 : 0.3)
-                        .opacity(logoAppeared ? 1.0 : 0.0)
+            VStack(spacing: 24) {
+                // Company logo
+                companyLogoView
+                    .opacity(logoOpacity)
 
-                    // Company name
-                    Text(companyName.uppercased())
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                // Company name
+                Text(companyName.uppercased())
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .multilineTextAlignment(.center)
+
+                // Industries
+                if !industries.isEmpty {
+                    Text(industries.joined(separator: " \u{2022} "))
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                         .multilineTextAlignment(.center)
+                }
 
-                    // Industries
-                    if !industries.isEmpty {
-                        Text(industries.joined(separator: " \u{2022} "))
+                // Team avatars + size
+                if teamSize > 0 {
+                    VStack(spacing: 8) {
+                        teamAvatarStack
+
+                        Text("\(teamSize) member\(teamSize == 1 ? "" : "s")")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .multilineTextAlignment(.center)
-                    }
-
-                    // Team avatars + size
-                    if teamSize > 0 {
-                        VStack(spacing: 8) {
-                            teamAvatarStack
-
-                            Text("\(teamSize) member\(teamSize == 1 ? "" : "s")")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                    }
-
-                    // Role badge (invite only)
-                    if let role = roleName {
-                        roleBadgeView(role: role)
-                    }
-
-                    // Inviter name (invite only)
-                    if let inviter = inviterName {
-                        Text("Invited by \(inviter)")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-
-                    // Error message
-                    if let error = errorMessage {
-                        Text(error)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.errorStatus)
-                            .multilineTextAlignment(.center)
-                            .padding(.top, 4)
                     }
                 }
+
+                // Role badge (invite only)
+                if let role = roleName {
+                    roleBadgeView(role: role)
+                }
+
+                // Inviter name (invite only)
+                if let inviter = inviterName {
+                    Text("Invited by \(inviter)")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+
+                // Error message
+                if let error = errorMessage {
+                    Text(error)
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 4)
+                }
             }
+            .opacity(contentOpacity)
             .padding(.horizontal, 40)
 
             Spacer()
 
             // Bottom buttons
             VStack(spacing: 16) {
-                // "Not your company?" back link
                 Button {
                     handleBack()
                 } label: {
@@ -189,28 +186,46 @@ struct CompanyConfirmationScreen: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
 
-                // JOIN CREW button
-                PhasedPrimaryButton(
-                    "JOIN CREW",
-                    isEnabled: !companyId.isEmpty,
-                    isLoading: isJoining,
-                    loadingText: "Joining...",
-                    coordinator: animationCoordinator
-                ) {
+                Button {
                     joinCrew()
+                } label: {
+                    ZStack {
+                        if isJoining {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
+                        } else {
+                            HStack {
+                                Text("JOIN CREW")
+                                    .font(OPSStyle.Typography.bodyBold)
+                                Spacer()
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                            }
+                        }
+                    }
+                    .foregroundColor(OPSStyle.Colors.invertedText)
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(!companyId.isEmpty ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
+                .disabled(companyId.isEmpty || isJoining)
             }
+            .opacity(buttonOpacity)
             .padding(.horizontal, 40)
             .padding(.bottom, 50)
         }
         .background(OPSStyle.Colors.background)
         .onAppear {
-            animationCoordinator.start()
-            // Spring bounce-in for logo after content fades in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) {
-                    logoAppeared = true
-                }
+            withAnimation(Animation.spring(response: 0.8, dampingFraction: 0.6).delay(0.2)) {
+                logoOpacity = 1.0
+            }
+            withAnimation(Animation.easeIn(duration: 0.6).delay(0.5)) {
+                contentOpacity = 1.0
+            }
+            withAnimation(Animation.easeIn(duration: 0.5).delay(0.9)) {
+                buttonOpacity = 1.0
             }
         }
     }

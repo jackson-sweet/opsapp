@@ -46,8 +46,19 @@ struct OrganizationSettingsView: View {
                         VStack(alignment: .leading, spacing: 24) {
                             // Company contact card preview
                             if let company = organization {
-                                CompanyContactCard(company: company, showTeamCount: true)
-                                    .padding(.horizontal, 20)
+                                CompanyContactCard(
+                                    name: company.name,
+                                    logoURL: company.logoURL,
+                                    logoData: company.logoData,
+                                    logoImage: nil,
+                                    email: company.email ?? "",
+                                    phone: company.phone ?? "",
+                                    address: company.address ?? "",
+                                    website: company.website ?? "",
+                                    teamMemberCount: dataController.getTeamMembers(companyId: company.id).count,
+                                    showTeamCount: true
+                                )
+                                .padding(.horizontal, 20)
                             }
 
                             // Grouped navigation section

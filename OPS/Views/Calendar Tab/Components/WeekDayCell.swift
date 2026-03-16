@@ -14,7 +14,7 @@ struct WeekDayCell: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 3) {
+            VStack(spacing: 2) {
                 Text(DateHelper.dayAbbreviation(from: date))
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(isToday ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
@@ -26,16 +26,16 @@ struct WeekDayCell: View {
                 // Reserve space for spanning bars overlay (rendered by CalendarDaySelector)
                 Spacer(minLength: 0)
             }
-            .padding(.top, 6)
+            .padding(.top, 4)
             .frame(maxWidth: .infinity)
             .frame(height: 86)
             .background(cellBackground)
             .cornerRadius(4)
+            .padding(.horizontal, 4)
             .overlay(
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: 6)
                     .stroke(OPSStyle.Colors.primaryText, lineWidth: isSelected ? 1 : 0)
             )
-            .padding(.horizontal, 4)
             .opacity(isPast ? 0.55 : 1.0)
         }
         .disabled(false)

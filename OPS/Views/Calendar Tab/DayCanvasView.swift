@@ -83,14 +83,169 @@ struct DayPageView: View {
     @EnvironmentObject var dataController: DataController
     let isActivePage: Bool
 
-    // Ongoing tasks sorted by ID for stable vertical position across pages
-    private var ongoingTasks: [ProjectTask] {
+    /// Lightweight wrapper for unified task iteration (nil task = spacer for alignment)
+    private struct TaskEntry: Identifiable {
+        let task: ProjectTask?
+        let isOngoing: Bool
+        let slot: Int
+        var id: String { task?.id ?? "spacer-\(slot)" }
+        var isSpacer: Bool { task == nil }
+    }
+
+    /// Slot-packing helper: a multi-day task's span within the computation window
+    private struct TaskSpan {
+        let task: ProjectTask
+        let startIdx: Int
+        let endIdx: Int
+        let absoluteSpanDays: Int
+    }
+
+    /// Unified task list using slot-packing across a ±3-day window so multi-day
+    /// tasks maintain the exact same vertical position on every day they span.
+    /// New tasks fill lanes freed by ended tasks — no gaps, perfect alignment.
+    private var unifiedTasks: [TaskEntry] {
         let cal = Calendar.current
         let dayStart = cal.startOfDay(for: date)
-        return tasksForDate.filter { task in
-            cal.startOfDay(for: task.startDate ?? Date()) != dayStart
+
+        // --- Build a ±3-day window for stable slot packing ---
+        var windowDays: [Date] = []
+        for offset in -3...3 {
+            if let d = cal.date(byAdding: .day, value: offset, to: dayStart) {
+                windowDays.append(cal.startOfDay(for: d))
+            }
         }
-        .sorted { $0.id < $1.id }
+
+        // Gather all tasks across the window, dedup by ID
+        var processedIds = Set<String>()
+        var tasksByDay: [[ProjectTask]] = []
+        for wd in windowDays {
+            tasksByDay.append(viewModel.scheduledTasks(for: wd))
+        }
+
+        // Build span info for every unique multi-day task in the window
+        var multiDaySpans: [TaskSpan] = []
+
+        for dayIdx in 0..<windowDays.count {
+            for task in tasksByDay[dayIdx] {
+                guard !processedIds.contains(task.id) else { continue }
+                processedIds.insert(task.id)
+
+                let taskStart = cal.startOfDay(for: task.startDate ?? Date.distantPast)
+                let taskEnd = cal.startOfDay(for: task.endDate ?? taskStart)
+                guard taskStart != taskEnd else { continue }  // skip single-day
+
+                // Map task's date range onto window indices
+                var startIdx = Int.max
+                var endIdx = -1
+                for i in 0..<windowDays.count {
+                    if windowDays[i] >= taskStart && windowDays[i] <= taskEnd {
+                        startIdx = min(startIdx, i)
+                        endIdx = max(endIdx, i)
+                    }
+                }
+                guard endIdx >= 0 else { continue }
+
+                let absoluteSpan = cal.dateComponents([.day], from: taskStart, to: taskEnd).day ?? 1
+
+                multiDaySpans.append(TaskSpan(
+                    task: task,
+                    startIdx: startIdx,
+                    endIdx: endIdx,
+                    absoluteSpanDays: absoluteSpan
+                ))
+            }
+        }
+
+        // Sort by ABSOLUTE span (not window-relative) so the sort order is
+        // identical regardless of which day's window we compute from.
+        // Wider spans first → earlier start → ID tiebreak.
+        multiDaySpans.sort { a, b in
+            if a.absoluteSpanDays != b.absoluteSpanDays { return a.absoluteSpanDays > b.absoluteSpanDays }
+            if a.startIdx != b.startIdx { return a.startIdx < b.startIdx }
+            return a.task.id < b.task.id
+        }
+
+        // Slot packing — identical algorithm to the week bars
+        let maxSlots = 20
+        var occupied: [[Bool]] = Array(repeating: Array(repeating: false, count: maxSlots), count: windowDays.count)
+        var taskSlot: [String: Int] = [:]
+
+        for span in multiDaySpans {
+            for slot in 0..<maxSlots {
+                var available = true
+                for dayIdx in span.startIdx...span.endIdx {
+                    if occupied[dayIdx][slot] { available = false; break }
+                }
+                if available {
+                    taskSlot[span.task.id] = slot
+                    for dayIdx in span.startIdx...span.endIdx {
+                        occupied[dayIdx][slot] = true
+                    }
+                    break
+                }
+            }
+        }
+
+        // --- Assemble today's list with spacers for empty slots ---
+        let todayTaskIds = Set(tasksForDate.map { $0.id })
+        let todayIdx = 3  // center of ±3 window
+
+        // Build a map of slot → task for today's multi-day tasks
+        var slottedTasks: [Int: TaskSpan] = [:]
+        for span in multiDaySpans {
+            guard todayTaskIds.contains(span.task.id),
+                  let slot = taskSlot[span.task.id] else { continue }
+            slottedTasks[slot] = span
+        }
+
+        // Find the highest slot occupied today
+        let maxSlot = slottedTasks.keys.max() ?? -1
+
+        // Also check if adjacent days have tasks in higher slots that
+        // aren't present today — those need spacers too for alignment
+        let adjacentMaxSlot: Int = {
+            var highest = maxSlot
+            // Check previous day (todayIdx - 1) and next day (todayIdx + 1)
+            for adjIdx in [todayIdx - 1, todayIdx + 1] where adjIdx >= 0 && adjIdx < windowDays.count {
+                for slot in 0..<maxSlots {
+                    if occupied[adjIdx][slot] && occupied[todayIdx][slot] {
+                        highest = max(highest, slot)
+                    }
+                }
+            }
+            return highest
+        }()
+
+        let effectiveMaxSlot = max(maxSlot, adjacentMaxSlot)
+
+        // Build multi-day entries from slot 0 to effectiveMaxSlot,
+        // inserting spacers for empty slots to maintain alignment
+        var multiDayEntries: [TaskEntry] = []
+        if effectiveMaxSlot >= 0 {
+            for slot in 0...effectiveMaxSlot {
+                if let span = slottedTasks[slot] {
+                    let start = cal.startOfDay(for: span.task.startDate ?? Date.distantPast)
+                    multiDayEntries.append(TaskEntry(task: span.task, isOngoing: start != dayStart, slot: slot))
+                } else {
+                    // Spacer — preserves vertical position for tasks below
+                    multiDayEntries.append(TaskEntry(task: nil, isOngoing: false, slot: slot))
+                }
+            }
+        }
+
+        // Single-day tasks after multi-day, sorted by start date then ID
+        let multiDayIds = Set(multiDaySpans.map { $0.task.id })
+        let singleDayEntries = tasksForDate
+            .filter { !multiDayIds.contains($0.id) }
+            .sorted { a, b in
+                let aStart = a.startDate ?? Date.distantPast
+                let bStart = b.startDate ?? Date.distantPast
+                if aStart != bStart { return aStart < bStart }
+                return a.id < b.id
+            }
+            .map { TaskEntry(task: $0, isOngoing: false, slot: -1) }
+
+        return multiDayEntries + singleDayEntries
     }
 
     // Multi-select state
@@ -120,14 +275,6 @@ struct DayPageView: View {
         viewModel.userEvents(for: date)
     }
 
-    private var newTasks: [ProjectTask] {
-        let cal = Calendar.current
-        let dayStart = cal.startOfDay(for: date)
-        return tasksForDate.filter { task in
-            cal.startOfDay(for: task.startDate ?? Date()) == dayStart
-        }
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             // Day header (pinned above scroll)
@@ -142,143 +289,16 @@ struct DayPageView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 0) {
-                        // Ongoing (multi-day) tasks first — labels always visible so
-                        // they appear to stay in place during horizontal page swipes.
-                        ForEach(Array(ongoingTasks.enumerated()), id: \.element.id) { index, task in
-                            CalendarEventCard(
-                                task: task,
-                                isFirst: index == 0,
-                                isOngoing: true,
-                                dayPosition: dayPosition(for: task, on: date),
-                                showLabels: true,
-                                onTap: {
-                                    if isSelectMode {
-                                        toggleSelection(task.id)
-                                    } else {
-                                        handleTaskTap(task)
-                                    }
-                                }
-                            )
-                            .overlay(alignment: .topTrailing) {
-                                if isSelectMode {
-                                    Image(systemName: selectedTaskIds.contains(task.id) ? "checkmark.circle.fill" : "circle")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(selectedTaskIds.contains(task.id) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                                        .padding(8)
-                                }
-                            }
-                        }
-
-                        // Tasks starting on this day — always show labels
-                        ForEach(Array(newTasks.enumerated()), id: \.element.id) { index, task in
-                            CalendarEventCard(
-                                task: task,
-                                isFirst: ongoingTasks.isEmpty && index == 0,
-                                isOngoing: false,
-                                dayPosition: dayPosition(for: task, on: date),
-                                showLabels: true,
-                                onTap: {
-                                    if isSelectMode {
-                                        toggleSelection(task.id)
-                                    } else {
-                                        handleTaskTap(task)
-                                    }
-                                }
-                            )
-                            .overlay(alignment: .topTrailing) {
-                                if isSelectMode {
-                                    Image(systemName: selectedTaskIds.contains(task.id) ? "checkmark.circle.fill" : "circle")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(selectedTaskIds.contains(task.id) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                                        .padding(8)
-                                }
-                            }
-                            .offset(x: swipeOffset[task.id] ?? 0)
-                            .background(alignment: .leading) {
-                                if (swipeOffset[task.id] ?? 0) > 10 {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "arrow.right")
-                                        Text("+1")
-                                    }
-                                    .font(OPSStyle.Typography.button)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                    .padding(.leading, 12)
-                                }
-                            }
-                            .simultaneousGesture(
-                                DragGesture(minimumDistance: 50)
-                                    .onChanged { value in
-                                        // Only trigger on mostly-horizontal rightward swipe
-                                        let horizontal = value.translation.width
-                                        let vertical = abs(value.translation.height)
-                                        guard horizontal > 0, horizontal > vertical * 2 else { return }
-                                        withAnimation(.interactiveSpring()) {
-                                            swipeOffset[task.id] = min(horizontal * 0.4, 70)
-                                        }
-                                    }
-                                    .onEnded { value in
-                                        let horizontal = value.translation.width
-                                        let vertical = abs(value.translation.height)
-                                        if horizontal > 80, horizontal > vertical * 2 {
-                                            pushTask(task, days: 1)
-                                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                        }
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                            swipeOffset[task.id] = 0
-                                        }
-                                    }
-                            )
-                            .contextMenu {
-                                Section("Push") {
-                                    Button(action: { pushTask(task, days: 1) }) {
-                                        Label("+1 Day", systemImage: "arrow.right")
-                                    }
-                                    Button(action: { pushTask(task, days: 2) }) {
-                                        Label("+2 Days", systemImage: "arrow.right")
-                                    }
-                                    Button(action: { pushTask(task, days: 3) }) {
-                                        Label("+3 Days", systemImage: "arrow.right")
-                                    }
-                                    Button(action: { pushTask(task, days: 7) }) {
-                                        Label("+1 Week", systemImage: "arrow.right.to.line")
-                                    }
-                                }
-
-                                Section("Extend") {
-                                    Button(action: { extendTask(task, days: 1) }) {
-                                        Label("+1 Day", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
-                                    }
-                                    Button(action: { extendTask(task, days: 2) }) {
-                                        Label("+2 Days", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
-                                    }
-                                    Button(action: { extendTask(task, days: 3) }) {
-                                        Label("+3 Days", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
-                                    }
-                                    Button(action: { extendTask(task, days: 7) }) {
-                                        Label("+1 Week", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
-                                    }
-                                }
-
-                                Section("Cascade") {
-                                    Button(action: { pushTaskWithCascade(task, days: 1) }) {
-                                        Label("+1 Day (+ dependents)", systemImage: "arrow.triangle.branch")
-                                    }
-                                    Button(action: { pushTaskWithCascade(task, days: 2) }) {
-                                        Label("+2 Days (+ dependents)", systemImage: "arrow.triangle.branch")
-                                    }
-                                }
-
-                                Section {
-                                    Button(action: { handleTaskTap(task) }) {
-                                        Label("Reschedule...", systemImage: "calendar")
-                                    }
-                                    Button(action: {
-                                        enterSelectMode()
-                                        selectedTaskIds.insert(task.id)
-                                    }) {
-                                        Label("Select", systemImage: "checkmark.circle")
-                                    }
-                                }
+                        // Unified task list — multi-day tasks maintain stable vertical
+                        // positions across days for seamless cross-day card connection.
+                        // Empty slots get invisible spacers to preserve alignment.
+                        ForEach(Array(unifiedTasks.enumerated()), id: \.element.id) { index, entry in
+                            if entry.isSpacer {
+                                // Invisible spacer matching card height (64) + vertical padding (8)
+                                Color.clear
+                                    .frame(height: 72)
+                            } else if let task = entry.task {
+                                taskRow(task: task, isOngoing: entry.isOngoing, isFirst: index == 0)
                             }
                         }
 
@@ -333,6 +353,126 @@ struct DayPageView: View {
                 .environmentObject(dataController)
                 .presentationDetents([.medium])
             }
+        }
+    }
+
+    // MARK: - Task Row
+
+    @ViewBuilder
+    private func taskRow(task: ProjectTask, isOngoing: Bool, isFirst: Bool) -> some View {
+        let card = CalendarEventCard(
+            task: task,
+            isFirst: isFirst,
+            isOngoing: isOngoing,
+            dayPosition: dayPosition(for: task, on: date),
+            showLabels: true,
+            onTap: {
+                if isSelectMode {
+                    toggleSelection(task.id)
+                } else {
+                    handleTaskTap(task)
+                }
+            }
+        )
+        .overlay(alignment: .topTrailing) {
+            if isSelectMode {
+                Image(systemName: selectedTaskIds.contains(task.id) ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundColor(selectedTaskIds.contains(task.id) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .padding(8)
+            }
+        }
+
+        if isOngoing {
+            card
+        } else {
+            card
+                .offset(x: swipeOffset[task.id] ?? 0)
+                .background(alignment: .leading) {
+                    if (swipeOffset[task.id] ?? 0) > 10 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.right")
+                            Text("+1")
+                        }
+                        .font(OPSStyle.Typography.button)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.leading, 12)
+                    }
+                }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 50)
+                        .onChanged { value in
+                            let horizontal = value.translation.width
+                            let vertical = abs(value.translation.height)
+                            guard horizontal > 0, horizontal > vertical * 2 else { return }
+                            withAnimation(.interactiveSpring()) {
+                                swipeOffset[task.id] = min(horizontal * 0.4, 70)
+                            }
+                        }
+                        .onEnded { value in
+                            let horizontal = value.translation.width
+                            let vertical = abs(value.translation.height)
+                            if horizontal > 80, horizontal > vertical * 2 {
+                                pushTask(task, days: 1)
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            }
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                swipeOffset[task.id] = 0
+                            }
+                        }
+                )
+                .contextMenu {
+                    Section("Push") {
+                        Button(action: { pushTask(task, days: 1) }) {
+                            Label("+1 Day", systemImage: "arrow.right")
+                        }
+                        Button(action: { pushTask(task, days: 2) }) {
+                            Label("+2 Days", systemImage: "arrow.right")
+                        }
+                        Button(action: { pushTask(task, days: 3) }) {
+                            Label("+3 Days", systemImage: "arrow.right")
+                        }
+                        Button(action: { pushTask(task, days: 7) }) {
+                            Label("+1 Week", systemImage: "arrow.right.to.line")
+                        }
+                    }
+
+                    Section("Extend") {
+                        Button(action: { extendTask(task, days: 1) }) {
+                            Label("+1 Day", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
+                        }
+                        Button(action: { extendTask(task, days: 2) }) {
+                            Label("+2 Days", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
+                        }
+                        Button(action: { extendTask(task, days: 3) }) {
+                            Label("+3 Days", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
+                        }
+                        Button(action: { extendTask(task, days: 7) }) {
+                            Label("+1 Week", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
+                        }
+                    }
+
+                    Section("Cascade") {
+                        Button(action: { pushTaskWithCascade(task, days: 1) }) {
+                            Label("+1 Day (+ dependents)", systemImage: "arrow.triangle.branch")
+                        }
+                        Button(action: { pushTaskWithCascade(task, days: 2) }) {
+                            Label("+2 Days (+ dependents)", systemImage: "arrow.triangle.branch")
+                        }
+                    }
+
+                    Section {
+                        Button(action: { handleTaskTap(task) }) {
+                            Label("Reschedule...", systemImage: "calendar")
+                        }
+                        Button(action: {
+                            enterSelectMode()
+                            selectedTaskIds.insert(task.id)
+                        }) {
+                            Label("Select", systemImage: "checkmark.circle")
+                        }
+                    }
+                }
         }
     }
 

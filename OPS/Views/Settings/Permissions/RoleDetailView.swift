@@ -66,23 +66,25 @@ enum PermissionRegistry {
     // MARK: - Shared Helpers
 
     static func displayName(for roleName: String) -> String {
-        switch roleName {
-        case "admin", "Admin": return "Admin"
-        case "owner", "Owner": return "Owner"
-        case "office", "Office", "office_crew", "Office Crew": return "Office"
-        case "operator", "Operator": return "Operator"
-        case "crew", "Crew", "field_crew", "Field Crew": return "Crew"
+        switch roleName.lowercased() {
+        case "admin": return "Admin"
+        case "owner": return "Owner"
+        case "office": return "Office"
+        case "operator": return "Operator"
+        case "crew": return "Crew"
+        case "unassigned": return "Unassigned"
         default: return roleName.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
 
     static func iconForRole(_ roleName: String) -> String {
-        switch roleName {
-        case "admin", "Admin": return "shield.checkered"
-        case "owner", "Owner": return "crown.fill"
-        case "office", "Office", "office_crew", "Office Crew": return "desktopcomputer"
-        case "operator", "Operator": return "wrench.and.screwdriver.fill"
-        case "crew", "Crew", "field_crew", "Field Crew": return "hammer.fill"
+        switch roleName.lowercased() {
+        case "admin": return "shield.checkered"
+        case "owner": return "crown.fill"
+        case "office": return "desktopcomputer"
+        case "operator": return "wrench.and.screwdriver.fill"
+        case "crew": return "hammer.fill"
+        case "unassigned": return "person.fill.questionmark"
         default: return "person.fill"
         }
     }
@@ -166,7 +168,7 @@ struct RoleDetailView: View {
 
     /// Preset roles (the 5 built-in roles) cannot be edited.
     private var isPresetRole: Bool {
-        let presetNames = ["admin", "owner", "office", "office_crew", "operator", "crew", "field_crew"]
+        let presetNames = ["admin", "owner", "office", "operator", "crew", "unassigned"]
         return presetNames.contains(role.name.lowercased())
     }
 

@@ -215,6 +215,23 @@ struct MinimalSignupView: View {
                         .padding(.top, 8)
                     }
 
+                    // Flow toggle — switch between Join/Create
+                    Button {
+                        let newFlow: OnboardingFlow = onboardingManager.state.flow == .employee ? .companyCreator : .employee
+                        onboardingManager.selectFlow(newFlow)
+                        errorMessage = ""
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                    } label: {
+                        Text(onboardingManager.state.flow == .employee ? "CREATE A COMPANY INSTEAD" : "JOIN A CREW INSTEAD")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .tracking(0.5)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .underline()
+                            .frame(minHeight: 44)
+                    }
+                    .padding(.top, 4)
+
                     Spacer().frame(height: 20)
                 }
                 .padding(40)

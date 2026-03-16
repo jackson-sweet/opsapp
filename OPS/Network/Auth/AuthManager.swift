@@ -28,6 +28,12 @@ class AuthManager {
         return userId
     }
 
+    /// Set the user ID explicitly (used when sync-user API returns the proper UUID).
+    func setUserId(_ id: String) {
+        self.userId = id
+        keychain.storeUserId(id)
+    }
+
     /// Sign out — clear all credentials and tokens.
     ///
     /// Fix #7: Made async so Firebase sign-out completes before returning,

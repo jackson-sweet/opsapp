@@ -34,7 +34,7 @@ struct RoleListView: View {
         case rename(AdminRoleRow)
     }
 
-    private static let presetNames = ["admin", "owner", "office", "office_crew", "operator", "crew", "field_crew"]
+    private static let presetNames = ["admin", "owner", "office", "operator", "crew", "unassigned"]
 
     private var presetRoles: [AdminRoleRow] {
         roles.filter { Self.presetNames.contains($0.name.lowercased()) }

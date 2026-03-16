@@ -28,6 +28,32 @@ struct InviteResponse: Codable {
     }
 }
 
+// MARK: - Sync User Response (from ops-web /api/auth/sync-user)
+
+/// Response from the web API sync-user endpoint.
+/// The server creates/looks up the user via service role (bypasses RLS)
+/// and returns the user with a proper UUID id (not the Firebase UID).
+struct SyncUserResponse: Codable {
+    let user: SyncedUser
+    let company: SyncedCompany?
+
+    struct SyncedUser: Codable {
+        let id: String
+        let firstName: String
+        let lastName: String
+        let email: String?
+        let companyId: String?
+        let userType: String?
+        let role: String?
+        let isActive: Bool?
+    }
+
+    struct SyncedCompany: Codable {
+        let id: String
+        let name: String
+    }
+}
+
 // UserType is defined in DataModels/UserRole.swift
 
 // MARK: - Company Data Models

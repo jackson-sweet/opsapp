@@ -15,24 +15,20 @@ enum UserRole: String, Codable, CaseIterable {
     case crew = "crew"
     case unassigned = "unassigned"
 
-    // Handle legacy and title-case values
+    // Handle title-case and legacy values from API/database
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)
-        switch rawValue {
-        case "Admin", "admin": self = .admin
-        case "Owner", "owner": self = .owner
-        case "Office Crew", "Office", "office_crew", "office": self = .office
-        case "Operator", "operator": self = .operator
-        case "Field Crew", "Crew", "field_crew", "crew": self = .crew
-        case "Unassigned", "unassigned": self = .unassigned
+        switch rawValue.lowercased() {
+        case "admin": self = .admin
+        case "owner": self = .owner
+        case "office", "office_crew", "office crew": self = .office    // legacy compat
+        case "operator": self = .operator
+        case "crew", "field_crew", "field crew": self = .crew          // legacy compat
+        case "unassigned": self = .unassigned
         default:
-            guard let role = UserRole(rawValue: rawValue) else {
-                // Fall back to unassigned for unknown roles instead of crashing
-                self = .unassigned
-                return
-            }
-            self = role
+            // Fall back to unassigned for unknown roles instead of crashing
+            self = .unassigned
         }
     }
 

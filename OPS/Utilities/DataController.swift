@@ -2064,13 +2064,16 @@ class DataController: ObservableObject {
     /// Gets team members for a company (User model - legacy version)
     func getTeamMembers(companyId: String) -> [User] {
         guard let context = modelContext else { return [] }
-        
+
         do {
             let descriptor = FetchDescriptor<User>(
-                predicate: #Predicate<User> { $0.companyId == companyId }
+                predicate: #Predicate<User> {
+                    $0.companyId == companyId &&
+                    $0.deletedAt == nil
+                }
             )
-            let users = try context.fetch(descriptor)
-            
+            let users = try context.fetch(descriptor).filter { $0.isActive != false }
+
             if !users.isEmpty {
                 return users
             } else if isRunningInPreview {

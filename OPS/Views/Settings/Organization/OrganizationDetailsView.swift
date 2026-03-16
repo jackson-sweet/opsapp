@@ -247,7 +247,7 @@ struct OrganizationDetailsView: View {
             phone: editedPhone,
             address: editedAddress,
             website: editedWebsite,
-            teamMemberCount: company?.teamMembers.count ?? 0,
+            teamMemberCount: dataController.getTeamMembers(companyId: company?.id ?? "").count,
             showTeamCount: true
         )
     }

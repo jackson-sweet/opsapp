@@ -22,8 +22,17 @@ struct ProfileScreen: View {
     // Animation coordinator
     @StateObject private var animationCoordinator = OnboardingAnimationCoordinator()
 
+    private var isEmployeeFlow: Bool {
+        manager.state.flow == .employee
+    }
+
     private var isFormValid: Bool {
-        !firstName.isEmpty && !lastName.isEmpty
+        if isEmployeeFlow {
+            // Employees MUST provide name and phone
+            return !firstName.isEmpty && !lastName.isEmpty && !phone.isEmpty
+        } else {
+            return !firstName.isEmpty && !lastName.isEmpty
+        }
     }
 
     private var initials: String {
@@ -129,7 +138,7 @@ struct ProfileScreen: View {
                         }
 
                         VStack(alignment: .leading, spacing: 8) {
-                            PhasedLabel("PHONE (optional)", index: 3, isLast: true, coordinator: animationCoordinator)
+                            PhasedLabel(isEmployeeFlow ? "PHONE" : "PHONE (optional)", index: 3, isLast: true, coordinator: animationCoordinator)
 
                             TextField("", text: $phone)
                                 .font(OPSStyle.Typography.body)
@@ -217,7 +226,8 @@ struct ProfileScreen: View {
         if manager.state.flow == .companyCreator {
             manager.goToScreen(.companySetup)
         } else {
-            manager.goToScreen(.codeEntry)
+            // Employee flow: emergency contact screen (skippable) before code entry
+            manager.goToScreen(.emergencyContact)
         }
     }
 }

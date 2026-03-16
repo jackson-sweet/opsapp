@@ -261,20 +261,48 @@ struct OnboardingABTestCoordinator: View {
                 .transition(.opacity)
 
             case .employeeConfirmation:
-                if onboardingManager.selectedInvite != nil || onboardingManager.companyJoinDetails != nil {
-                    // Branded confirmation: from invite or manual code entry with details
-                    CompanyConfirmationScreen(manager: onboardingManager)
-                        .onReceive(onboardingManager.$state) { newState in
-                            // After joinCompanyFromOnboarding succeeds, it sets companyData.companyId
-                            // CompanyConfirmationScreen calls manager.goForward() which sets currentScreen to .profile
-                            if newState.currentScreen == .profile {
-                                OnboardingSupabaseAnalytics.shared.trackStepComplete("confirmation")
-                                withAnimation { flowStep = .employeeProfile }
+                if let invite = onboardingManager.selectedInvite {
+                    // Branded confirmation from invite
+                    EmployeeCompanyConfirmationView(
+                        companyName: invite.companyName,
+                        companyLogoURL: invite.companyLogoUrl,
+                        onConfirm: {
+                            OnboardingSupabaseAnalytics.shared.trackStepComplete("confirmation")
+                            // Join via invite-aware method
+                            Task { @MainActor in
+                                do {
+                                    try await onboardingManager.joinCompanyFromOnboarding(
+                                        companyId: invite.companyId,
+                                        invitationId: invite.invitationId
+                                    )
+                                    let generator = UINotificationFeedbackGenerator()
+                                    generator.notificationOccurred(.success)
+                                    withAnimation { flowStep = .employeeProfile }
+                                } catch {
+                                    print("[ONBOARDING_AB] Join from invite failed: \(error)")
+                                    let generator = UINotificationFeedbackGenerator()
+                                    generator.notificationOccurred(.error)
+                                    withAnimation { flowStep = .employeeCodeEntry }
+                                }
                             }
-                        }
-                        .transition(.opacity)
+                        },
+                        onCancel: {
+                            onboardingManager.selectedInvite = nil
+                            if onboardingManager.pendingInvites.count > 1 {
+                                withAnimation { flowStep = .employeeInvitePicker }
+                            } else {
+                                withAnimation { flowStep = .employeeCodeEntry }
+                            }
+                        },
+                        industries: invite.industries,
+                        teamMembers: invite.teamMembers,
+                        teamSize: invite.teamSize,
+                        roleName: invite.roleName,
+                        invitedByName: invite.invitedByName
+                    )
+                    .transition(.opacity)
                 } else {
-                    // Legacy fallback: simple confirmation from code entry
+                    // From manual code entry
                     EmployeeCompanyConfirmationView(
                         companyName: lookupCompanyName,
                         companyLogoURL: lookupCompanyLogoURL,

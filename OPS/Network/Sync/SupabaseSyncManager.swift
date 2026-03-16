@@ -445,6 +445,7 @@ class SupabaseSyncManager: ObservableObject {
         }
 
         let adminIds = company.getAdminIds()
+        let serverUserIds = Set(dtos.map { $0.id })
 
         for dto in dtos {
             let user = dto.toModel()
@@ -453,6 +454,22 @@ class SupabaseSyncManager: ObservableObject {
                 user.role = .admin
             }
             try upsertUser(user)
+        }
+
+        // Remove local users that no longer exist on the server (hard-deleted)
+        let localDescriptor = FetchDescriptor<User>(
+            predicate: #Predicate<User> { $0.companyId == companyId }
+        )
+        let localUsers = (try? modelContext.fetch(localDescriptor)) ?? []
+        var removedCount = 0
+        for localUser in localUsers {
+            if !serverUserIds.contains(localUser.id) {
+                modelContext.delete(localUser)
+                removedCount += 1
+            }
+        }
+        if removedCount > 0 {
+            print("[SUPABASE_SYNC] Removed \(removedCount) stale local users no longer on server")
         }
 
         company.teamMembersSynced = true

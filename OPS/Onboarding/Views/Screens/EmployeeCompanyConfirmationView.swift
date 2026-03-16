@@ -14,6 +14,13 @@ struct EmployeeCompanyConfirmationView: View {
     let onConfirm: () -> Void
     let onCancel: () -> Void
 
+    // Optional branded invite data
+    var industries: [String]? = nil
+    var teamMembers: [TeamMemberDTO]? = nil
+    var teamSize: Int? = nil
+    var roleName: String? = nil
+    var invitedByName: String? = nil
+
     @State private var logoOpacity: Double = 0
     @State private var textOpacity: Double = 0
     @State private var buttonOpacity: Double = 0
@@ -76,6 +83,70 @@ struct EmployeeCompanyConfirmationView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .opacity(textOpacity)
+
+                    // Industries (if branded data available)
+                    if let industries = industries, !industries.isEmpty {
+                        Text(industries.prefix(3).joined(separator: " \u{2022} ").uppercased())
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .tracking(1.5)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .opacity(textOpacity)
+                    }
+
+                    // Team avatars + size (if branded data available)
+                    if let members = teamMembers, !members.isEmpty, let size = teamSize {
+                        VStack(spacing: 8) {
+                            HStack(spacing: -8) {
+                                ForEach(Array(members.prefix(6).enumerated()), id: \.offset) { index, member in
+                                    teamMemberAvatar(member: member)
+                                        .zIndex(Double(6 - index))
+                                }
+                                if size > 6 {
+                                    ZStack {
+                                        Circle()
+                                            .fill(OPSStyle.Colors.cardBackgroundDark)
+                                            .frame(width: 28, height: 28)
+                                            .overlay(Circle().stroke(OPSStyle.Colors.background, lineWidth: 2))
+                                        Text("+\(size - 6)")
+                                            .font(.system(size: 9, weight: .medium))
+                                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Text("\(size) \(size == 1 ? "member" : "members")")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .opacity(textOpacity)
+                    }
+
+                    // Role badge (invite only)
+                    if let role = roleName {
+                        Text("You'll join as \(role)")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(OPSStyle.Colors.primaryAccent.opacity(0.15))
+                            )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .opacity(textOpacity)
+                    }
+
+                    // Invited by (invite only)
+                    if let inviter = invitedByName {
+                        Text("Invited by \(inviter)")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .opacity(textOpacity)
+                    }
                 }
                 .padding(.horizontal, 40)
 
@@ -92,7 +163,7 @@ struct EmployeeCompanyConfirmationView: View {
 
                     Button(action: onConfirm) {
                         HStack {
-                            Text("CONTINUE")
+                            Text("JOIN CREW")
                                 .font(OPSStyle.Typography.bodyBold)
                             Spacer()
                             Image(systemName: "arrow.right")
@@ -114,6 +185,41 @@ struct EmployeeCompanyConfirmationView: View {
         .onAppear {
             startAnimations()
             OnboardingSupabaseAnalytics.shared.trackStepView("confirmation")
+        }
+    }
+
+    // MARK: - Team Member Avatar
+
+    @ViewBuilder
+    private func teamMemberAvatar(member: TeamMemberDTO) -> some View {
+        if let urlString = member.profileImageUrl, let url = URL(string: urlString) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 28, height: 28)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(OPSStyle.Colors.background, lineWidth: 2))
+                default:
+                    memberInitialCircle(member: member)
+                }
+            }
+        } else {
+            memberInitialCircle(member: member)
+        }
+    }
+
+    private func memberInitialCircle(member: TeamMemberDTO) -> some View {
+        ZStack {
+            Circle()
+                .fill(OPSStyle.Colors.cardBackgroundDark)
+                .frame(width: 28, height: 28)
+                .overlay(Circle().stroke(OPSStyle.Colors.background, lineWidth: 2))
+            Text(member.initials)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundColor(OPSStyle.Colors.secondaryText)
         }
     }
 

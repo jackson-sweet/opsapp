@@ -22,7 +22,7 @@ class ClientRepository {
 
     // MARK: - Fetch Clients
 
-    func fetchAll(since: Date? = nil) async throws -> [SupabaseClientDTO] {
+    func fetchAll(since: Date? = nil, scope: String = "all", userId: String? = nil) async throws -> [SupabaseClientDTO] {
         var query = client
             .from("clients")
             .select()
@@ -30,6 +30,13 @@ class ClientRepository {
 
         if let since = since {
             query = query.gte("updated_at", value: isoString(since))
+        }
+
+        // Permission scope filtering
+        // Clients don't have team_member_ids, so "assigned" falls through to "all".
+        // Only "own" scope restricts to creator.
+        if scope == "own", let userId = userId {
+            query = query.eq("created_by", value: userId)
         }
 
         let response: [SupabaseClientDTO] = try await query

@@ -20,7 +20,7 @@ class ProjectRepository {
 
     // MARK: - Fetch
 
-    func fetchAll(since: Date? = nil) async throws -> [SupabaseProjectDTO] {
+    func fetchAll(since: Date? = nil, scope: String = "all", userId: String? = nil) async throws -> [SupabaseProjectDTO] {
         var query = client
             .from("projects")
             .select()
@@ -28,6 +28,13 @@ class ProjectRepository {
 
         if let since = since {
             query = query.gte("updated_at", value: isoString(since))
+        }
+
+        // Permission scope filtering
+        if scope == "assigned", let userId = userId {
+            query = query.contains("team_member_ids", value: [userId])
+        } else if scope == "own", let userId = userId {
+            query = query.eq("created_by", value: userId)
         }
 
         let response: [SupabaseProjectDTO] = try await query

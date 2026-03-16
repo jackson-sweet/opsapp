@@ -422,11 +422,13 @@ final class InboundProcessor {
     // MARK: - Client Sync
 
     private func syncClients(since: Date?, context: ModelContext) async throws {
-        let dtos = try await clientRepo.fetchAll(since: since)
+        let scope = PermissionStore.shared.scope(for: "clients.view") ?? "all"
+        let userId = UserDefaults.standard.string(forKey: "currentUserId")
+        let dtos = try await clientRepo.fetchAll(since: since, scope: scope, userId: userId)
         for dto in dtos {
             try mergeClient(dto: dto, context: context)
         }
-        print("[InboundProcessor] Merged \(dtos.count) clients")
+        print("[InboundProcessor] Merged \(dtos.count) clients (scope: \(scope))")
     }
 
     private func mergeClient(dto: SupabaseClientDTO, context: ModelContext) throws {
@@ -529,11 +531,13 @@ final class InboundProcessor {
     // MARK: - Project Sync
 
     private func syncProjects(since: Date?, context: ModelContext) async throws {
-        let dtos = try await projectRepo.fetchAll(since: since)
+        let scope = PermissionStore.shared.scope(for: "projects.view") ?? "all"
+        let userId = UserDefaults.standard.string(forKey: "currentUserId")
+        let dtos = try await projectRepo.fetchAll(since: since, scope: scope, userId: userId)
         for dto in dtos {
             try mergeProject(dto: dto, context: context)
         }
-        print("[InboundProcessor] Merged \(dtos.count) projects")
+        print("[InboundProcessor] Merged \(dtos.count) projects (scope: \(scope))")
     }
 
     private func mergeProject(dto: SupabaseProjectDTO, context: ModelContext) throws {
@@ -597,11 +601,13 @@ final class InboundProcessor {
     // MARK: - Task Sync
 
     private func syncTasks(since: Date?, context: ModelContext) async throws {
-        let dtos = try await taskRepo.fetchAll(since: since)
+        let scope = PermissionStore.shared.scope(for: "tasks.view") ?? "all"
+        let userId = UserDefaults.standard.string(forKey: "currentUserId")
+        let dtos = try await taskRepo.fetchAll(since: since, scope: scope, userId: userId)
         for dto in dtos {
             try mergeTask(dto: dto, context: context)
         }
-        print("[InboundProcessor] Merged \(dtos.count) tasks")
+        print("[InboundProcessor] Merged \(dtos.count) tasks (scope: \(scope))")
     }
 
     private func mergeTask(dto: SupabaseProjectTaskDTO, context: ModelContext) throws {

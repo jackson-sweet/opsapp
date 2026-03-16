@@ -383,7 +383,10 @@ final class RealtimeProcessor: ObservableObject {
             if !pendingFields.contains("projectImagesString")   { existing.projectImagesString = model.projectImagesString }
             if !pendingFields.contains("deletedAt")             { existing.deletedAt = model.deletedAt }
             existing.lastSyncedAt = Date()
-            if !existing.needsSync { existing.needsSync = false }
+            let pendingFieldsForSync = pendingFieldsForEntity(entityType: .project, entityId: existing.id, context: context)
+            if pendingFieldsForSync.isEmpty {
+                existing.needsSync = false
+            }
         } else {
             model.lastSyncedAt = Date()
             model.needsSync = false
@@ -409,7 +412,10 @@ final class RealtimeProcessor: ObservableObject {
             if !pendingFields.contains("sourceEstimateId")      { existing.sourceEstimateId = model.sourceEstimateId }
             if !pendingFields.contains("deletedAt")             { existing.deletedAt = model.deletedAt }
             existing.lastSyncedAt = Date()
-            if !existing.needsSync { existing.needsSync = false }
+            let pendingFieldsForSync = pendingFieldsForEntity(entityType: .projectTask, entityId: existing.id, context: context)
+            if pendingFieldsForSync.isEmpty {
+                existing.needsSync = false
+            }
         } else {
             model.lastSyncedAt = Date()
             model.needsSync = false

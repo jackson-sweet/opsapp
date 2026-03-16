@@ -564,8 +564,9 @@ final class InboundProcessor {
             if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
 
             existing.lastSyncedAt = Date()
-            // Only clear needsSync if there's nothing pending locally
-            if !existing.needsSync {
+            // Only clear needsSync if there are no pending SyncOperations for this entity
+            let hasPending = hasPendingOperations(entityType: .project, entityId: existing.id, context: context)
+            if !hasPending {
                 existing.needsSync = false
             }
         } else {
@@ -646,8 +647,9 @@ final class InboundProcessor {
             if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
 
             existing.lastSyncedAt = Date()
-            // Only clear needsSync if there's nothing pending locally
-            if !existing.needsSync {
+            // Only clear needsSync if there are no pending SyncOperations for this entity
+            let hasPending = hasPendingOperations(entityType: .projectTask, entityId: existing.id, context: context)
+            if !hasPending {
                 existing.needsSync = false
             }
         } else {
@@ -733,6 +735,21 @@ final class InboundProcessor {
             print("[InboundProcessor] ⚠️ Relationship linking save failed: \(error) — rolling back")
             context.rollback()
         }
+    }
+
+    // MARK: - Pending Operations Check
+
+    /// Returns true if there are any pending SyncOperations for the given entity.
+    /// Used to decide whether `needsSync` should be cleared after an inbound merge.
+    private func hasPendingOperations(entityType: SyncEntityType, entityId: String, context: ModelContext) -> Bool {
+        let typeStr = entityType.rawValue
+        let predicate = #Predicate<SyncOperation> { op in
+            op.entityType == typeStr &&
+            op.entityId == entityId &&
+            op.status == "pending"
+        }
+        let descriptor = FetchDescriptor<SyncOperation>(predicate: predicate)
+        return (try? context.fetchCount(descriptor)) ?? 0 > 0
     }
 
     // MARK: - Helpers

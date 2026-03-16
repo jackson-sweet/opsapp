@@ -32,6 +32,8 @@ final class InboundProcessor {
     private var clientRepo: ClientRepository
     private var companyRepo: CompanyRepository
     private var taskTypeRepo: TaskTypeRepository
+    private var projectNoteRepo: ProjectNoteRepository
+    private var photoAnnotationRepo: PhotoAnnotationRepository
 
     // MARK: - Init
 
@@ -47,6 +49,8 @@ final class InboundProcessor {
         self.clientRepo = ClientRepository(companyId: companyId)
         self.companyRepo = CompanyRepository()
         self.taskTypeRepo = TaskTypeRepository(companyId: companyId)
+        self.projectNoteRepo = ProjectNoteRepository(companyId: companyId)
+        self.photoAnnotationRepo = PhotoAnnotationRepository(companyId: companyId)
     }
 
     // MARK: - Reconfigure
@@ -75,6 +79,8 @@ final class InboundProcessor {
         self.clientRepo = ClientRepository(companyId: newCompanyId)
         self.companyRepo = CompanyRepository()
         self.taskTypeRepo = TaskTypeRepository(companyId: newCompanyId)
+        self.projectNoteRepo = ProjectNoteRepository(companyId: newCompanyId)
+        self.photoAnnotationRepo = PhotoAnnotationRepository(companyId: newCompanyId)
     }
 
     // MARK: - Sync Priority Order
@@ -85,9 +91,12 @@ final class InboundProcessor {
         .company,
         .user,
         .client,
+        .subClient,
         .taskType,
         .project,
-        .projectTask
+        .projectTask,
+        .projectNote,
+        .photoAnnotation
     ]
 
     // MARK: - Full Sync
@@ -120,7 +129,7 @@ final class InboundProcessor {
         print("[InboundProcessor] Linking relationships...")
         linkAllRelationships(context: context)
 
-        onProgress?(.projectTask, 1.0)
+        onProgress?(.photoAnnotation, 1.0)
         print("[InboundProcessor] ======== FULL SYNC COMPLETED ========")
     }
 
@@ -175,6 +184,12 @@ final class InboundProcessor {
             try await syncProjects(since: since, context: context)
         case .projectTask:
             try await syncTasks(since: since, context: context)
+        case .subClient:
+            try await syncSubClients(since: since, context: context)
+        case .projectNote:
+            try await syncProjectNotes(since: since, context: context)
+        case .photoAnnotation:
+            try await syncPhotoAnnotations(since: since, context: context)
         default:
             print("[InboundProcessor] Entity type \(entityType.rawValue) not yet supported for inbound sync")
         }
@@ -649,6 +664,170 @@ final class InboundProcessor {
             existing.lastSyncedAt = Date()
             // Only clear needsSync if there are no pending SyncOperations for this entity
             let hasPending = hasPendingOperations(entityType: .projectTask, entityId: existing.id, context: context)
+            if !hasPending {
+                existing.needsSync = false
+            }
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+
+        try context.save()
+    }
+
+    // MARK: - SubClient Sync
+
+    private func syncSubClients(since: Date?, context: ModelContext) async throws {
+        let dtos = try await clientRepo.fetchAllSubClients(since: since)
+        for dto in dtos {
+            try mergeSubClient(dto: dto, context: context)
+        }
+        print("[InboundProcessor] Merged \(dtos.count) sub-clients")
+    }
+
+    private func mergeSubClient(dto: SupabaseSubClientDTO, context: ModelContext) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<SubClient>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try context.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .subClient,
+                entityId: id,
+                fields: [
+                    "name", "title", "email", "phoneNumber", "address", "deletedAt"
+                ],
+                context: context
+            )
+
+            if accept.contains("name") { existing.name = dto.name }
+            if accept.contains("title") { existing.title = dto.title }
+            if accept.contains("email") { existing.email = dto.email }
+            if accept.contains("phoneNumber") { existing.phoneNumber = dto.phoneNumber }
+            if accept.contains("address") { existing.address = dto.address }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            // Link parent client relationship
+            let parentId = dto.parentClientId
+            let clientDescriptor = FetchDescriptor<Client>(predicate: #Predicate { $0.id == parentId })
+            if let parentClient = try? context.fetch(clientDescriptor).first {
+                existing.client = parentClient
+            }
+
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+
+            // Link parent client relationship
+            let parentId = dto.parentClientId
+            let clientDescriptor = FetchDescriptor<Client>(predicate: #Predicate { $0.id == parentId })
+            if let parentClient = try? context.fetch(clientDescriptor).first {
+                model.client = parentClient
+            }
+
+            context.insert(model)
+        }
+
+        try context.save()
+    }
+
+    // MARK: - ProjectNote Sync
+
+    private func syncProjectNotes(since: Date?, context: ModelContext) async throws {
+        let dtos = try await projectNoteRepo.fetchAll(since: since)
+        for dto in dtos {
+            try mergeProjectNote(dto: dto, context: context)
+        }
+        print("[InboundProcessor] Merged \(dtos.count) project notes")
+    }
+
+    private func mergeProjectNote(dto: ProjectNoteDTO, context: ModelContext) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<ProjectNote>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try context.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .projectNote,
+                entityId: id,
+                fields: [
+                    "content", "attachmentsJSON", "mentionedUserIdsString",
+                    "updatedAt", "deletedAt"
+                ],
+                context: context
+            )
+
+            if accept.contains("content") { existing.content = dto.content }
+            if accept.contains("attachmentsJSON") {
+                if let attachments = dto.attachments, !attachments.isEmpty,
+                   let data = try? JSONEncoder().encode(attachments),
+                   let json = String(data: data, encoding: .utf8) {
+                    existing.attachmentsJSON = json
+                } else if dto.attachments == nil || (dto.attachments?.isEmpty ?? true) {
+                    existing.attachmentsJSON = "[]"
+                }
+            }
+            if accept.contains("mentionedUserIdsString") {
+                existing.mentionedUserIdsString = (dto.mentionedUserIds ?? []).joined(separator: ",")
+            }
+            if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            existing.lastSyncedAt = Date()
+            let hasPending = hasPendingOperations(entityType: .projectNote, entityId: existing.id, context: context)
+            if !hasPending {
+                existing.needsSync = false
+            }
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+
+        try context.save()
+    }
+
+    // MARK: - PhotoAnnotation Sync
+
+    private func syncPhotoAnnotations(since: Date?, context: ModelContext) async throws {
+        let dtos = try await photoAnnotationRepo.fetchAll(since: since)
+        for dto in dtos {
+            try mergePhotoAnnotation(dto: dto, context: context)
+        }
+        print("[InboundProcessor] Merged \(dtos.count) photo annotations")
+    }
+
+    private func mergePhotoAnnotation(dto: PhotoAnnotationDTO, context: ModelContext) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<PhotoAnnotation>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try context.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .photoAnnotation,
+                entityId: id,
+                fields: [
+                    "annotationURL", "note", "updatedAt", "deletedAt"
+                ],
+                context: context
+            )
+
+            if accept.contains("annotationURL") { existing.annotationURL = dto.annotationUrl }
+            if accept.contains("note") { existing.note = dto.note ?? "" }
+            if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            existing.lastSyncedAt = Date()
+            let hasPending = hasPendingOperations(entityType: .photoAnnotation, entityId: existing.id, context: context)
             if !hasPending {
                 existing.needsSync = false
             }

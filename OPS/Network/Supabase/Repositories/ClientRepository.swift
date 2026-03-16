@@ -205,6 +205,25 @@ class ClientRepository {
             .execute()
     }
 
+    // MARK: - Fetch All SubClients (for InboundProcessor)
+
+    func fetchAllSubClients(since: Date? = nil) async throws -> [SupabaseSubClientDTO] {
+        var query = client
+            .from("sub_clients")
+            .select()
+            .eq("company_id", value: companyId)
+
+        if let since = since {
+            query = query.gte("updated_at", value: isoString(since))
+        }
+
+        let response: [SupabaseSubClientDTO] = try await query
+            .order("created_at", ascending: true)
+            .execute()
+            .value
+        return response
+    }
+
     // MARK: - Update Client Fields (generic)
 
     func updateFields(_ clientId: String, fields: [String: AnyJSON]) async throws {

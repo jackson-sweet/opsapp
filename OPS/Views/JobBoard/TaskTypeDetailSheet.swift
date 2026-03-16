@@ -279,6 +279,12 @@ struct TaskTypeDetailSheet: View {
                         // Bulk delete all tasks
                         for task in taskTypeTasks {
                             await MainActor.run {
+                                dataController.syncEngine.recordOperation(
+                                    entityType: .projectTask,
+                                    entityId: task.id,
+                                    operationType: "delete",
+                                    changedFields: ["_deleted": true]
+                                )
                                 modelContext.delete(task)
                             }
                         }
@@ -288,6 +294,12 @@ struct TaskTypeDetailSheet: View {
                             if deletions.contains(task.id) {
                                 // Delete task
                                 await MainActor.run {
+                                    dataController.syncEngine.recordOperation(
+                                        entityType: .projectTask,
+                                        entityId: task.id,
+                                        operationType: "delete",
+                                        changedFields: ["_deleted": true]
+                                    )
                                     modelContext.delete(task)
                                 }
                             } else if let newTaskTypeId = reassignments[task.id],

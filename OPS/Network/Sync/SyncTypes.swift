@@ -194,7 +194,7 @@ enum SyncEntityType: String, CaseIterable {
         case .lineItem:              return "line_items"
         case .payment:               return "payments"
         case .projectNote:           return "project_notes"
-        case .photoAnnotation:       return "photo_annotations"
+        case .photoAnnotation:       return "project_photo_annotations"
         case .calendarUserEvent:     return "calendar_user_events"
         case .inventoryItem:         return "inventory_items"
         case .inventoryUnit:         return "inventory_units"

@@ -264,12 +264,13 @@ final class ConnectivityManager: ObservableObject {
         isConnected = (status != .offline)
 
         if changed {
-            onStateChanged?(newState)
+            // Debounce both callbacks to prevent duplicate sync triggers from rapid flaps
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.debounceTimer?.invalidate()
                 self.debounceTimer = Timer.scheduledTimer(withTimeInterval: self.debounceInterval, repeats: false) { [weak self] _ in
                     guard let self else { return }
+                    self.onStateChanged?(newState)
                     NotificationCenter.default.post(
                         name: ConnectivityManager.connectivityChangedNotification,
                         object: self,

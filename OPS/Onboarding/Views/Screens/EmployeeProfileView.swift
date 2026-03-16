@@ -25,6 +25,11 @@ struct EmployeeProfileView: View {
     @State private var isLoading = false
     @State private var errorMessage = ""
 
+    private var isFormValid: Bool {
+        !firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var body: some View {
         ZStack {
@@ -44,13 +49,7 @@ struct EmployeeProfileView: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                         Spacer()
 
-                        // Skip button
-                        Button(action: onSkip) {
-                            Text("SKIP")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .frame(minWidth: 44, minHeight: 44)
-                        }
+                        // No skip — name and phone are required
                     }
                     .padding(.leading, 4)
 
@@ -116,10 +115,10 @@ struct EmployeeProfileView: View {
                         .padding(.horizontal, 20)
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
-                        .background(OPSStyle.Colors.primaryText)
+                        .background(isFormValid ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
-                    .disabled(isLoading)
+                    .disabled(!isFormValid || isLoading)
 
                     Spacer().frame(height: 20)
                 }

@@ -431,7 +431,9 @@ struct OnboardingABTestCoordinator: View {
                         withAnimation { flowStep = .employeeEmergencyContact }
                     },
                     onSkip: {
-                        OnboardingSupabaseAnalytics.shared.trackStepSkip("profile")
+                        // Profile is required (name + phone), but onSkip callback is still
+                        // needed by EmployeeProfileView's interface. Route same as complete.
+                        OnboardingSupabaseAnalytics.shared.trackStepComplete("profile")
                         withAnimation { flowStep = .employeeEmergencyContact }
                     }
                 )

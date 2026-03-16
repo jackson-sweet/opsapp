@@ -29,9 +29,33 @@ struct ContentView: View {
     @State private var onboardingManagerInstance: OnboardingManager?
     @State private var hasCompletedInitialAuthCheck = false
 
+    private var hasCompletedOnboarding: Bool {
+        UserDefaults.standard.bool(forKey: "onboarding_completed")
+    }
+
+    private var cachedAccountName: String? {
+        guard let userId = UserDefaults.standard.string(forKey: "currentUserId"),
+              !userId.isEmpty else { return nil }
+        // Try to find cached user in SwiftData
+        let descriptor = FetchDescriptor<User>(predicate: #Predicate { $0.id == userId })
+        if let user = try? dataController.modelContext?.fetch(descriptor).first {
+            return user.fullName
+        }
+        return nil
+    }
+
+    private func loginWithCachedAccount() {
+        dataController.isAuthenticated = true
+    }
+
     var body: some View {
         Group {
-            if isCheckingAuth {
+            if !dataController.isConnected && !dataController.isAuthenticated && !hasCompletedOnboarding {
+                OfflineGateView(
+                    cachedUserName: cachedAccountName,
+                    onCachedLogin: loginWithCachedAccount
+                )
+            } else if isCheckingAuth {
                 // Show a simple loading view while checking authentication
                 SplashLoadingView()
             } else if showABTestOnboarding && variantManager.isReady, let manager = onboardingManagerInstance {

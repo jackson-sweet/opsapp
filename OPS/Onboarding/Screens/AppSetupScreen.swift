@@ -4,8 +4,8 @@
 //
 //  Full-screen loading screen shown while the app is being set up.
 //  Used at end of onboarding (after all steps complete) and during login
-//  when syncing user data. Shows the TacticalLoadingBarAnimated with
-//  a phased message sequence so the user knows the app is working.
+//  when syncing user data. Performs real data sync (permissions + full
+//  entity sync) before allowing the user into the main app.
 //
 
 import SwiftUI
@@ -14,19 +14,15 @@ struct AppSetupScreen: View {
     @ObservedObject var manager: OnboardingManager
     @EnvironmentObject var dataController: DataController
 
-    // Phased status messages that cycle during setup
-    @State private var messageIndex: Int = 0
+    // Visual fade-in state
     @State private var messageOpacity: Double = 0
     @State private var logoOpacity: Double = 0
     @State private var loadingOpacity: Double = 0
-    @State private var setupTimer: Timer?
 
-    private let messages = [
-        "SETTING UP YOUR WORKSPACE",
-        "SYNCING YOUR DATA",
-        "PREPARING YOUR TOOLS",
-        "ALMOST READY"
-    ]
+    // Sync state
+    @State private var syncPhase: String = "SETTING UP YOUR WORKSPACE"
+    @State private var syncFailed = false
+    @State private var failureCount = 0
 
     var body: some View {
         ZStack {
@@ -45,44 +41,77 @@ struct AppSetupScreen: View {
                 Spacer()
                     .frame(height: 48)
 
-                // Animated loading bar
-                TacticalLoadingBarAnimated(
-                    barCount: 8,
-                    barWidth: 3,
-                    barHeight: 8,
-                    spacing: 5,
-                    emptyColor: OPSStyle.Colors.inputFieldBorder,
-                    fillColor: OPSStyle.Colors.primaryAccent
-                )
-                .opacity(loadingOpacity)
+                if syncFailed {
+                    // Error state
+                    VStack(spacing: 16) {
+                        Text("SYNC FAILED")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.warningStatus)
+                            .tracking(2)
 
-                Spacer()
-                    .frame(height: 24)
+                        Button {
+                            syncFailed = false
+                            performRealSync()
+                        } label: {
+                            Text("TAP TO RETRY")
+                                .font(OPSStyle.Typography.button)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(OPSStyle.Colors.primaryAccent)
+                                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        }
+                        .padding(.horizontal, 48)
 
-                // Phased status message
-                Text(messages[messageIndex])
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .tracking(2)
-                    .opacity(messageOpacity)
-                    .animation(.easeInOut(duration: 0.4), value: messageOpacity)
-                    .id("setup-message-\(messageIndex)")
+                        if failureCount >= 3 {
+                            Button {
+                                manager.completeOnboarding()
+                            } label: {
+                                Text("CONTINUE ANYWAY")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    .underline()
+                            }
+                        }
+                    }
+                    .opacity(loadingOpacity)
+                } else {
+                    // Normal loading state
+                    TacticalLoadingBarAnimated(
+                        barCount: 8,
+                        barWidth: 3,
+                        barHeight: 8,
+                        spacing: 5,
+                        emptyColor: OPSStyle.Colors.inputFieldBorder,
+                        fillColor: OPSStyle.Colors.primaryAccent
+                    )
+                    .opacity(loadingOpacity)
+
+                    Spacer()
+                        .frame(height: 24)
+
+                    // Current sync phase message
+                    Text(syncPhase)
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .tracking(2)
+                        .opacity(messageOpacity)
+                        .animation(.easeInOut(duration: 0.4), value: syncPhase)
+                        .id("setup-message-\(syncPhase)")
+                }
 
                 Spacer()
             }
         }
         .onAppear {
-            startSetupSequence()
-        }
-        .onDisappear {
-            setupTimer?.invalidate()
-            setupTimer = nil
+            startFadeInSequence()
+            performRealSync()
         }
     }
 
-    // MARK: - Setup Sequence
+    // MARK: - Visual Fade-In
 
-    private func startSetupSequence() {
+    private func startFadeInSequence() {
         // Phase 1: Fade in logo
         withAnimation(.easeIn(duration: 0.6)) {
             logoOpacity = 1.0
@@ -101,31 +130,39 @@ struct AppSetupScreen: View {
                 messageOpacity = 1.0
             }
         }
+    }
 
-        // Phase 4: Cycle messages every 2 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            setupTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-                Task { @MainActor in
-                    // Fade out current message
-                    withAnimation(.easeOut(duration: 0.3)) {
-                        messageOpacity = 0
-                    }
-                    // After fade out, switch and fade in
-                    try? await Task.sleep(nanoseconds: 350_000_000)
-                    messageIndex = (messageIndex + 1) % messages.count
-                    withAnimation(.easeIn(duration: 0.3)) {
-                        messageOpacity = 1.0
-                    }
+    // MARK: - Real Sync
+
+    private func performRealSync() {
+        Task {
+            do {
+                // Phase 1: Permissions
+                syncPhase = "LOADING YOUR PERMISSIONS"
+                let userId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+                await PermissionStore.shared.fetchPermissions(userId: userId)
+
+                // Phase 2: Full sync
+                syncPhase = "SYNCING YOUR DATA"
+                guard let engine = dataController.syncEngine else {
+                    throw NSError(domain: "SyncGate", code: 1, userInfo: [NSLocalizedDescriptionKey: "SyncEngine not initialized"])
                 }
-            }
-            if let timer = setupTimer {
-                RunLoop.main.add(timer, forMode: .common)
-            }
-        }
 
-        // Phase 5: Complete onboarding after a brief delay to ensure sync starts
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-            manager.completeOnboarding()
+                syncPhase = "SYNCING YOUR PROJECTS"
+                await engine.fullSync()
+
+                syncPhase = "ALMOST READY"
+                try? await Task.sleep(nanoseconds: 500_000_000)
+
+                // Success
+                manager.completeOnboarding()
+
+            } catch {
+                failureCount += 1
+                syncFailed = true
+                syncPhase = "SYNC FAILED"
+                print("[SYNC_GATE] Sync failed (attempt \(failureCount)): \(error)")
+            }
         }
     }
 }

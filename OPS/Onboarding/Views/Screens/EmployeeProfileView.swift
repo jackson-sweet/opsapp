@@ -3,7 +3,7 @@
 //  OPS
 //
 //  Profile setup for employees joining a crew.
-//  Collects avatar, name, phone, and emergency contact.
+//  Collects avatar, name, and phone.
 //  All fields are optional — user can skip entirely.
 //
 
@@ -20,15 +20,11 @@ struct EmployeeProfileView: View {
     @State private var firstName = ""
     @State private var lastName = ""
     @State private var phone = ""
-    @State private var emergencyName = ""
-    @State private var emergencyPhone = ""
-    @State private var emergencyRelationship = ""
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
     @State private var isLoading = false
     @State private var errorMessage = ""
 
-    private let relationships = ["Parent", "Spouse", "Sibling", "Friend", "Other"]
 
     var body: some View {
         ZStack {
@@ -89,11 +85,6 @@ struct EmployeeProfileView: View {
                         underlineField("Last Name", text: $lastName, contentType: .familyName)
                         underlineField("Phone", text: $phone, contentType: .telephoneNumber, keyboard: .phonePad)
                     }
-
-                    Spacer().frame(height: 40)
-
-                    // Emergency contact section
-                    emergencyContactSection
 
                     Spacer().frame(height: 32)
 
@@ -175,63 +166,6 @@ struct EmployeeProfileView: View {
         }
     }
 
-    // MARK: - Emergency Contact Section
-
-    private var emergencyContactSection: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(spacing: 6) {
-                Image(systemName: "cross.case.fill")
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Text("EMERGENCY CONTACT")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-
-            underlineField("Contact Name", text: $emergencyName, contentType: .name)
-            underlineField("Contact Phone", text: $emergencyPhone, contentType: .telephoneNumber, keyboard: .phonePad)
-
-            // Relationship picker
-            VStack(alignment: .leading, spacing: 12) {
-                Text("RELATIONSHIP")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .tracking(1)
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(relationships, id: \.self) { rel in
-                            Button {
-                                emergencyRelationship = (emergencyRelationship == rel) ? "" : rel
-                            } label: {
-                                Text(rel.uppercased())
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(emergencyRelationship == rel ? OPSStyle.Colors.background : OPSStyle.Colors.secondaryText)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 10)
-                                    .background(
-                                        emergencyRelationship == rel
-                                            ? OPSStyle.Colors.primaryText
-                                            : Color.clear
-                                    )
-                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(
-                                                emergencyRelationship == rel
-                                                    ? Color.clear
-                                                    : OPSStyle.Colors.inputFieldBorder,
-                                                lineWidth: OPSStyle.Layout.Border.standard
-                                            )
-                                    )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     // MARK: - Underline Field
 
     private func underlineField(
@@ -265,14 +199,14 @@ struct EmployeeProfileView: View {
                 let fn = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
                 let ln = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
 
-                if !fn.isEmpty || !ln.isEmpty || !phone.isEmpty || !emergencyName.isEmpty {
+                if !fn.isEmpty || !ln.isEmpty || !phone.isEmpty {
                     try await onboardingManager.saveEmployeeProfile(
                         firstName: fn.isEmpty ? (dataController.currentUser?.firstName ?? "") : fn,
                         lastName: ln.isEmpty ? (dataController.currentUser?.lastName ?? "") : ln,
                         phone: phone.isEmpty ? nil : phone,
-                        emergencyContactName: emergencyName.isEmpty ? nil : emergencyName,
-                        emergencyContactPhone: emergencyPhone.isEmpty ? nil : emergencyPhone,
-                        emergencyContactRelationship: emergencyRelationship.isEmpty ? nil : emergencyRelationship
+                        emergencyContactName: nil,
+                        emergencyContactPhone: nil,
+                        emergencyContactRelationship: nil
                     )
                 }
 

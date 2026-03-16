@@ -33,7 +33,8 @@ enum ABTestFlowStep: String {
     case employeeInvitePicker // Employee: multiple invites found, pick one
     case employeeCodeEntry   // Employee: enter crew code
     case employeeConfirmation // Employee: "Welcome to [Company]"
-    case employeeProfile     // Employee: name, phone, avatar, emergency contact
+    case employeeProfile     // Employee: name, phone, avatar
+    case employeeEmergencyContact // Employee: emergency contact (skippable)
     case complete
 
     // MARK: - Persistence
@@ -81,7 +82,7 @@ enum ABTestFlowStep: String {
             return .employeeCodeEntry
 
         // These are safe to resume directly
-        case .employeeCodeEntry, .employeeProfile:
+        case .employeeCodeEntry, .employeeProfile, .employeeEmergencyContact:
             return self
         case .companyName, .crewCode:
             return self
@@ -427,10 +428,24 @@ struct OnboardingABTestCoordinator: View {
                     onboardingManager: onboardingManager,
                     onComplete: {
                         OnboardingSupabaseAnalytics.shared.trackStepComplete("profile")
-                        joinCrewAndComplete()
+                        withAnimation { flowStep = .employeeEmergencyContact }
                     },
                     onSkip: {
                         OnboardingSupabaseAnalytics.shared.trackStepSkip("profile")
+                        withAnimation { flowStep = .employeeEmergencyContact }
+                    }
+                )
+                .transition(.opacity)
+
+            case .employeeEmergencyContact:
+                EmployeeEmergencyContactView(
+                    onboardingManager: onboardingManager,
+                    onComplete: {
+                        OnboardingSupabaseAnalytics.shared.trackStepComplete("emergency_contact")
+                        joinCrewAndComplete()
+                    },
+                    onSkip: {
+                        OnboardingSupabaseAnalytics.shared.trackStepSkip("emergency_contact")
                         joinCrewAndComplete()
                     }
                 )

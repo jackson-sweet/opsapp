@@ -380,6 +380,14 @@ struct TutorialFlowView: View {
             }
         }
         .coordinateSpace(name: "tutorialContent")
+        .onPreferenceChange(TaskSlotFrameKey.self) { frames in
+            // Route frames to the correct state dict based on current phase
+            if showCalendar && deckTaskPhase == .calendarBar {
+                calendarSlotFrames = frames
+            } else if deckTaskPhase == .projectCard || deckTaskPhase == .detaching {
+                projectCardSlotFrames = frames
+            }
+        }
     }
 
     // MARK: ─────────────────────────────────────────────────────────────────
@@ -729,8 +737,25 @@ struct TutorialFlowView: View {
             // Task rows — morph between full cards and compact lines
             // Spacing increases during detach so tasks separate into individual cards
             VStack(spacing: projectAssembling ? (projectChromeFading ? 10 : 2) : 8) {
+                let calIDs = ["cal_sandprep", "cal_stain", "cal_rail"]
                 ForEach(0..<TutorialData.taskCards.count, id: \.self) { i in
-                    morphingTaskRow(TutorialData.taskCards[i], index: i)
+                    if deckTaskPhase == .hidden {
+                        // Before floating layer takes over — render normally
+                        morphingTaskRow(TutorialData.taskCards[i], index: i)
+                    } else {
+                        // Floating layer has taken over — render invisible placeholder
+                        // that reports its frame for the floating views to position at
+                        Color.clear
+                            .frame(height: projectAssembling ? (projectChromeFading ? 34 : 26) : 48)
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear.preference(
+                                        key: TaskSlotFrameKey.self,
+                                        value: [calIDs[i]: geo.frame(in: .named("tutorialContent"))]
+                                    )
+                                }
+                            )
+                    }
                 }
             }
 

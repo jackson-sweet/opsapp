@@ -935,6 +935,128 @@ struct TutorialFlowView: View {
         }
     }
 
+    /// Compact task row content — matches the assembling project card appearance.
+    /// Shows checkmark/circle, task name, and status.
+    private func compactTaskContent(task: TutorialData.TaskCard, index: Int, calTask: TutorialData.CalendarScheduleTask) -> some View {
+        let s = taskStatuses[index]
+
+        return HStack(spacing: 8) {
+            if s == 2 {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(OPSStyle.Colors.successStatus)
+                    .frame(width: 14)
+            } else {
+                Circle()
+                    .stroke(s == 1 ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.inactiveStatus, lineWidth: 1)
+                    .frame(width: 12, height: 12)
+                    .frame(width: 14)
+            }
+
+            Text(task.name.uppercased())
+                .font(.smallCaption)
+                .foregroundStyle(s == 2 ? OPSStyle.Colors.secondaryText : OPSStyle.Colors.primaryText)
+                .tracking(0.5)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+    }
+
+    /// Gantt bar content — matches FlowCalendarWeek bar appearance.
+    /// Color stripe, task name, project name.
+    private func ganttBarContent(calTask: TutorialData.CalendarScheduleTask) -> some View {
+        HStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(calTask.color)
+                .frame(width: 2)
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(calTask.name.uppercased())
+                    .font(.custom("Mohave-Medium", size: 11))
+                    .minimumScaleFactor(0.55)
+                    .foregroundStyle(OPSStyle.Colors.primaryText)
+                    .tracking(0.3)
+                    .lineLimit(1)
+
+                Text(calTask.projectName)
+                    .font(.custom("Kosugi-Regular", size: 8))
+                    .minimumScaleFactor(0.5)
+                    .foregroundStyle(OPSStyle.Colors.tertiaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+    }
+
+    /// Review card content — pixel-identical to FlowReviewCard layout.
+    /// Shown when deck tasks expand from calendar bars to card shapes.
+    private func extractedReviewContent(calTask: TutorialData.CalendarScheduleTask, reviewIndex: Int) -> some View {
+        let card = TutorialData.reviewCards[reviewIndex]
+        let showText = calendarExtractPhase >= 2
+        let showWireframe = calendarExtractPhase >= 3
+
+        return ZStack(alignment: .bottomLeading) {
+            OPSStyle.Colors.cardBackgroundDark
+
+            FlowWireframe(variant: reviewIndex)
+                .opacity(showWireframe ? 0.22 : 0)
+
+            VStack {
+                Rectangle().fill(card.color).frame(height: 3)
+                Spacer()
+            }
+
+            VStack {
+                LinearGradient(
+                    gradient: Gradient(colors: [.black.opacity(0.55), .clear]),
+                    startPoint: .top, endPoint: .bottom
+                ).frame(height: 100)
+                Spacer()
+            }
+            .opacity(showText ? 1 : 0)
+
+            LinearGradient(
+                gradient: Gradient(colors: [.clear, .black.opacity(0.85)]),
+                startPoint: .center, endPoint: .bottom
+            )
+            .opacity(showText ? 1 : 0)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Spacer()
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(card.daysAgo >= 5 ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.warningStatus)
+                        .frame(width: 5, height: 5)
+                    Text(card.daysAgo == 1 ? "1 DAY AGO" : "\(card.daysAgo) DAYS AGO")
+                        .font(.microLabel)
+                        .foregroundStyle(card.daysAgo >= 5 ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.warningStatus)
+                        .tracking(1)
+                }
+                Text(card.task.uppercased())
+                    .font(.title)
+                    .foregroundStyle(OPSStyle.Colors.primaryText)
+                    .lineLimit(2)
+                HStack(spacing: 6) {
+                    Image(systemName: "folder.fill").font(.system(size: 11))
+                    Text(card.project.uppercased()).font(.caption)
+                }.foregroundStyle(.white.opacity(0.7))
+                HStack(spacing: 6) {
+                    Image(systemName: "person.circle.fill").font(.system(size: 11))
+                    Text(card.client.uppercased()).font(.smallCaption)
+                }.foregroundStyle(.white.opacity(0.5))
+            }
+            .padding(20)
+            .padding(.bottom, 40)
+            .opacity(showText ? 1 : 0)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+    }
+
     // MARK: ─────────────────────────────────────────────────────────────────
     // MARK: PHASE 5: Review (merged with invoice)
     // MARK: ─────────────────────────────────────────────────────────────────

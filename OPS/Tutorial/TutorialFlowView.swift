@@ -956,8 +956,12 @@ struct TutorialFlowView: View {
                 ? OPSStyle.Layout.cardCornerRadius
                 : OPSStyle.Layout.smallCornerRadius))
             .position(x: frame.midX, y: frame.midY)
-            // Completed deck tasks fade when calendar marks them as faded
-            .opacity(calendarFadeCompleted && isComplete && deckTaskPhase == .calendarBar ? 0.1 : 1)
+            // Completed deck tasks fade when calendar marks them as faded,
+            // and hide entirely during extraction (only incomplete deck tasks become review cards)
+            .opacity(
+                deckTaskPhase == .reviewCard && isComplete ? 0 :
+                calendarFadeCompleted && isComplete && deckTaskPhase == .calendarBar ? 0.1 : 1
+            )
             .zIndex(10 + Double(3 - i)) // Above project card and calendar
         }
     }

@@ -13,14 +13,25 @@ private struct TaskSlotFrameKey: PreferenceKey {
     }
 }
 
-/// Phase of the 3 deck task floating views throughout the tutorial.
-/// These views persist on screen from project card assembly through calendar extraction.
+/// Preference key for capturing the FlowCalendarWeek container frame
+/// in the tutorialContent coordinate space. Used to compute bar positions
+/// for the floating deck task fly-to-calendar animation.
+private struct CalendarContainerFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+/// Phase of the 3 deck task floating views.
+/// These views are ONLY active during the project card → calendar transition.
+/// Once tasks land on the calendar, the floating layer hides and the calendar
+/// renders them natively from that point forward.
 private enum DeckTaskPhase {
-    case hidden            // Not yet visible (before assembly)
+    case hidden            // Not visible
     case projectCard       // Positioned at project card task row slots
     case detaching         // Borders drawn, separating from project card
-    case calendarBar       // Positioned at calendar gantt bar slots
-    case reviewCard        // Expanded to full swipe card shapes
+    case calendarTransit   // Flying from project card to computed calendar positions
 }
 
 // MARK: - TutorialFlowView
@@ -88,10 +99,11 @@ struct TutorialFlowView: View {
     @State private var projectChromeFading = false         // Card chrome dissolving (bg, border, title, progress → 0)
     @State private var taskDetachBorders: [CGFloat] = [0, 0, 0]  // Per-task border draw during detach
 
-    // Floating deck tasks — persistent views that morph through phases
+    // Floating deck tasks — only active during project card → calendar transition
     @State private var deckTaskPhase: DeckTaskPhase = .hidden
     @State private var projectCardSlotFrames: [String: CGRect] = [:]  // Captured from assemblingProjectView
-    @State private var calendarSlotFrames: [String: CGRect] = [:]     // Captured from FlowCalendarWeek
+    @State private var calendarContainerFrame: CGRect = .zero         // FlowCalendarWeek frame in tutorialContent space
+    @State private var deckTasksArrivedCount = 0                      // How many floating tasks have been handed off to calendar
     @State private var hideProjectCard = false            // Final removal — matchedGeometry flies tasks to calendar
     @State private var showCalendar = false
     @State private var calendarVisibleTasks: Set<String> = []  // Task IDs visible on calendar
@@ -309,6 +321,14 @@ struct TutorialFlowView: View {
                         fadeCompleted: calendarFadeCompleted,
                         extractPhase: calendarExtractPhase
                     )
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(
+                                key: CalendarContainerFrameKey.self,
+                                value: geo.frame(in: .named("tutorialContent"))
+                            )
+                        }
+                    )
                 }
                 .padding(.horizontal, 12)
             }
@@ -381,14 +401,13 @@ struct TutorialFlowView: View {
         }
         .coordinateSpace(name: "tutorialContent")
         .onPreferenceChange(TaskSlotFrameKey.self) { frames in
-            // Route frames to the correct state dict based on current phase.
-            // Calendar slots are used for both calendarBar and reviewCard phases
-            // (during extraction the placeholders resize to card dimensions).
-            if showCalendar && (deckTaskPhase == .calendarBar || deckTaskPhase == .reviewCard) {
-                calendarSlotFrames = frames
-            } else if deckTaskPhase == .projectCard || deckTaskPhase == .detaching {
+            // Only capture project card slot frames (from assemblingProjectView placeholders)
+            if deckTaskPhase == .projectCard || deckTaskPhase == .detaching {
                 projectCardSlotFrames = frames
             }
+        }
+        .onPreferenceChange(CalendarContainerFrameKey.self) { frame in
+            calendarContainerFrame = frame
         }
     }
 
@@ -893,77 +912,85 @@ struct TutorialFlowView: View {
     // MARK: FLOATING DECK TASKS (Continuity Chain)
     // MARK: ─────────────────────────────────────────────────────────────────
 
-    /// The 3 deck tasks rendered as persistent floating views.
-    /// Their position/size morphs based on deckTaskPhase:
-    /// .projectCard → compact rows at project card slot positions
-    /// .detaching → same position, borders drawing, spacing increasing
-    /// .calendarBar → gantt bar size at calendar slot positions
-    /// .reviewCard → expanded to full swipe card shapes
+    /// The 3 deck tasks rendered as floating views ONLY during the
+    /// project card → calendar transition. Once each task lands on
+    /// the calendar, it hides and the calendar renders it natively.
     private var floatingDeckTasks: some View {
         let calIDs = ["cal_sandprep", "cal_stain", "cal_rail"]
         let tasks = TutorialData.taskCards
         let calSchedule = TutorialData.calendarSchedule.filter { $0.isDeckTask }
 
         return ForEach(0..<3, id: \.self) { i in
-            let calID = calIDs[i]
-            let task = tasks[i]
-            let calTask = calSchedule[i]
-            let isComplete = calTask.completesOnDay != nil
+            // Skip tasks that have been handed off to the calendar
+            if i >= deckTasksArrivedCount {
+                let calID = calIDs[i]
+                let task = tasks[i]
+                let calTask = calSchedule[i]
 
-            // Determine frame based on phase
-            let frame: CGRect = {
-                switch deckTaskPhase {
-                case .hidden:
-                    return .zero
-                case .projectCard, .detaching:
-                    return projectCardSlotFrames[calID] ?? .zero
-                case .calendarBar, .reviewCard:
-                    return calendarSlotFrames[calID] ?? .zero
+                // Determine frame based on phase
+                let frame: CGRect = {
+                    switch deckTaskPhase {
+                    case .hidden:
+                        return .zero
+                    case .projectCard, .detaching:
+                        return projectCardSlotFrames[calID] ?? .zero
+                    case .calendarTransit:
+                        return computedCalendarBarFrame(for: calTask)
+                    }
+                }()
+
+                // Content crossfades from compact row to gantt bar during transit
+                ZStack {
+                    compactTaskContent(task: task, index: i, calTask: calTask)
+                        .opacity(deckTaskPhase == .calendarTransit ? 0 : 1)
+
+                    ganttBarContent(calTask: calTask)
+                        .opacity(deckTaskPhase == .calendarTransit ? 1 : 0)
                 }
-            }()
-
-            // Content based on phase
-            ZStack {
-                // Compact task row content (visible in projectCard/detaching phases)
-                compactTaskContent(task: task, index: i, calTask: calTask)
-                    .opacity(deckTaskPhase == .projectCard || deckTaskPhase == .detaching ? 1 : 0)
-
-                // Gantt bar content (visible in calendarBar phase)
-                ganttBarContent(calTask: calTask)
-                    .opacity(deckTaskPhase == .calendarBar ? 1 : 0)
-
-                // Review card content (visible in reviewCard phase — only for incomplete tasks)
-                if let reviewIdx = calTask.reviewCardIndex {
-                    extractedReviewContent(calTask: calTask, reviewIndex: reviewIdx)
-                        .opacity(deckTaskPhase == .reviewCard ? 1 : 0)
-                }
+                .frame(width: max(frame.width, 1), height: max(frame.height, 1))
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                        .trim(from: 0, to: deckTaskPhase == .detaching ? taskDetachBorders[i] : 1)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        // Match calendar bar border opacity when in transit for seamless handoff
+                        .opacity(deckTaskPhase == .calendarTransit ? 0.5 : 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius))
+                .position(x: frame.midX, y: frame.midY)
+                .zIndex(10 + Double(3 - i)) // Above project card and calendar
             }
-            .frame(width: max(frame.width, 1), height: max(frame.height, 1))
-            .background(
-                RoundedRectangle(cornerRadius: deckTaskPhase == .reviewCard
-                    ? OPSStyle.Layout.cardCornerRadius
-                    : OPSStyle.Layout.smallCornerRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: deckTaskPhase == .reviewCard
-                    ? OPSStyle.Layout.cardCornerRadius
-                    : OPSStyle.Layout.smallCornerRadius)
-                    .trim(from: 0, to: deckTaskPhase == .detaching ? taskDetachBorders[i] : 1)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: deckTaskPhase == .reviewCard
-                ? OPSStyle.Layout.cardCornerRadius
-                : OPSStyle.Layout.smallCornerRadius))
-            .position(x: frame.midX, y: frame.midY)
-            // Completed deck tasks fade when calendar marks them as faded,
-            // and hide entirely during extraction (only incomplete deck tasks become review cards)
-            .opacity(
-                deckTaskPhase == .reviewCard && isComplete ? 0 :
-                calendarFadeCompleted && isComplete && deckTaskPhase == .calendarBar ? 0.1 : 1
-            )
-            .zIndex(10 + Double(3 - i)) // Above project card and calendar
         }
+    }
+
+    /// Computes the frame for a deck task's calendar bar position
+    /// using FlowCalendarWeek's deterministic layout math.
+    /// This avoids the need for preference keys in the calendar view.
+    private func computedCalendarBarFrame(for task: TutorialData.CalendarScheduleTask) -> CGRect {
+        let calFrame = calendarContainerFrame
+        guard calFrame.width > 0 else { return .zero }
+
+        // FlowCalendarWeek layout constants (must match the struct)
+        let barHeight: CGFloat = 28
+        let barSpacing: CGFloat = 5
+        let headerHeight: CGFloat = 36
+        let barInset: CGFloat = 2
+
+        let colW = calFrame.width / 5.0
+        let startX = CGFloat(task.startDay) * colW + barInset
+        let endX = CGFloat(task.endDay + 1) * colW - barInset
+        let barWidth = max(endX - startX, 0)
+        let barY = headerHeight + 4 + CGFloat(task.row) * (barHeight + barSpacing)
+
+        return CGRect(
+            x: calFrame.minX + startX,
+            y: calFrame.minY + barY,
+            width: barWidth,
+            height: barHeight
+        )
     }
 
     /// Compact task row content — matches the assembling project card appearance.
@@ -2017,20 +2044,34 @@ struct TutorialFlowView: View {
                 withAnimation(.easeOut(duration: 0.3)) { headerOpacity = 1 }
             }
 
-            // Hide project card chrome (task rows are already invisible placeholders,
-            // the floating layer renders the actual visuals)
+            // Hide project card, start floating tasks flying to calendar positions
             withAnimation(.easeOut(duration: 0.4)) {
                 hideProjectCard = true
-                // Insert deck task IDs into calendar so placeholder slots appear
-                // and start reporting frames for the floating views to animate to
-                for task in deckTasks {
+                deckTaskPhase = .calendarTransit
+            }
+        }
+
+        // Staggered landing: each floating task arrives → calendar bar takes over
+        // The flying animation (.calendarTransit) moves all 3 simultaneously,
+        // but we hand them off to the calendar one at a time with haptics.
+        let landingStart = t + 0.45 // Just after the fly animation completes
+        for (idx, task) in deckTasks.enumerated() {
+            let landTime = landingStart + Double(idx) * 0.15
+            DispatchQueue.main.asyncAfter(deadline: .now() + landTime) {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    deckTasksArrivedCount = idx + 1
                     _ = calendarVisibleTasks.insert(task.id)
                 }
-                deckTaskPhase = .calendarBar
+                TutorialHaptics.arrival()
             }
-            TutorialHaptics.arrival()
         }
-        t += 0.5
+
+        // After all 3 land, hide the floating layer completely
+        let allLanded = landingStart + Double(deckTasks.count) * 0.15 + 0.1
+        DispatchQueue.main.asyncAfter(deadline: .now() + allLanded) {
+            deckTaskPhase = .hidden
+        }
+        t = allLanded + 0.15
 
         // ═══════════════════════════════════════════════════════════
         // STAGE 5: Other tasks appear one at a time
@@ -2119,10 +2160,8 @@ struct TutorialFlowView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
             withAnimation(.easeOut(duration: 0.5)) {
                 calendarExtractPhase = 1
-                // Only cal_rail is incomplete among deck tasks (reviewCardIndex = 1)
-                // It expands from calendar bar to review card shape via the floating layer.
-                // cal_sandprep and cal_stain are complete — they stay as faded calendar bars.
-                deckTaskPhase = .reviewCard
+                // Extraction is handled natively by FlowCalendarWeek.
+                // Incomplete bars expand to card shapes, complete bars fade out.
             }
             TutorialHaptics.arrival()
         }
@@ -2502,57 +2541,46 @@ private struct FlowCalendarWeek: View {
                         let bx = shouldExtract ? 16 : startX
                         let by = shouldExtract ? (extractIdx * 8 + 16) : normalY
 
-                        if task.isDeckTask {
-                            // Deck tasks: invisible placeholder reporting frame
-                            // (actual visual is the floating deck task layer)
-                            Color.clear
-                                .frame(width: bw, height: bh)
-                                .offset(x: bx, y: by)
-                                .background(
-                                    GeometryReader { geo in
-                                        Color.clear.preference(
-                                            key: TaskSlotFrameKey.self,
-                                            value: [task.id: geo.frame(in: .named("tutorialContent"))]
-                                        )
-                                    }
-                                )
-                        } else {
-                            // Non-deck tasks: render normally (existing ZStack with ganttBar/extractedCard)
-                            ZStack {
-                                ganttBar(task: task, isComplete: isComplete, isIncomplete: isIncomplete)
-                                    .opacity(shouldExtract ? 0 : 1)
-                                if isIncomplete {
-                                    extractedCard(task: task)
-                                        .opacity(shouldExtract ? 1 : 0)
-                                }
+                        ZStack {
+                            // Gantt bar content (visible when NOT extracting)
+                            ganttBar(task: task, isComplete: isComplete, isIncomplete: isIncomplete)
+                                .opacity(shouldExtract ? 0 : 1)
+
+                            // Extracted card content (visible when extracting)
+                            if isIncomplete {
+                                extractedCard(task: task)
+                                    .opacity(shouldExtract ? 1 : 0)
                             }
-                            .frame(width: bw, height: bh)
-                            .clipShape(RoundedRectangle(cornerRadius: shouldExtract
-                                ? OPSStyle.Layout.cardCornerRadius
-                                : OPSStyle.Layout.smallCornerRadius))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: shouldExtract
-                                    ? OPSStyle.Layout.cardCornerRadius
-                                    : OPSStyle.Layout.smallCornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                    .opacity(shouldExtract ? 1 : 0.5)
-                            )
-                            .offset(x: bx, y: by)
-                            .scaleEffect(shouldExtract ? (1.0 - extractIdx * 0.03) : 1.0,
-                                         anchor: .top)
-                            .zIndex(shouldExtract ? Double(10 + 4 - (task.reviewCardIndex ?? 0)) : 0)
-                            .opacity(
-                                shouldExtract ? 1.0 :
-                                isExtracting ? 0 :
-                                bw < 2 ? 0 :
-                                fadeCompleted && isComplete ? 0.1 :
-                                isComplete ? 0.5 : 1.0
-                            )
-                            .transition(.asymmetric(
-                                insertion: .move(edge: .top).combined(with: .opacity),
-                                removal: .opacity
-                            ))
                         }
+                        .frame(width: bw, height: bh)
+                        .clipShape(RoundedRectangle(cornerRadius: shouldExtract
+                            ? OPSStyle.Layout.cardCornerRadius
+                            : OPSStyle.Layout.smallCornerRadius))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: shouldExtract
+                                ? OPSStyle.Layout.cardCornerRadius
+                                : OPSStyle.Layout.smallCornerRadius)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                .opacity(shouldExtract ? 1 : 0.5)
+                        )
+                        .offset(x: bx, y: by)
+                        .scaleEffect(shouldExtract ? (1.0 - extractIdx * 0.03) : 1.0,
+                                     anchor: .top)
+                        .zIndex(shouldExtract ? Double(10 + 4 - (task.reviewCardIndex ?? 0)) : 0)
+                        .opacity(
+                            shouldExtract ? 1.0 :
+                            isExtracting ? 0 :
+                            bw < 2 ? 0 :
+                            fadeCompleted && isComplete ? 0.1 :
+                            isComplete ? 0.5 : 1.0
+                        )
+                        // Deck tasks slide down from top (entering from project card above);
+                        // other tasks fade in normally
+                        .transition(task.isDeckTask
+                            ? .asymmetric(
+                                insertion: .move(edge: .top).combined(with: .opacity),
+                                removal: .opacity)
+                            : .opacity)
                     }
                 }
             }

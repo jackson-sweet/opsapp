@@ -1,6 +1,18 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Frame Preference Key (for floating task positioning)
+
+/// Reports named frames in the tutorialContent coordinate space.
+/// Used to capture where deck task placeholder slots are in the project card and calendar,
+/// so floating task views can animate to those exact positions.
+private struct TaskSlotFrameKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
 // MARK: - TutorialFlowView
 /// ONE continuous view for the OPS "Lead to Revenue" tutorial.
 ///
@@ -345,6 +357,7 @@ struct TutorialFlowView: View {
                 .transition(.opacity)
             }
         }
+        .coordinateSpace(name: "tutorialContent")
     }
 
     // MARK: ─────────────────────────────────────────────────────────────────

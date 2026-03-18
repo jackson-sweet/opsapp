@@ -2493,46 +2493,57 @@ private struct FlowCalendarWeek: View {
                         let bx = shouldExtract ? 16 : startX
                         let by = shouldExtract ? (extractIdx * 8 + 16) : normalY
 
-                        ZStack {
-                            // Gantt bar content (visible when NOT extracting)
-                            ganttBar(task: task, isComplete: isComplete, isIncomplete: isIncomplete)
-                                .opacity(shouldExtract ? 0 : 1)
-
-                            // Extracted card content (visible when extracting)
-                            if isIncomplete {
-                                extractedCard(task: task)
-                                    .opacity(shouldExtract ? 1 : 0)
+                        if task.isDeckTask {
+                            // Deck tasks: invisible placeholder reporting frame
+                            // (actual visual is the floating deck task layer)
+                            Color.clear
+                                .frame(width: bw, height: bh)
+                                .offset(x: bx, y: by)
+                                .background(
+                                    GeometryReader { geo in
+                                        Color.clear.preference(
+                                            key: TaskSlotFrameKey.self,
+                                            value: [task.id: geo.frame(in: .named("tutorialContent"))]
+                                        )
+                                    }
+                                )
+                        } else {
+                            // Non-deck tasks: render normally (existing ZStack with ganttBar/extractedCard)
+                            ZStack {
+                                ganttBar(task: task, isComplete: isComplete, isIncomplete: isIncomplete)
+                                    .opacity(shouldExtract ? 0 : 1)
+                                if isIncomplete {
+                                    extractedCard(task: task)
+                                        .opacity(shouldExtract ? 1 : 0)
+                                }
                             }
-                        }
-                        .frame(width: bw, height: bh)
-                        .clipShape(RoundedRectangle(cornerRadius: shouldExtract
-                            ? OPSStyle.Layout.cardCornerRadius
-                            : OPSStyle.Layout.smallCornerRadius))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: shouldExtract
+                            .frame(width: bw, height: bh)
+                            .clipShape(RoundedRectangle(cornerRadius: shouldExtract
                                 ? OPSStyle.Layout.cardCornerRadius
-                                : OPSStyle.Layout.smallCornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                .opacity(shouldExtract ? 1 : 0.5)
-                        )
-                        .offset(x: bx, y: by)
-                        .scaleEffect(shouldExtract ? (1.0 - extractIdx * 0.03) : 1.0,
-                                     anchor: .top)
-                        .zIndex(shouldExtract ? Double(10 + 4 - (task.reviewCardIndex ?? 0)) : 0)
-                        .opacity(
-                            shouldExtract ? 1.0 :
-                            isExtracting ? 0 :           // Hide completed during extraction
-                            bw < 2 ? 0 :
-                            fadeCompleted && isComplete ? 0.1 :
-                            isComplete ? 0.5 : 1.0
-                        )
-                        // Deck tasks slide down from top (entering from project card above);
-                        // other tasks fade in normally
-                        .transition(task.isDeckTask
-                            ? .asymmetric(
+                                : OPSStyle.Layout.smallCornerRadius))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: shouldExtract
+                                    ? OPSStyle.Layout.cardCornerRadius
+                                    : OPSStyle.Layout.smallCornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    .opacity(shouldExtract ? 1 : 0.5)
+                            )
+                            .offset(x: bx, y: by)
+                            .scaleEffect(shouldExtract ? (1.0 - extractIdx * 0.03) : 1.0,
+                                         anchor: .top)
+                            .zIndex(shouldExtract ? Double(10 + 4 - (task.reviewCardIndex ?? 0)) : 0)
+                            .opacity(
+                                shouldExtract ? 1.0 :
+                                isExtracting ? 0 :
+                                bw < 2 ? 0 :
+                                fadeCompleted && isComplete ? 0.1 :
+                                isComplete ? 0.5 : 1.0
+                            )
+                            .transition(.asymmetric(
                                 insertion: .move(edge: .top).combined(with: .opacity),
-                                removal: .opacity)
-                            : .opacity)
+                                removal: .opacity
+                            ))
+                        }
                     }
                 }
             }

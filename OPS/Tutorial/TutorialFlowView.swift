@@ -381,8 +381,10 @@ struct TutorialFlowView: View {
         }
         .coordinateSpace(name: "tutorialContent")
         .onPreferenceChange(TaskSlotFrameKey.self) { frames in
-            // Route frames to the correct state dict based on current phase
-            if showCalendar && deckTaskPhase == .calendarBar {
+            // Route frames to the correct state dict based on current phase.
+            // Calendar slots are used for both calendarBar and reviewCard phases
+            // (during extraction the placeholders resize to card dimensions).
+            if showCalendar && (deckTaskPhase == .calendarBar || deckTaskPhase == .reviewCard) {
                 calendarSlotFrames = frames
             } else if deckTaskPhase == .projectCard || deckTaskPhase == .detaching {
                 projectCardSlotFrames = frames
@@ -1881,8 +1883,9 @@ struct TutorialFlowView: View {
         let assemblyStart = task2Base + 1.2
 
         // Step 1: Cards shrink, individual backgrounds fade, spacing compresses
+        // Activate floating deck task layer so it takes over from morphingTaskRow
         DispatchQueue.main.asyncAfter(deadline: .now() + assemblyStart) {
-            // dampingFraction 0.8 = smooth morph, no bounce
+            deckTaskPhase = .projectCard
             withAnimation(.easeOut(duration: 0.4)) {
                 projectAssembling = true
             }
@@ -1964,6 +1967,7 @@ struct TutorialFlowView: View {
                 cardBgOpacity = 0
                 progressBarValue = 0
                 projectTitleChars = 0
+                deckTaskPhase = .detaching
             }
         }
         t += 0.5
@@ -2009,23 +2013,20 @@ struct TutorialFlowView: View {
                 withAnimation(.easeOut(duration: 0.3)) { headerOpacity = 1 }
             }
 
-            // Project card task rows slide up and out
-            withAnimation(.easeOut(duration: 0.3)) {
+            // Hide project card chrome (task rows are already invisible placeholders,
+            // the floating layer renders the actual visuals)
+            withAnimation(.easeOut(duration: 0.4)) {
                 hideProjectCard = true
-            }
-        }
-
-        // Deck task bars slide down from top of calendar, one at a time
-        for (idx, task) in deckTasks.enumerated() {
-            let flyTime = t + 0.15 + Double(idx) * 0.2
-            DispatchQueue.main.asyncAfter(deadline: .now() + flyTime) {
-                withAnimation(.easeOut(duration: 0.35)) {
+                // Insert deck task IDs into calendar so placeholder slots appear
+                // and start reporting frames for the floating views to animate to
+                for task in deckTasks {
                     _ = calendarVisibleTasks.insert(task.id)
                 }
-                TutorialHaptics.arrival()
+                deckTaskPhase = .calendarBar
             }
+            TutorialHaptics.arrival()
         }
-        t += 0.15 + Double(deckTasks.count) * 0.2 + 0.2
+        t += 0.5
 
         // ═══════════════════════════════════════════════════════════
         // STAGE 5: Other tasks appear one at a time
@@ -2114,6 +2115,10 @@ struct TutorialFlowView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
             withAnimation(.easeOut(duration: 0.5)) {
                 calendarExtractPhase = 1
+                // Only cal_rail is incomplete among deck tasks (reviewCardIndex = 1)
+                // It expands from calendar bar to review card shape via the floating layer.
+                // cal_sandprep and cal_stain are complete — they stay as faded calendar bars.
+                deckTaskPhase = .reviewCard
             }
             TutorialHaptics.arrival()
         }

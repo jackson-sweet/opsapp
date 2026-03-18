@@ -18,6 +18,11 @@ struct OfflineGateView: View {
         ZStack {
             OPSStyle.Colors.background.ignoresSafeArea()
 
+            // Starburst behind content — centered, fills available space
+            StarburstView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .opacity(0.6)
+
             VStack(spacing: 0) {
                 Spacer()
 

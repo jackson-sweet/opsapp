@@ -3,7 +3,7 @@
 //  OPS
 //
 //  Collapsible sync status section for the notifications sheet.
-//  Shows pending/failed operations with retry capability.
+//  Shows pending/failed operations with retry and cancel capability.
 //
 
 import SwiftUI
@@ -67,9 +67,14 @@ struct SyncStatusSection: View {
         HStack(spacing: 12) {
             // Status icon
             if isSyncing {
-                ProgressView()
-                    .scaleEffect(0.7)
-                    .tint(OPSStyle.Colors.primaryAccent)
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .rotationEffect(.degrees(isSyncing ? 360 : 0))
+                    .animation(
+                        .linear(duration: 1.5).repeatForever(autoreverses: false),
+                        value: isSyncing
+                    )
                     .frame(width: 20, height: 20)
             } else {
                 Image(systemName: "arrow.triangle.2.circlepath")
@@ -103,21 +108,29 @@ struct SyncStatusSection: View {
     // MARK: - Expanded Content
 
     private var expandedContent: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 0) {
             Divider()
                 .background(Color.white.opacity(0.1))
-                .padding(.vertical, 4)
+                .padding(.vertical, 8)
 
-            // Individual operation rows (show up to 10)
-            let items = syncEngine.getPendingOperations().prefix(10)
-            ForEach(Array(items.enumerated()), id: \.element.id) { _, operation in
+            // Individual operation rows (show up to 15)
+            let items = syncEngine.getPendingOperations() + syncEngine.getFailedOperations()
+            let uniqueItems = Array(Dictionary(grouping: items) { $0.id }.values.compactMap(\.first)).prefix(15)
+
+            ForEach(Array(uniqueItems.enumerated()), id: \.element.id) { index, operation in
+                if index > 0 {
+                    Divider()
+                        .background(Color.white.opacity(0.06))
+                        .padding(.vertical, 2)
+                }
                 operationRow(for: operation)
             }
 
-            if pendingCount > 10 {
-                Text("+ \(pendingCount - 10) more")
+            if (syncEngine.getPendingOperations().count + syncEngine.getFailedOperations().count) > 15 {
+                Text("+ \(syncEngine.getPendingOperations().count + syncEngine.getFailedOperations().count - 15) more")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .padding(.top, 4)
             }
 
             // Retry all button for failed operations
@@ -146,6 +159,7 @@ struct SyncStatusSection: View {
                     .cornerRadius(8)
                 }
                 .buttonStyle(PlainButtonStyle())
+                .padding(.top, 8)
             }
         }
     }
@@ -158,13 +172,24 @@ struct SyncStatusSection: View {
             statusIcon(for: operation)
                 .frame(width: 16, height: 16)
 
-            // Description
-            VStack(alignment: .leading, spacing: 2) {
-                Text(operationDescription(for: operation))
+            // Description — entity type, action, changed fields, time
+            VStack(alignment: .leading, spacing: 3) {
+                // Primary line: action + entity
+                Text(operationTitle(for: operation))
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
 
+                // Detail line: changed fields
+                let fields = operation.getChangedFields()
+                if !fields.isEmpty {
+                    Text(fields.joined(separator: ", "))
+                        .font(.system(size: 10))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .lineLimit(1)
+                }
+
+                // Error line
                 if let error = operation.lastError {
                     Text(error)
                         .font(.system(size: 10))
@@ -175,8 +200,14 @@ struct SyncStatusSection: View {
 
             Spacer()
 
-            // Retry button for failed
+            // Time ago
+            Text(timeAgo(from: operation.createdAt))
+                .font(.system(size: 10))
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            // Action buttons
             if operation.status == "failed" {
+                // Retry button for failed
                 Button {
                     operation.status = "pending"
                     operation.retryCount = 0
@@ -188,6 +219,23 @@ struct SyncStatusSection: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: 28, height: 28)
+                        .background(OPSStyle.Colors.cardBackground)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+
+            // Cancel button — available for pending and failed (not in-progress)
+            if operation.status != "inProgress" {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        syncEngine.cancelOperation(operation)
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .frame(width: 24, height: 24)
                         .background(OPSStyle.Colors.cardBackground)
                         .clipShape(Circle())
                 }
@@ -219,19 +267,53 @@ struct SyncStatusSection: View {
         }
     }
 
-    private func operationDescription(for operation: SyncOperation) -> String {
+    private func operationTitle(for operation: SyncOperation) -> String {
         let action: String
         switch operation.operationType {
-        case "create": action = "Creating"
-        case "update": action = "Updating"
-        case "delete": action = "Deleting"
-        default: action = "Syncing"
+        case "create": action = "Create"
+        case "update": action = "Update"
+        case "delete": action = "Delete"
+        default: action = "Sync"
         }
 
-        let entity = operation.entityType
-            .replacingOccurrences(of: "projectTask", with: "task")
-            .replacingOccurrences(of: "projectNote", with: "note")
-
+        let entity = friendlyEntityName(operation.entityType)
         return "\(action) \(entity)"
+    }
+
+    private func friendlyEntityName(_ entityType: String) -> String {
+        switch entityType {
+        case "project": return "Project"
+        case "projectTask": return "Task"
+        case "projectNote": return "Note"
+        case "user": return "User"
+        case "client": return "Client"
+        case "subClient": return "Sub-Client"
+        case "company": return "Company"
+        case "taskType": return "Task Type"
+        case "expense": return "Expense"
+        case "estimate": return "Estimate"
+        case "invoice": return "Invoice"
+        case "lineItem": return "Line Item"
+        case "payment": return "Payment"
+        case "photoAnnotation": return "Photo Annotation"
+        case "calendarUserEvent": return "Calendar Event"
+        case "inventoryItem": return "Inventory Item"
+        case "inventoryUnit": return "Inventory Unit"
+        case "timeEntry": return "Time Entry"
+        case "signatureCapture": return "Signature"
+        case "formSubmission": return "Form"
+        default: return entityType.capitalized
+        }
+    }
+
+    private func timeAgo(from date: Date) -> String {
+        let seconds = Int(Date().timeIntervalSince(date))
+        if seconds < 60 { return "now" }
+        let minutes = seconds / 60
+        if minutes < 60 { return "\(minutes)m" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours)h" }
+        let days = hours / 24
+        return "\(days)d"
     }
 }

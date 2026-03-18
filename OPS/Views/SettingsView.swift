@@ -16,6 +16,7 @@ struct SettingsView: View {
     @State private var showLogoutConfirmation = false
     @State private var showingSearchSheet = false
     @State private var isRestartingTutorial = false
+    @State private var showTutorialExperience = false
 
     // Developer mode state
     @State private var developerModeEnabled: Bool = false
@@ -517,14 +518,13 @@ struct SettingsView: View {
                                     action: { showReportIssue = true }
                                 )
 
-                                // Hidden for now — uncomment to re-enable
-                                // sectionDivider
-                                //
-                                // settingsRow(
-                                //     icon: "graduationcap",
-                                //     title: "Restart Tutorial",
-                                //     action: { restartTutorial() }
-                                // )
+                                sectionDivider
+
+                                settingsRow(
+                                    icon: "graduationcap",
+                                    title: "Restart Tutorial",
+                                    action: { restartTutorial() }
+                                )
                             }
                             .padding(.horizontal, 20)
 
@@ -686,6 +686,11 @@ struct SettingsView: View {
                 PermissionsManagementView()
                     .environmentObject(dataController)
                     .environmentObject(permissionStore)
+            }
+        }
+        .fullScreenCover(isPresented: $showTutorialExperience) {
+            TutorialFlowView {
+                showTutorialExperience = false
             }
         }
         .onChange(of: showDeveloperDashboard) { _, isShowing in
@@ -987,9 +992,7 @@ struct SettingsView: View {
 
     private func restartTutorial() {
         guard dataController.currentUser != nil else { return }
-        isRestartingTutorial = true
-        isRestartingTutorial = false
-        appState.shouldRestartTutorial = true
+        showTutorialExperience = true
     }
 }
 

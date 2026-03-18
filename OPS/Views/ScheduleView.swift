@@ -45,6 +45,7 @@ struct ScheduleView: View {
     @State private var syncedProjectsCount = 0
     @State private var showScopeMessage = false
     @State private var scopeMessageText = ""
+    @State private var showScopeSheet = false
     @State private var showScheduleBanner = false
     @State private var scheduleBannerText = ""
     
@@ -63,13 +64,10 @@ struct ScheduleView: View {
                         },
                         onMonthTapped: { viewModel.toggleMonthExpanded() },
                         onScopeToggled: {
-                            let newScope: CalendarViewModel.ScheduleScope = viewModel.scheduleScope == .all ? .mine : .all
-                            viewModel.updateScheduleScope(newScope)
-                            scopeMessageText = newScope == .all ? "ALL PROJECTS" : "ONLY MY PROJECTS"
-                            showScopeMessage = true
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            showScopeSheet = true
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         },
-                        isScopeAll: viewModel.scheduleScope == .all,
+                        isScopeAll: viewModel.scheduleScope == .all && viewModel.selectedTeamMemberIds.isEmpty,
                         hasActiveFilters: viewModel.hasActiveFilters,
                         filterCount: viewModel.activeFilterCount
                     )
@@ -83,15 +81,8 @@ struct ScheduleView: View {
 
                     // Week strip (or month grid when expanded) — always visible
                     CalendarDaySelector(viewModel: viewModel)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 16)
-
-                    // Quick scope selector (ALL / MINE / team members) — admin/office only
-                    if viewModel.shouldShowTeamMemberFilter {
-                        ScheduleScopeSelector(viewModel: viewModel)
-                            .padding(.bottom, 8)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
+                        .padding(.horizontal, viewModel.isMonthExpanded ? 16 : 20)
+                        .padding(.bottom, viewModel.isMonthExpanded ? 0 : 16)
 
                     // Day canvas — only in week mode
                     if !viewModel.isMonthExpanded {
@@ -100,7 +91,7 @@ struct ScheduleView: View {
                     }
                 }
                 .animation(OPSStyle.Animation.standard, value: viewModel.isMonthExpanded)
-                .padding(.bottom, 90) // Add padding for tab bar
+                .padding(.bottom, viewModel.isMonthExpanded ? 0 : 90) // tab bar clearance only in week mode
                 //.frame(maxWidth: 50)
             }
             }
@@ -241,6 +232,13 @@ struct ScheduleView: View {
             CalendarFilterView(viewModel: viewModel)
                 .environmentObject(dataController)
                 .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        // Team member scope sheet
+        .sheet(isPresented: $showScopeSheet) {
+            ScheduleTeamScopeSheet(viewModel: viewModel)
+                .environmentObject(dataController)
+                .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
         // Refresh user events when created from FAB (which owns the sheets)

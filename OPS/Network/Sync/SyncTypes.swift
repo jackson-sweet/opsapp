@@ -271,4 +271,8 @@ extension Notification.Name {
     /// Posted when a sync operation detects expired authentication.
     /// DataController should observe this and trigger re-authentication.
     static let syncAuthExpired = Notification.Name("syncAuthExpired")
+
+    /// Posted when local photo disk usage exceeds 500MB.
+    /// UI can observe this to show a storage warning.
+    static let photoDiskUsageHigh = Notification.Name("photoDiskUsageHigh")
 }

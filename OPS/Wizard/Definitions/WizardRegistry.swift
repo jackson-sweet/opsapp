@@ -13,7 +13,8 @@ struct WizardRegistry {
     static let allWizards: [any WizardDefinitionProtocol] = [
         ProjectLifecycleWizard(),
         TaskReviewWizard(),
-        PaymentReviewWizard()
+        PaymentReviewWizard(),
+        InventorySetupWizard()
     ]
 
     /// Wizards filtered by role and permissions

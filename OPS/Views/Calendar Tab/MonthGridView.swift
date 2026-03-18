@@ -172,6 +172,7 @@ struct MonthGridView: View {
     @State private var hasNotifiedTutorialScroll = false
     @State private var hasNotifiedTutorialPinch = false
     @State private var scrollDirection: ScrollDirection = .down
+    @State private var showMonthPicker = false
 
     private enum ScrollDirection {
         case up, down
@@ -417,18 +418,43 @@ struct MonthGridView: View {
             VStack(spacing: 0) {
                 // Sticky header: Month/Year + Weekday labels
                 VStack(spacing: 0) {
-                    // Month and Year with directional transition
-                    Text(monthYearString(from: viewModel.visibleMonth))
-                        .font(OPSStyle.Typography.subtitle)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 4)
-                        .padding(.bottom, 6)
-                        .id(viewModel.visibleMonth)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: scrollDirection == .down ? .bottom : .top).combined(with: .opacity),
-                            removal: .move(edge: scrollDirection == .down ? .top : .bottom).combined(with: .opacity)
-                        ))
+                    // Month and Year with jump-to-month picker
+                    HStack {
+                        Text(monthYearString(from: viewModel.visibleMonth))
+                            .font(OPSStyle.Typography.subtitle)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .id(viewModel.visibleMonth)
+                            .transition(.asymmetric(
+                                insertion: .move(edge: scrollDirection == .down ? .bottom : .top).combined(with: .opacity),
+                                removal: .move(edge: scrollDirection == .down ? .top : .bottom).combined(with: .opacity)
+                            ))
+
+                        Spacer()
+
+                        // Jump-to-month button
+                        Button {
+                            showMonthPicker = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text("JUMP TO")
+                                    .font(OPSStyle.Typography.microLabel)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                Image(systemName: "calendar.badge.clock")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 6)
 
                     // Separator line
                     Rectangle()
@@ -646,7 +672,83 @@ struct MonthGridView: View {
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $showMonthPicker) {
+                MonthJumpPicker(viewModel: viewModel)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
+            }
         }
+    }
+}
+
+// MARK: - Month Jump Picker
+
+private struct MonthJumpPicker: View {
+    @ObservedObject var viewModel: CalendarViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedDate: Date
+
+    init(viewModel: CalendarViewModel) {
+        self.viewModel = viewModel
+        self._selectedDate = State(initialValue: viewModel.visibleMonth)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("JUMP TO DATE")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .tracking(1)
+
+                Spacer()
+
+                Button("DONE") {
+                    let cal = Calendar.current
+                    if let monthStart = cal.dateInterval(of: .month, for: selectedDate)?.start {
+                        viewModel.visibleMonth = monthStart
+                        viewModel.selectDate(selectedDate, userInitiated: true)
+                    }
+                    dismiss()
+                }
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 16)
+
+            DatePicker(
+                "",
+                selection: $selectedDate,
+                displayedComponents: [.date]
+            )
+            .datePickerStyle(.wheel)
+            .labelsHidden()
+            .environment(\.colorScheme, .dark)
+
+            // Today shortcut
+            Button {
+                selectedDate = Date()
+            } label: {
+                Text("TODAY")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .tracking(1)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .fill(OPSStyle.Colors.cardBackgroundDark)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 0.5)
+                    )
+            }
+            .padding(.bottom, 20)
+        }
+        .background(OPSStyle.Colors.background)
     }
 }
 

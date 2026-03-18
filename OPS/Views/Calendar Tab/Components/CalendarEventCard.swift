@@ -138,27 +138,6 @@ struct CalendarEventCard: View {
                     .padding(.vertical, 14)
                     .opacity(showLabels ? 1 : 0)
 
-                    // Task type badge (top-right, only when right edge is visible)
-                    if !typeDisplay.isEmpty && !bleedsRight && showLabels {
-                        VStack {
-                            Text(typeDisplay)
-                                .font(OPSStyle.Typography.miniLabel)
-                                .foregroundColor(badgeColor)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(badgeColor.opacity(0.12))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .stroke(badgeColor.opacity(0.35), lineWidth: 0.5)
-                                )
-                            Spacer()
-                        }
-                        .padding(.top, 14)
-                        .padding(.trailing, 14)
-                    }
                 }
                 .frame(width: totalWidth, height: 64)
                 .background(OPSStyle.Colors.cardBackgroundDark)
@@ -210,48 +189,11 @@ struct CalendarEventCard: View {
                     }
                 )
 
-                // Completed overlay (on top of card)
-                if task.status == .completed {
-                    ZStack(alignment: .topTrailing) {
-                        OPSStyle.Colors.modalOverlay
-                            .clipShape(OPSRoundedCornerShape(radius: 2, corners: visibleCorners))
-                        if showLabels && !bleedsRight {
-                            Text("COMPLETED")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(OPSStyle.Colors.statusColor(for: .completed))
-                                )
-                                .padding(.top, 8)
-                                .padding(.trailing, 8)
-                        }
-                    }
-                    .frame(width: totalWidth, height: 64)
-                }
-
-                // Cancelled overlay (on top of card)
-                if task.status == .cancelled {
-                    ZStack(alignment: .topTrailing) {
-                        OPSStyle.Colors.modalOverlay
-                            .clipShape(OPSRoundedCornerShape(radius: 2, corners: visibleCorners))
-                        if showLabels && !bleedsRight {
-                            Text("CANCELLED")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(OPSStyle.Colors.inactiveStatus)
-                                )
-                                .padding(.top, 8)
-                                .padding(.trailing, 8)
-                        }
-                    }
-                    .frame(width: totalWidth, height: 64)
+                // Dimming overlay for completed/cancelled (covers full card including bleed)
+                if task.status == .completed || task.status == .cancelled {
+                    OPSStyle.Colors.modalOverlay
+                        .frame(width: totalWidth, height: 64)
+                        .clipShape(OPSRoundedCornerShape(radius: 2, corners: visibleCorners))
                 }
             }
             .offset(x: bleedsLeft ? -leftBleed : 0)
@@ -279,6 +221,44 @@ struct CalendarEventCard: View {
         .padding(.vertical, 4)
         .padding(.leading, bleedsLeft ? 0 : 20)
         .padding(.trailing, bleedsRight ? 0 : 20)
+        // Task type badge — top-right, shown on ALL days of the task
+        .overlay(alignment: .topTrailing) {
+            if !typeDisplay.isEmpty && showLabels {
+                Text(typeDisplay)
+                    .font(OPSStyle.Typography.miniLabel)
+                    .foregroundColor(badgeColor)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(badgeColor.opacity(0.12))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 2)
+                            .stroke(badgeColor.opacity(0.35), lineWidth: 0.5)
+                    )
+                    .padding(.top, 4 + 14) // 4pt vertical padding + 14pt card inset
+                    .padding(.trailing, 34)
+            }
+        }
+        // Status badge — bottom-right, shown on ALL days for completed/cancelled
+        .overlay(alignment: .bottomTrailing) {
+            if showLabels && (task.status == .completed || task.status == .cancelled) {
+                Text(task.status == .completed ? "COMPLETED" : "CANCELLED")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(task.status == .completed ?
+                                OPSStyle.Colors.statusColor(for: .completed) :
+                                OPSStyle.Colors.inactiveStatus)
+                    )
+                    .padding(.bottom, 4 + 8) // 4pt vertical padding + 8pt card inset
+                    .padding(.trailing, 34)
+            }
+        }
         .sheet(isPresented: $showingReschedule) {
             CalendarSchedulerSheet(
                 isPresented: $showingReschedule,

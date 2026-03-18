@@ -83,104 +83,78 @@ struct DayPageView: View {
     @EnvironmentObject var dataController: DataController
     let isActivePage: Bool
 
-    /// Lightweight wrapper for unified task iteration (nil task = spacer for alignment)
+    /// Lightweight wrapper for unified task iteration (nil task = spacer for alignment).
+    /// Multi-day entries use "slot-N" IDs so all pages share the same ID space
+    /// for cross-page scroll sync.
     private struct TaskEntry: Identifiable {
         let task: ProjectTask?
         let isOngoing: Bool
         let slot: Int
-        var id: String { task?.id ?? "spacer-\(slot)" }
+        var id: String {
+            if slot >= 0 { return "slot-\(slot)" }
+            return task?.id ?? UUID().uuidString
+        }
         var isSpacer: Bool { task == nil }
     }
 
-    /// Slot-packing helper: a multi-day task's span within the computation window
-    private struct TaskSpan {
-        let task: ProjectTask
-        let startIdx: Int
-        let endIdx: Int
-        let absoluteSpanDays: Int
-    }
-
-    /// Unified task list using slot-packing across a ±3-day window so multi-day
+    /// Unified task list using window-independent slot-packing so multi-day
     /// tasks maintain the exact same vertical position on every day they span.
-    /// New tasks fill lanes freed by ended tasks — no gaps, perfect alignment.
+    ///
+    /// Key difference from earlier approach: sort and overlap checks use
+    /// ABSOLUTE dates (not window-relative indices), making the slot assignment
+    /// deterministic regardless of which day's window we compute from.
     private var unifiedTasks: [TaskEntry] {
         let cal = Calendar.current
         let dayStart = cal.startOfDay(for: date)
 
-        // --- Build a ±3-day window for stable slot packing ---
-        var windowDays: [Date] = []
-        for offset in -3...3 {
-            if let d = cal.date(byAdding: .day, value: offset, to: dayStart) {
-                windowDays.append(cal.startOfDay(for: d))
-            }
-        }
-
-        // Gather all tasks across the window, dedup by ID
+        // --- Gather all multi-day tasks in a ±7-day window ---
         var processedIds = Set<String>()
-        var tasksByDay: [[ProjectTask]] = []
-        for wd in windowDays {
-            tasksByDay.append(viewModel.scheduledTasks(for: wd))
-        }
+        var multiDayTasks: [ProjectTask] = []
 
-        // Build span info for every unique multi-day task in the window
-        var multiDaySpans: [TaskSpan] = []
-
-        for dayIdx in 0..<windowDays.count {
-            for task in tasksByDay[dayIdx] {
+        for offset in -7...7 {
+            guard let wd = cal.date(byAdding: .day, value: offset, to: dayStart) else { continue }
+            for task in viewModel.scheduledTasks(for: cal.startOfDay(for: wd)) {
                 guard !processedIds.contains(task.id) else { continue }
                 processedIds.insert(task.id)
 
-                let taskStart = cal.startOfDay(for: task.startDate ?? Date.distantPast)
-                let taskEnd = cal.startOfDay(for: task.endDate ?? taskStart)
-                guard taskStart != taskEnd else { continue }  // skip single-day
-
-                // Map task's date range onto window indices
-                var startIdx = Int.max
-                var endIdx = -1
-                for i in 0..<windowDays.count {
-                    if windowDays[i] >= taskStart && windowDays[i] <= taskEnd {
-                        startIdx = min(startIdx, i)
-                        endIdx = max(endIdx, i)
-                    }
-                }
-                guard endIdx >= 0 else { continue }
-
-                let absoluteSpan = cal.dateComponents([.day], from: taskStart, to: taskEnd).day ?? 1
-
-                multiDaySpans.append(TaskSpan(
-                    task: task,
-                    startIdx: startIdx,
-                    endIdx: endIdx,
-                    absoluteSpanDays: absoluteSpan
-                ))
+                let start = cal.startOfDay(for: task.startDate ?? Date.distantPast)
+                let end = cal.startOfDay(for: task.endDate ?? start)
+                guard start != end else { continue }  // skip single-day
+                multiDayTasks.append(task)
             }
         }
 
-        // Sort by ABSOLUTE span (not window-relative) so the sort order is
-        // identical regardless of which day's window we compute from.
-        // Wider spans first → earlier start → ID tiebreak.
-        multiDaySpans.sort { a, b in
-            if a.absoluteSpanDays != b.absoluteSpanDays { return a.absoluteSpanDays > b.absoluteSpanDays }
-            if a.startIdx != b.startIdx { return a.startIdx < b.startIdx }
-            return a.task.id < b.task.id
+        // --- Deterministic sort using ABSOLUTE dates (not window-relative) ---
+        multiDayTasks.sort { a, b in
+            let aStart = cal.startOfDay(for: a.startDate ?? Date.distantPast)
+            let aEnd = cal.startOfDay(for: a.endDate ?? aStart)
+            let bStart = cal.startOfDay(for: b.startDate ?? Date.distantPast)
+            let bEnd = cal.startOfDay(for: b.endDate ?? bStart)
+
+            let aSpan = cal.dateComponents([.day], from: aStart, to: aEnd).day ?? 0
+            let bSpan = cal.dateComponents([.day], from: bStart, to: bEnd).day ?? 0
+
+            if aSpan != bSpan { return aSpan > bSpan }
+            if aStart != bStart { return aStart < bStart }
+            return a.id < b.id
         }
 
-        // Slot packing — identical algorithm to the week bars
+        // --- Greedy slot packing using actual date-range overlap ---
+        // This is window-independent: two tasks conflict iff their date ranges intersect.
         let maxSlots = 20
-        var occupied: [[Bool]] = Array(repeating: Array(repeating: false, count: maxSlots), count: windowDays.count)
         var taskSlot: [String: Int] = [:]
+        var slotRanges: [Int: [(start: Date, end: Date)]] = [:]
 
-        for span in multiDaySpans {
+        for task in multiDayTasks {
+            let taskStart = cal.startOfDay(for: task.startDate ?? Date.distantPast)
+            let taskEnd = cal.startOfDay(for: task.endDate ?? taskStart)
+
             for slot in 0..<maxSlots {
-                var available = true
-                for dayIdx in span.startIdx...span.endIdx {
-                    if occupied[dayIdx][slot] { available = false; break }
-                }
-                if available {
-                    taskSlot[span.task.id] = slot
-                    for dayIdx in span.startIdx...span.endIdx {
-                        occupied[dayIdx][slot] = true
-                    }
+                let ranges = slotRanges[slot] ?? []
+                let hasConflict = ranges.contains { taskStart <= $0.end && $0.start <= taskEnd }
+                if !hasConflict {
+                    taskSlot[task.id] = slot
+                    slotRanges[slot, default: []].append((start: taskStart, end: taskEnd))
                     break
                 }
             }
@@ -188,53 +162,30 @@ struct DayPageView: View {
 
         // --- Assemble today's list with spacers for empty slots ---
         let todayTaskIds = Set(tasksForDate.map { $0.id })
-        let todayIdx = 3  // center of ±3 window
 
-        // Build a map of slot → task for today's multi-day tasks
-        var slottedTasks: [Int: TaskSpan] = [:]
-        for span in multiDaySpans {
-            guard todayTaskIds.contains(span.task.id),
-                  let slot = taskSlot[span.task.id] else { continue }
-            slottedTasks[slot] = span
+        var slottedTasks: [Int: ProjectTask] = [:]
+        for task in multiDayTasks {
+            guard todayTaskIds.contains(task.id),
+                  let slot = taskSlot[task.id] else { continue }
+            slottedTasks[slot] = task
         }
 
-        // Find the highest slot occupied today
-        let maxSlot = slottedTasks.keys.max() ?? -1
+        let maxSlotToday = slottedTasks.keys.max() ?? -1
 
-        // Also check if adjacent days have tasks in higher slots that
-        // aren't present today — those need spacers too for alignment
-        let adjacentMaxSlot: Int = {
-            var highest = maxSlot
-            // Check previous day (todayIdx - 1) and next day (todayIdx + 1)
-            for adjIdx in [todayIdx - 1, todayIdx + 1] where adjIdx >= 0 && adjIdx < windowDays.count {
-                for slot in 0..<maxSlots {
-                    if occupied[adjIdx][slot] && occupied[todayIdx][slot] {
-                        highest = max(highest, slot)
-                    }
-                }
-            }
-            return highest
-        }()
-
-        let effectiveMaxSlot = max(maxSlot, adjacentMaxSlot)
-
-        // Build multi-day entries from slot 0 to effectiveMaxSlot,
-        // inserting spacers for empty slots to maintain alignment
         var multiDayEntries: [TaskEntry] = []
-        if effectiveMaxSlot >= 0 {
-            for slot in 0...effectiveMaxSlot {
-                if let span = slottedTasks[slot] {
-                    let start = cal.startOfDay(for: span.task.startDate ?? Date.distantPast)
-                    multiDayEntries.append(TaskEntry(task: span.task, isOngoing: start != dayStart, slot: slot))
+        if maxSlotToday >= 0 {
+            for slot in 0...maxSlotToday {
+                if let task = slottedTasks[slot] {
+                    let start = cal.startOfDay(for: task.startDate ?? Date.distantPast)
+                    multiDayEntries.append(TaskEntry(task: task, isOngoing: start != dayStart, slot: slot))
                 } else {
-                    // Spacer — preserves vertical position for tasks below
                     multiDayEntries.append(TaskEntry(task: nil, isOngoing: false, slot: slot))
                 }
             }
         }
 
         // Single-day tasks after multi-day, sorted by start date then ID
-        let multiDayIds = Set(multiDaySpans.map { $0.task.id })
+        let multiDayIds = Set(multiDayTasks.map { $0.id })
         let singleDayEntries = tasksForDate
             .filter { !multiDayIds.contains($0.id) }
             .sorted { a, b in
@@ -287,31 +238,67 @@ struct DayPageView: View {
             if tasksForDate.isEmpty && userEventsForDate.isEmpty {
                 emptyState
             } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        // Unified task list — multi-day tasks maintain stable vertical
-                        // positions across days for seamless cross-day card connection.
-                        // Empty slots get invisible spacers to preserve alignment.
-                        ForEach(Array(unifiedTasks.enumerated()), id: \.element.id) { index, entry in
-                            if entry.isSpacer {
-                                // Invisible spacer matching card height (64) + vertical padding (8)
-                                Color.clear
-                                    .frame(height: 72)
-                            } else if let task = entry.task {
-                                taskRow(task: task, isOngoing: entry.isOngoing, isFirst: index == 0)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            // Unified task list — multi-day tasks maintain stable vertical
+                            // positions across days for seamless cross-day card connection.
+                            // Empty slots get invisible spacers to preserve alignment.
+                            ForEach(Array(unifiedTasks.enumerated()), id: \.element.id) { index, entry in
+                                if entry.isSpacer {
+                                    // Invisible spacer matching card height (64) + vertical padding (8)
+                                    Color.clear
+                                        .frame(height: 72)
+                                        .id(entry.id)
+                                } else if let task = entry.task {
+                                    taskRow(task: task, isOngoing: entry.isOngoing, isFirst: index == 0)
+                                        .id(entry.id)
+                                }
+                            }
+
+                            // User events (personal + time off)
+                            ForEach(userEventsForDate) { event in
+                                CalendarUserEventCard(
+                                    event: event,
+                                    onTap: { /* future: open event detail */ },
+                                    onDelete: { deleteUserEvent(event) }
+                                )
                             }
                         }
-
-                        // User events (personal + time off)
-                        ForEach(userEventsForDate) { event in
-                            CalendarUserEventCard(
-                                event: event,
-                                onTap: { /* future: open event detail */ },
-                                onDelete: { deleteUserEvent(event) }
-                            )
+                        .padding(.bottom, 100) // tab bar clearance
+                        // Track scroll offset on the active page
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear.preference(
+                                    key: DayScrollOffsetKey.self,
+                                    value: geo.frame(in: .named("dayScroll")).minY
+                                )
+                            }
+                        )
+                    }
+                    .coordinateSpace(name: "dayScroll")
+                    // Active page: convert pixel offset to slot ID, push to viewModel
+                    .onPreferenceChange(DayScrollOffsetKey.self) { offset in
+                        if isActivePage {
+                            let slot = max(0, Int(-offset / 72))
+                            let slotId = "slot-\(slot)"
+                            if viewModel.dayScrollAnchor != slotId {
+                                viewModel.dayScrollAnchor = slotId
+                            }
                         }
                     }
-                    .padding(.bottom, 100) // tab bar clearance
+                    // Non-active pages: mirror the shared scroll position
+                    .onChange(of: viewModel.dayScrollAnchor) { _, anchor in
+                        if !isActivePage, let anchor {
+                            proxy.scrollTo(anchor, anchor: .top)
+                        }
+                    }
+                    // When page first appears, sync to shared position
+                    .onAppear {
+                        if let shared = viewModel.dayScrollAnchor {
+                            proxy.scrollTo(shared, anchor: .top)
+                        }
+                    }
                 }
             }
         }
@@ -514,13 +501,23 @@ struct DayPageView: View {
     private var emptyState: some View {
         VStack(spacing: 24) {
             Spacer()
-            Text("[ NO TASKS SCHEDULED ]")
+            Text(emptyStateMessage)
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(Color.white.opacity(0.30))
                 .tracking(1)
+                .multilineTextAlignment(.center)
             Spacer()
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// Context-aware empty state: shows team member name when filtering by member
+    private var emptyStateMessage: String {
+        if case .member(let memberId) = viewModel.scheduleScope,
+           let member = viewModel.availableTeamMembers.first(where: { $0.id == memberId }) {
+            return "[ NO TASKS SCHEDULED FOR \(member.firstName.uppercased()) ]"
+        }
+        return "[ NO TASKS SCHEDULED ]"
     }
 
     // MARK: - Multi-Select
@@ -795,6 +792,7 @@ struct DayPageView: View {
     private func deleteUserEvent(_ event: CalendarUserEvent) {
         guard let context = dataController.modelContext,
               let companyId = dataController.currentUser?.companyId else { return }
+
         event.deletedAt = Date()
         try? context.save()
         viewModel.loadUserEvents()
@@ -803,5 +801,15 @@ struct DayPageView: View {
             let repo = CalendarUserEventRepository(companyId: companyId)
             try? await repo.softDelete(eventId)
         }
+    }
+}
+
+// MARK: - Scroll Sync
+
+/// Preference key for tracking vertical scroll offset across day pages
+private struct DayScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }

@@ -3898,9 +3898,10 @@ class DataController: ObservableObject {
             )
             let companyUsers = try context.fetch(descriptor)
 
-            // Filter for users with default role (no assigned employee type) excluding current user
+            // Filter for users with no assigned role — only .unassigned counts
+            // Crew is a valid intentional role, not an unassigned state
             let unassignedLocalUsers = companyUsers.filter { localUser in
-                (localUser.role == .unassigned || localUser.role == .crew) && localUser.id != user.id
+                localUser.role == .unassigned && localUser.id != user.id
             }
 
             print("[UNASSIGNED_ROLES] Found \(unassignedLocalUsers.count) users without assigned role")
@@ -4646,8 +4647,29 @@ class DataController: ObservableObject {
                 }
 
                 if shouldPurge {
-                    // Cancel pending SyncOperations for this project
                     let projectId = project.id
+
+                    // Delete associated ProjectNote records
+                    let notePredicate = #Predicate<ProjectNote> { $0.projectId == projectId }
+                    if let notes = try? context.fetch(FetchDescriptor(predicate: notePredicate)) {
+                        for note in notes { context.delete(note) }
+                    }
+
+                    // Delete associated LocalPhoto records
+                    let photoPredicate = #Predicate<LocalPhoto> {
+                        $0.entityType == "project" && $0.entityId == projectId
+                    }
+                    if let photos = try? context.fetch(FetchDescriptor(predicate: photoPredicate)) {
+                        for photo in photos { context.delete(photo) }
+                    }
+
+                    // Delete associated PhotoAnnotation records
+                    let annotationPredicate = #Predicate<PhotoAnnotation> { $0.projectId == projectId }
+                    if let annotations = try? context.fetch(FetchDescriptor(predicate: annotationPredicate)) {
+                        for annotation in annotations { context.delete(annotation) }
+                    }
+
+                    // Cancel pending SyncOperations for this project
                     let predicate = #Predicate<SyncOperation> {
                         $0.entityId == projectId && $0.status == "pending"
                     }

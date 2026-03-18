@@ -172,6 +172,15 @@ final class PhotoProcessor {
 
             try? context.save()
         }
+
+        // Check disk usage after processing the batch
+        let diskUsage = localPhotoDiskUsage()
+        if diskUsage > 524_288_000 { // 500MB
+            print("[PhotoProcessor] Disk usage warning: \(diskUsage / 1_048_576)MB exceeds 500MB threshold")
+            NotificationCenter.default.post(name: .photoDiskUsageHigh, object: nil, userInfo: [
+                "diskUsageBytes": diskUsage
+            ])
+        }
     }
 
     /// Uploads a single photo, updating its status on success or failure.

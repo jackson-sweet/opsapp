@@ -87,7 +87,7 @@ final class InboundProcessor {
 
     /// Entity types processed during full/delta sync, ordered by syncPriority
     /// to satisfy foreign key dependencies.
-    private static let syncOrder: [SyncEntityType] = [
+    static let syncOrder: [SyncEntityType] = [
         .company,
         .user,
         .client,

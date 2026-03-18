@@ -50,6 +50,13 @@ struct InventoryView: View {
     @State private var renamingTag: String? = nil
     @State private var renameTagText: String = ""
     @State private var selectionKeywordText: String = ""
+    @State private var showInsights = false
+
+    // Wizard state
+    @State private var showInventoryWizard = false
+    @StateObject private var wizardCoordinator = InventoryWizardCoordinator()
+    @State private var showWizardSuccess = false
+    @Environment(\.wizardStateManager) private var wizardStateManager
 
     struct SelectionFilter: Identifiable, Equatable {
         let id = UUID()
@@ -169,7 +176,7 @@ struct InventoryView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                AppHeader(headerType: .inventory)
+                AppHeader(headerType: .inventory, onInsightsTapped: { showInsights = true })
                     .padding(.bottom, 8)
 
                 // Search and Sort
@@ -290,11 +297,50 @@ struct InventoryView: View {
         .sheet(isPresented: $showingSelectionTools) {
             selectionToolsSheet
         }
+        .sheet(isPresented: $showInsights) {
+            if let companyId = dataController.currentUser?.companyId {
+                InventoryInsightsView(companyId: companyId)
+                    .environmentObject(dataController)
+            }
+        }
         .onAppear {
             AnalyticsManager.shared.trackScreenView(screenName: .inventory)
             // Set default sort mode: by tag if tags exist, otherwise by name
             if allTags.isEmpty && sortMode == .tag {
                 sortMode = .name
+            }
+            // Check if inventory wizard should be shown
+            checkInventoryWizard()
+        }
+        .fullScreenCover(isPresented: $showInventoryWizard) {
+            InventoryWizardFlow(
+                coordinator: wizardCoordinator,
+                onComplete: {
+                    showInventoryWizard = false
+                    showWizardSuccess = true
+                },
+                onSkip: {
+                    showInventoryWizard = false
+                }
+            )
+            .environmentObject(dataController)
+        }
+        .overlay {
+            PushInMessage(
+                isPresented: $showWizardSuccess,
+                title: "INVENTORY SET UP",
+                subtitle: "Check back on your insights to track trends.",
+                type: .success,
+                autoDismissAfter: 4.0
+            )
+        }
+        .onChange(of: wizardStateManager?.isActive) { _, isActive in
+            // Respond to force trigger from settings/developer dashboard
+            if isActive == true,
+               wizardStateManager?.activeWizard?.wizardId == "inventory_setup",
+               !showInventoryWizard {
+                wizardCoordinator.dataController = dataController
+                showInventoryWizard = true
             }
         }
     }
@@ -467,6 +513,29 @@ struct InventoryView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Wizard Check
+
+    private func checkInventoryWizard() {
+        // Only show if user has permission
+        guard PermissionStore.shared.can("inventory.manage") else { return }
+
+        // Check if wizard was already completed or dismissed
+        let wizardKey = "wizard_inventory_setup_status"
+        let status = UserDefaults.standard.string(forKey: wizardKey)
+        if status == "completed" || status == "dismissed" { return }
+
+        // Check if company already has inventory items (via @Query)
+        let activeItems = filteredItems // uses the existing computed property
+        if !activeItems.isEmpty {
+            UserDefaults.standard.set("completed", forKey: wizardKey)
+            return
+        }
+
+        // Show the wizard
+        wizardCoordinator.dataController = dataController
+        showInventoryWizard = true
     }
 
     // MARK: - Refresh

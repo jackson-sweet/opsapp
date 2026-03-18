@@ -388,10 +388,10 @@ final class SyncEngine {
             }
         }
 
-        // Update all timestamps on success
+        // Update timestamps only for entity types that were actually synced
         if !hasError {
             let now = Date()
-            for entityType in SyncEntityType.allCases {
+            for entityType in InboundProcessor.syncOrder {
                 setLastSyncTimestamp(now, for: entityType)
             }
         }
@@ -561,6 +561,22 @@ final class SyncEngine {
             print("[SYNC_ENGINE] Failed to fetch failed operations: \(error)")
             return []
         }
+    }
+
+    // MARK: - Cancel
+
+    /// Cancels (deletes) a single pending sync operation.
+    /// Does nothing if the operation is currently in-progress.
+    func cancelOperation(_ operation: SyncOperation) {
+        guard let modelContext else { return }
+        guard operation.status != "inProgress" else {
+            print("[SYNC_ENGINE] Cannot cancel in-progress operation \(operation.id)")
+            return
+        }
+        modelContext.delete(operation)
+        try? modelContext.save()
+        refreshPendingCount()
+        print("[SYNC_ENGINE] Cancelled operation \(operation.id) (\(operation.operationType) \(operation.entityType))")
     }
 
     // MARK: - Cleanup

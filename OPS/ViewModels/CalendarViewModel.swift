@@ -45,7 +45,11 @@ class CalendarViewModel: ObservableObject {
     @Published var selectedTaskTypeIds: Set<String> = []
     @Published var selectedClientIds: Set<String> = []
     @Published var selectedStatuses: Set<Status> = []
-    
+
+    /// Shared scroll anchor for day pages — keeps cards aligned across day swipes.
+    /// Uses slot-based IDs ("slot-0", "slot-1", ...) so all pages share the same ID space.
+    @Published var dayScrollAnchor: String? = nil
+
     // MARK: - Private Properties
     var dataController: DataController?
 

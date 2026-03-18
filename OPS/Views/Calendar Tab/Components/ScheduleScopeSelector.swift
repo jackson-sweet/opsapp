@@ -13,8 +13,8 @@ struct ScheduleScopeSelector: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                // Team member chips only (ALL/MINE toggle moved to header)
+            HStack(spacing: 8) {
+                // Team member chips with avatar + initials
                 ForEach(viewModel.availableTeamMembers, id: \.id) { member in
                     let isSelected: Bool = {
                         if case .member(let id) = viewModel.scheduleScope {
@@ -23,7 +23,7 @@ struct ScheduleScopeSelector: View {
                         return false
                     }()
 
-                    scopeChip(label: member.initials, isSelected: isSelected) {
+                    memberChip(member: member, isSelected: isSelected) {
                         viewModel.updateScheduleScope(.member(member.id))
                     }
                 }
@@ -33,25 +33,34 @@ struct ScheduleScopeSelector: View {
     }
 
     @ViewBuilder
-    private func scopeChip(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+    private func memberChip(member: TeamMember, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: {
             withAnimation(.accessibleEaseInOut(duration: 0.2)) {
                 action()
             }
         }) {
-            Text(label)
-                .font(OPSStyle.Typography.cardBody)
-                .foregroundColor(
-                    isSelected
-                        ? OPSStyle.Colors.cardBackgroundDark
-                        : OPSStyle.Colors.secondaryText
-                )
-                .padding(.vertical, OPSStyle.Layout.spacing2)
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(isSelected ? OPSStyle.Colors.primaryText : .clear)
-                )
+            HStack(spacing: 6) {
+                UserAvatar(teamMember: member, size: 22)
+
+                Text(member.initials)
+                    .font(OPSStyle.Typography.cardBody)
+                    .foregroundColor(
+                        isSelected
+                            ? OPSStyle.Colors.cardBackgroundDark
+                            : OPSStyle.Colors.primaryText
+                    )
+            }
+            .padding(.vertical, 6)
+            .padding(.leading, 6)
+            .padding(.trailing, 10)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .fill(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(Color.white.opacity(isSelected ? 0 : 0.10), lineWidth: 0.5)
+            )
         }
     }
 }

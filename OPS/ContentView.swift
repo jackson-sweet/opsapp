@@ -249,6 +249,9 @@ struct PINGatedView: View {
     @State private var showClientCreatedMessage = false
     @State private var createdClientName: String = ""
 
+    // Permission change overlay — sits above all navigation stacks, sheets, and modals
+    @State private var showPermissionChangeOverlay = false
+
     // Bug reporting
     @State private var lastShakeTime: Date = .distantPast
 
@@ -444,9 +447,24 @@ struct PINGatedView: View {
                     .zIndex(4)
                     .transition(.opacity)
                 }
+
+                // Permission contraction overlay — blocks everything until user acknowledges
+                if showPermissionChangeOverlay {
+                    PermissionChangeOverlay(isPresented: $showPermissionChangeOverlay) {
+                        handlePermissionRefresh()
+                    }
+                    .transition(.opacity)
+                    .zIndex(9999)
+                }
             }
                 .animation(OPSStyle.Animation.standard, value: showUnassignedRolesOverlay)
                 .animation(OPSStyle.Animation.standard, value: activeAppMessage?.id)
+                .animation(OPSStyle.Animation.standard, value: showPermissionChangeOverlay)
+                .onReceive(NotificationCenter.default.publisher(for: .permissionScopeContracted)) { _ in
+                    withAnimation(OPSStyle.Animation.standard) {
+                        showPermissionChangeOverlay = true
+                    }
+                }
             }
         }
         .task {
@@ -498,6 +516,23 @@ struct PINGatedView: View {
             if dataController.connectivity?.shouldAttemptSync ?? false {
                 Task {
                     await BugReportSubmissionService.shared.drainOfflineQueue(dataController: dataController)
+                }
+            }
+        }
+    }
+
+    // MARK: - Permission Refresh
+
+    /// Called when the user taps "REFRESH APP" on the permission contraction overlay.
+    /// Purges non-permitted data, runs a full sync, dismisses the overlay, and navigates home.
+    private func handlePermissionRefresh() {
+        Task {
+            await dataController.purgeNonPermittedData()
+            await dataController.triggerFullSync()
+
+            await MainActor.run {
+                withAnimation(OPSStyle.Animation.standard) {
+                    showPermissionChangeOverlay = false
                 }
             }
         }

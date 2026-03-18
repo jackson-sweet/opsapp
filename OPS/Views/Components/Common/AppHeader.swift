@@ -101,41 +101,37 @@ struct AppHeader: View {
                     appState.showingNotifications = true
                 }) {
                     ZStack {
-                        if let user = dataController.currentUser {
-                            UserAvatar(user: user, size: 44)
+                        // Avatar — dimmed when sync operations are pending/active
+                        Group {
+                            if let user = dataController.currentUser {
+                                UserAvatar(user: user, size: 44)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
+                                    )
+                            } else {
+                                UserAvatar(
+                                    firstName: "U",
+                                    lastName: "",
+                                    size: 44,
+                                    backgroundColor: OPSStyle.Colors.primaryAccent
+                                )
                                 .overlay(
                                     Circle()
                                         .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
-                                )
-                        } else {
-                            UserAvatar(
-                                firstName: "U",
-                                lastName: "",
-                                size: 44,
-                                backgroundColor: OPSStyle.Colors.primaryAccent
+                                    )
+                            }
+                        }
+                        .opacity(dataController.syncEngine.pendingOperationCount > 0 || dataController.syncEngine.isSyncing ? 0.35 : 1.0)
+                        .animation(OPSStyle.Animation.standard, value: dataController.syncEngine.pendingOperationCount)
+                        .animation(OPSStyle.Animation.standard, value: dataController.syncEngine.isSyncing)
+
+                        // Sync overlay — spinning icon with count in center
+                        if dataController.syncEngine.pendingOperationCount > 0 || dataController.syncEngine.isSyncing {
+                            AvatarSyncOverlay(
+                                count: dataController.syncEngine.pendingOperationCount,
+                                isSyncing: dataController.syncEngine.isSyncing
                             )
-                            .overlay(
-                                Circle()
-                                    .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
-                                )
-                        }
-
-                        // Sync ring animation — rotating arc when actively syncing
-                        if dataController.syncEngine.isSyncing {
-                            SyncRingView()
-                                .frame(width: 52, height: 52)
-                        }
-
-                        // Pending offline badge — amber dot when operations are queued
-                        if !dataController.syncEngine.isSyncing && dataController.syncEngine.pendingOperationCount > 0 {
-                            Circle()
-                                .fill(OPSStyle.Colors.warningStatus)
-                                .frame(width: 10, height: 10)
-                                .overlay(
-                                    Circle()
-                                        .stroke(OPSStyle.Colors.background, lineWidth: 1.5)
-                                )
-                                .offset(x: 18, y: -18)
                         }
 
                         // Bell icon — bottom-left of avatar
@@ -569,7 +565,56 @@ struct AppHeader: View {
     }
 }
 
-// MARK: - Sync Ring Animation
+// MARK: - Avatar Sync Overlay
+
+/// Sync icon with spinning animation and count shown over the avatar
+/// when operations are pending or actively syncing.
+struct AvatarSyncOverlay: View {
+    let count: Int
+    let isSyncing: Bool
+    @State private var rotation: Double = 0
+
+    var body: some View {
+        ZStack {
+            // Spinning sync icon ring
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundColor(isSyncing ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.warningStatus)
+                .rotationEffect(.degrees(rotation))
+                .onAppear {
+                    if isSyncing {
+                        withAnimation(
+                            .linear(duration: 1.5)
+                            .repeatForever(autoreverses: false)
+                        ) {
+                            rotation = 360
+                        }
+                    }
+                }
+                .onChange(of: isSyncing) { _, newValue in
+                    if newValue {
+                        rotation = 0
+                        withAnimation(
+                            .linear(duration: 1.5)
+                            .repeatForever(autoreverses: false)
+                        ) {
+                            rotation = 360
+                        }
+                    }
+                }
+
+            // Count in center
+            if count > 0 {
+                Text("\(count)")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+        }
+        .frame(width: 44, height: 44)
+    }
+}
+
+// MARK: - Legacy Sync Ring (retained for other callers)
 
 /// Rotating arc overlay shown around the avatar when sync is in progress.
 struct SyncRingView: View {

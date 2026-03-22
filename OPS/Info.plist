@@ -33,6 +33,8 @@
 	<string>$(AWS_S3_BUCKET)</string>
 	<key>AWS_REGION</key>
 	<string>$(AWS_REGION)</string>
+	<key>MBXAccessToken</key>
+	<string>$(MBX_ACCESS_TOKEN)</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.ops.sync.refresh</string>

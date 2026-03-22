@@ -19,15 +19,17 @@ fileprivate struct FABMenuItem: Identifiable {
     let permission: String?
     let disabledInTutorial: Bool
     let lockedMessage: String?
+    let badge: Int?
     let action: () -> Void
 
-    init(id: String, icon: String, label: String, permission: String?, disabledInTutorial: Bool, lockedMessage: String? = nil, action: @escaping () -> Void) {
+    init(id: String, icon: String, label: String, permission: String?, disabledInTutorial: Bool, lockedMessage: String? = nil, badge: Int? = nil, action: @escaping () -> Void) {
         self.id = id
         self.icon = icon
         self.label = label
         self.permission = permission
         self.disabledInTutorial = disabledInTutorial
         self.lockedMessage = lockedMessage
+        self.badge = badge
         self.action = action
     }
 }
@@ -357,6 +359,11 @@ struct FloatingActionMenu: View {
         let isTaskReviewLocked = completedTaskCount < taskReviewThreshold
         let isPaymentReviewLocked = completedProjectCount < paymentReviewThreshold
 
+        // Compute review counts for badges
+        let taskReviewCount = isTaskReviewLocked ? 0 : computeFABReviewableTasks().count
+        let unassignedReviewCount = computeFABIncompleteTasks().count
+        let completionReviewCount = isPaymentReviewLocked ? 0 : (computeFABOverdueProjects().count + computeFABCompletedProjects().count)
+
         groups.append(
             FABMenuGroup(id: "review", title: "REVIEW", items: [
                 FABMenuItem(
@@ -366,6 +373,7 @@ struct FloatingActionMenu: View {
                     permission: nil,
                     disabledInTutorial: true,
                     lockedMessage: isTaskReviewLocked ? "Complete \(taskReviewThreshold) tasks to unlock task review. You've completed \(completedTaskCount) so far." : nil,
+                    badge: taskReviewCount > 0 ? taskReviewCount : nil,
                     action: {
                         showCreateMenu = false
                         if !UserDefaults.standard.bool(forKey: "review_task_intro_shown") {
@@ -382,6 +390,7 @@ struct FloatingActionMenu: View {
                     label: "Unassigned Review",
                     permission: "tasks.edit",
                     disabledInTutorial: true,
+                    badge: unassignedReviewCount > 0 ? unassignedReviewCount : nil,
                     action: {
                         showCreateMenu = false
                         showIncompleteReviewFromFAB = true
@@ -394,6 +403,7 @@ struct FloatingActionMenu: View {
                     permission: "projects.edit",
                     disabledInTutorial: true,
                     lockedMessage: isPaymentReviewLocked ? "Complete \(paymentReviewThreshold) projects to unlock payment review. You've completed \(completedProjectCount) so far." : nil,
+                    badge: completionReviewCount > 0 ? completionReviewCount : nil,
                     action: {
                         showCreateMenu = false
                         if !UserDefaults.standard.bool(forKey: "review_payment_intro_shown") {
@@ -657,6 +667,18 @@ struct FloatingActionMenu: View {
         }
     }
 
+    // MARK: - Review Badge Count
+
+    /// Total outstanding review items across all review types (for FAB badge)
+    private var totalReviewBadgeCount: Int {
+        guard !tutorialMode else { return 0 }
+        let taskReviewItems = computeFABReviewableTasks().count
+        let unassignedItems = computeFABIncompleteTasks().count
+        let overdueItems = computeFABOverdueProjects().count
+        let completedItems = computeFABCompletedProjects().count
+        return taskReviewItems + unassignedItems + overdueItems + completedItems
+    }
+
     // MARK: - FAB Button
 
     private var fabButton: some View {
@@ -692,6 +714,20 @@ struct FloatingActionMenu: View {
                 .overlay {
                     Circle()
                         .stroke(isFABDisabledInTutorial ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.buttonText, lineWidth: OPSStyle.Layout.Border.thick)
+                }
+                .overlay(alignment: .topTrailing) {
+                    // Review count badge — only shown when menu is closed
+                    if !showCreateMenu && totalReviewBadgeCount > 0 && !isFABDisabledInTutorial {
+                        Text("\(totalReviewBadgeCount)")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.invertedText)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(OPSStyle.Colors.warningStatus)
+                            .clipShape(Capsule())
+                            .offset(x: 6, y: -4)
+                            .transition(.scale.combined(with: .opacity))
+                    }
                 }
         }
         .allowsHitTesting(!isFABDisabledInTutorial)
@@ -1008,6 +1044,17 @@ struct FloatingActionMenu: View {
             }
         }) {
             HStack(spacing: 12) {
+                // Badge count inline with label (if present)
+                if let badge = item.badge, badge > 0, !isLocked {
+                    Text("\(badge)")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.invertedText)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(OPSStyle.Colors.warningStatus)
+                        .clipShape(Capsule())
+                }
+
                 Text(item.label.uppercased())
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(isLocked ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)

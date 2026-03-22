@@ -17,6 +17,7 @@ struct SettingsView: View {
     @State private var showingSearchSheet = false
     @State private var isRestartingTutorial = false
     @State private var showTutorialExperience = false
+    @State private var showTutorialV2 = false
 
     // Developer mode state
     @State private var developerModeEnabled: Bool = false
@@ -525,6 +526,14 @@ struct SettingsView: View {
                                     title: "Restart Tutorial",
                                     action: { restartTutorial() }
                                 )
+
+                                sectionDivider
+
+                                settingsRow(
+                                    icon: "graduationcap.fill",
+                                    title: "Restart Tutorial V2",
+                                    action: { showTutorialV2 = true }
+                                )
                             }
                             .padding(.horizontal, 20)
 
@@ -691,6 +700,11 @@ struct SettingsView: View {
         .fullScreenCover(isPresented: $showTutorialExperience) {
             TutorialFlowView {
                 showTutorialExperience = false
+            }
+        }
+        .fullScreenCover(isPresented: $showTutorialV2) {
+            TutorialFlowViewV2 {
+                showTutorialV2 = false
             }
         }
         .onChange(of: showDeveloperDashboard) { _, isShowing in

@@ -32,6 +32,12 @@ enum TutorialHaptics {
         notification.prepare()
     }
 
+    /// Ultra-light tap for rapid-fire strikethrough sequence (intensity 0.3)
+    static func strikethrough() {
+        light.impactOccurred(intensity: 0.3)
+        light.prepare()
+    }
+
     // MARK: - Compat (old tutorial code in real views still calls these)
 
     static func lightTap() { arrival() }

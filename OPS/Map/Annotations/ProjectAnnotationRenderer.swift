@@ -278,6 +278,13 @@ enum ProjectAnnotationRenderer {
 
     // MARK: - Stacked Project Pin (Multiple projects at same location)
 
+    /// Larger dimensions for multi-project pins
+    private static let stackedDotDiameter: CGFloat = 18
+    private static let stackedGapWidth: CGFloat = 2
+    private static let stackedRingStrokeWidth: CGFloat = 2.5
+    /// Total diameter of the stacked ring: dot + 2*(gap + stroke)
+    private static let stackedTotalRingDiameter: CGFloat = stackedDotDiameter + (stackedGapWidth + stackedRingStrokeWidth) * 2  // 27pt
+
     /// Data needed for each project in a stacked pin.
     struct StackedProjectInfo {
         let name: String
@@ -285,7 +292,7 @@ enum ProjectAnnotationRenderer {
     }
 
     /// Render a stacked project pin showing multiple projects at the same location.
-    /// Single teardrop colored by first project's status, count badge, and vertically stacked names.
+    /// Larger ring with count centered inside the dot. Vertically stacked project names above.
     /// - Parameters:
     ///   - projects: The projects at this location (first project determines pin color).
     ///   - isSelected: Whether this stacked pin is in the selected state.
@@ -303,8 +310,8 @@ enum ProjectAnnotationRenderer {
             ?? UIFont.systemFont(ofSize: labelFontSize)
         let smallFont = UIFont(name: "Kosugi-Regular", size: subtitleFontSize)
             ?? UIFont.systemFont(ofSize: subtitleFontSize)
-        let countFont = UIFont(name: "Kosugi-Regular", size: 9)
-            ?? UIFont.boldSystemFont(ofSize: 9)
+        let countFont = UIFont(name: "Kosugi-Regular", size: 10)
+            ?? UIFont.boldSystemFont(ofSize: 10)
         let labelAlpha: CGFloat = isSelected ? 1.0 : 0.8
 
         // Build label lines
@@ -336,7 +343,7 @@ enum ProjectAnnotationRenderer {
             maxLabelWidth = max(maxLabelWidth, overflowString!.size().width)
         }
 
-        // Count badge dimensions
+        // Count text for center of dot
         let countText = "\(projects.count)"
         let countAttrs: [NSAttributedString.Key: Any] = [
             .font: countFont,
@@ -344,9 +351,8 @@ enum ProjectAnnotationRenderer {
         ]
         let countStr = NSAttributedString(string: countText, attributes: countAttrs)
         let countSize = countStr.size()
-        let badgeDiameter = max(countSize.width, countSize.height) + 8
 
-        // Canvas dimensions
+        // Canvas dimensions — use larger stacked ring
         let dotSpacing: CGFloat = 6  // dot-to-label gap
         let dotSize: CGFloat = 5
         let lineHeight = labelFont.lineHeight + 2
@@ -354,8 +360,8 @@ enum ProjectAnnotationRenderer {
             + (overflowString != nil ? smallFont.lineHeight + 2 : 0)
 
         let labelBlockWidth = dotSize + dotSpacing + maxLabelWidth
-        let canvasWidth = max(labelBlockWidth, totalRingDiameter) + canvasPadding * 2 + badgeDiameter
-        let canvasHeight = labelsHeight + labelToRingGap + totalRingDiameter + canvasPadding * 2
+        let canvasWidth = max(labelBlockWidth, stackedTotalRingDiameter) + canvasPadding * 2
+        let canvasHeight = labelsHeight + labelToRingGap + stackedTotalRingDiameter + canvasPadding * 2
         let size = CGSize(width: ceil(canvasWidth), height: ceil(canvasHeight))
 
         let primaryColor = statusUIColor(for: first.status)
@@ -385,37 +391,29 @@ enum ProjectAnnotationRenderer {
                 labelY += smallFont.lineHeight + 2
             }
 
-            // Ring + dot center
+            // Ring + dot center (using larger stacked dimensions)
             let center = CGPoint(
                 x: size.width / 2,
-                y: canvasPadding + labelsHeight + labelToRingGap + totalRingDiameter / 2
+                y: canvasPadding + labelsHeight + labelToRingGap + stackedTotalRingDiameter / 2
             )
 
-            // Draw ring (solid, first project's status color)
-            drawSegmentedRing(
-                in: cgContext,
-                center: center,
-                colors: [primaryColor],
-                alpha: isSelected ? 1.0 : 0.7
-            )
+            // Draw larger ring (solid, first project's status color)
+            let ringRadius = (stackedTotalRingDiameter - stackedRingStrokeWidth) / 2
+            cgContext.setLineWidth(stackedRingStrokeWidth)
+            cgContext.setLineCap(.butt)
+            cgContext.setStrokeColor(primaryColor.withAlphaComponent(isSelected ? 1.0 : 0.7).cgColor)
+            cgContext.addArc(center: center, radius: ringRadius, startAngle: 0, endAngle: .pi * 2, clockwise: false)
+            cgContext.strokePath()
 
-            // Draw center dot
-            let dotRadius = dotDiameter / 2
+            // Draw center dot (larger, with count number centered inside)
+            let dotRadius = stackedDotDiameter / 2
             cgContext.setFillColor(primaryColor.withAlphaComponent(1.0).cgColor)
             cgContext.addArc(center: center, radius: dotRadius, startAngle: 0, endAngle: .pi * 2, clockwise: false)
             cgContext.fillPath()
 
-            // Count badge (top-right corner)
-            let badgeX = size.width - badgeDiameter - canvasPadding
-            let badgeY = canvasPadding
-            let badgeRect = CGRect(x: badgeX, y: badgeY, width: badgeDiameter, height: badgeDiameter)
-
-            cgContext.setFillColor(primaryColor.cgColor)
-            cgContext.fillEllipse(in: badgeRect)
-
-            // Count text centered in badge
-            let countX = badgeRect.midX - countSize.width / 2
-            let countY = badgeRect.midY - countSize.height / 2
+            // Count text centered inside the dot
+            let countX = center.x - countSize.width / 2
+            let countY = center.y - countSize.height / 2
             countStr.draw(at: CGPoint(x: countX, y: countY))
         }
     }

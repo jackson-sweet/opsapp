@@ -209,6 +209,9 @@ class ProjectNotesViewModel: ObservableObject {
 
             // Send push notifications for mentions
             await sendMentionNotifications(mentionedIds: mentionedIds, noteText: noteContent, noteId: created.id, attachmentURLs: attachmentURLs)
+
+            // Send push notifications to project team members (excluding author and already-mentioned users)
+            await sendNoteAddedNotifications(mentionedIds: mentionedIds, noteText: noteContent, noteId: created.id, attachmentURLs: attachmentURLs)
         } catch {
             if !(error is CancellationError) {
                 self.error = error.localizedDescription
@@ -422,6 +425,44 @@ class ProjectNotesViewModel: ObservableObject {
             } catch {
                 print("[PROJECT NOTES] Failed to send mention notification to \(userId): \(error)")
             }
+        }
+    }
+
+    /// Notify project team members when a note is added.
+    /// Excludes the author (self) and anyone already @mentioned (they got a mention push).
+    private func sendNoteAddedNotifications(mentionedIds: [String], noteText: String, noteId: String, attachmentURLs: [String] = []) async {
+        guard UserDefaults.standard.bool(forKey: "notifyProjectNoteAdded") else { return }
+        guard let currentUserId = currentUserId else { return }
+
+        // Get project and its team member IDs
+        guard let context = modelContext else { return }
+        let pid = projectId
+        let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == pid })
+        guard let project = try? context.fetch(descriptor).first else { return }
+
+        let projectTeamIds = project.getTeamMemberIds()
+        guard !projectTeamIds.isEmpty else { return }
+
+        // Exclude: self + already @mentioned users
+        let excludeIds = Set([currentUserId] + mentionedIds)
+        let recipientIds = projectTeamIds.filter { !excludeIds.contains($0) }
+        guard !recipientIds.isEmpty else { return }
+
+        let authorName = allTeamMembers.first(where: { $0.id == currentUserId })?.fullName ?? "A team member"
+        let firstImageUrl = attachmentURLs.first
+
+        do {
+            try await OneSignalService.shared.notifyProjectNoteAdded(
+                userIds: recipientIds,
+                authorName: authorName,
+                notePreview: noteText,
+                projectName: project.title,
+                projectId: projectId,
+                noteId: noteId,
+                imageUrl: firstImageUrl
+            )
+        } catch {
+            print("[PROJECT NOTES] Failed to send note-added notification: \(error)")
         }
     }
 }

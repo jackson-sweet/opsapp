@@ -238,6 +238,34 @@ class OneSignalService {
         print("[ONESIGNAL SERVICE] Note mention notification sent to user: \(userId)")
     }
 
+    /// Notify project team members when a note is added (excludes author and @mentioned users)
+    func notifyProjectNoteAdded(
+        userIds: [String],
+        authorName: String,
+        notePreview: String,
+        projectName: String,
+        projectId: String,
+        noteId: String,
+        imageUrl: String? = nil
+    ) async throws {
+        guard !userIds.isEmpty else { return }
+
+        let preview = notePreview.count > 80 ? String(notePreview.prefix(80)) + "..." : notePreview
+        try await sendToUsers(
+            userIds: userIds,
+            title: "\(authorName) added a note",
+            body: "\"\(preview)\" on \(projectName)",
+            data: [
+                "type": "projectNoteAdded",
+                "projectId": projectId,
+                "noteId": noteId,
+                "screen": "projectNotes"
+            ],
+            imageUrl: imageUrl
+        )
+        print("[ONESIGNAL SERVICE] Note-added notification sent to \(userIds.count) team member(s)")
+    }
+
     /// Notify admins when a new team member joins via crew code
     func notifyTeamJoin(
         adminUserIds: [String],

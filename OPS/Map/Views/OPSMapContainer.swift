@@ -171,39 +171,55 @@ struct OPSMapContainer: View {
             }
 
             // 5. Stacked group list — when tapping a multi-project pin
+            // Styled to match ProjectPinCard: ultraThinMaterial, rounded top corners, drag handle
             if coordinator.showingStackedGroup && !coordinator.stackedGroupProjects.isEmpty {
                 VStack {
                     Spacer()
-                    VStack(spacing: 0) {
-                        // Header
+                    VStack(alignment: .leading, spacing: 0) {
+
+                        // ── Drag indicator (matches ProjectPinCard) ──
                         HStack {
-                            VStack(alignment: .leading, spacing: 2) {
+                            Spacer()
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color.white.opacity(0.20))
+                                .frame(width: 36, height: 4)
+                            Spacer()
+                        }
+                        .padding(.top, 10)
+                        .padding(.bottom, 6)
+
+                        // ── Header ──
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 4) {
                                 Text("\(coordinator.stackedGroupProjects.count) PROJECTS")
-                                    .font(OPSStyle.Typography.captionBold)
+                                    .font(OPSStyle.Typography.caption)
+                                    .tracking(0.5)
                                     .foregroundColor(OPSStyle.Colors.primaryText)
                                 Text("at this location")
-                                    .font(OPSStyle.Typography.smallCaption)
+                                    .font(OPSStyle.Typography.smallBody)
                                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                             }
+
                             Spacer()
-                            Button {
-                                withAnimation(OPSStyle.Animation.standard) {
-                                    coordinator.showingStackedGroup = false
-                                    coordinator.stackedGroupProjects = []
-                                }
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                    .frame(width: 32, height: 32)
-                            }
+
+                            // Count badge (matching AppHeader badge pattern)
+                            Text("\(coordinator.stackedGroupProjects.count)")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.invertedText)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(OPSStyle.Colors.warningStatus)
+                                .clipShape(Capsule())
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
 
-                        Divider().background(OPSStyle.Colors.cardBorder)
+                        // ── Divider ──
+                        Rectangle()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(height: 1)
+                            .padding(.vertical, 12)
 
-                        // Project list
+                        // ── Project list ──
                         ForEach(coordinator.stackedGroupProjects) { project in
                             Button {
                                 withAnimation(OPSStyle.Animation.standard) {
@@ -212,46 +228,79 @@ struct OPSMapContainer: View {
                                     coordinator.selectProject(project)
                                     coordinator.refreshProjectAnnotations()
                                 }
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             } label: {
                                 HStack(spacing: 10) {
                                     Circle()
                                         .fill(Color(ProjectAnnotationRenderer.statusUIColor(for: project.status)))
                                         .frame(width: 8, height: 8)
 
-                                    Text(project.title)
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                        .lineLimit(1)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(project.title.uppercased())
+                                            .font(OPSStyle.Typography.caption)
+                                            .tracking(0.5)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
+                                            .lineLimit(1)
+
+                                        if let client = project.client {
+                                            Text(client.displayName)
+                                                .font(OPSStyle.Typography.cardBody)
+                                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                                .lineLimit(1)
+                                        }
+                                    }
 
                                     Spacer()
 
+                                    // Status badge (matching ProjectPinCard)
                                     Text(project.status.displayName.uppercased())
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                        .font(OPSStyle.Typography.miniLabel)
+                                        .tracking(0.3)
+                                        .foregroundColor(project.status.color)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 3)
+                                                .fill(project.status.color.opacity(0.15))
+                                        )
 
                                     Image(systemName: OPSStyle.Icons.chevronRight)
                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
                                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                                 }
                                 .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, 10)
                             }
                             .buttonStyle(PlainButtonStyle())
 
                             if project.id != coordinator.stackedGroupProjects.last?.id {
-                                Divider()
-                                    .background(OPSStyle.Colors.cardBorder)
+                                Rectangle()
+                                    .fill(Color.white.opacity(0.08))
+                                    .frame(height: 1)
                                     .padding(.leading, 34)
                             }
                         }
+
+                        Spacer().frame(height: 14)
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .background(
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 4,
+                            bottomLeadingRadius: 0,
+                            bottomTrailingRadius: 0,
+                            topTrailingRadius: 4
+                        )
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            UnevenRoundedRectangle(
+                                topLeadingRadius: 4,
+                                bottomLeadingRadius: 0,
+                                bottomTrailingRadius: 0,
+                                topTrailingRadius: 4
+                            )
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
                     )
-                    .padding(.horizontal, 16)
                     .padding(.bottom, 90)
                 }
                 .transition(.move(edge: .bottom))
@@ -462,10 +511,13 @@ struct OPSMapContainer: View {
             }
         }
         .onChange(of: coordinator.showingProjectCard) { _, newValue in
-            appState.isShowingMapOverlay = newValue || coordinator.showingCrewTooltip
+            appState.isShowingMapOverlay = newValue || coordinator.showingCrewTooltip || coordinator.showingStackedGroup
         }
         .onChange(of: coordinator.showingCrewTooltip) { _, newValue in
-            appState.isShowingMapOverlay = coordinator.showingProjectCard || newValue
+            appState.isShowingMapOverlay = coordinator.showingProjectCard || newValue || coordinator.showingStackedGroup
+        }
+        .onChange(of: coordinator.showingStackedGroup) { _, newValue in
+            appState.isShowingMapOverlay = coordinator.showingProjectCard || coordinator.showingCrewTooltip || newValue
         }
 
         // ── Notifications ──

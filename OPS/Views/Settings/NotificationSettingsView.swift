@@ -17,6 +17,7 @@ struct NotificationSettingsView: View {
     @AppStorage("notifyProjectAssignment") private var notifyProjectAssignment = true
     @AppStorage("notifyProjectScheduleChanges") private var notifyProjectScheduleChanges = true
     @AppStorage("notifyProjectCompletion") private var notifyProjectCompletion = true
+    @AppStorage("notifyProjectNoteAdded") private var notifyProjectNoteAdded = true
 
     // Advance notice settings
     @AppStorage("notifyAdvanceNotice") private var notifyProjectAdvance = true
@@ -267,6 +268,18 @@ struct NotificationSettingsView: View {
                 title: "Project Completion",
                 description: "Be notified when projects are marked complete",
                 isOn: $notifyProjectCompletion
+            )
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+
+            Divider()
+                .background(OPSStyle.Colors.cardBorder)
+
+            // Note Activity
+            SettingsToggle(
+                title: "Note Activity",
+                description: "Get notified when notes are added to your projects",
+                isOn: $notifyProjectNoteAdded
             )
             .padding(.vertical, 14)
             .padding(.horizontal, 16)

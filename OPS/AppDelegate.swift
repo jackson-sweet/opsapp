@@ -281,8 +281,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                     userInfo: ["projectId": projectId]
                 )
             }
-        case "projectNoteMention":
-            // Someone @mentioned the user in a project note - open project details
+        case "projectNoteMention", "projectNoteAdded":
+            // Someone @mentioned the user or added a note to their project - open project details
             if let projectId = projectId {
                 NotificationCenter.default.post(
                     name: Notification.Name("OpenProjectDetails"),

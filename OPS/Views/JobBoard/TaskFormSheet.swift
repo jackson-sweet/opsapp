@@ -52,7 +52,7 @@ struct TaskFormSheet: View {
     @Environment(\.tutorialPhase) private var tutorialPhase
     @Query private var allProjects: [Project]
     @Query private var allTaskTypes: [TaskType]
-    @Query private var allTeamMembers: [TeamMember]
+    @State private var fetchedTeamMembers: [TeamMember] = []
 
     // Tutorial mode filtering - only show DEMO_ entities when in tutorial
     private var availableProjects: [Project] {
@@ -71,9 +71,9 @@ struct TaskFormSheet: View {
 
     private var availableTeamMembers: [TeamMember] {
         if tutorialMode {
-            return allTeamMembers.filter { $0.id.hasPrefix("DEMO_") }
+            return fetchedTeamMembers.filter { $0.id.hasPrefix("DEMO_") }
         }
-        return allTeamMembers
+        return fetchedTeamMembers
     }
 
     private var uniqueTeamMembers: [TeamMember] {
@@ -375,6 +375,13 @@ struct TaskFormSheet: View {
 
             if let selectedProject = selectedProject {
                 projectSearchText = selectedProject.title
+            }
+
+            // Fetch team members from DataController (User objects → TeamMember)
+            if let companyId = dataController.currentUser?.companyId {
+                fetchedTeamMembers = dataController.getTeamMembers(companyId: companyId)
+                    .map { TeamMember.fromUser($0) }
+                    .sorted { $0.fullName < $1.fullName }
             }
 
             // Tutorial mode: Start pulse animation for input highlights
@@ -682,7 +689,7 @@ struct TaskFormSheet: View {
                     })
                     .frame(height: selectedProject != nil && !showingProjectSuggestions ? 64 : 44)
                     .padding(.horizontal, 16)
-                    .background(Color.clear)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -766,7 +773,6 @@ struct TaskFormSheet: View {
                         }
                     }
                     .padding()
-                    .background(Color.clear)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
             }
@@ -853,7 +859,7 @@ struct TaskFormSheet: View {
                     .frame(maxWidth: .infinity)
                 }
             }
-            .background(Color.clear)
+            .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -896,11 +902,11 @@ struct TaskFormSheet: View {
                 }
                 .padding(.vertical, 12)
                 .padding(.horizontal, 16)
-                .background(Color.clear)
+                .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
             }
         }
@@ -951,7 +957,7 @@ struct TaskFormSheet: View {
             }
             .padding(.vertical, 12)
             .padding(.horizontal, 16)
-            .background(Color.clear)
+            .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -964,10 +970,28 @@ struct TaskFormSheet: View {
 
     private var datesField: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("DATES")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(datesHighlight.labelColor)
-                .modifier(TutorialPulseModifier(isHighlighted: datesHighlight.isHighlighted))
+            HStack {
+                Text("DATES")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(datesHighlight.labelColor)
+                    .modifier(TutorialPulseModifier(isHighlighted: datesHighlight.isHighlighted))
+
+                Spacer()
+
+                // Auto-schedule button — only show when project and task type are selected
+                if !tutorialMode && selectedProjectId != nil && selectedTaskTypeId != nil {
+                    Button(action: {
+                        autoScheduleTask()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "wand.and.stars")
+                            Text("AUTO")
+                        }
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                }
+            }
 
             Button(action: {
                     // Track if dates existed before opening scheduler
@@ -1014,7 +1038,7 @@ struct TaskFormSheet: View {
                     }
                     .padding(.vertical, 12)
                     .padding(.horizontal, 16)
-                    .background(Color.clear)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1101,7 +1125,6 @@ struct TaskFormSheet: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(minHeight: 100, maxHeight: 200)
                         .padding(12)
-                        .background(Color.clear)
                         .scrollContentBackground(.hidden)
                         .focused($focusedField, equals: .notes)
                         .onChange(of: focusedField) { oldValue, newValue in
@@ -1110,6 +1133,7 @@ struct TaskFormSheet: View {
                             }
                         }
                 }
+                .background(OPSStyle.Colors.cardBackgroundDark)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1139,6 +1163,50 @@ struct TaskFormSheet: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Auto Schedule
+
+    /// Uses SchedulingEngine to compute the best start/end dates for this task
+    /// based on the project's existing tasks and dependency chain.
+    private func autoScheduleTask() {
+        guard let projectId = selectedProjectId,
+              let taskTypeId = selectedTaskTypeId else { return }
+
+        // Get all existing tasks for this project
+        let projectTasks = dataController.getAllTasks().filter { $0.projectId == projectId && $0.deletedAt == nil }
+
+        // Build a temporary SchedulableTask for the new task
+        let effectiveDeps = dependencyOverrides ?? (selectedTaskType?.dependencies ?? [])
+        let tempTask = TemporarySchedulableTask(
+            id: "temp-new-task",
+            taskTypeId: taskTypeId,
+            startDate: nil,
+            endDate: nil,
+            duration: 1,
+            effectiveDependencies: effectiveDeps,
+            displayOrder: projectTasks.count
+        )
+
+        // Anchor date: tomorrow (or today if project has no tasks yet)
+        let anchorDate = Calendar.current.startOfDay(for: Date())
+
+        // Run auto-schedule with the new task as the only unscheduled task
+        let result = SchedulingEngine.autoSchedule(
+            unscheduledTasks: [tempTask],
+            allProjectTasks: projectTasks,
+            anchorDate: anchorDate,
+            skipWeekends: false
+        )
+
+        // Apply the first (only) placement
+        if let placement = result.placements.first {
+            withAnimation(OPSStyle.Animation.standard) {
+                startDate = placement.startDate
+                endDate = placement.endDate
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }
     }
 
@@ -1514,6 +1582,17 @@ struct TeamMemberPickerSheet: View {
             }
         }
     }
+}
+
+/// Lightweight SchedulableTask for auto-schedule computation on a new task
+private struct TemporarySchedulableTask: SchedulableTask {
+    let id: String
+    let taskTypeId: String
+    let startDate: Date?
+    let endDate: Date?
+    let duration: Int
+    let effectiveDependencies: [TaskTypeDependency]
+    let displayOrder: Int
 }
 
 extension Task where Failure == Error {

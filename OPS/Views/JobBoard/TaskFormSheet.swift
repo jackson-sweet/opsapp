@@ -289,6 +289,11 @@ struct TaskFormSheet: View {
                             schedulerConfirmed = true  // Mark as confirmed
                             self.startDate = newStart
                             self.endDate = newEnd
+                            // Wizard system: notify task date set
+                            NotificationCenter.default.post(
+                                name: Notification.Name("WizardTaskDateSet"),
+                                object: nil
+                            )
                             // Tutorial mode: notify date set
                             if tutorialMode {
                                 NotificationCenter.default.post(
@@ -318,6 +323,11 @@ struct TaskFormSheet: View {
                             schedulerConfirmed = true  // Mark as confirmed
                             self.startDate = newStart
                             self.endDate = newEnd
+                            // Wizard system: notify task date set
+                            NotificationCenter.default.post(
+                                name: Notification.Name("WizardTaskDateSet"),
+                                object: nil
+                            )
                             // Tutorial mode: notify date set
                             if tutorialMode {
                                 NotificationCenter.default.post(
@@ -345,6 +355,15 @@ struct TaskFormSheet: View {
                 selectedTeamMemberIds: $selectedTeamMemberIds,
                 allTeamMembers: uniqueTeamMembers
             )
+        }
+        .onChange(of: selectedTeamMemberIds) { oldValue, newValue in
+            // Wizard system: notify crew assigned when going from empty to having members
+            if oldValue.isEmpty && !newValue.isEmpty {
+                NotificationCenter.default.post(
+                    name: Notification.Name("WizardTaskCrewAssigned"),
+                    object: nil
+                )
+            }
         }
         .sheet(isPresented: $showingDependencyOverride) {
             if let taskType = selectedTaskType {
@@ -1186,7 +1205,9 @@ struct TaskFormSheet: View {
             endDate: nil,
             duration: 1,
             effectiveDependencies: effectiveDeps,
-            displayOrder: projectTasks.count
+            displayOrder: projectTasks.count,
+            schedulingTeamMemberIds: selectedTeamMemberIds,
+            schedulingProjectId: projectId
         )
 
         // Anchor date: tomorrow (or today if project has no tasks yet)
@@ -1593,6 +1614,8 @@ private struct TemporarySchedulableTask: SchedulableTask {
     let duration: Int
     let effectiveDependencies: [TaskTypeDependency]
     let displayOrder: Int
+    let schedulingTeamMemberIds: Set<String>
+    let schedulingProjectId: String
 }
 
 extension Task where Failure == Error {

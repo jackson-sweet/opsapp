@@ -190,6 +190,14 @@ final class ProjectTask {
     
     // MARK: - Helper Methods
     
+    var schedulingTeamMemberIds: Set<String> {
+        Set(getTeamMemberIds())
+    }
+
+    var schedulingProjectId: String {
+        projectId
+    }
+
     /// Get team member IDs as array
     func getTeamMemberIds() -> [String] {
         return teamMemberIdsString.isEmpty ? [] : teamMemberIdsString.components(separatedBy: ",")

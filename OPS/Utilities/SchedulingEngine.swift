@@ -20,6 +20,8 @@ protocol SchedulableTask {
     var duration: Int { get }
     var effectiveDependencies: [TaskTypeDependency] { get }
     var displayOrder: Int { get }
+    var schedulingTeamMemberIds: Set<String> { get }
+    var schedulingProjectId: String { get }
 }
 
 // MARK: - SchedulingEngine

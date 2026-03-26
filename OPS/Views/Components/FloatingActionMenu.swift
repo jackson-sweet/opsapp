@@ -94,6 +94,7 @@ struct FloatingActionMenu: View {
     @State private var showingRecordPayment = false
     @State private var showingPersonalEventSheet = false
     @State private var showingTimeOffSheet = false
+    @State private var showingLogActivity = false
 
     // View models
     @StateObject private var expenseViewModel = ExpenseViewModel()
@@ -177,6 +178,7 @@ struct FloatingActionMenu: View {
             || permissionStore.can("clients.create")
             || permissionStore.can("estimates.create")
             || permissionStore.can("expenses.create")
+            || permissionStore.can("pipeline.manage")
     }
 
     private var isFABDisabledInTutorial: Bool {
@@ -186,16 +188,39 @@ struct FloatingActionMenu: View {
     // MARK: - Menu Groups
 
     private var menuGroups: [FABMenuGroup] {
-        var groups: [FABMenuGroup] = [
-            FABMenuGroup(id: "work", title: "WORK", items: [
+        var workItems: [FABMenuItem] = []
+
+        // Log Activity — only when pipeline feature is enabled
+        if permissionStore.isFeatureEnabled("pipeline") {
+            workItems.append(
                 FABMenuItem(
-                    id: "new-project",
+                    id: "log-activity",
+                    icon: "text.bubble",
+                    label: "Log Activity",
+                    permission: "pipeline.manage",
+                    disabledInTutorial: true,
+                    action: {
+                        showCreateMenu = false
+                        showingLogActivity = true
+                    }
+                )
+            )
+        }
+
+        workItems.append(contentsOf: [
+            FABMenuItem(
+                id: "new-project",
                     icon: OPSStyle.Icons.addProject,
                     label: "New Project",
                     permission: "projects.create",
                     disabledInTutorial: false,
                     action: {
                         showCreateMenu = false
+                        // Wizard system: notify create project tapped
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WizardCreateProjectTapped"),
+                            object: nil
+                        )
                         if tutorialMode {
                             NotificationCenter.default.post(
                                 name: Notification.Name("TutorialCreateProjectTapped"),
@@ -225,6 +250,11 @@ struct FloatingActionMenu: View {
                     disabledInTutorial: true,
                     action: {
                         showCreateMenu = false
+                        // Wizard system: notify create client tapped
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WizardCreateClientTapped"),
+                            object: nil
+                        )
                         showingCreateClient = true
                     }
                 ),
@@ -239,7 +269,10 @@ struct FloatingActionMenu: View {
                         showingCreateTaskType = true
                     }
                 ),
-            ]),
+        ])
+
+        var groups: [FABMenuGroup] = [
+            FABMenuGroup(id: "work", title: "WORK", items: workItems),
         ]
 
         // Pipeline money items — only shown when the pipeline feature flag is enabled
@@ -652,6 +685,9 @@ struct FloatingActionMenu: View {
             UserEventSheet(isPresented: $showingTimeOffSheet, viewModel: calendarViewModel, mode: .timeOff)
                 .environmentObject(dataController)
         }
+        .sheet(isPresented: $showingLogActivity) {
+            LogActivitySheet()
+        }
         .onChange(of: showingPersonalEventSheet) { _, showing in
             if !showing {
                 NotificationCenter.default.post(name: Notification.Name("CalendarUserEventsDidChange"), object: nil)
@@ -683,6 +719,13 @@ struct FloatingActionMenu: View {
 
     private var fabButton: some View {
         Button(action: {
+            if !showCreateMenu {
+                // Wizard system: notify FAB tapped
+                NotificationCenter.default.post(
+                    name: Notification.Name("WizardFABTapped"),
+                    object: nil
+                )
+            }
             if tutorialMode && !showCreateMenu {
                 NotificationCenter.default.post(
                     name: Notification.Name("TutorialFABTapped"),

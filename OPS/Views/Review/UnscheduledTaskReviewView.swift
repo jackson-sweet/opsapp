@@ -421,24 +421,29 @@ struct UnscheduledTaskReviewView: View {
     }
 
     private func autoScheduleTask(_ task: ProjectTask) {
-        let calendar = Calendar.current
-        let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date())) ?? Date()
-        let endDate = calendar.date(byAdding: .day, value: max(task.duration - 1, 0), to: tomorrow) ?? tomorrow
-
-        task.startDate = tomorrow
-        task.endDate = endDate
-        task.needsSync = true
-
-        // Record sync
-        dataController.syncEngine.recordOperation(
-            entityType: .projectTask,
-            entityId: task.id,
-            operationType: "update",
-            changedFields: [
-                "start_date": ISO8601DateFormatter().string(from: tomorrow),
-                "end_date": ISO8601DateFormatter().string(from: endDate)
-            ]
+        let plan = dataController.autoScheduleSingleTask(
+            task,
+            teamMemberIds: Set(task.getTeamMemberIds()),
+            anchorDate: Date()
         )
+
+        if let placement = plan.placements.first {
+            task.startDate = placement.startDate
+            task.endDate = placement.endDate
+            task.needsSync = true
+
+            dataController.syncEngine.recordOperation(
+                entityType: .projectTask,
+                entityId: task.id,
+                operationType: "update",
+                changedFields: [
+                    "start_date": ISO8601DateFormatter().string(from: placement.startDate),
+                    "end_date": ISO8601DateFormatter().string(from: placement.endDate)
+                ]
+            )
+
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
     }
 
     private func checkCompletion() {

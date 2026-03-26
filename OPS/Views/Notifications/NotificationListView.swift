@@ -103,15 +103,23 @@ struct NotificationListView: View {
         Group {
             if let user = dataController.currentUser {
                 VStack(spacing: 12) {
-                    // Avatar (uses profile image or initials)
-                    UserAvatar(user: user, size: 56)
+                    // Avatar — prominent size so it's clearly visible on the dark background
+                    UserAvatar(user: user, size: 72)
+                        .overlay(
+                            Circle()
+                                .stroke(
+                                    Color(hex: user.userColor ?? "#A49577") ?? OPSStyle.Colors.primaryAccent,
+                                    lineWidth: OPSStyle.Layout.Border.thick
+                                )
+                                .frame(width: 76, height: 76)
+                        )
 
                     // Name
-                    Text("\(user.firstName) \(user.lastName)")
+                    Text(user.fullName.uppercased())
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
 
-                    // Company name
+                    // Company name — fetch from user's company or UserDefaults
                     if let companyName = UserDefaults.standard.string(forKey: "Company Name"),
                        !companyName.isEmpty {
                         Text(companyName.uppercased())
@@ -136,6 +144,7 @@ struct NotificationListView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
+                // No background fill — same background as the rest of the sheet
             }
         }
     }
@@ -210,8 +219,42 @@ struct NotificationListView: View {
             switch type {
             case "mention":
                 return (OPSStyle.Icons.mention, OPSStyle.Colors.primaryAccent)
+            case "project_note":
+                return ("note.text", OPSStyle.Colors.primaryAccent.opacity(0.8))
+            case "task_assignment":
+                return ("person.badge.plus", OPSStyle.Colors.successStatus)
+            case "project_assignment":
+                return ("folder.badge.plus", OPSStyle.Colors.successStatus)
             case "assignment":
                 return (OPSStyle.Icons.assignmentNotification, OPSStyle.Colors.successStatus)
+            case "task_completion":
+                return ("checkmark.circle.fill", OPSStyle.Colors.successStatus)
+            case "project_completion":
+                return ("flag.checkered", OPSStyle.Colors.successStatus)
+            case "schedule_change":
+                return ("calendar.badge.clock", OPSStyle.Colors.warningStatus)
+            case "dependency_completed":
+                return ("arrow.triangle.branch", OPSStyle.Colors.primaryAccent)
+            case "team_join":
+                return ("person.badge.plus", OPSStyle.Colors.primaryAccent)
+            case "expense_submitted":
+                return ("doc.text", OPSStyle.Colors.warningStatus)
+            case "invoice_approved":
+                return ("checkmark.seal", OPSStyle.Colors.successStatus)
+            case "invoice_revisions":
+                return ("exclamationmark.triangle", OPSStyle.Colors.warningStatus)
+            case "role_assigned":
+                return ("person.text.rectangle", OPSStyle.Colors.primaryAccent)
+            case "inventory_warning":
+                return ("shippingbox", OPSStyle.Colors.warningStatus)
+            case "inventory_critical":
+                return ("shippingbox.fill", OPSStyle.Colors.errorStatus)
+            case "time_off_approved":
+                return ("calendar.badge.checkmark", OPSStyle.Colors.successStatus)
+            case "time_off_denied":
+                return ("calendar.badge.exclamationmark", OPSStyle.Colors.errorStatus)
+            case "invoice_overdue":
+                return ("exclamationmark.circle", OPSStyle.Colors.errorStatus)
             case "update":
                 return (OPSStyle.Icons.sync, OPSStyle.Colors.secondaryText)
             default:

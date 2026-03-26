@@ -24,6 +24,8 @@ class NotificationRepository {
         let type: String
         let title: String
         let body: String
+        let projectId: String?
+        let noteId: String?
         let expenseId: String?
         let batchId: String?
         let deepLinkType: String?
@@ -34,6 +36,8 @@ class NotificationRepository {
             case type
             case title
             case body
+            case projectId   = "project_id"
+            case noteId      = "note_id"
             case expenseId   = "expense_id"
             case batchId     = "batch_id"
             case deepLinkType = "deep_link_type"

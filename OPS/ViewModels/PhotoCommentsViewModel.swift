@@ -380,7 +380,7 @@ class PhotoCommentsViewModel: ObservableObject {
     }
 
     private func sendMentionNotifications(mentionedIds: [String], noteText: String, noteId: String) async {
-        guard !mentionedIds.isEmpty else { return }
+        guard !mentionedIds.isEmpty, let companyId = companyId else { return }
 
         let authorName = currentUserId.flatMap { id in
             allTeamMembers.first(where: { $0.id == id })?.fullName
@@ -395,7 +395,29 @@ class PhotoCommentsViewModel: ObservableObject {
             projectName = "a project"
         }
 
+        let preview = noteText.count > 100 ? String(noteText.prefix(100)) + "..." : noteText
+        let notificationRepo = NotificationRepository()
+
         for userId in mentionedIds {
+            // Create in-app notification
+            do {
+                let dto = NotificationRepository.CreateNotificationDTO(
+                    userId: userId,
+                    companyId: companyId,
+                    type: "mention",
+                    title: "\(authorName) mentioned you",
+                    body: "\"\(preview)\" on \(projectName)",
+                    projectId: projectId,
+                    noteId: noteId,
+                    expenseId: nil,
+                    batchId: nil,
+                    deepLinkType: "projectNotes"
+                )
+                try await notificationRepo.createNotification(dto)
+            } catch {
+                print("[PHOTO COMMENTS] Failed to create in-app mention notification for \(userId): \(error)")
+            }
+            // Send push
             do {
                 try await OneSignalService.shared.notifyProjectNoteMention(
                     userId: userId,

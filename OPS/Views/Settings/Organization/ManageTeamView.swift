@@ -47,6 +47,8 @@ struct ManageTeamView: View {
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.wizardTriggerService) private var wizardTriggerService
+    @Environment(\.wizardStateManager) private var wizardStateManager
 
     @State private var teamMembers: [User] = []
     @State private var pendingInvitations: [PendingInvitation] = []
@@ -65,9 +67,19 @@ struct ManageTeamView: View {
     @State private var permissionsMember: User?
     @State private var invitationToRevoke: PendingInvitation?
     @State private var showRevokeConfirmation = false
+    @State private var isUnassignedCollapsed = true
+
+    // Wizard scroll tracking — fires WizardTeamListViewed only after genuine user scroll
+    @State private var hasPostedTeamScrollNotification = false
 
     private var company: Company? {
         dataController.getCurrentUserCompany()
+    }
+
+    /// The user ID of the company creator (account holder). This user cannot have
+    /// their role changed from Owner and gets distinct visual treatment.
+    private var companyCreatorId: String? {
+        company?.accountHolderId
     }
 
     private var isCompanyAdmin: Bool {
@@ -83,16 +95,6 @@ struct ManageTeamView: View {
             member.role.displayName.localizedCaseInsensitiveContains(searchText)
         }
         return members
-    }
-
-    private var adminMembers: [User] {
-        // Owners first, then admins
-        filteredMembers.filter { $0.role == .admin || $0.role == .owner }
-            .sorted { u1, u2 in
-                if u1.role == .owner && u2.role != .owner { return true }
-                if u2.role == .owner && u1.role != .owner { return false }
-                return u1.firstName < u2.firstName
-            }
     }
 
     private var operatorMembers: [User] {
@@ -161,7 +163,21 @@ struct ManageTeamView: View {
                             await refreshTeamData()
                         }
                         .tabBarPadding()
+                        .background(
+                            // Wizard: detect genuine scroll (≥50pt) before posting completion
+                            GeometryReader { scrollGeo in
+                                Color.clear
+                                    .onChange(of: scrollGeo.frame(in: .named("manageTeamScroll")).minY) { _, newMinY in
+                                        if !hasPostedTeamScrollNotification && newMinY < -50 && !teamMembers.isEmpty {
+                                            hasPostedTeamScrollNotification = true
+                                            NotificationCenter.default.post(name: Notification.Name("WizardTeamListViewed"), object: nil)
+                                        }
+                                    }
+                            }
+                        )
                     }
+                    .coordinateSpace(name: "manageTeamScroll")
+                    .wizardTarget("view_team")
                 }
             }
         }
@@ -171,6 +187,19 @@ struct ManageTeamView: View {
             loadTeamMembers()
             if isCompanyAdmin {
                 Task { await loadPendingInvitations() }
+            }
+
+            // Wizard system: evaluate team management wizard trigger
+            if let wizard = WizardRegistry.contextualWizard(for: "team_management") {
+                wizardTriggerService?.evaluateTrigger(for: wizard, context: "manage_team_visit")
+            }
+
+            // Wizard: evaluate step prerequisites (auto-skip assign_role if no eligible members)
+            if let mgr = wizardStateManager, mgr.isActive {
+                let currentUserId = dataController.currentUser?.id ?? ""
+                let creatorId = companyCreatorId ?? ""
+                let eligibleForRoleChange = teamMembers.filter { $0.id != currentUserId && $0.id != creatorId }.count
+                mgr.evaluateStepPrerequisites(eligibleTeamMemberCount: eligibleForRoleChange)
             }
         }
         .sheet(isPresented: $showEditSheet) {
@@ -191,6 +220,9 @@ struct ManageTeamView: View {
         .sheet(isPresented: $showInviteSheet) {
             TeamInviteSheet(companyId: company?.id ?? "")
                 .environmentObject(dataController)
+                .onAppear {
+                    NotificationCenter.default.post(name: Notification.Name("WizardCompanyCodeViewed"), object: nil)
+                }
         }
         .sheet(isPresented: $showSeatManagement) {
             SeatManagementView()
@@ -278,8 +310,22 @@ struct ManageTeamView: View {
 
     private var teamSections: some View {
         VStack(alignment: .leading, spacing: 20) {
-            if !adminMembers.isEmpty {
-                roleSection(title: "ADMINS", icon: "shield.checkered", members: adminMembers, color: OPSStyle.Colors.warningStatus)
+            // Owner first: split admin members into owners and non-owner admins
+            let owners = filteredMembers.filter { $0.role == .owner }
+                .sorted { u1, u2 in
+                    // Company creator first among owners
+                    if u1.id == companyCreatorId { return true }
+                    if u2.id == companyCreatorId { return false }
+                    return u1.firstName < u2.firstName
+                }
+            let adminsOnly = filteredMembers.filter { $0.role == .admin }
+                .sorted { $0.firstName < $1.firstName }
+
+            if !owners.isEmpty {
+                roleSection(title: "OWNERS", icon: "crown.fill", members: owners, color: OPSStyle.Colors.warningStatus)
+            }
+            if !adminsOnly.isEmpty {
+                roleSection(title: "ADMINS", icon: "shield.checkered", members: adminsOnly, color: OPSStyle.Colors.warningStatus)
             }
             if !officeMembers.isEmpty {
                 roleSection(title: "OFFICE", icon: "desktopcomputer", members: officeMembers, color: OPSStyle.Colors.primaryAccent)
@@ -290,8 +336,63 @@ struct ManageTeamView: View {
             if !crewMembers.isEmpty {
                 roleSection(title: "CREW", icon: "hammer.fill", members: crewMembers, color: OPSStyle.Colors.secondaryText)
             }
+            // Unassigned last, collapsible (collapsed by default)
             if !unassignedMembers.isEmpty {
-                roleSection(title: "UNASSIGNED", icon: "person.fill.questionmark", members: unassignedMembers, color: OPSStyle.Colors.tertiaryText)
+                collapsibleUnassignedSection
+            }
+        }
+    }
+
+    // MARK: - Collapsible Unassigned Section
+
+    private var collapsibleUnassignedSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Tappable section header
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isUnassignedCollapsed.toggle()
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "person.fill.questionmark")
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text("UNASSIGNED (\(unassignedMembers.count))")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    Spacer()
+
+                    Image(systemName: isUnassignedCollapsed ? "chevron.down" : "chevron.up")
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 20)
+
+            if !isUnassignedCollapsed {
+                VStack(spacing: 0) {
+                    ForEach(unassignedMembers) { member in
+                        teamMemberRow(member, accentColor: OPSStyle.Colors.tertiaryText)
+
+                        if member.id != unassignedMembers.last?.id {
+                            Divider()
+                                .background(OPSStyle.Colors.cardBorder)
+                                .padding(.leading, 72)
+                        }
+                    }
+                }
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .padding(.horizontal, 20)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
     }
@@ -337,11 +438,20 @@ struct ManageTeamView: View {
 
     private func teamMemberRow(_ member: User, accentColor: Color) -> some View {
         let isCurrentUser = member.id == dataController.currentUser?.id
+        let isCreator = member.id == companyCreatorId
 
         return Button(action: { memberToView = member }) {
             HStack(spacing: 12) {
-                // Avatar with role accent
-                UserAvatar(user: member, size: 44)
+                // Avatar with role accent — creator gets a gold ring
+                ZStack {
+                    UserAvatar(user: member, size: 44)
+
+                    if isCreator {
+                        Circle()
+                            .stroke(OPSStyle.Colors.warningStatus, lineWidth: 2)
+                            .frame(width: 48, height: 48)
+                    }
+                }
 
                 // Name + role
                 VStack(alignment: .leading, spacing: 3) {
@@ -351,7 +461,15 @@ struct ManageTeamView: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .lineLimit(1)
 
-                        if member.role == .owner {
+                        if isCreator {
+                            Text("CREATOR")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.warningStatus)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(OPSStyle.Colors.warningStatus.opacity(0.15))
+                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        } else if member.role == .owner {
                             Text("OWNER")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -388,8 +506,8 @@ struct ManageTeamView: View {
 
                 Spacer()
 
-                // Inline role change (admin only, not for self)
-                if isCompanyAdmin && !isCurrentUser {
+                // Inline role change (admin only, not for self, not for company creator)
+                if isCompanyAdmin && !isCurrentUser && !isCreator {
                     Menu {
                         // Role change options
                         Section("Change Role") {
@@ -426,6 +544,12 @@ struct ManageTeamView: View {
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
+                } else if isCreator && isCompanyAdmin {
+                    // Creator: show locked icon (no role change, no removal)
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .frame(width: 44, height: 44)
                 } else {
                     Image(systemName: OPSStyle.Icons.chevronRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs))
@@ -437,6 +561,7 @@ struct ManageTeamView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .wizardTarget("assign_role")
     }
 
     // MARK: - Pending Invitations Section
@@ -555,6 +680,7 @@ struct ManageTeamView: View {
             )
         }
         .padding(.horizontal, 20)
+        .wizardTarget("view_company_code")
     }
 
     // MARK: - Supporting Views
@@ -715,6 +841,30 @@ struct ManageTeamView: View {
                 member.role = newRole
                 try? dataController.modelContext?.save()
                 loadTeamMembers()
+                NotificationCenter.default.post(name: Notification.Name("WizardTeamRoleAssigned"), object: nil)
+            }
+
+            // Send notification to the user about their new role
+            if let companyId = dataController.currentUser?.companyId {
+                let dto = NotificationRepository.CreateNotificationDTO(
+                    userId: member.id,
+                    companyId: companyId,
+                    type: "role_assigned",
+                    title: "Role Updated",
+                    body: "You've been assigned the \(newRole.displayName) role",
+                    projectId: nil,
+                    noteId: nil,
+                    expenseId: nil,
+                    batchId: nil,
+                    deepLinkType: nil
+                )
+                try? await NotificationRepository().createNotification(dto)
+                try? await OneSignalService.shared.sendToUser(
+                    userId: member.id,
+                    title: "Role Updated",
+                    body: "You've been assigned the \(newRole.displayName) role",
+                    data: ["type": "role_assigned", "screen": "settings"]
+                )
             }
 
             print("[MANAGE_TEAM] Updated \(member.fullName) to \(newRole.displayName)")
@@ -871,6 +1021,7 @@ struct TeamInviteSheet: View {
                     }
                 }
             )
+            .wizardTarget("send_invite")
         }
     }
 
@@ -1118,6 +1269,7 @@ struct TeamInviteSheet: View {
                     object: nil,
                     userInfo: ["count": totalSent]
                 )
+                NotificationCenter.default.post(name: Notification.Name("WizardTeamInviteSent"), object: nil)
 
                 dismiss()
             }

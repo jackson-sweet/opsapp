@@ -434,26 +434,50 @@ class ExpenseViewModel: ObservableObject {
             }
         }
 
-        // Fire-and-forget: create in-app notification for admins about new invoice submission
+        // Fire-and-forget: create in-app notification + push for admin/office users
         let capturedCompanyId = unbatched[0].companyId
         let capturedBatchId = batch.id
         let capturedBatchNumber = batchNumber
         let capturedUserName = userName
         let capturedNotificationRepo = notificationRepo
         Task {
-            // Fetch admin/office users for the company to notify them
-            // For now, insert a notification record that can be picked up by admin users
-            let dto = NotificationRepository.CreateNotificationDTO(
-                userId: userId,  // Will be routed to admins via backend/RLS
-                companyId: capturedCompanyId,
-                type: "expense_submitted",
-                title: "Invoice Submitted",
-                body: "\(capturedUserName) submitted invoice \(capturedBatchNumber) for review",
-                expenseId: nil,
-                batchId: capturedBatchId,
-                deepLinkType: "invoice_detail"
-            )
-            try? await capturedNotificationRepo.createNotification(dto)
+            // Find admin/office users to notify
+            struct UserIdRow: Codable { let id: String }
+            let admins = (try? await SupabaseService.shared.client
+                .from("users")
+                .select("id")
+                .eq("company_id", value: capturedCompanyId)
+                .in("role", values: ["admin", "owner", "office"])
+                .execute()
+                .value as [UserIdRow]) ?? []
+
+            // Create in-app notification for each admin
+            for admin in admins {
+                let dto = NotificationRepository.CreateNotificationDTO(
+                    userId: admin.id,
+                    companyId: capturedCompanyId,
+                    type: "expense_submitted",
+                    title: "Invoice Submitted",
+                    body: "\(capturedUserName) submitted invoice \(capturedBatchNumber) for review",
+                    projectId: nil,
+                    noteId: nil,
+                    expenseId: nil,
+                    batchId: capturedBatchId,
+                    deepLinkType: "invoice_detail"
+                )
+                try? await capturedNotificationRepo.createNotification(dto)
+            }
+
+            // Send push to admins
+            let adminIds = admins.map(\.id)
+            if !adminIds.isEmpty {
+                try? await OneSignalService.shared.notifyExpenseSubmitted(
+                    adminUserIds: adminIds,
+                    submitterName: capturedUserName,
+                    batchNumber: capturedBatchNumber,
+                    batchId: capturedBatchId
+                )
+            }
         }
 
         await loadBatches()
@@ -547,17 +571,26 @@ class ExpenseViewModel: ObservableObject {
                 let capturedNotificationRepo = notificationRepo
                 let capturedBatchNumber = matchingBatch?.batchNumber ?? batchId
                 Task {
+                    // Create in-app notification
                     let dto = NotificationRepository.CreateNotificationDTO(
                         userId: submittedBy,
                         companyId: companyId,
                         type: "invoice_approved",
                         title: "Invoice Approved",
                         body: "Your invoice \(capturedBatchNumber) has been approved",
+                        projectId: nil,
+                        noteId: nil,
                         expenseId: nil,
                         batchId: batchId,
                         deepLinkType: "invoice_detail"
                     )
                     try? await capturedNotificationRepo.createNotification(dto)
+                    // Send push
+                    try? await OneSignalService.shared.notifyInvoiceApproved(
+                        userId: submittedBy,
+                        batchNumber: capturedBatchNumber,
+                        batchId: batchId
+                    )
                 }
 
                 // Schedule local notification for immediate feedback
@@ -632,17 +665,27 @@ class ExpenseViewModel: ObservableObject {
                 let capturedBatchNumber = batch.batchNumber
                 let flaggedCount = flagged.count
                 Task {
+                    // Create in-app notification
                     let dto = NotificationRepository.CreateNotificationDTO(
                         userId: submittedBy,
                         companyId: companyId,
                         type: "invoice_revisions",
                         title: "Invoice Revisions Needed",
                         body: "\(flaggedCount) expense\(flaggedCount == 1 ? "" : "s") on \(capturedBatchNumber) need\(flaggedCount == 1 ? "s" : "") revision",
+                        projectId: nil,
+                        noteId: nil,
                         expenseId: nil,
                         batchId: batchId,
                         deepLinkType: "invoice_detail"
                     )
                     try? await capturedNotificationRepo.createNotification(dto)
+                    // Send push
+                    try? await OneSignalService.shared.notifyInvoiceRevisions(
+                        userId: submittedBy,
+                        batchNumber: capturedBatchNumber,
+                        batchId: batchId,
+                        flaggedCount: flaggedCount
+                    )
                 }
 
                 // Schedule local notification for immediate feedback

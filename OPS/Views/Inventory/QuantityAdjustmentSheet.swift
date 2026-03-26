@@ -376,6 +376,55 @@ struct QuantityAdjustmentSheet: View {
 
                     dismiss()
                 }
+
+                // Check if quantity crossed a threshold and notify inventory managers
+                let status = item.thresholdStatus
+                if status == .warning || status == .critical {
+                    if let companyId = dataController.currentUser?.companyId {
+                        let alertTitle = status == .critical ? "Critical Stock Alert" : "Low Stock Warning"
+                        let alertBody = "\(item.name) is \(status == .critical ? "critically low" : "running low") (\(Int(item.quantity)) remaining)"
+                        let alertType = status == .critical ? "inventory_critical" : "inventory_warning"
+
+                        // Find users with inventory.manage permission (admin/office roles)
+                        struct UserIdRow: Codable { let id: String }
+                        if let managers = try? await SupabaseService.shared.client
+                            .from("users")
+                            .select("id")
+                            .eq("company_id", value: companyId)
+                            .in("role", values: ["admin", "owner", "office"])
+                            .execute()
+                            .value as [UserIdRow] {
+                            let notifRepo = NotificationRepository()
+                            let currentId = UserDefaults.standard.string(forKey: "currentUserId")
+                            for manager in managers where manager.id != currentId {
+                                let dto = NotificationRepository.CreateNotificationDTO(
+                                    userId: manager.id,
+                                    companyId: companyId,
+                                    type: alertType,
+                                    title: alertTitle,
+                                    body: alertBody,
+                                    projectId: nil,
+                                    noteId: nil,
+                                    expenseId: nil,
+                                    batchId: nil,
+                                    deepLinkType: "inventory"
+                                )
+                                try? await notifRepo.createNotification(dto)
+                            }
+                            // Send push
+                            let managerIds = managers.map(\.id).filter { $0 != currentId }
+                            if !managerIds.isEmpty {
+                                try? await OneSignalService.shared.sendToUsers(
+                                    userIds: managerIds,
+                                    title: alertTitle,
+                                    body: alertBody,
+                                    data: ["type": alertType, "screen": "inventory"]
+                                )
+                            }
+                            print("[QUANTITY_ADJUST] 📬 \(alertType) notification sent to \(managers.count) managers")
+                        }
+                    }
+                }
             } catch {
                 print("[QUANTITY_ADJUST] ❌ Failed to save: \(error)")
                 await MainActor.run {

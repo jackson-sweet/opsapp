@@ -189,6 +189,7 @@ class ProjectNotesViewModel: ObservableObject {
         showMentionPicker = false
         showAllTeamOption = false
         mentionSuggestions = []
+        NotificationCenter.default.post(name: Notification.Name("WizardNotePosted"), object: nil)
 
         do {
             let created = try await repo.create(dto)
@@ -394,6 +395,7 @@ class ProjectNotesViewModel: ObservableObject {
 
     private func sendMentionNotifications(mentionedIds: [String], noteText: String, noteId: String, attachmentURLs: [String] = []) async {
         guard !mentionedIds.isEmpty else { return }
+        guard let companyId = companyId else { return }
 
         let authorName = currentUserId.flatMap { id in
             allTeamMembers.first(where: { $0.id == id })?.fullName
@@ -410,8 +412,31 @@ class ProjectNotesViewModel: ObservableObject {
         }
 
         let firstImageUrl = attachmentURLs.first
+        let preview = noteText.count > 100 ? String(noteText.prefix(100)) + "..." : noteText
+        let notificationRepo = NotificationRepository()
 
         for userId in mentionedIds {
+            // 1. Create in-app notification in Supabase (guaranteed delivery)
+            do {
+                let dto = NotificationRepository.CreateNotificationDTO(
+                    userId: userId,
+                    companyId: companyId,
+                    type: "mention",
+                    title: "\(authorName) mentioned you",
+                    body: "\"\(preview)\" on \(projectName)",
+                    projectId: projectId,
+                    noteId: noteId,
+                    expenseId: nil,
+                    batchId: nil,
+                    deepLinkType: "projectNotes"
+                )
+                try await notificationRepo.createNotification(dto)
+                print("[PROJECT NOTES] In-app mention notification created for user: \(userId)")
+            } catch {
+                print("[PROJECT NOTES] Failed to create in-app mention notification for \(userId): \(error)")
+            }
+
+            // 2. Send push notification via OneSignal (best-effort)
             do {
                 try await OneSignalService.shared.notifyProjectNoteMention(
                     userId: userId,
@@ -423,7 +448,7 @@ class ProjectNotesViewModel: ObservableObject {
                     imageUrl: firstImageUrl
                 )
             } catch {
-                print("[PROJECT NOTES] Failed to send mention notification to \(userId): \(error)")
+                print("[PROJECT NOTES] Failed to send push mention notification to \(userId): \(error)")
             }
         }
     }
@@ -432,7 +457,7 @@ class ProjectNotesViewModel: ObservableObject {
     /// Excludes the author (self) and anyone already @mentioned (they got a mention push).
     private func sendNoteAddedNotifications(mentionedIds: [String], noteText: String, noteId: String, attachmentURLs: [String] = []) async {
         guard UserDefaults.standard.bool(forKey: "notifyProjectNoteAdded") else { return }
-        guard let currentUserId = currentUserId else { return }
+        guard let currentUserId = currentUserId, let companyId = companyId else { return }
 
         // Get project and its team member IDs
         guard let context = modelContext else { return }
@@ -450,7 +475,31 @@ class ProjectNotesViewModel: ObservableObject {
 
         let authorName = allTeamMembers.first(where: { $0.id == currentUserId })?.fullName ?? "A team member"
         let firstImageUrl = attachmentURLs.first
+        let preview = noteText.count > 100 ? String(noteText.prefix(100)) + "..." : noteText
+        let notificationRepo = NotificationRepository()
 
+        // 1. Create in-app notifications in Supabase for each recipient
+        for recipientId in recipientIds {
+            do {
+                let dto = NotificationRepository.CreateNotificationDTO(
+                    userId: recipientId,
+                    companyId: companyId,
+                    type: "project_note",
+                    title: "\(authorName) added a note",
+                    body: "\"\(preview)\" on \(project.title)",
+                    projectId: projectId,
+                    noteId: noteId,
+                    expenseId: nil,
+                    batchId: nil,
+                    deepLinkType: "projectNotes"
+                )
+                try await notificationRepo.createNotification(dto)
+            } catch {
+                print("[PROJECT NOTES] Failed to create in-app note-added notification for \(recipientId): \(error)")
+            }
+        }
+
+        // 2. Send push notification via OneSignal (best-effort)
         do {
             try await OneSignalService.shared.notifyProjectNoteAdded(
                 userIds: recipientIds,
@@ -462,7 +511,7 @@ class ProjectNotesViewModel: ObservableObject {
                 imageUrl: firstImageUrl
             )
         } catch {
-            print("[PROJECT NOTES] Failed to send note-added notification: \(error)")
+            print("[PROJECT NOTES] Failed to send push note-added notification: \(error)")
         }
     }
 }

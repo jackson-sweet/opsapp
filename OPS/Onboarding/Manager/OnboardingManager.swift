@@ -1085,6 +1085,24 @@ class OnboardingManager: ObservableObject {
             do {
                 let notifyIds = companyDTO.adminIds ?? []
                 let memberName = "\(state.userData.firstName) \(state.userData.lastName)"
+                // Create in-app notifications for each admin
+                let notifRepo = NotificationRepository()
+                for adminId in notifyIds {
+                    let dto = NotificationRepository.CreateNotificationDTO(
+                        userId: adminId,
+                        companyId: companyId,
+                        type: "team_join",
+                        title: "New Team Member",
+                        body: "\(memberName) joined as Crew. Tap to set their role.",
+                        projectId: nil,
+                        noteId: nil,
+                        expenseId: nil,
+                        batchId: nil,
+                        deepLinkType: "manageTeam"
+                    )
+                    try? await notifRepo.createNotification(dto)
+                }
+                // Send push
                 try await OneSignalService.shared.notifyTeamJoin(
                     adminUserIds: notifyIds,
                     newMemberName: memberName,
@@ -1109,9 +1127,20 @@ class OnboardingManager: ObservableObject {
     /// Look up a company by crew code without joining.
     /// Returns the company DTO for confirmation screen display.
     func lookupCompanyByCode(_ code: String) async throws -> SupabaseCompanyDTO {
-        let trimmedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Strip whitespace, newlines, and zero-width/invisible Unicode characters
+        // that can be introduced by copy-paste from messaging apps or websites
+        let trimmedCode = code
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .filter { $0.isASCII && !$0.isWhitespace }
+            .uppercased()
+
+        guard !trimmedCode.isEmpty else {
+            throw OnboardingManagerError.invalidCompanyCode
+        }
+
         let companyRepo = CompanyRepository()
         guard let companyDTO = try await companyRepo.fetchByCode(trimmedCode) else {
+            print("[ONBOARDING_MANAGER] Company code lookup failed for sanitized code: '\(trimmedCode)' (original: '\(code)', length: \(code.count) -> \(trimmedCode.count))")
             throw OnboardingManagerError.invalidCompanyCode
         }
 
@@ -1290,6 +1319,24 @@ class OnboardingManager: ObservableObject {
             do {
                 let notifyIds = companyDTO.adminIds ?? []
                 let memberName = "\(state.userData.firstName) \(state.userData.lastName)"
+                // Create in-app notifications for each admin
+                let notifRepo = NotificationRepository()
+                for adminId in notifyIds {
+                    let dto = NotificationRepository.CreateNotificationDTO(
+                        userId: adminId,
+                        companyId: companyId,
+                        type: "team_join",
+                        title: "New Team Member",
+                        body: "\(memberName) joined as Crew. Tap to set their role.",
+                        projectId: nil,
+                        noteId: nil,
+                        expenseId: nil,
+                        batchId: nil,
+                        deepLinkType: "manageTeam"
+                    )
+                    try? await notifRepo.createNotification(dto)
+                }
+                // Send push
                 try await OneSignalService.shared.notifyTeamJoin(
                     adminUserIds: notifyIds,
                     newMemberName: memberName,

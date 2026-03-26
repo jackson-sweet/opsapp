@@ -76,6 +76,52 @@ class CalendarUserEventRepository {
             .execute()
     }
 
+    /// Update status and notify the requesting user of the decision.
+    /// Call this instead of updateStatus() when you want the notification sent automatically.
+    func updateStatusWithNotification(
+        eventId: String,
+        userId: String,
+        status: CalendarUserEventStatus,
+        reviewedBy: String,
+        reviewerName: String,
+        eventTitle: String,
+        companyId: String
+    ) async throws {
+        // Update the status
+        try await updateStatus(eventId, status: status, reviewedBy: reviewedBy)
+
+        // Send notification to the requesting user
+        let isApproved = status == .approved
+        let notificationType = isApproved ? "time_off_approved" : "time_off_denied"
+        let title = isApproved ? "Time Off Approved" : "Time Off Denied"
+        let body = isApproved
+            ? "\(reviewerName) approved your time off request: \(eventTitle)"
+            : "\(reviewerName) denied your time off request: \(eventTitle)"
+
+        // Create in-app notification
+        let dto = NotificationRepository.CreateNotificationDTO(
+            userId: userId,
+            companyId: companyId,
+            type: notificationType,
+            title: title,
+            body: body,
+            projectId: nil,
+            noteId: nil,
+            expenseId: nil,
+            batchId: nil,
+            deepLinkType: "schedule"
+        )
+        try? await NotificationRepository().createNotification(dto)
+
+        // Send push
+        try? await OneSignalService.shared.sendToUser(
+            userId: userId,
+            title: title,
+            body: body,
+            data: ["type": notificationType, "screen": "schedule"]
+        )
+    }
+
     // MARK: - Soft Delete
 
     func softDelete(_ eventId: String) async throws {

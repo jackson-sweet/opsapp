@@ -184,6 +184,9 @@ struct AppHeader: View {
             .onAppear {
                 appState.refreshUnreadCount()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .notificationReceived)) { _ in
+                appState.refreshUnreadCount()
+            }
             .onReceive(NotificationCenter.default.publisher(for: .pushNotificationReceived)) { _ in
                 appState.refreshUnreadCount()
             }
@@ -232,6 +235,7 @@ struct AppHeader: View {
                                 .clipShape(Circle())
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .wizardTarget("toggle_month")
                     }
 
                     // Filter button (schedule only)

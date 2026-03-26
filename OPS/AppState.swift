@@ -265,5 +265,79 @@ class AppState: ObservableObject {
             overdueCount: overdueCount,
             reminderFrequencyDays: frequency
         )
+
+        // Check for overdue invoices and notify admin/office users
+        checkOverdueInvoices(dataController: dataController)
+    }
+
+    // MARK: - Overdue Invoice Check
+
+    /// Check for overdue invoices and send in-app + push notifications to admin/office users.
+    /// Throttled to once per day to avoid spam.
+    private func checkOverdueInvoices(dataController: DataController) {
+        guard let context = dataController.modelContext,
+              let companyId = dataController.currentUser?.companyId else { return }
+
+        // Throttle: only check once per day
+        let lastCheckKey = "lastOverdueInvoiceCheck"
+        if let lastCheck = UserDefaults.standard.object(forKey: lastCheckKey) as? Date {
+            let hoursSince = Date().timeIntervalSince(lastCheck) / 3600
+            guard hoursSince >= 24 else { return }
+        }
+
+        let descriptor = FetchDescriptor<Invoice>()
+        guard let allInvoices = try? context.fetch(descriptor) else { return }
+
+        let overdueInvoices = allInvoices.filter { $0.isOverdue }
+        guard !overdueInvoices.isEmpty else { return }
+
+        UserDefaults.standard.set(Date(), forKey: lastCheckKey)
+
+        let overdueCount = overdueInvoices.count
+        let totalOverdue = overdueInvoices.reduce(0.0) { $0 + $1.balanceDue }
+        let formattedTotal = String(format: "$%.2f", totalOverdue)
+
+        Task {
+            // Find admin/office users to notify
+            struct UserIdRow: Codable { let id: String }
+            guard let admins = try? await SupabaseService.shared.client
+                .from("users")
+                .select("id")
+                .eq("company_id", value: companyId)
+                .in("role", values: ["admin", "owner", "office"])
+                .execute()
+                .value as [UserIdRow] else { return }
+
+            let notifRepo = NotificationRepository()
+            let currentId = UserDefaults.standard.string(forKey: "currentUserId")
+
+            for admin in admins {
+                let dto = NotificationRepository.CreateNotificationDTO(
+                    userId: admin.id,
+                    companyId: companyId,
+                    type: "invoice_overdue",
+                    title: "Overdue Invoices",
+                    body: "\(overdueCount) invoice\(overdueCount == 1 ? "" : "s") overdue totalling \(formattedTotal)",
+                    projectId: nil,
+                    noteId: nil,
+                    expenseId: nil,
+                    batchId: nil,
+                    deepLinkType: "invoices"
+                )
+                try? await notifRepo.createNotification(dto)
+            }
+
+            // Send push
+            let adminIds = admins.map(\.id).filter { $0 != currentId }
+            if !adminIds.isEmpty {
+                try? await OneSignalService.shared.sendToUsers(
+                    userIds: adminIds,
+                    title: "Overdue Invoices",
+                    body: "\(overdueCount) invoice\(overdueCount == 1 ? "" : "s") overdue totalling \(formattedTotal)",
+                    data: ["type": "invoice_overdue", "screen": "expenses"]
+                )
+            }
+            print("[OVERDUE_CHECK] 📬 Invoice overdue notification sent to \(admins.count) admins (\(overdueCount) invoices, \(formattedTotal))")
+        }
     }
 }

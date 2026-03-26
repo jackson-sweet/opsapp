@@ -458,6 +458,11 @@ struct ProjectFormSheet: View {
                     localTasks[editIndex] = savedTask
                 } else {
                     localTasks.append(savedTask)
+                    // Wizard system: notify task added (only for new tasks, not edits)
+                    NotificationCenter.default.post(
+                        name: Notification.Name("WizardTaskAdded"),
+                        object: nil
+                    )
                 }
                 editingTaskIndex = nil
             }
@@ -707,6 +712,11 @@ struct ProjectFormSheet: View {
                             Button(action: {
                                 selectedClientId = client.id
                                 clientSearchText = client.name
+                                // Wizard system: notify client selected in project form
+                                NotificationCenter.default.post(
+                                    name: Notification.Name("WizardProjectClientSelected"),
+                                    object: nil
+                                )
                                 // Tutorial mode: notify client selected
                                 if tutorialMode {
                                     NotificationCenter.default.post(
@@ -768,9 +778,14 @@ struct ProjectFormSheet: View {
                         )
                         .modifier(TutorialPulseModifier(isHighlighted: titleHighlight.isHighlighted))
                 )
-                .onChange(of: title) { _, newValue in
-                    // Tutorial mode: notify project name entered when user types AND keyboard is dismissed
-                    // We'll send the notification on keyboard dismiss instead
+                .onChange(of: title) { oldValue, newValue in
+                    // Wizard system: notify project name entered when title becomes non-empty
+                    if oldValue.isEmpty && !newValue.isEmpty {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WizardProjectNameEntered"),
+                            object: nil
+                        )
+                    }
                 }
                 .onSubmit {
                     // Tutorial mode: notify project name entered when keyboard is dismissed via return key
@@ -1589,6 +1604,11 @@ struct ProjectFormSheet: View {
                             object: nil,
                             userInfo: ["projectTitle": title]
                         )
+                        // Wizard system: notify project saved
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WizardProjectSaved"),
+                            object: nil
+                        )
                     }
 
                     // Tutorial mode: notify project form complete with project ID for cleanup
@@ -1743,14 +1763,30 @@ struct ProjectFormSheet: View {
 
             if !projectOnlyMemberIds.isEmpty {
                 let projectName = project.title
+                let capturedProjectId = project.id
 
                 for userId in projectOnlyMemberIds {
                     Task {
+                        // Create in-app notification
+                        let dto = NotificationRepository.CreateNotificationDTO(
+                            userId: userId,
+                            companyId: companyId,
+                            type: "project_assignment",
+                            title: "Added to Project",
+                            body: "You've been added to \"\(projectName)\"",
+                            projectId: capturedProjectId,
+                            noteId: nil,
+                            expenseId: nil,
+                            batchId: nil,
+                            deepLinkType: "projectDetails"
+                        )
+                        try? await NotificationRepository().createNotification(dto)
+                        // Send push
                         do {
                             try await OneSignalService.shared.notifyProjectAssignment(
                                 userId: userId,
                                 projectName: projectName,
-                                projectId: project.id
+                                projectId: capturedProjectId
                             )
                         } catch {
                             print("[PROJECT_CREATE] ⚠️ Failed to send project notification to \(userId): \(error)")
@@ -1906,9 +1942,21 @@ struct ProjectFormSheet: View {
         task.project = project
         task.taskType = taskType
 
-        // Use task-specific team members if any, otherwise inherit from project
+        // Resolve team members: explicit task members > task type defaults > project team
+        let resolvedTeamMemberIds: [String]
         if !localTask.teamMemberIds.isEmpty {
-            let taskMembers = allTeamMembers.filter { localTask.teamMemberIds.contains($0.id) }
+            // User explicitly assigned team members to this task
+            resolvedTeamMemberIds = localTask.teamMemberIds
+        } else if !taskType.defaultTeamMemberIdsString.isEmpty {
+            // Task type has default crew — use those
+            resolvedTeamMemberIds = taskType.defaultTeamMemberIdsString.components(separatedBy: ",").filter { !$0.isEmpty }
+        } else {
+            // Fall back to project team members
+            resolvedTeamMemberIds = project.teamMembers.map { $0.id }
+        }
+
+        if !resolvedTeamMemberIds.isEmpty {
+            let taskMembers = allTeamMembers.filter { resolvedTeamMemberIds.contains($0.id) }
             task.teamMembers = taskMembers.map { member in
                 let user = User(
                     id: member.id,
@@ -1920,10 +1968,10 @@ struct ProjectFormSheet: View {
                 user.email = member.email
                 return user
             }
-            task.setTeamMemberIds(localTask.teamMemberIds)
+            task.setTeamMemberIds(resolvedTeamMemberIds)
         } else {
-            task.teamMembers = project.teamMembers
-            task.setTeamMemberIds(project.teamMembers.map { $0.id })
+            task.teamMembers = []
+            task.setTeamMemberIds([])
         }
 
         await MainActor.run {
@@ -1991,6 +2039,21 @@ struct ProjectFormSheet: View {
                 for userId in teamMemberIds {
                     print("[TASK_CREATE] 📬 Sending notification to user: \(userId)")
                     Task {
+                        // Create in-app notification
+                        let dto = NotificationRepository.CreateNotificationDTO(
+                            userId: userId,
+                            companyId: companyId,
+                            type: "task_assignment",
+                            title: "New Task Assignment",
+                            body: "You've been assigned to \"\(taskName)\" on \(projectName)",
+                            projectId: project.id,
+                            noteId: nil,
+                            expenseId: nil,
+                            batchId: nil,
+                            deepLinkType: "taskDetails"
+                        )
+                        try? await NotificationRepository().createNotification(dto)
+                        // Send push
                         do {
                             try await OneSignalService.shared.notifyTaskAssignment(
                                 userId: userId,
@@ -2086,9 +2149,18 @@ struct ProjectFormSheet: View {
         task.project = project
         task.taskType = taskType
 
-        // Use task-specific team members if any, otherwise inherit from project
+        // Resolve team members: explicit task members > task type defaults > project team
+        let resolvedTeamMemberIds: [String]
         if !localTask.teamMemberIds.isEmpty {
-            let taskMembers = allTeamMembers.filter { localTask.teamMemberIds.contains($0.id) }
+            resolvedTeamMemberIds = localTask.teamMemberIds
+        } else if !taskType.defaultTeamMemberIdsString.isEmpty {
+            resolvedTeamMemberIds = taskType.defaultTeamMemberIdsString.components(separatedBy: ",").filter { !$0.isEmpty }
+        } else {
+            resolvedTeamMemberIds = project.teamMembers.map { $0.id }
+        }
+
+        if !resolvedTeamMemberIds.isEmpty {
+            let taskMembers = allTeamMembers.filter { resolvedTeamMemberIds.contains($0.id) }
             task.teamMembers = taskMembers.map { member in
                 let user = User(
                     id: member.id,
@@ -2100,10 +2172,10 @@ struct ProjectFormSheet: View {
                 user.email = member.email
                 return user
             }
-            task.setTeamMemberIds(localTask.teamMemberIds)
+            task.setTeamMemberIds(resolvedTeamMemberIds)
         } else {
-            task.teamMembers = project.teamMembers
-            task.setTeamMemberIds(project.teamMembers.map { $0.id })
+            task.teamMembers = []
+            task.setTeamMemberIds([])
         }
 
         // Set scheduling dates directly on the task

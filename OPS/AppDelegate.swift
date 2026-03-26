@@ -290,6 +290,50 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                     userInfo: ["projectId": projectId]
                 )
             }
+        case "dependencyCompleted":
+            if let taskId = taskId, let projectId = projectId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenTaskDetails"),
+                    object: nil,
+                    userInfo: ["taskId": taskId, "projectId": projectId]
+                )
+            } else if let projectId = projectId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenProjectDetails"),
+                    object: nil,
+                    userInfo: ["projectId": projectId]
+                )
+            }
+        case "teamJoin":
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenManageTeam"),
+                object: nil
+            )
+        case "expense_submitted", "invoice_approved", "invoice_revisions":
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenExpenses"),
+                object: nil
+            )
+        case "role_assigned":
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenSettings"),
+                object: nil
+            )
+        case "inventory_warning", "inventory_critical":
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenInventory"),
+                object: nil
+            )
+        case "time_off_approved", "time_off_denied":
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenSchedule"),
+                object: nil
+            )
+        case "invoice_overdue":
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenExpenses"),
+                object: nil
+            )
         case "advanceNotice":
             // Local advance notice - open task or project details
             if let taskId = taskId, let projectId = projectId {

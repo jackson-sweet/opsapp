@@ -326,6 +326,77 @@ class OneSignalService {
         print("[ONESIGNAL SERVICE] Dependency completion notification sent to \(filteredUserIds.count) users")
     }
 
+    /// Notify admins that an expense invoice has been submitted for review
+    func notifyExpenseSubmitted(
+        adminUserIds: [String],
+        submitterName: String,
+        batchNumber: String,
+        batchId: String
+    ) async throws {
+        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
+        let filtered = adminUserIds.filter { $0 != currentUserId }
+        guard !filtered.isEmpty else { return }
+
+        try await sendToUsers(
+            userIds: filtered,
+            title: "Invoice Submitted",
+            body: "\(submitterName) submitted invoice \(batchNumber) for review",
+            data: [
+                "type": "expense_submitted",
+                "batchId": batchId,
+                "screen": "expenses"
+            ]
+        )
+        print("[ONESIGNAL SERVICE] Expense submitted notification sent to \(filtered.count) admins")
+    }
+
+    /// Notify a crew member that their invoice has been approved
+    func notifyInvoiceApproved(
+        userId: String,
+        batchNumber: String,
+        batchId: String
+    ) async throws {
+        if userId == UserDefaults.standard.string(forKey: "currentUserId") {
+            return
+        }
+
+        try await sendToUser(
+            userId: userId,
+            title: "Invoice Approved",
+            body: "Your invoice \(batchNumber) has been approved",
+            data: [
+                "type": "invoice_approved",
+                "batchId": batchId,
+                "screen": "expenses"
+            ]
+        )
+        print("[ONESIGNAL SERVICE] Invoice approved notification sent to user: \(userId)")
+    }
+
+    /// Notify a crew member that their invoice needs revisions
+    func notifyInvoiceRevisions(
+        userId: String,
+        batchNumber: String,
+        batchId: String,
+        flaggedCount: Int
+    ) async throws {
+        if userId == UserDefaults.standard.string(forKey: "currentUserId") {
+            return
+        }
+
+        try await sendToUser(
+            userId: userId,
+            title: "Invoice Revisions Needed",
+            body: "\(flaggedCount) expense\(flaggedCount == 1 ? "" : "s") on \(batchNumber) need\(flaggedCount == 1 ? "s" : "") revision",
+            data: [
+                "type": "invoice_revisions",
+                "batchId": batchId,
+                "screen": "expenses"
+            ]
+        )
+        print("[ONESIGNAL SERVICE] Invoice revisions notification sent to user: \(userId)")
+    }
+
     // MARK: - Private Implementation
 
     /// Send notification via ops-web backend route

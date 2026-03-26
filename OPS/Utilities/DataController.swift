@@ -5075,3 +5075,101 @@ enum ImageUploadError: LocalizedError {
         }
     }
 }
+
+// MARK: - ScheduleDataProvider Conformance
+
+extension DataController: ScheduleDataProvider {
+    func tasksForProject(_ projectId: String) -> [any SchedulableTask] {
+        getTasksForProject(projectId)
+    }
+
+    func allScheduledTasksForMembers(_ memberIds: Set<String>, from date: Date) -> [any SchedulableTask] {
+        getScheduledTasksForMembers(memberIds: memberIds, from: date)
+    }
+
+    func coordinatesForProject(_ projectId: String) -> (lat: Double, lng: Double)? {
+        guard let context = modelContext else { return nil }
+        guard let project = (try? context.fetch(FetchDescriptor<Project>()))?.first(where: { $0.id == projectId }) else { return nil }
+        guard let lat = project.latitude, let lng = project.longitude,
+              !(lat == 0 && lng == 0) else { return nil }
+        return (lat, lng)
+    }
+
+    func priorityDateForProject(_ projectId: String) -> Date? {
+        guard let context = modelContext else { return nil }
+
+        // 1. Try won date from StageTransition
+        if let allTransitions = try? context.fetch(FetchDescriptor<StageTransition>()),
+           let opportunities = try? context.fetch(FetchDescriptor<Opportunity>()) {
+            if let opp = opportunities.first(where: { $0.projectId == projectId }) {
+                if let wonTransition = allTransitions.first(where: { $0.opportunityId == opp.id && $0.toStage == .won }) {
+                    return wonTransition.createdAt
+                }
+            }
+        }
+
+        // 2. Fallback: estimate approved date
+        if let allEstimates = try? context.fetch(FetchDescriptor<Estimate>()) {
+            let approved = allEstimates
+                .filter { $0.projectId == projectId && $0.status == .approved }
+                .sorted { $0.updatedAt < $1.updatedAt }
+            if let estimate = approved.first {
+                return estimate.updatedAt
+            }
+        }
+
+        // 3. Fallback: project start date
+        if let allProjects = try? context.fetch(FetchDescriptor<Project>()),
+           let project = allProjects.first(where: { $0.id == projectId }) {
+            return project.startDate
+        }
+
+        return nil
+    }
+}
+
+// MARK: - AutoScheduleManager Convenience
+
+extension DataController {
+    /// Build a ScheduleRequest with current company constraints
+    func buildScheduleConstraints() -> ScheduleConstraints {
+        ScheduleConstraints.from(company: getCurrentCompany())
+    }
+
+    /// Auto-schedule a single task using the centralized manager
+    func autoScheduleSingleTask(
+        _ task: any SchedulableTask,
+        teamMemberIds: Set<String>,
+        anchorDate: Date = Date()
+    ) -> SchedulePlan {
+        let constraints = buildScheduleConstraints()
+        let request = ScheduleRequest(
+            mode: .single(task: task, teamMemberIds: teamMemberIds),
+            anchorDate: anchorDate,
+            constraints: constraints
+        )
+        return AutoScheduleManager.schedule(request: request, provider: self)
+    }
+
+    /// Auto-schedule all unscheduled tasks in a project
+    func autoScheduleProjectV2(_ projectId: String, anchorDate: Date = Date()) -> SchedulePlan {
+        let constraints = buildScheduleConstraints()
+        let request = ScheduleRequest(
+            mode: .projectBatch(projectId: projectId),
+            anchorDate: anchorDate,
+            constraints: constraints
+        )
+        return AutoScheduleManager.schedule(request: request, provider: self)
+    }
+
+    /// Auto-schedule across multiple projects
+    func autoScheduleProjects(_ projectIds: [String], anchorDate: Date = Date()) -> SchedulePlan {
+        let constraints = buildScheduleConstraints()
+        let request = ScheduleRequest(
+            mode: .multiProjectBatch(projectIds: projectIds),
+            anchorDate: anchorDate,
+            constraints: constraints
+        )
+        return AutoScheduleManager.schedule(request: request, provider: self)
+    }
+}

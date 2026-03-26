@@ -21,7 +21,8 @@ final class TaskType: Identifiable {
     var displayOrder: Int = 0
     var defaultTeamMemberIdsString: String = ""  // Default crew user IDs for auto-generated tasks
     var dependenciesJSON: String = "[]"  // JSON array of TaskTypeDependency objects
-    
+    var isWeatherDependent: Bool = false  // Stub for future weather-aware scheduling
+
     // MARK: - Relationships
     @Relationship(deleteRule: .nullify, inverse: \ProjectTask.taskType)
     var tasks: [ProjectTask] = []

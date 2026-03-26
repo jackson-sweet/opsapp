@@ -64,7 +64,14 @@ final class Company {
     var overdueReviewThresholdDays: Int = 14
     var overdueReminderFrequencyDays: Int = 7
     var matchInvoicePaymentTerms: Bool = false
-    
+
+    // Auto-scheduling window configuration
+    var schedulingWindowMode: String = "companyHours"  // "companyHours", "custom", "daylight"
+    var customSchedulingStartHour: String? = nil       // e.g., "06:00" — used when mode = "custom"
+    var customSchedulingEndHour: String? = nil         // e.g., "20:00"
+    var daylightBufferMinutes: Int = 30                // Subtracted from sunrise/sunset — used when mode = "daylight"
+    var proximityGroupingRadiusKm: Double = 15.0       // Geographic grouping threshold in km
+
     // Flag to track if team members have been synced
     var teamMembersSynced: Bool = false
     

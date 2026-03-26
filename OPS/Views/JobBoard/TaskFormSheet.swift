@@ -1187,42 +1187,30 @@ struct TaskFormSheet: View {
 
     // MARK: - Auto Schedule
 
-    /// Uses SchedulingEngine to compute the best start/end dates for this task
-    /// based on the project's existing tasks and dependency chain.
     private func autoScheduleTask() {
         guard let projectId = selectedProjectId,
               let taskTypeId = selectedTaskTypeId else { return }
 
-        // Get all existing tasks for this project
-        let projectTasks = dataController.getAllTasks().filter { $0.projectId == projectId && $0.deletedAt == nil }
-
-        // Build a temporary SchedulableTask for the new task
         let effectiveDeps = dependencyOverrides ?? (selectedTaskType?.dependencies ?? [])
         let tempTask = TemporarySchedulableTask(
             id: "temp-new-task",
             taskTypeId: taskTypeId,
             startDate: nil,
             endDate: nil,
-            duration: 1,
+            duration: max(selectedTaskType?.tasks.first?.duration ?? 1, 1),
             effectiveDependencies: effectiveDeps,
-            displayOrder: projectTasks.count,
+            displayOrder: dataController.getTasksForProject(projectId).count,
             schedulingTeamMemberIds: selectedTeamMemberIds,
             schedulingProjectId: projectId
         )
 
-        // Anchor date: tomorrow (or today if project has no tasks yet)
-        let anchorDate = Calendar.current.startOfDay(for: Date())
-
-        // Run auto-schedule with the new task as the only unscheduled task
-        let result = SchedulingEngine.autoSchedule(
-            unscheduledTasks: [tempTask],
-            allProjectTasks: projectTasks,
-            anchorDate: anchorDate,
-            skipWeekends: false
+        let plan = dataController.autoScheduleSingleTask(
+            tempTask,
+            teamMemberIds: selectedTeamMemberIds,
+            anchorDate: Date()
         )
 
-        // Apply the first (only) placement
-        if let placement = result.placements.first {
+        if let placement = plan.placements.first {
             withAnimation(OPSStyle.Animation.standard) {
                 startDate = placement.startDate
                 endDate = placement.endDate

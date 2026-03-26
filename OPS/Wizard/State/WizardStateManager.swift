@@ -37,6 +37,10 @@ class WizardStateManager: ObservableObject {
     /// Whether the instruction bar is in "paused" state (user navigated away)
     @Published var isPaused: Bool = false
 
+    /// Stores the project ID opened during deep navigation (documentation wizard).
+    /// Used by CONTINUE GUIDE to reopen the same project instead of fetching most recent.
+    var deepNavProjectId: String?
+
     /// Whether to show the wizard banner
     @Published var showBanner: Bool = false
 
@@ -142,37 +146,66 @@ class WizardStateManager: ObservableObject {
         )
     }
 
-    /// User tapped the banner
-    func bannerTapped() {
+    // MARK: - Global Cooldown Keys
+
+    private static let cooldownUntilKey = "wizard_global_cooldown_until"
+    private static let notNowCountKey = "wizard_global_not_now_count"
+
+    /// Check if wizards are in a global cooldown period
+    var isInGlobalCooldown: Bool {
+        guard let cooldownUntil = UserDefaults.standard.object(forKey: Self.cooldownUntilKey) as? Date else {
+            return false
+        }
+        return Date() < cooldownUntil
+    }
+
+    /// Set a global cooldown — no wizard banners for the given duration
+    private func setGlobalCooldown(hours: Int) {
+        let until = Calendar.current.date(byAdding: .hour, value: hours, to: Date()) ?? Date()
+        UserDefaults.standard.set(until, forKey: Self.cooldownUntilKey)
+        // Reset not-now count when a cooldown starts
+        UserDefaults.standard.set(0, forKey: Self.notNowCountKey)
+    }
+
+    /// Increment the global "not now" counter and apply 24hr cooldown if threshold reached
+    private func incrementNotNowCount() {
+        let count = UserDefaults.standard.integer(forKey: Self.notNowCountKey) + 1
+        UserDefaults.standard.set(count, forKey: Self.notNowCountKey)
+        if count >= 2 {
+            setGlobalCooldown(hours: 24)
+        }
+    }
+
+    // MARK: - Banner Actions
+
+    /// User tapped "Launch" on the banner — start the wizard directly
+    func bannerLaunchTapped() {
         guard let wizard = pendingBannerWizard else { return }
 
+        // Guard against double-tap — clear immediately
+        pendingBannerWizard = nil
         showBanner = false
 
         analytics.recordEvent(
-            event: "wizard_banner_tapped",
+            event: "wizard_banner_launch",
             wizardId: wizard.wizardId,
             sessionId: wizardState(for: wizard.wizardId)?.currentSessionId ?? UUID().uuidString,
             userId: userId,
             userRole: userRole?.rawValue
         )
 
-        showPromptOverlay = true
+        // Reset not-now count on a successful launch
+        UserDefaults.standard.set(0, forKey: Self.notNowCountKey)
 
-        analytics.recordEvent(
-            event: "wizard_prompt_shown",
-            wizardId: wizard.wizardId,
-            sessionId: wizardState(for: wizard.wizardId)?.currentSessionId ?? UUID().uuidString,
-            userId: userId,
-            userRole: userRole?.rawValue
-        )
+        startWizardFromBanner(wizard)
     }
 
-    /// User dismissed the banner without tapping (implicit "Maybe Later")
-    func bannerDismissed() {
+    /// User tapped "Not Now" on the banner — dismiss and track count
+    func bannerNotNowTapped() {
         guard let wizard = pendingBannerWizard else { return }
 
         analytics.recordEvent(
-            event: "wizard_dismissed",
+            event: "wizard_banner_not_now",
             wizardId: wizard.wizardId,
             sessionId: wizardState(for: wizard.wizardId)?.currentSessionId ?? UUID().uuidString,
             userId: userId,
@@ -181,9 +214,89 @@ class WizardStateManager: ObservableObject {
 
         showBanner = false
         pendingBannerWizard = nil
+
+        // Track "not now" count — 2 = 24hr global cooldown
+        incrementNotNowCount()
     }
 
-    /// User chose "Start Guide" from the prompt overlay
+    /// User tapped "Never" on the banner — disable this wizard + 48hr global cooldown
+    func bannerNeverTapped() {
+        guard let wizard = pendingBannerWizard else { return }
+
+        analytics.recordEvent(
+            event: "wizard_banner_never",
+            wizardId: wizard.wizardId,
+            sessionId: wizardState(for: wizard.wizardId)?.currentSessionId ?? UUID().uuidString,
+            userId: userId,
+            userRole: userRole?.rawValue
+        )
+
+        // Mark this wizard as "do not show"
+        if let state = wizardState(for: wizard.wizardId) {
+            state.doNotShow = true
+            state.status = .dismissed
+            state.needsSync = true
+            try? modelContext?.save()
+        }
+
+        showBanner = false
+        pendingBannerWizard = nil
+
+        // 48hr global cooldown — no wizard banners for anyone
+        setGlobalCooldown(hours: 48)
+    }
+
+    /// Legacy: User dismissed the banner (backward compat — maps to Not Now)
+    func bannerDismissed() {
+        bannerNotNowTapped()
+    }
+
+    /// Legacy: User tapped the banner (backward compat — maps to Launch)
+    func bannerTapped() {
+        bannerLaunchTapped()
+    }
+
+    /// Start wizard from banner (takes wizard directly — avoids pendingBannerWizard race)
+    func startWizardFromBanner(_ wizard: any WizardDefinitionProtocol) {
+        guard let state = wizardState(for: wizard.wizardId) else { return }
+
+        let isRestart = state.status == .completed
+        state.start()
+        try? modelContext?.save()
+
+        activeWizard = wizard
+        currentStepIndex = state.currentStepIndex
+        isActive = true
+        isPaused = false
+        showPromptOverlay = false
+        pendingBannerWizard = nil
+        stepStartTime = Date()
+        wizardStartTime = Date()
+
+        updateInstructionForCurrentStep()
+        observeStepCompletion()
+
+        analytics.recordEvent(
+            event: "wizard_started",
+            wizardId: wizard.wizardId,
+            sessionId: state.currentSessionId,
+            userId: userId,
+            userRole: userRole?.rawValue,
+            stepIndex: currentStepIndex,
+            totalSteps: totalSteps,
+            isRestart: isRestart
+        )
+
+        // Auto-navigate to the first step's target screen, then deep-navigate if needed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.navigateToCurrentStep()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self?.requestDeepNavigation()
+            }
+        }
+    }
+
+    /// Legacy: User chose "Start Guide" from the prompt overlay
     func startWizard(doNotShowAgain: Bool) {
         guard let wizard = pendingBannerWizard else { return }
         guard let state = wizardState(for: wizard.wizardId) else { return }
@@ -218,6 +331,14 @@ class WizardStateManager: ObservableObject {
             totalSteps: totalSteps,
             isRestart: isRestart
         )
+
+        // Auto-navigate to the first step's target screen, then deep-navigate if needed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.navigateToCurrentStep()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self?.requestDeepNavigation()
+            }
+        }
     }
 
     /// Start a wizard directly (from Settings, bypassing banner/prompt)
@@ -253,6 +374,14 @@ class WizardStateManager: ObservableObject {
             totalSteps: totalSteps,
             isRestart: isRestart
         )
+
+        // Auto-navigate to the first step's target screen, then deep-navigate if needed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.navigateToCurrentStep()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self?.requestDeepNavigation()
+            }
+        }
     }
 
     /// User chose "Maybe Later" from the prompt overlay
@@ -416,6 +545,124 @@ class WizardStateManager: ObservableObject {
         currentInstruction = ""
         currentDescription = nil
         isPaused = false
+        deepNavProjectId = nil
+    }
+
+    // MARK: - Navigation
+
+    /// Navigate the user to the screen relevant to the current wizard step.
+    /// Posts a notification that MainTabView and other containers listen for.
+    /// Also posts section-level navigation for views that have sub-sections (e.g., Job Board).
+    func navigateToCurrentStep() {
+        guard let step = currentStep,
+              let targetScreen = step.targetScreen else { return }
+
+        // Map targetScreen identifiers to tab names
+        let tabTarget = Self.tabTarget(for: targetScreen)
+
+        NotificationCenter.default.post(
+            name: Notification.Name("WizardNavigateToTarget"),
+            object: nil,
+            userInfo: [
+                "targetScreen": targetScreen,
+                "tabTarget": tabTarget ?? ""
+            ]
+        )
+
+        // Post section-level navigation for Job Board wizard steps
+        if let sectionTarget = Self.sectionTarget(for: targetScreen) {
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardNavigateToSection"),
+                object: nil,
+                userInfo: ["section": sectionTarget]
+            )
+        }
+    }
+
+    /// Maps a wizard step's targetScreen to the Job Board section to navigate to.
+    /// Returns the section raw value appropriate for the user's role, or nil if no section switch needed.
+    static func sectionTarget(for targetScreen: String) -> String? {
+        switch targetScreen {
+        case "JobBoard":
+            // Job Board steps need to land on a projects section.
+            // Return role-appropriate section — caller reads the raw value.
+            let hasManageSections = PermissionStore.shared.can("job_board.manage_sections")
+            return hasManageSections ? "PROJECTS" : "MY PROJECTS"
+        default:
+            return nil
+        }
+    }
+
+    /// Request deep navigation for wizards that need more than a tab switch.
+    func requestDeepNavigation() {
+        guard let wizard = activeWizard else { return }
+        switch wizard.wizardId {
+        case "documentation":
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardOpenMostRecentProject"),
+                object: nil
+            )
+        case "team_management":
+            // Deep-navigate into Settings → Manage Team (bypasses Organization screen)
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardOpenManageTeam"),
+                object: nil
+            )
+        case "settings_security":
+            // Deep-navigate into the correct Settings sub-screen for the current step
+            guard let targetScreen = currentStep?.targetScreen else { break }
+            switch targetScreen {
+            case "SecuritySettings":
+                NotificationCenter.default.post(
+                    name: Notification.Name("WizardOpenSecuritySettings"),
+                    object: nil
+                )
+            case "NotificationSettings":
+                NotificationCenter.default.post(
+                    name: Notification.Name("WizardOpenNotificationSettings"),
+                    object: nil
+                )
+            default:
+                break // "Settings" targetScreen needs no deep nav — user is on SettingsView
+            }
+        case "permissions_roles":
+            // Deep-navigate into Settings → Permissions
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardOpenPermissions"),
+                object: nil
+            )
+        default:
+            break
+        }
+    }
+
+    /// Maps a wizard step's targetScreen to the tab that contains it.
+    static func tabTarget(for targetScreen: String) -> String? {
+        switch targetScreen {
+        // Home tab
+        case "Home":
+            return "Home"
+        // Job Board tab
+        case "JobBoard", "FABMenu", "ProjectForm", "ClientForm", "TaskForm":
+            return "JobBoard"
+        // Schedule/Calendar tab
+        case "Schedule", "Calendar":
+            return "Schedule"
+        // Inventory tab
+        case "Inventory":
+            return "Inventory"
+        // Settings and sub-screens
+        case "Settings", "SecuritySettings", "NotificationSettings",
+             "ManageTeam", "TeamInvite", "Permissions",
+             "Profile", "OrganizationDetails":
+            return "Settings"
+        // Project details (opened from Job Board or any tab)
+        case "ProjectDetails", "PhotoAnnotation",
+             "TaskReview", "PaymentReview":
+            return "JobBoard"
+        default:
+            return nil
+        }
     }
 
     // MARK: - Private Helpers
@@ -440,6 +687,57 @@ class WizardStateManager: ObservableObject {
             .sink { [weak self] _ in
                 self?.completeCurrentStep()
             }
+    }
+
+    /// Check if the current step's prerequisites are met. If not and the step is skippable, auto-skip.
+    /// Called after each step transition to handle data-dependent steps (e.g., "view closed" when no closed projects exist).
+    func evaluateStepPrerequisites(
+        closedProjectCount: Int = -1,
+        swipeableProjectCount: Int = -1,
+        projectPhotoCount: Int = -1,
+        eligibleTeamMemberCount: Int = -1
+    ) {
+        guard let step = currentStep, step.canSkip else { return }
+
+        var shouldAutoSkip = false
+
+        switch step.id {
+        case "view_closed":
+            // Auto-skip when there are no closed projects — the CLOSED button won't exist
+            if closedProjectCount == 0 {
+                shouldAutoSkip = true
+            }
+        case "swipe_status":
+            // Auto-skip when user lacks projects.edit permission or no swipeable projects
+            if !PermissionStore.shared.can("projects.edit") {
+                shouldAutoSkip = true
+            } else if swipeableProjectCount == 0 {
+                shouldAutoSkip = true
+            }
+        case "view_photo":
+            // Auto-skip when the project has no photos — nothing to tap in the gallery
+            if projectPhotoCount == 0 {
+                shouldAutoSkip = true
+            }
+        case "assign_role":
+            // Auto-skip when no team members are eligible for role change
+            // (only non-current-user, non-creator members can have roles changed)
+            if eligibleTeamMemberCount == 0 {
+                shouldAutoSkip = true
+            }
+        case "enable_pin":
+            // Auto-skip when a PIN is already enabled — "SET UP A PIN" is misleading.
+            // hasPINEnabled is stored in UserDefaults via @AppStorage("hasPINEnabled").
+            if UserDefaults.standard.bool(forKey: "hasPINEnabled") {
+                shouldAutoSkip = true
+            }
+        default:
+            break
+        }
+
+        if shouldAutoSkip {
+            skipCurrentStep()
+        }
     }
 
     // MARK: - Developer Tools

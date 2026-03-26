@@ -37,6 +37,7 @@ struct SupabaseCompanyDTO: Codable, Identifiable {
     let hasPrioritySupport: Bool?
     let stripeCustomerId: String?
     let companyCode: String?
+    let accountHolderId: String?
     let preciseSchedulingEnabled: Bool?
     let skipWeekendsInAutoSchedule: Bool?
     let createdAt: String?
@@ -59,6 +60,7 @@ struct SupabaseCompanyDTO: Codable, Identifiable {
         case hasPrioritySupport   = "has_priority_support"
         case stripeCustomerId     = "stripe_customer_id"
         case companyCode          = "company_code"
+        case accountHolderId      = "account_holder_id"
         case preciseSchedulingEnabled    = "precise_scheduling_enabled"
         case skipWeekendsInAutoSchedule  = "skip_weekends_in_auto_schedule"
         case createdAt            = "created_at"

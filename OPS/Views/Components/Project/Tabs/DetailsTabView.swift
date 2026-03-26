@@ -109,6 +109,9 @@ struct DetailsTabView: View {
                 .frame(height: 200)
         }
         .padding(.top, 16)
+        .onAppear {
+            NotificationCenter.default.post(name: Notification.Name("WizardDetailsTabViewed"), object: nil)
+        }
     }
 }
 

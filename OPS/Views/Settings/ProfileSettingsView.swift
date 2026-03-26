@@ -46,9 +46,12 @@ struct ProfileSettingsView: View {
 
     var body: some View {
         ZStack {
-            // Background gradient
+            // Background gradient — tap to dismiss keyboard
             OPSStyle.Colors.backgroundGradient
                 .ignoresSafeArea()
+                .onTapGesture {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
 
             VStack(spacing: 0) {
                 // Header area with back button and title
@@ -58,6 +61,8 @@ struct ProfileSettingsView: View {
                     isEditing: hasChanges,
                     editButtonText: "SAVE",
                     onBackTapped: {
+                        // Dismiss keyboard before navigating back
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                         dismiss()
                     },
                     onEditTapped: {
@@ -302,6 +307,9 @@ struct ProfileSettingsView: View {
             }
         }
         .trackScreen("Settings.Profile")
+        .onAppear {
+            NotificationCenter.default.post(name: Notification.Name("WizardProfileViewed"), object: nil)
+        }
     }
 
     // Password reset sheet view (unchanged)
@@ -690,11 +698,15 @@ struct ProfileSettingsView: View {
     }
 
     private func saveChanges() {
+        // Dismiss keyboard immediately when save is tapped
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         showSaveConfirmation = true
     }
 
     private func performSave() {
+        // Ensure keyboard is dismissed before performing the save
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+
         Task {
 
             let success = await dataController.updateUserProfile(

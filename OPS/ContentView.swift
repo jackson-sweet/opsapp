@@ -260,6 +260,10 @@ struct PINGatedView: View {
     @StateObject private var wizardTriggerService = WizardTriggerService()
     @State private var hasConfiguredWizards = false
 
+    // Company setup prompt (2nd+ launch)
+    @State private var showCompanySetupPrompt = false
+    @State private var hasCheckedCompanySetup = false
+
     init(dataController: DataController, appState: AppState, locationManager: LocationManager) {
         self.dataController = dataController
         self.pinManager = dataController.simplePINManager
@@ -290,10 +294,18 @@ struct PINGatedView: View {
                     .environmentObject(locationManager)
                     .wizardActive(wizardStateManager.isActive)
                     .environment(\.wizardStateManager, wizardStateManager)
+                    .environment(\.wizardTriggerService, wizardTriggerService)
                     .wizardBanner(stateManager: wizardStateManager)
-                    .wizardPromptOverlay(stateManager: wizardStateManager)
-                    .wizardInstructionBar(stateManager: wizardStateManager)
                     .gracePeriodBanner() // Add grace period banner overlay
+                    .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                        // Reset wizard session tracking on return from background so wizards re-evaluate each session
+                        wizardTriggerService.resetSessionTracking()
+                    }
+                    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("LogoutInitiated"))) { _ in
+                        // Tear down wizard overlay window on logout to avoid dangling references
+                        WizardOverlayController.shared.teardown()
+                        hasConfiguredWizards = false
+                    }
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TaskCreatedSuccess"))) { notification in
                         // Show success message when task is created
                         if let taskTypeName = notification.userInfo?["taskTypeName"] as? String {
@@ -345,8 +357,17 @@ struct PINGatedView: View {
                             wizardTriggerService.configure(
                                 stateManager: wizardStateManager,
                                 userRole: role,
-                                permissionCheck: { PermissionStore.shared.can($0) }
+                                permissionCheck: { PermissionStore.shared.can($0) },
+                                isTutorialComplete: { [weak dataController] in
+                                    dataController?.currentUser?.hasCompletedAppTutorial ?? false
+                                }
                             )
+                            // Clear per-session tracking so wizards can evaluate fresh
+                            wizardTriggerService.resetSessionTracking()
+
+                            // Install window-level overlay for instruction bar (persists across sheets/covers)
+                            WizardOverlayController.shared.install(stateManager: wizardStateManager)
+
                             hasConfiguredWizards = true
                         }
 
@@ -361,6 +382,21 @@ struct PINGatedView: View {
                                     await MainActor.run {
                                         unassignedUsers = users
                                         showUnassignedRolesOverlay = true
+                                    }
+                                }
+                            }
+                        }
+
+                        // Check for company setup prompt (2nd+ launch, once per session)
+                        if !hasCheckedCompanySetup {
+                            hasCheckedCompanySetup = true
+                            Task {
+                                // Wait for data to be loaded and UI to settle
+                                try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
+                                await MainActor.run {
+                                    let company = dataController.getCurrentUserCompany()
+                                    if CompanySetupPromptView.shouldShowPrompt(company: company) {
+                                        showCompanySetupPrompt = true
                                     }
                                 }
                             }
@@ -510,6 +546,13 @@ struct PINGatedView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
             handleShake()
+        }
+        // MARK: - Company Setup Prompt Sheet (2nd+ launch)
+        .sheet(isPresented: $showCompanySetupPrompt) {
+            if let company = dataController.getCurrentUserCompany() {
+                CompanySetupPromptView(company: company)
+                    .environmentObject(dataController)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: ConnectivityManager.connectivityChangedNotification)) { _ in
             // Drain offline bug report queue when connectivity returns

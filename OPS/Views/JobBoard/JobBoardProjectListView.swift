@@ -12,6 +12,7 @@ struct JobBoardProjectListView: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
+    @Environment(\.wizardStateManager) private var wizardStateManager
     @Query private var allProjects: [Project]
     let searchText: String
     @Binding var showingFilters: Bool
@@ -30,6 +31,9 @@ struct JobBoardProjectListView: View {
     @State private var isStatusTransitioning = false  // True during status badge fade animation
     @State private var showClosedSectionOverlay = false  // Dark overlay during closedProjectsScroll phase
     @State private var emphasisSwipeInstruction = false  // Emphasis animation for swipe instruction
+
+    // Wizard scroll tracking — fires WizardJobBoardScrolled only after genuine user scroll
+    @State private var hasPostedScrollNotification = false
 
     private var availableTeamMembers: [User] {
         guard let companyId = dataController.currentUser?.companyId else { return [] }
@@ -154,12 +158,18 @@ struct JobBoardProjectListView: View {
                 ScrollViewReader { scrollProxy in
                     ScrollView {
                         LazyVStack(spacing: 12) {
-                            ForEach(activeProjects) { project in
+                            ForEach(Array(activeProjects.enumerated()), id: \.element.id) { index, project in
                             let isFocusedProject = !shouldGreyOutProject(project)
 
                             UniversalJobBoardCard(cardType: .project(project))
                                 .environmentObject(dataController)
                                 .id("\(project.id)-\(project.teamMemberIdsString)")
+                                .if(index == 0) { view in
+                                    view
+                                        .wizardTarget("browse_projects")
+                                        .wizardTarget("swipe_status")
+                                        .wizardTarget("tap_project")
+                                }
                                 // Tutorial mode: Grey out non-focused projects during status demo/swipe phases
                                 // Also grey out focused card during status transition animation
                                 // Also dim during closedProjectsScroll to highlight the closed section button
@@ -194,8 +204,10 @@ struct JobBoardProjectListView: View {
                                         color: Status.closed.color
                                     ) {
                                         showingClosedSheet = true
+                                        NotificationCenter.default.post(name: Notification.Name("WizardJobBoardClosedViewed"), object: nil)
                                     }
                                     .tutorialHighlight(for: .closedProjectsScroll, cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .wizardTarget("view_closed")
                                 }
 
                                 if !archivedProjects.isEmpty {
@@ -214,6 +226,22 @@ struct JobBoardProjectListView: View {
                     }
                     .padding(.top, 12)
                     .padding(.bottom, 120)
+                    .background(
+                        // Wizard: detect genuine scroll (≥50pt offset) before posting completion.
+                        // A GeometryReader anchored at the top of the scroll content tracks its
+                        // position in the named coordinate space. When the content moves up by 50pt,
+                        // the notification fires once.
+                        GeometryReader { scrollGeo in
+                            Color.clear
+                                .onChange(of: scrollGeo.frame(in: .named("jobBoardScroll")).minY) { _, newMinY in
+                                    // newMinY starts at ~0 and goes negative as user scrolls down
+                                    if !hasPostedScrollNotification && newMinY < -50 && !activeProjects.isEmpty {
+                                        hasPostedScrollNotification = true
+                                        NotificationCenter.default.post(name: Notification.Name("WizardJobBoardScrolled"), object: nil)
+                                    }
+                                }
+                        }
+                    )
                     // Tutorial: Scroll to closed section and auto-advance
                     .onChange(of: tutorialPhase) { _, newPhase in
                         if tutorialMode && newPhase == .closedProjectsScroll {
@@ -247,7 +275,8 @@ struct JobBoardProjectListView: View {
                             }
                         }
                     }
-                } // End ScrollView
+                }
+                .coordinateSpace(name: "jobBoardScroll") // End ScrollView
                 } // End ScrollViewReader
             }
         }
@@ -262,6 +291,14 @@ struct JobBoardProjectListView: View {
             // Also check on appear in case we're already in the phase
             if tutorialPhase == .projectListStatusDemo && !hasStartedStatusAnimation {
                 startTutorialStatusAnimation()
+            }
+            // Wizard: evaluate step prerequisites with actual project data
+            if let mgr = wizardStateManager, mgr.isActive {
+                let swipeable = activeProjects.filter { $0.status.canSwipeForward }.count
+                mgr.evaluateStepPrerequisites(
+                    closedProjectCount: closedProjects.count,
+                    swipeableProjectCount: swipeable
+                )
             }
         }
         // Listen for swipe status change notifications from UniversalJobBoardCard

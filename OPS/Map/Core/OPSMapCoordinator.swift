@@ -476,6 +476,8 @@ final class OPSMapCoordinator: ObservableObject {
         selectedCrewMemberId = nil
         showingProjectCard = false
         showingCrewTooltip = false
+        showingStackedGroup = false
+        stackedGroupProjects = []
         refreshProjectAnnotations()
         refreshCrewAnnotations()
     }
@@ -749,7 +751,10 @@ final class OPSMapCoordinator: ObservableObject {
             guard let coord = project.coordinate else { continue }
 
             let todaysTasks = project.tasks.filter { task in
-                guard task.status == .active, let start = task.startDate else { return false }
+                guard let start = task.startDate else { return false }
+                // Show all tasks scheduled today — active AND completed.
+                // Cancelled tasks are excluded since they are no longer relevant.
+                guard task.status == .active || task.status == .completed else { return false }
                 return calendar.isDateInToday(start)
             }
 

@@ -61,8 +61,8 @@ struct TutorialLauncherView: View {
 struct TutorialInputHighlight: ViewModifier {
     let isHighlighted: Bool
     var animatePulse: Bool = false
-    var labelColor: Color { Color.clear }
-    var borderColor: Color { Color.clear }
+    var labelColor: Color { OPSStyle.Colors.secondaryText }
+    var borderColor: Color { OPSStyle.Colors.inputFieldBorder }
     func body(content: Content) -> some View {
         content
     }

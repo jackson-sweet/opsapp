@@ -88,6 +88,18 @@ struct ProjectPaymentReviewView: View {
             if !overdueProjects.isEmpty {
                 activeProjects = overdueProjects
             }
+            // Wizard system: notify payment review opened
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardPaymentReviewOpened"),
+                object: nil
+            )
+        }
+        .onDisappear {
+            // Wizard system: notify payment review dismissed
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardPaymentReviewDismissed"),
+                object: nil
+            )
         }
         .sheet(isPresented: $showBio) {
             if let project = selectedProject {
@@ -329,10 +341,13 @@ struct ProjectPaymentReviewView: View {
         switch direction {
         case .right:
             executeClose(project)
+            NotificationCenter.default.post(name: Notification.Name("WizardProjectSwipedRight"), object: nil)
         case .left:
+            NotificationCenter.default.post(name: Notification.Name("WizardProjectSwipedLeft"), object: nil)
             break // Skip -- no data changes
         case .up:
             executeSendReminder(project)
+            NotificationCenter.default.post(name: Notification.Name("WizardProjectSwipedUp"), object: nil)
         case .down:
             // Don't increment yet -- confirmation pending
             reviewedCount -= 1

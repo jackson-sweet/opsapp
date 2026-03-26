@@ -14,6 +14,7 @@ struct UserPermissionDetailView: View {
     let companyId: String
 
     @EnvironmentObject private var dataController: DataController
+    @ObservedObject private var permissionStore = PermissionStore.shared
     @Environment(\.dismiss) private var dismiss
 
     // Role state
@@ -27,6 +28,9 @@ struct UserPermissionDetailView: View {
     @State private var isLoading = true
     @State private var isSavingOverride = false
     @State private var errorMessage: String?
+
+    // Feature gate alert
+    @State private var showFeatureGateAlert = false
 
     struct OverrideState {
         let granted: Bool
@@ -89,7 +93,15 @@ struct UserPermissionDetailView: View {
             }
             .navigationBarHidden(true)
         }
-        .onAppear { loadData() }
+        .onAppear {
+            loadData()
+            NotificationCenter.default.post(name: Notification.Name("WizardMemberOverrideViewed"), object: nil)
+        }
+        .alert("In Testing", isPresented: $showFeatureGateAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("This feature is currently in testing. Reach out if you'd like to be added to the testing group.")
+        }
         .sheet(isPresented: $showRoleListSheet) {
             NavigationStack {
                 RoleListView()
@@ -235,9 +247,54 @@ struct UserPermissionDetailView: View {
                 .padding(.horizontal, 20)
 
             ForEach(PermissionRegistry.categories, id: \.self) { category in
-                overrideCategory(category)
+                if let flag = PermissionRegistry.featureFlag(for: category),
+                   !permissionStore.isFeatureEnabled(flag) {
+                    gatedOverrideCategory(category)
+                } else {
+                    overrideCategory(category)
+                }
             }
         }
+    }
+
+    // MARK: - Gated Override Category (feature-flagged, not yet available)
+
+    private func gatedOverrideCategory(_ category: String) -> some View {
+        Button(action: {
+            showFeatureGateAlert = true
+        }) {
+            HStack(spacing: 6) {
+                Image(systemName: PermissionRegistry.iconForCategory(category))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Text(category.uppercased())
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                Spacer()
+
+                Text("IN TESTING")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .fill(OPSStyle.Colors.subtleBackground)
+                    )
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .background(OPSStyle.Colors.background)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .opacity(0.4)
+        .padding(.horizontal, 20)
     }
 
     private func overrideCategory(_ category: String) -> some View {

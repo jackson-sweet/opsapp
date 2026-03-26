@@ -64,6 +64,9 @@ enum OPSStyle {
         static let accountingReceivables = Color("AccountingReceivables") // Warm amber (#D4A574)
         static let accountingOverdue = Color("AccountingOverdue") // Deep red (#93321A)
 
+        // Wizard highlight color
+        static let wizardAccent = Color(red: 0.92, green: 0.55, blue: 0.15) // Tactical orange (#EB8C26)
+
         // UI state colors
         static let placeholderText = Color(red: 0.6, green: 0.6, blue: 0.6)  // #999999 (medium gray)
 

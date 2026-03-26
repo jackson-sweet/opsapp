@@ -22,7 +22,7 @@ struct TaskReviewWizard: WizardDefinitionProtocol {
     let iconName = "rectangle.stack.fill"
     let triggerType: WizardTriggerType = .contextual
     let minimumTier: WizardAccessTier = .field
-    let requiredPermission: String? = "finances.view"
+    let requiredPermission: String? = "tasks.view"
     let bannerText = "You have overdue tasks — want a quick walkthrough of task review?"
 
     let steps: [WizardStepDefinition] = [

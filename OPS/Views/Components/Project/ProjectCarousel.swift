@@ -193,21 +193,9 @@ struct ProjectCardView: View {
 
                     Spacer(minLength: 0)
 
-                    // Footer
-                    if !isActiveProject {
-                        HStack {
-                            Spacer()
-                            Text("TAP TO START PROJECT")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            Spacer()
-                        }
-                    }
-                }
-                .padding(12)
-                .frame(width: 362, height: 85, alignment: .topLeading)
-                .overlay(
-                    Group {
+                    // Footer — status badge or start prompt, positioned below dots
+                    HStack {
+                        Spacer()
                         if project.status.isCompleted {
                             Text("COMPLETED")
                                 .font(OPSStyle.Typography.smallCaption)
@@ -217,12 +205,16 @@ struct ProjectCardView: View {
                                 .padding(.vertical, 3)
                                 .background(OPSStyle.Colors.statusColor(for: .completed))
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                                .padding([.bottom, .trailing], 8)
+                        } else if !isActiveProject {
+                            Text("TAP TO START PROJECT")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
                         }
-                    },
-                    alignment: .bottomTrailing
-                )
+                        Spacer()
+                    }
+                }
+                .padding(12)
+                .frame(width: 362, height: 85, alignment: .topLeading)
             }
             .frame(width: 362, height: 85)
             .cornerRadius(OPSStyle.Layout.cornerRadius)

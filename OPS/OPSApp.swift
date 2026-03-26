@@ -93,13 +93,17 @@ struct OPSApp: App {
                 .onAppear {
                     // Check if this is a fresh install
                     if !UserDefaults.standard.bool(forKey: "has_launched_before") {
-                        
+
                         // Clear all authentication data on fresh install
                         clearAllAuthenticationData()
-                        
+
                         // Mark that we've launched before
                         UserDefaults.standard.set(true, forKey: "has_launched_before")
                     }
+
+                    // Track app launch count (for features gated on 2nd+ launch)
+                    let currentCount = UserDefaults.standard.integer(forKey: "appLaunchCount")
+                    UserDefaults.standard.set(currentCount + 1, forKey: "appLaunchCount")
 
                     // Fetch A/B/C test variant for new users
                     Task {
@@ -186,6 +190,13 @@ struct OPSApp: App {
                 .onChange(of: scenePhase) { oldPhase, newPhase in
                     switch newPhase {
                     case .active:
+                        // Re-link OneSignal on every foreground return to ensure
+                        // the device is registered for push notifications.
+                        // OneSignal.login() is idempotent — safe to call repeatedly.
+                        if dataController.isAuthenticated {
+                            NotificationManager.shared.linkUserToOneSignal()
+                        }
+
                         // Only trigger sync on RETURN to foreground (not initial launch,
                         // which is handled by performAppLaunchSync)
                         if oldPhase == .background {
@@ -368,7 +379,9 @@ private func clearAllAuthenticationData() {
         "location_permission_granted",
         "notifications_permission_granted",
         "onboarding_variant",
-        "pending_demo_data_migration"
+        "pending_demo_data_migration",
+        "appLaunchCount",
+        "hasCompletedCompanySetup"
     ]
     
     for key in authKeys {

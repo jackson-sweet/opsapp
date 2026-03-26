@@ -279,6 +279,17 @@ struct HomeView: View {
                 everyProject = everyProject.filter { $0.id.hasPrefix("DEMO_") }
             }
 
+            // Merge in projects from the user's scheduled tasks that may not appear
+            // in getProjectsForCurrentUser (e.g., field crew assigned to a task but
+            // not a project team member). This ensures the Today filter on the map
+            // shows pins for all projects where the user has tasks.
+            let existingIds = Set(everyProject.map { $0.id })
+            for project in uniqueProjects {
+                if !existingIds.contains(project.id) {
+                    everyProject.append(project)
+                }
+            }
+
             await MainActor.run {
                 self.todaysScheduledTasks = scheduledTasks
                 self.todaysProjects = uniqueProjects

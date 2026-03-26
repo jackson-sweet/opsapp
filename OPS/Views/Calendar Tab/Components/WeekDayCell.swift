@@ -29,9 +29,9 @@ struct WeekDayCell: View {
             .padding(.top, 4)
             .frame(maxWidth: .infinity)
             .frame(height: 86)
-            .background(cellBackground)
-            .cornerRadius(4)
             .padding(.horizontal, 4)
+            .background(cellBackground)
+            .cornerRadius(6)
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
                     .stroke(OPSStyle.Colors.primaryText, lineWidth: isSelected ? 1 : 0)

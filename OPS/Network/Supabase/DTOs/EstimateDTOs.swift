@@ -19,11 +19,12 @@ struct EstimateDTO: Codable, Identifiable {
     let subtotal: Double
     let taxRate: Double?
     let taxAmount: Double?
-    let discountPercent: Double?
+    let discountType: String?
+    let discountValue: Double?
     let discountAmount: Double?
     let total: Double
     let notes: String?
-    let validUntil: String?
+    let expirationDate: String?
     let version: Int
     let createdAt: String
     let updatedAt: String
@@ -41,11 +42,12 @@ struct EstimateDTO: Codable, Identifiable {
         case subtotal
         case taxRate         = "tax_rate"
         case taxAmount       = "tax_amount"
-        case discountPercent = "discount_percent"
+        case discountType    = "discount_type"
+        case discountValue   = "discount_value"
         case discountAmount  = "discount_amount"
         case total
         case notes
-        case validUntil      = "valid_until"
+        case expirationDate  = "expiration_date"
         case version
         case createdAt       = "created_at"
         case updatedAt       = "updated_at"
@@ -58,7 +60,7 @@ struct EstimateDTO: Codable, Identifiable {
             companyId: companyId,
             status: EstimateStatus(rawValue: status) ?? .draft,
             taxRate: taxRate ?? 0,
-            discountPercent: discountPercent ?? 0,
+            discountPercent: discountType == "percent" ? (discountValue ?? 0) : 0,
             version: version,
             createdAt: SupabaseDate.parse(createdAt) ?? Date(),
             updatedAt: SupabaseDate.parse(updatedAt) ?? Date()
@@ -72,7 +74,7 @@ struct EstimateDTO: Codable, Identifiable {
         est.projectId = projectId
         est.clientId = clientId
         est.internalNotes = notes
-        if let vu = validUntil { est.validUntil = SupabaseDate.parse(vu) }
+        if let ed = expirationDate { est.validUntil = SupabaseDate.parse(ed) }
         return est
     }
 }

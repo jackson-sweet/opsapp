@@ -124,6 +124,20 @@ struct TaskCompletionReviewView: View {
         } message: {
             Text("This will cancel the task. You can reactivate it later if needed.")
         }
+        .onAppear {
+            // Wizard system: notify task review opened
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardTaskReviewOpened"),
+                object: nil
+            )
+        }
+        .onDisappear {
+            // Wizard system: notify task review dismissed
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardTaskReviewDismissed"),
+                object: nil
+            )
+        }
     }
 
     // MARK: - Header
@@ -298,14 +312,17 @@ struct TaskCompletionReviewView: View {
             // Complete
             task.status = .completed
             task.needsSync = true
+            NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedRight"), object: nil)
         case .left:
             // Skip — no changes
+            NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedLeft"), object: nil)
             break
         case .up:
             // Reschedule — decrement count, will re-increment on complete/dismiss
             reviewedCount -= 1
             pendingRescheduleTask = task
             showRescheduleSheet = true
+            NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedUp"), object: nil)
         case .down:
             // Cancel — show confirmation
             reviewedCount -= 1

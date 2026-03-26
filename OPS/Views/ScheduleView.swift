@@ -30,6 +30,8 @@ struct ScheduleView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
+    @Environment(\.wizardTriggerService) private var wizardTriggerService
+    @Environment(\.wizardActive) private var wizardActive
     @StateObject private var viewModel = CalendarViewModel()
     @State private var hasPostedWeekScrollNotification = false
     @State private var hasPostedMonthExploredNotification = false
@@ -91,7 +93,7 @@ struct ScheduleView: View {
                     }
                 }
                 .animation(OPSStyle.Animation.standard, value: viewModel.isMonthExpanded)
-                .padding(.bottom, viewModel.isMonthExpanded ? 0 : 90) // tab bar clearance only in week mode
+                .padding(.bottom, viewModel.isMonthExpanded ? (wizardActive ? 80 : 0) : 90) // tab bar + wizard bar clearance
                 //.frame(maxWidth: 50)
             }
             }
@@ -110,6 +112,11 @@ struct ScheduleView: View {
 
             // Initialize with proper data controller
             viewModel.setDataController(dataController)
+
+            // Wizard system: evaluate scheduling/calendar wizard trigger
+            if let wizard = WizardRegistry.contextualWizard(for: "scheduling_calendar") {
+                wizardTriggerService?.evaluateTrigger(for: wizard, context: "calendar_tab_visit")
+            }
         }
         // Watch for calendar event changes and reload data
         .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
@@ -247,6 +254,7 @@ struct ScheduleView: View {
         }
         // Tutorial mode: Listen for scroll in week view
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarWeekViewScrolled"))) { _ in
+            NotificationCenter.default.post(name: Notification.Name("WizardCalendarWeekScrolled"), object: nil)
             if tutorialMode && tutorialPhase == .calendarWeek && !hasPostedWeekScrollNotification {
                 hasUserScrolledInWeekView = true
                 hasPostedWeekScrollNotification = true
@@ -258,6 +266,9 @@ struct ScheduleView: View {
         }
         // Tutorial mode: post notification when view mode changes to month
         .onChange(of: viewModel.viewMode) { _, newMode in
+            if newMode == .month {
+                NotificationCenter.default.post(name: Notification.Name("WizardCalendarMonthToggled"), object: nil)
+            }
             if tutorialMode && newMode == .month {
                 NotificationCenter.default.post(
                     name: Notification.Name("TutorialCalendarMonthTapped"),
@@ -267,6 +278,7 @@ struct ScheduleView: View {
         }
         // Tutorial mode: Listen for scroll in month view - advance 2s after user scrolls
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarMonthViewScrolled"))) { _ in
+            NotificationCenter.default.post(name: Notification.Name("WizardCalendarMonthExplored"), object: nil)
             if tutorialMode && tutorialPhase == .calendarMonth && !hasUserScrolledInMonthView {
                 hasUserScrolledInMonthView = true
 
@@ -284,6 +296,7 @@ struct ScheduleView: View {
         }
         // Tutorial mode: Listen for pinch in month view (also triggers advancement if they pinch first)
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarMonthViewPinched"))) { _ in
+            NotificationCenter.default.post(name: Notification.Name("WizardCalendarMonthExplored"), object: nil)
             if tutorialMode && tutorialPhase == .calendarMonth && !hasUserPinchedInMonthView {
                 hasUserPinchedInMonthView = true
 

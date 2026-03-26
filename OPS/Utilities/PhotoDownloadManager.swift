@@ -38,6 +38,8 @@ class PhotoDownloadManager: ObservableObject {
     }
 
     private let policyKey = "photoAutoKeepPolicy"
+    private let pinnedKey = "photoPinnedURLs"
+    private let keepAllKey = "photoKeepAllDownloaded"
 
     @Published var keepPolicy: KeepPolicy = .threeMonths {
         didSet {
@@ -45,9 +47,64 @@ class PhotoDownloadManager: ObservableObject {
         }
     }
 
+    /// URLs that the user has explicitly pinned to keep on-device (survive auto-keep policy cleanup)
+    @Published var pinnedURLs: Set<String> = [] {
+        didSet {
+            if let data = try? JSONEncoder().encode(pinnedURLs) {
+                UserDefaults.standard.set(data, forKey: pinnedKey)
+            }
+        }
+    }
+
+    /// When true, all photos are downloaded and kept on-device regardless of policy
+    @Published var keepAllDownloaded: Bool = false {
+        didSet {
+            UserDefaults.standard.set(keepAllDownloaded, forKey: keepAllKey)
+        }
+    }
+
     private init() {
         let raw = UserDefaults.standard.string(forKey: policyKey) ?? KeepPolicy.threeMonths.rawValue
         self.keepPolicy = KeepPolicy(rawValue: raw) ?? .threeMonths
+        self.keepAllDownloaded = UserDefaults.standard.bool(forKey: keepAllKey)
+
+        if let data = UserDefaults.standard.data(forKey: pinnedKey),
+           let urls = try? JSONDecoder().decode(Set<String>.self, from: data) {
+            self.pinnedURLs = urls
+        }
+    }
+
+    // MARK: - Pin / Unpin
+
+    /// Pin a photo URL so it stays on-device even after auto-keep policy cleanup
+    func pin(_ url: String) {
+        pinnedURLs.insert(url)
+    }
+
+    /// Unpin a photo URL, allowing it to be removed by auto-keep policy
+    func unpin(_ url: String) {
+        pinnedURLs.remove(url)
+    }
+
+    /// Check if a photo URL is pinned
+    func isPinned(_ url: String) -> Bool {
+        pinnedURLs.contains(url)
+    }
+
+    /// Pin multiple photo URLs at once
+    func pinAll(_ urls: [String]) {
+        pinnedURLs.formUnion(urls)
+    }
+
+    /// Download all photos that are not yet on-device (used for "keep all downloaded")
+    func downloadAllPhotos(_ urls: [String]) async -> Int {
+        var downloaded = 0
+        for url in urls where !isOnDevice(url) {
+            if await downloadPhoto(url) {
+                downloaded += 1
+            }
+        }
+        return downloaded
     }
 
     // MARK: - On-Device Detection
@@ -130,12 +187,17 @@ class PhotoDownloadManager: ObservableObject {
         cacheVersion += 1
     }
 
-    /// Enforce auto-keep policy: remove photos older than policy date
+    /// Enforce auto-keep policy: remove photos older than policy date.
+    /// Respects pinned URLs and keepAllDownloaded setting.
     func enforceKeepPolicy(allPhotoURLs: [(url: String, date: Date)]) {
+        // Never enforce cleanup when keep-all is enabled
+        guard !keepAllDownloaded else { return }
         guard let months = keepPolicy.monthCount, months > 0 else { return }
         let cutoff = Calendar.current.date(byAdding: .month, value: -months, to: Date()) ?? Date()
 
         for item in allPhotoURLs where item.date < cutoff {
+            // Skip pinned photos — user explicitly chose to keep them
+            if pinnedURLs.contains(item.url) { continue }
             if !item.url.hasPrefix("local://") {
                 _ = removeFromDevice(item.url)
             }

@@ -317,7 +317,10 @@ struct RoleDetailView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
-        .onAppear { loadPermissions() }
+        .onAppear {
+            loadPermissions()
+            NotificationCenter.default.post(name: Notification.Name("WizardRoleDetailViewed"), object: nil)
+        }
         .alert("In Testing", isPresented: $showFeatureGateAlert) {
             Button("OK", role: .cancel) { }
         } message: {

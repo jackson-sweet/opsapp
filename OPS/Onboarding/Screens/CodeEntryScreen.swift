@@ -254,10 +254,19 @@ struct ExpandingBracketInput: View {
                     TextField("", text: $text)
                         .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .autocapitalization(.none)
+                        .textInputAutocapitalization(.characters)
                         .disableAutocorrection(true)
                         .multilineTextAlignment(.center)
                         .focused($isFocused)
+                        .onChange(of: text) { _, newValue in
+                            // Auto-uppercase and strip non-ASCII characters
+                            let sanitized = newValue
+                                .filter { $0.isASCII && !$0.isWhitespace }
+                                .uppercased()
+                            if sanitized != newValue {
+                                text = sanitized
+                            }
+                        }
                 }
                 .frame(width: currentSpacing - 16) // Account for bracket spacing
 

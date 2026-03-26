@@ -20,6 +20,12 @@ struct WizardStateManagerKey: EnvironmentKey {
     static let defaultValue: WizardStateManager? = nil
 }
 
+// MARK: - Wizard Trigger Service Environment Key
+
+struct WizardTriggerServiceKey: EnvironmentKey {
+    static let defaultValue: WizardTriggerService? = nil
+}
+
 extension EnvironmentValues {
     /// Whether a wizard is currently active
     var wizardActive: Bool {
@@ -31,6 +37,12 @@ extension EnvironmentValues {
     var wizardStateManager: WizardStateManager? {
         get { self[WizardStateManagerKey.self] }
         set { self[WizardStateManagerKey.self] = newValue }
+    }
+
+    /// The wizard trigger service, nil when not yet configured
+    var wizardTriggerService: WizardTriggerService? {
+        get { self[WizardTriggerServiceKey.self] }
+        set { self[WizardTriggerServiceKey.self] = newValue }
     }
 }
 
@@ -45,5 +57,10 @@ extension View {
     /// Injects the wizard state manager into the environment
     func wizardStateManager(_ manager: WizardStateManager?) -> some View {
         environment(\.wizardStateManager, manager)
+    }
+
+    /// Injects the wizard trigger service into the environment
+    func wizardTriggerService(_ service: WizardTriggerService?) -> some View {
+        environment(\.wizardTriggerService, service)
     }
 }

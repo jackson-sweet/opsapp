@@ -361,6 +361,7 @@ struct DayPageView: View {
                 }
             }
         )
+        .wizardTarget("tap_task")
         .overlay(alignment: .topTrailing) {
             if isSelectMode {
                 Image(systemName: selectedTaskIds.contains(task.id) ? "checkmark.circle.fill" : "circle")
@@ -787,6 +788,7 @@ struct DayPageView: View {
             object: nil,
             userInfo: userInfo
         )
+        NotificationCenter.default.post(name: Notification.Name("WizardCalendarTaskTapped"), object: nil)
     }
 
     private func deleteUserEvent(_ event: CalendarUserEvent) {

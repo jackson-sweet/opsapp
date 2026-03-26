@@ -175,20 +175,27 @@ struct FeatureRequestView: View {
     }
     
     private func submitFeatureRequestToAPI() async throws {
-        guard let userEmail = dataController.currentUser?.email else {
+        guard let user = dataController.currentUser else {
             throw NSError(domain: "FeatureRequestView", code: 1,
                          userInfo: [NSLocalizedDescriptionKey: "User not logged in"])
         }
 
+        let userId = user.id
+        let companyId = user.companyId ?? ""
+        let userEmail = user.email ?? ""
+        let userName = user.fullName
+
         try await SupabaseService.shared.client
-            .from("feature_requests")
-            .insert([
-                "type": "feature",
-                "title": featureTitle,
-                "description": featureDescription,
-                "platform": "iOS mobile",
-                "user_email": userEmail,
-                "status": "new"
+            .rpc("submit_feature_request", params: [
+                "p_user_id": userId,
+                "p_company_id": companyId,
+                "p_type": "feature",
+                "p_title": featureTitle,
+                "p_description": featureDescription,
+                "p_platform": "iOS mobile",
+                "p_user_email": userEmail,
+                "p_user_name": userName,
+                "p_app_version": AppConfiguration.AppInfo.version
             ])
             .execute()
     }

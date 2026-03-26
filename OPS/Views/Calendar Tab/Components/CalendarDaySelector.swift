@@ -25,6 +25,7 @@ struct CalendarDaySelector: View {
         ZStack(alignment: .top) {
             if viewModel.isMonthExpanded {
                 MonthGridView(viewModel: viewModel)
+                    .wizardTarget("explore_month")
                     .matchedGeometryEffect(id: "calendarContainer", in: calendarNamespace)
                     .transition(.asymmetric(
                         insertion: .opacity.combined(with: .scale(scale: 0.97, anchor: .top)),
@@ -52,9 +53,11 @@ struct CalendarDaySelector: View {
                                     isSelected: DateHelper.isSameDay(date, viewModel.selectedDate),
                                     onTap: {
                                         viewModel.selectDate(date, userInitiated: true)
+                                        NotificationCenter.default.post(name: Notification.Name("WizardCalendarDayTapped"), object: nil)
                                     }
                                 )
                                 .frame(maxWidth: .infinity)
+                                .wizardTarget("tap_day")
                                 .opacity(index < cellsVisible.count ? (cellsVisible[index] ? 1 : 0) : 1)
                                 .offset(y: index < cellsVisible.count ? (cellsVisible[index] ? 0 : 5) : 0)
                             }
@@ -105,6 +108,7 @@ struct CalendarDaySelector: View {
             }
         }
         .frame(height: 86)
+        .wizardTarget("scroll_week")
         .onAppear {
             lastWeekStart = currentWeekStart()
             triggerCellAnimation()
@@ -378,6 +382,9 @@ struct CalendarDaySelector: View {
 
             try? await Task.sleep(for: .milliseconds(280))
             isTransitioning = false
+
+            // Notify wizard system that the week strip was scrolled
+            NotificationCenter.default.post(name: Notification.Name("CalendarWeekViewScrolled"), object: nil)
         }
     }
 

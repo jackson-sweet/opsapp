@@ -15,7 +15,7 @@ struct InvoiceDTO: Codable, Identifiable {
     let projectId: String?
     let clientId: String?
     let invoiceNumber: String
-    let title: String?
+    let subject: String?
     let status: String
     let subtotal: Double
     let taxRate: Double?
@@ -40,7 +40,7 @@ struct InvoiceDTO: Codable, Identifiable {
         case projectId      = "project_id"
         case clientId       = "client_id"
         case invoiceNumber  = "invoice_number"
-        case title
+        case subject
         case status
         case subtotal
         case taxRate        = "tax_rate"
@@ -73,7 +73,7 @@ struct InvoiceDTO: Codable, Identifiable {
         inv.total = total
         inv.amountPaid = amountPaid
         inv.balanceDue = balanceDue
-        inv.title = title
+        inv.title = subject
         inv.estimateId = estimateId
         inv.opportunityId = opportunityId
         inv.projectId = projectId
@@ -133,25 +133,27 @@ struct PaymentDTO: Codable, Identifiable {
     let id: String
     let invoiceId: String
     let companyId: String
+    let clientId: String
     let amount: Double
-    let method: String
+    let paymentMethod: String?
     let reference: String?
     let notes: String?
     let isVoid: Bool?
-    let paidAt: String
+    let paymentDate: String?
     let createdAt: String
 
     enum CodingKeys: String, CodingKey {
         case id
-        case invoiceId  = "invoice_id"
-        case companyId  = "company_id"
+        case invoiceId      = "invoice_id"
+        case companyId      = "company_id"
+        case clientId       = "client_id"
         case amount
-        case method
+        case paymentMethod  = "payment_method"
         case reference
         case notes
-        case isVoid     = "is_void"
-        case paidAt     = "paid_at"
-        case createdAt  = "created_at"
+        case isVoid         = "is_void"
+        case paymentDate    = "payment_date"
+        case createdAt      = "created_at"
     }
 
     func toModel() -> Payment {
@@ -160,8 +162,8 @@ struct PaymentDTO: Codable, Identifiable {
             invoiceId: invoiceId,
             companyId: companyId,
             amount: amount,
-            method: PaymentMethod(rawValue: method) ?? .other,
-            paidAt: SupabaseDate.parse(paidAt) ?? Date(),
+            method: paymentMethod.flatMap { PaymentMethod(rawValue: $0) } ?? .other,
+            paidAt: paymentDate.flatMap { SupabaseDate.parse($0) } ?? Date(),
             createdAt: SupabaseDate.parse(createdAt) ?? Date()
         )
         pay.notes = notes
@@ -172,16 +174,18 @@ struct PaymentDTO: Codable, Identifiable {
 struct CreatePaymentDTO: Codable {
     let invoiceId: String
     let companyId: String
+    let clientId: String
     let amount: Double
-    let method: String
+    let paymentMethod: String
     let reference: String?
     let notes: String?
 
     enum CodingKeys: String, CodingKey {
-        case invoiceId  = "invoice_id"
-        case companyId  = "company_id"
+        case invoiceId      = "invoice_id"
+        case companyId      = "company_id"
+        case clientId       = "client_id"
         case amount
-        case method
+        case paymentMethod  = "payment_method"
         case reference
         case notes
     }

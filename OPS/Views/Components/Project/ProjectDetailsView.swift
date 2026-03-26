@@ -17,6 +17,8 @@ struct ProjectDetailsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
+    @Environment(\.wizardTriggerService) private var wizardTriggerService
+    @Environment(\.wizardStateManager) private var wizardStateManager
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
 
@@ -67,6 +69,12 @@ struct ProjectDetailsView: View {
                     .overlay(saveNotificationOverlay)
                     .fullScreenCover(isPresented: $viewModel.showingPhotoViewer) {
                         photoViewerContent
+                            .onAppear {
+                                NotificationCenter.default.post(
+                                    name: Notification.Name("WizardPhotoViewed"),
+                                    object: nil
+                                )
+                            }
                     }
                     .sheet(isPresented: $viewModel.showingImagePicker) {
                         imagePickerContent
@@ -75,6 +83,7 @@ struct ProjectDetailsView: View {
                         CameraBatchView { capturedImages in
                             viewModel.selectedImages = capturedImages
                             if !capturedImages.isEmpty {
+                                NotificationCenter.default.post(name: Notification.Name("WizardPhotoCaptured"), object: nil)
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                     viewModel.addPhotosToProject(tutorialMode: tutorialMode)
                                 }
@@ -235,6 +244,14 @@ struct ProjectDetailsView: View {
                         Text("This action cannot be undone.")
                     }
                     .onAppear { handleOnAppear() }
+                    .onDisappear {
+                        // Wizard system: notify that project details was closed
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WizardScreenDismissed"),
+                            object: nil,
+                            userInfo: ["screen": "ProjectDetails"]
+                        )
+                    }
             }
         }
         .trackScreen("ProjectDetails")
@@ -897,6 +914,23 @@ struct ProjectDetailsView: View {
 
         // Refresh client
         viewModel.refreshClientData()
+
+        // Wizard system: notify project opened (completes Job Board wizard step)
+        NotificationCenter.default.post(
+            name: Notification.Name("WizardJobBoardProjectTapped"),
+            object: nil
+        )
+
+        // Wizard system: trigger documentation wizard on first project detail visit
+        if let wizard = WizardRegistry.contextualWizard(for: "documentation") {
+            wizardTriggerService?.evaluateTrigger(for: wizard, context: "project_detail_visit", projectCount: 1)
+        }
+
+        // Wizard: evaluate step prerequisites with actual photo count (auto-skip view_photo if 0 photos)
+        if let mgr = wizardStateManager, mgr.isActive {
+            let photoCount = project.getProjectImages().count
+            mgr.evaluateStepPrerequisites(projectPhotoCount: photoCount)
+        }
 
         // Pre-composite photo annotations into image cache so gallery
         // thumbnails and the photo viewer show annotations immediately.

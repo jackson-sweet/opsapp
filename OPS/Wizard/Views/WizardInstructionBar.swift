@@ -70,6 +70,7 @@ struct WizardInstructionBar: View {
                     // Skip button
                     if let step = stateManager.currentStep, step.canSkip, !stateManager.isPaused {
                         Button {
+                            TutorialHaptics.lightTap()
                             stateManager.skipCurrentStep()
                         } label: {
                             Text("SKIP")
@@ -87,6 +88,7 @@ struct WizardInstructionBar: View {
 
                     // Exit button
                     Button {
+                        TutorialHaptics.lightTap()
                         stateManager.exitWizard()
                     } label: {
                         HStack(spacing: 6) {

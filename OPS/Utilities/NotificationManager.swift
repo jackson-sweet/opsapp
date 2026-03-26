@@ -79,7 +79,13 @@ class NotificationManager: NSObject, ObservableObject {
     
     // List of pending notifications
     @Published var pendingNotifications: [UNNotificationRequest] = []
-    
+
+    // MARK: - Supabase Preferences Cache
+    // Populated by NotificationSettingsView on load and on each toggle change.
+    // Used by shouldSendNotification() for per-event-type channel checks.
+    var cachedChannelPreferences: [String: ChannelToggle]?
+    var cachedPushEnabled: Bool = true
+
     // Subject for publishing notification events
     private let notificationSubject = PassthroughSubject<UNNotification, Never>()
     var notificationPublisher: AnyPublisher<UNNotification, Never> {
@@ -640,11 +646,12 @@ class NotificationManager: NSObject, ObservableObject {
 
     // MARK: - OneSignal User Linking
 
-    /// Link current user to OneSignal for targeted push notifications
-    /// Call this after user logs in successfully
+    /// Link current user to OneSignal for targeted push notifications.
+    /// Called after login and on every foreground return as a safety net.
+    /// OneSignal.login() is idempotent — safe to call repeatedly.
     func linkUserToOneSignal() {
         guard let userId = UserDefaults.standard.string(forKey: "currentUserId") else {
-            print("[ONESIGNAL] Cannot link user - no user ID found")
+            print("[ONESIGNAL] Cannot link user - no user ID found in UserDefaults")
             return
         }
 
@@ -652,24 +659,27 @@ class NotificationManager: NSObject, ObservableObject {
         OneSignal.login(userId)
         print("[ONESIGNAL] Linked user ID: \(userId)")
 
-        // Add tags for segmentation (optional but useful)
-        // Try multiple keys since user type can be stored in different places
+        // Log OneSignal state for debugging
+        let onesignalId = OneSignal.User.onesignalId
+        let externalId = OneSignal.User.externalId
+        let pushSub = OneSignal.User.pushSubscription.optedIn
+        let pushToken = OneSignal.User.pushSubscription.token
+        print("[ONESIGNAL] State after login — onesignalId: \(onesignalId ?? "nil"), externalId: \(externalId ?? "nil"), optedIn: \(pushSub), token: \(pushToken != nil ? "present" : "nil")")
+
+        // Add tags for segmentation
         let userRole = UserDefaults.standard.string(forKey: "selected_user_type")
             ?? UserDefaults.standard.string(forKey: "user_type")
             ?? UserDefaults.standard.string(forKey: "user_type_raw")
 
         if let role = userRole {
             OneSignal.User.addTag(key: "role", value: role)
-            print("[ONESIGNAL] Added role tag: \(role)")
         }
 
-        // Try multiple keys for company ID
         let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId")
             ?? UserDefaults.standard.string(forKey: "company_id")
 
         if let company = companyId {
             OneSignal.User.addTag(key: "companyId", value: company)
-            print("[ONESIGNAL] Added companyId tag: \(company)")
         }
     }
 
@@ -743,6 +753,70 @@ class NotificationManager: NSObject, ObservableObject {
         }
 
         return true
+    }
+
+    // MARK: - Per-Event Channel Check (Supabase-backed)
+
+    /// Check if a specific event type should generate a push notification, combining:
+    /// 1. Global mute / quiet hours / priority filter (existing logic)
+    /// 2. Global push kill switch from Supabase
+    /// 3. Per-event push toggle from channel_preferences JSONB
+    ///
+    /// Falls back to true if no cached preferences exist (offline / first launch).
+    func shouldSendPushForEvent(
+        _ eventType: NotificationEventType,
+        priority: NotificationPriorityLevel = .normal
+    ) -> Bool {
+        // Run existing global checks first (mute, quiet hours, priority filter)
+        guard shouldSendNotification(priority: priority) else { return false }
+
+        // Check cached Supabase preferences
+        guard cachedPushEnabled else {
+            print("[NOTIFICATIONS] Push globally disabled via Supabase preferences")
+            return false
+        }
+
+        if let prefs = cachedChannelPreferences,
+           let toggle = prefs[eventType.rawValue] {
+            if !toggle.push {
+                print("[NOTIFICATIONS] Push disabled for \(eventType.rawValue) via channel preferences")
+                return false
+            }
+        }
+        // No cached prefs = allow (graceful degradation when offline)
+
+        return true
+    }
+
+    /// Fetch and cache preferences from Supabase. Call on login / app foreground.
+    func refreshCachedPreferences() {
+        guard let userId = UserDefaults.standard.string(forKey: "currentUserId"),
+              let companyId = UserDefaults.standard.string(forKey: "company_id") else { return }
+
+        Task {
+            do {
+                let repo = NotificationPreferencesRepository()
+                let prefs = try await repo.fetchPreferences(userId: userId, companyId: companyId)
+                await MainActor.run {
+                    self.cachedChannelPreferences = prefs.channelPreferences
+                    self.cachedPushEnabled = prefs.pushEnabled
+                    // Sync quiet hours to local storage for the existing shouldSendNotification logic
+                    if let start = prefs.quietHoursStart, let end = prefs.quietHoursEnd {
+                        let startHour = Int(start.prefix(2)) ?? 22
+                        let endHour = Int(end.prefix(2)) ?? 7
+                        UserDefaults.standard.set(true, forKey: "quietHoursEnabled")
+                        UserDefaults.standard.set(startHour, forKey: "quietHoursStart")
+                        UserDefaults.standard.set(endHour, forKey: "quietHoursEnd")
+                    } else {
+                        UserDefaults.standard.set(false, forKey: "quietHoursEnabled")
+                    }
+                    print("[NOTIFICATIONS] Cached preferences refreshed from Supabase")
+                }
+            } catch {
+                print("[NOTIFICATIONS] Failed to refresh cached preferences: \(error)")
+                // Keep existing cached values — offline graceful degradation
+            }
+        }
     }
 }
 

@@ -28,8 +28,8 @@ struct BugReportInsertDTO: Encodable {
     let screenName: String
     let networkType: String
     let batteryLevel: Float
-    let freeDiskMb: Double
-    let freeRamMb: Double
+    let freeDiskMb: Int
+    let freeRamMb: Int
     let consoleLogs: JSONValue
     let breadcrumbs: JSONValue
     let networkLog: JSONValue
@@ -181,8 +181,8 @@ final class BugReportSubmissionService {
             screenName: capture.currentScreenName,
             networkType: networkType,
             batteryLevel: deviceInfo["batteryLevel"] as? Float ?? -1,
-            freeDiskMb: deviceInfo["freeDiskMb"] as? Double ?? -1,
-            freeRamMb: deviceInfo["freeRamMb"] as? Double ?? -1,
+            freeDiskMb: Int((deviceInfo["freeDiskMb"] as? Double ?? -1).rounded()),
+            freeRamMb: Int((deviceInfo["freeRamMb"] as? Double ?? -1).rounded()),
             reporterName: reporterName,
             reporterEmail: reporterEmail
         )
@@ -399,8 +399,8 @@ struct BugReportPayload: Codable {
     let screenName: String
     let networkType: String
     let batteryLevel: Float
-    let freeDiskMb: Double
-    let freeRamMb: Double
+    let freeDiskMb: Int
+    let freeRamMb: Int
     let reporterName: String
     let reporterEmail: String
 }

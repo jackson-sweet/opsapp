@@ -64,6 +64,7 @@ struct ProjectQuickActionsBar: View {
                             action: item.action
                         )
                         .frame(minWidth: 64)
+                        .wizardTarget(item.label == "PHOTO" ? "capture_photo" : "")
 
                         // Spacer + divider + spacer — matches the 16pt container edge padding
                         if index < actions.count - 1 {

@@ -595,6 +595,7 @@ final class RealtimeProcessor: ObservableObject {
             if !pendingFields.contains("hasPrioritySupport")    { existing.hasPrioritySupport = model.hasPrioritySupport }
             if !pendingFields.contains("stripeCustomerId")      { existing.stripeCustomerId = model.stripeCustomerId }
             if !pendingFields.contains("externalId")            { existing.externalId = model.externalId }
+            if !pendingFields.contains("accountHolderId")       { existing.accountHolderId = model.accountHolderId }
             if !pendingFields.contains("deletedAt")             { existing.deletedAt = model.deletedAt }
             existing.lastSyncedAt = Date()
             existing.needsSync = false

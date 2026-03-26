@@ -122,6 +122,12 @@ struct TutorialFlowViewV2: View {
     @State private var closeoutShowClient = false              // Client name fade-in after typewriter
     @State private var closeoutShowFinancials = false          // Financial bars visibility (separate from step gate)
     @State private var closeoutTasksReturned = 0               // Number of tasks faded back in during step 6
+    // Stack mode — remaining projects as compact swipeable PAID cards after first full animation
+    @State private var closeoutStackMode = false
+    @State private var closeoutStackVisible: Int = 0
+    @State private var closeoutStackClosed: Set<Int> = []
+    @State private var closeoutStackCards: [Int] = []         // Card indices for the stack (set once, stable)
+    @State private var closeoutStackHintShowing = false       // Swipe hint on first card + dim the rest
 
     // Phase 8 — Closing
     @State private var showClosing = false
@@ -195,70 +201,131 @@ struct TutorialFlowViewV2: View {
                 Color.black.opacity(0.7)
                     .ignoresSafeArea()
 
-                VStack(spacing: 24) {
+                VStack(spacing: 20) {
                     Spacer()
 
-                    // Ghost card — outline only, simulates the swipe
+                    // Ghost card — matches actual review card proportions and content
                     ZStack {
-                        // Right label
-                        HStack {
-                            Spacer()
-                            VStack(spacing: 4) {
-                                Image(systemName: "checkmark.circle")
-                                    .font(.system(size: 20, weight: .medium))
-                                Text("COMPLETE")
-                                    .font(.status)
-                                    .tracking(1.5)
-                            }
-                            .foregroundStyle(OPSStyle.Colors.successStatus)
-                            .padding(.trailing, 24)
-                        }
-                        .opacity(swipeOnboardingPhase == 1 || swipeOnboardingPhase == 2 ? 1 : 0)
+                        // Card background
+                        OPSStyle.Colors.cardBackgroundDark
 
-                        // Left label
-                        HStack {
-                            VStack(spacing: 4) {
-                                Image(systemName: "arrow.uturn.left.circle")
-                                    .font(.system(size: 20, weight: .medium))
-                                Text("INCOMPLETE")
-                                    .font(.status)
-                                    .tracking(1.5)
-                            }
-                            .foregroundStyle(OPSStyle.Colors.warningStatus)
-                            .padding(.leading, 24)
+                        // Color stripe at top
+                        VStack {
+                            Rectangle()
+                                .fill(OPSStyle.Colors.inactiveStatus)
+                                .frame(height: 3)
                             Spacer()
                         }
-                        .opacity(swipeOnboardingPhase == 4 || swipeOnboardingPhase == 5 ? 1 : 0)
 
-                        // Ghost card outline
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                            .frame(height: 200)
-                            .overlay(
-                                VStack(spacing: 4) {
-                                    Image(systemName: "hand.draw")
-                                        .font(.system(size: 24))
-                                        .foregroundStyle(Color.white.opacity(0.4))
-                                    Text("SWIPE")
-                                        .font(.microLabel)
-                                        .foregroundStyle(Color.white.opacity(0.4))
-                                        .tracking(2)
-                                }
+                        // Top gradient
+                        VStack {
+                            LinearGradient(
+                                gradient: Gradient(colors: [.black.opacity(0.55), .clear]),
+                                startPoint: .top,
+                                endPoint: .bottom
                             )
-                            .offset(x: ghostOffset)
+                            .frame(height: 100)
+                            Spacer()
+                        }
+
+                        // Bottom gradient
+                        LinearGradient(
+                            gradient: Gradient(colors: [.clear, .black.opacity(0.85)]),
+                            startPoint: .center,
+                            endPoint: .bottom
+                        )
+
+                        // Placeholder content (dimmed)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Spacer()
+
+                            HStack(spacing: 5) {
+                                Circle()
+                                    .fill(OPSStyle.Colors.warningStatus)
+                                    .frame(width: 5, height: 5)
+                                Text("3 DAYS AGO")
+                                    .font(.microLabel)
+                                    .foregroundStyle(OPSStyle.Colors.warningStatus.opacity(0.5))
+                                    .tracking(1)
+                            }
+
+                            Text("GUTTER CLEANING")
+                                .font(.title)
+                                .foregroundStyle(Color.white.opacity(0.3))
+                                .lineLimit(1)
+
+                            HStack(spacing: 6) {
+                                Image(systemName: "folder.fill")
+                                    .font(.system(size: 11))
+                                Text("PARKSIDE DUPLEX")
+                                    .font(.caption)
+                            }
+                            .foregroundStyle(Color.white.opacity(0.2))
+
+                            HStack(spacing: 6) {
+                                Image(systemName: "person.circle.fill")
+                                    .font(.system(size: 11))
+                                Text("METRO PROPERTY MGMT")
+                                    .font(.smallCaption)
+                            }
+                            .foregroundStyle(Color.white.opacity(0.15))
+                        }
+                        .padding(24)
+                        .padding(.bottom, 40)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        // COMPLETE stamp — matches real FlowReviewCardV2 stampView
+                        if swipeOnboardingPhase == 1 || swipeOnboardingPhase == 2 {
+                            Text("COMPLETE")
+                                .font(.headingBold)
+                                .foregroundStyle(OPSStyle.Colors.successStatus)
+                                .tracking(3)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.successStatus, lineWidth: 2)
+                                )
+                                .rotationEffect(.degrees(-12))
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .transition(.opacity)
+                        }
+
+                        // SKIP stamp — matches real FlowReviewCardV2 stampView
+                        if swipeOnboardingPhase == 4 || swipeOnboardingPhase == 5 {
+                            Text("SKIP")
+                                .font(.headingBold)
+                                .foregroundStyle(OPSStyle.Colors.inactiveStatus)
+                                .tracking(3)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.inactiveStatus, lineWidth: 2)
+                                )
+                                .rotationEffect(.degrees(12))
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .transition(.opacity)
+                        }
                     }
-                    .frame(height: 200)
-                    .padding(.horizontal, 32)
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(0.7, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                    .offset(x: ghostOffset)
+                    .rotationEffect(.degrees(ghostOffset / 25))
+                    .padding(.horizontal, 24)
 
                     // Instruction text
-                    VStack(spacing: 6) {
-                        Text(swipeOnboardingPhase >= 4
-                            ? "SWIPE LEFT TO LEAVE INCOMPLETE"
-                            : "SWIPE RIGHT TO COMPLETE")
-                            .font(.caption)
-                            .foregroundStyle(Color.white.opacity(0.7))
-                            .tracking(1.5)
-                    }
+                    Text(swipeOnboardingPhase >= 4
+                        ? "SWIPE LEFT TO SKIP"
+                        : "SWIPE RIGHT TO COMPLETE")
+                        .font(.caption)
+                        .foregroundStyle(Color.white.opacity(0.7))
+                        .tracking(1.5)
 
                     Spacer()
                 }
@@ -445,7 +512,7 @@ struct TutorialFlowViewV2: View {
                     )
                 }
                 .padding(.horizontal, 12)
-                .frame(maxHeight: .infinity, alignment: .top)
+                .frame(maxHeight: .infinity, alignment: .center)
             }
 
             // ── PHASE 5: Review with stacking ──
@@ -498,9 +565,10 @@ struct TutorialFlowViewV2: View {
 
                 VStack(spacing: 12) {
                 // Swipe hint — above the card, left-to-right shimmer
-                if showSwipeHint && closeoutStep >= 5 && !closeoutSwipeCommitted {
+                if showSwipeHint && closeoutStep >= 5 {
                     CloseoutSwipeHint()
-                        .transition(.opacity)
+                        .opacity(closeoutSwipeCommitted ? 0 : 1)
+                        .animation(.easeOut(duration: 0.2), value: closeoutSwipeCommitted)
                 }
 
                 // ZStack: card content is the sizing child. Revealed/flash cards use
@@ -591,6 +659,44 @@ struct TutorialFlowViewV2: View {
                 .scaleEffect(closeoutCardScale, anchor: .bottomTrailing)
                 .offset(closeoutCardOffset)
                 .opacity(closeoutCardOpacity)
+            }
+
+            // ── PHASES 6-7: Stack mode — remaining PAID projects as swipeable vertical stack ──
+            if closeoutStackMode {
+                VStack(spacing: 8) {
+                    ForEach(closeoutStackCards, id: \.self) { cardIdx in
+                        if !closeoutStackClosed.contains(cardIdx) {
+                            let isFirst = cardIdx == closeoutStackCards.first(where: { !closeoutStackClosed.contains($0) })
+                            let project = TutorialDataV2.closeoutProject(for: cardIdx)
+
+                            VStack(spacing: 6) {
+                                // Swipe hint above the first card
+                                if closeoutStackHintShowing && isFirst == true {
+                                    CloseoutSwipeHint()
+                                        .transition(.opacity)
+                                }
+
+                                CloseoutStackCard(
+                                    projectName: project.projectName,
+                                    clientName: project.clientName,
+                                    color: project.color,
+                                    onClosed: { handleStackCardClosed(cardIdx) }
+                                )
+                            }
+                            .opacity(closeoutStackHintShowing && isFirst != true ? 0.3 : 1)
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .offset(y: 16)),
+                                removal: .scale(scale: 0.95, anchor: .top).combined(with: .opacity)
+                            ))
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .animation(.easeOut(duration: 0.3), value: closeoutStackVisible)
+                .animation(.easeInOut(duration: 0.35), value: closeoutStackClosed)
+                .animation(.easeOut(duration: 0.25), value: closeoutStackHintShowing)
+                .transition(.opacity)
             }
 
             // ── PHASE 8: Closing Sequence ──
@@ -1556,7 +1662,7 @@ struct TutorialFlowViewV2: View {
 
             // ── Phase A+B: 13 steps with strikethrough, then morph to two columns ──
             if !showClosingLists {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(spacing: 5) {
                     ForEach(Array(steps.enumerated()), id: \.element.id) { idx, step in
                         let isVisible = idx < closingStepsVisible
                         let isStruck = step.opsHandles
@@ -1566,76 +1672,118 @@ struct TutorialFlowViewV2: View {
                         Text(step.text)
                             .font(step.opsHandles ? .heading : .headingBold)
                             .foregroundStyle(
-                                isStruck ? OPSStyle.Colors.tertiaryText :
+                                isStruck ? OPSStyle.Colors.tertiaryText.opacity(0.4) :
                                 !step.opsHandles ? OPSStyle.Colors.primaryText :
                                 OPSStyle.Colors.secondaryText
                             )
-                            .tracking(2)
+                            .tracking(2.5)
                             .overlay(alignment: .leading) {
                                 if step.opsHandles && strikeDrawProgress > 0 {
                                     Rectangle()
-                                        .fill(OPSStyle.Colors.tertiaryText)
+                                        .fill(OPSStyle.Colors.primaryAccent.opacity(0.5))
                                         .frame(height: 1.5)
                                         .scaleEffect(x: strikeDrawProgress, y: 1, anchor: .leading)
                                 }
                             }
+                            .frame(maxWidth: .infinity)
                             .opacity(isVisible ? 1 : 0)
+                            .offset(y: isVisible ? 0 : 8)
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 32)
                 .transition(.opacity)
             }
 
             // ── Phase C: Two-column morph — OPS left, YOU right ──
             // Collapse: lists shrink to 0 height, then fade out one at a time
             if showClosingLists && closingTaglineProgress == 0 {
-                HStack(alignment: .top, spacing: 32) {
+                HStack(alignment: .top, spacing: 12) {
                     // OPS column — fades out first
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("OPS")
-                            .font(.status)
-                            .foregroundStyle(OPSStyle.Colors.primaryAccent)
-                            .tracking(2)
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 6) {
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(OPSStyle.Colors.primaryAccent)
+                                .frame(width: 2, height: 12)
+                            Text("OPS")
+                                .font(.status)
+                                .foregroundStyle(OPSStyle.Colors.primaryAccent)
+                                .tracking(2)
+                        }
+                        .padding(.bottom, 10)
 
                         Rectangle()
-                            .fill(OPSStyle.Colors.primaryAccent.opacity(0.2))
+                            .fill(OPSStyle.Colors.primaryAccent.opacity(0.12))
                             .frame(height: 0.5)
 
                         if !closingListsCollapsing {
-                            ForEach(opsSteps, id: \.id) { step in
-                                Text(step.text)
-                                    .font(.smallCaption)
-                                    .foregroundStyle(OPSStyle.Colors.secondaryText)
-                                    .tracking(1)
-                                    .strikethrough(true, color: OPSStyle.Colors.tertiaryText)
+                            VStack(alignment: .leading, spacing: 3) {
+                                ForEach(opsSteps, id: \.id) { step in
+                                    Text(step.text)
+                                        .font(.microLabel)
+                                        .foregroundStyle(OPSStyle.Colors.tertiaryText)
+                                        .tracking(1)
+                                        .strikethrough(true, color: OPSStyle.Colors.primaryAccent.opacity(0.35))
+                                }
                             }
+                            .padding(.top, 8)
+                            .transition(.opacity)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .fill(OPSStyle.Colors.primaryAccent.opacity(0.03))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.08), lineWidth: 0.5)
+                    )
                     .opacity(closingOpsListFaded ? 0 : 1)
+                    .scaleEffect(closingOpsListFaded ? 0.95 : 1, anchor: .center)
 
                     // YOU column — fades out second
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("YOU")
-                            .font(.status)
-                            .foregroundStyle(OPSStyle.Colors.primaryText)
-                            .tracking(2)
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 6) {
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(OPSStyle.Colors.primaryText)
+                                .frame(width: 2, height: 12)
+                            Text("YOU")
+                                .font(.status)
+                                .foregroundStyle(OPSStyle.Colors.primaryText)
+                                .tracking(2)
+                        }
+                        .padding(.bottom, 10)
 
                         Rectangle()
-                            .fill(OPSStyle.Colors.primaryText.opacity(0.2))
+                            .fill(OPSStyle.Colors.primaryText.opacity(0.12))
                             .frame(height: 0.5)
 
                         if !closingListsCollapsing {
-                            ForEach(userSteps, id: \.id) { step in
-                                Text(step.text)
-                                    .font(.bodyBold)
-                                    .foregroundStyle(OPSStyle.Colors.primaryText)
-                                    .tracking(1)
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(userSteps, id: \.id) { step in
+                                    Text(step.text)
+                                        .font(.bodyBold)
+                                        .foregroundStyle(OPSStyle.Colors.primaryText)
+                                        .tracking(1)
+                                }
                             }
+                            .padding(.top, 8)
+                            .transition(.opacity)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .fill(OPSStyle.Colors.primaryText.opacity(0.02))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.primaryText.opacity(0.06), lineWidth: 0.5)
+                    )
                     .opacity(closingYouListFaded ? 0 : 1)
+                    .scaleEffect(closingYouListFaded ? 0.95 : 1, anchor: .center)
                 }
                 .padding(.horizontal, 24)
                 .transition(.opacity)
@@ -2539,15 +2687,167 @@ struct TutorialFlowViewV2: View {
             }
         }
 
-        // Step 4: Transition to next project
+        // Step 4: Transition — stack mode for remaining projects, or closing if done
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
             self.showCloseoutCard = false
             self.showSwipeHint = false
             self.closeoutSwipeDrag = .zero
             self.closeoutSwipeCommitted = false
             self.closeoutSwipeHapticFired = false
-            self.closeoutCurrentProject += 1
-            self.animateCloseoutForProject()
+
+            let remainingCount = self.closeoutProjectOrder.count - (self.closeoutCurrentProject + 1)
+
+            if remainingCount > 0 {
+                self.enterCloseoutStackMode()
+            } else {
+                withAnimation(.easeOut(duration: 0.2)) { self.showCompletedStack = false }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.transitionToClosing()
+                }
+            }
+        }
+    }
+
+    // MARK: → Stack Mode (expedited closeout for remaining projects)
+
+    /// Runs expedited invoice → SENT → PAID animation for each remaining project,
+    /// then transitions to the swipeable stack with hint overlay.
+    private func enterCloseoutStackMode() {
+        let remainingIndices = (closeoutCurrentProject + 1)..<closeoutProjectOrder.count
+
+        guard !remainingIndices.isEmpty else {
+            withAnimation(.easeOut(duration: 0.2)) { showCompletedStack = false }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.transitionToClosing() }
+            return
+        }
+
+        // Store the card indices for the stack (stable reference, independent of closeoutCurrentProject)
+        closeoutStackCards = remainingIndices.map { closeoutProjectOrder[$0] }
+
+        var totalDelay: Double = 0.3
+
+        for projectIndex in remainingIndices {
+            let cardIdx = closeoutProjectOrder[projectIndex]
+            let startDelay = totalDelay
+
+            // ── Expand card from completed stack ──
+            DispatchQueue.main.asyncAfter(deadline: .now() + startDelay) {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    self.completedCardIndices.removeAll { $0 == cardIdx }
+                }
+
+                // Reset per-card state
+                self.closeoutCurrentProject = projectIndex
+                self.closeoutStep = 0
+                self.showCloseoutTasks = false
+                self.showInvoiceLines = false
+                self.showSentIndicator = false
+                self.showPaidBanner = false
+                self.closeoutTasksReturned = 0
+                self.closeoutSwipeDrag = .zero
+                self.closeoutSwipeCommitted = false
+                self.closeoutSwipeHapticFired = false
+                self.showSwipeHint = false
+                self.closeoutCardScale = 0.35
+                let offsetX = self.stackCenter.x - self.contentCenter.x
+                let offsetY = self.stackCenter.y - self.contentCenter.y
+                self.closeoutCardOffset = CGSize(width: offsetX, height: offsetY)
+                self.closeoutCardOpacity = 0
+
+                self.showCloseoutCard = true
+                self.closeoutCardOpacity = 1
+                // dampingFraction 0.85 = fast controlled expansion, no bounce
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    self.closeoutCardScale = 1.0
+                    self.closeoutCardOffset = .zero
+                }
+                TutorialHaptics.arrival()
+            }
+
+            // ── Invoice header ──
+            DispatchQueue.main.asyncAfter(deadline: .now() + startDelay + 0.4) {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    self.closeoutStep = 1
+                    self.showInvoiceLines = true
+                }
+            }
+
+            // ── SENT ──
+            DispatchQueue.main.asyncAfter(deadline: .now() + startDelay + 0.7) {
+                withAnimation(.easeOut(duration: 0.12)) {
+                    self.closeoutStep = 2
+                    self.showSentIndicator = true
+                }
+            }
+
+            // ── PAID ──
+            DispatchQueue.main.asyncAfter(deadline: .now() + startDelay + 1.0) {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    self.closeoutStep = 3
+                    self.showPaidBanner = true
+                }
+                TutorialHaptics.milestone()
+            }
+
+            // ── Shrink + fade ──
+            DispatchQueue.main.asyncAfter(deadline: .now() + startDelay + 1.5) {
+                withAnimation(.easeIn(duration: 0.2)) {
+                    self.closeoutCardScale = 0.85
+                    self.closeoutCardOpacity = 0
+                }
+            }
+
+            // ── Hide card ──
+            DispatchQueue.main.asyncAfter(deadline: .now() + startDelay + 1.75) {
+                self.showCloseoutCard = false
+            }
+
+            totalDelay = startDelay + 1.9
+        }
+
+        // After all expedited animations, show the stack with swipe hint
+        DispatchQueue.main.asyncAfter(deadline: .now() + totalDelay + 0.2) {
+            self.showCloseoutStackWithHint()
+        }
+    }
+
+    /// Transitions to the swipeable stack with hint overlay on the first card.
+    private func showCloseoutStackWithHint() {
+        if state.currentPhase == .projectCloseout {
+            state.advancePhase()
+            transitionHeader()
+        }
+
+        withAnimation(.easeOut(duration: 0.2)) {
+            showCompletedStack = false
+        }
+
+        closeoutStackClosed = []
+        closeoutStackHintShowing = true
+        closeoutStackVisible = closeoutStackCards.count
+
+        withAnimation(.easeOut(duration: 0.3)) {
+            closeoutStackMode = true
+        }
+    }
+
+    private func handleStackCardClosed(_ cardIdx: Int) {
+        withAnimation(.easeInOut(duration: 0.35)) {
+            closeoutStackClosed.insert(cardIdx)
+            // After first card is swiped, remove the hint overlay — rest become fully interactive
+            if closeoutStackHintShowing {
+                closeoutStackHintShowing = false
+            }
+        }
+        TutorialHaptics.milestone()
+
+        if closeoutStackClosed.count >= closeoutStackCards.count {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    self.closeoutStackMode = false
+                }
+                self.transitionToClosing()
+            }
         }
     }
 
@@ -2644,31 +2944,28 @@ struct TutorialFlowViewV2: View {
         }
         t += 2.0 // Hold the two-column view so user can read it
 
-        // ── Phase D: Lists collapse up into divider, then fade out one at a time ──
+        // ── Phase D: Columns dissolve, then tagline ──
 
-        // Step 1: Items collapse up — content removed, headers remain
+        // Step 1: Items collapse within columns
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeIn(duration: 0.35)) {
+            withAnimation(.easeOut(duration: 0.35)) {
                 closingListsCollapsing = true
             }
         }
-        t += 0.5
+        t += 0.45
 
-        // Step 2: OPS column fades out first
+        // Step 2: Both column containers fade + scale out together
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeOut(duration: 0.3)) { closingOpsListFaded = true }
+            withAnimation(.easeInOut(duration: 0.4)) {
+                closingOpsListFaded = true
+                closingYouListFaded = true
+            }
         }
-        t += 0.4
+        t += 0.6
 
-        // Step 3: YOU column fades out second
+        // Step 3: Begin tagline typewriter
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeOut(duration: 0.3)) { closingYouListFaded = true }
-        }
-        t += 0.5
-
-        // Step 4: Hide columns entirely, begin tagline typewriter
-        DispatchQueue.main.asyncAfter(deadline: .now() + t) {
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(.easeOut(duration: 0.3)) {
                 closingTaglineProgress = 1 // Shows line 0, hides columns
             }
             startClosingTypewriter(lineIndex: 0)
@@ -2728,6 +3025,114 @@ private struct TapToBeginHint: View {
                 glowActive = true
             }
         }
+    }
+}
+
+/// Compact PAID card for stack mode — self-contained swipe-to-close with graceful collapse.
+/// Shows project name, client, color stripe, and PAID badge. Swipe right to close.
+/// On commit: snaps back, flashes CLOSED state, then calls onClosed for parent to collapse.
+private struct CloseoutStackCard: View {
+    let projectName: String
+    let clientName: String
+    let color: Color
+    let onClosed: () -> Void
+
+    @State private var dragOffset: CGFloat = 0
+    @State private var committed = false
+    @State private var hapticFired = false
+
+    private let threshold: CGFloat = 140
+
+    var body: some View {
+        let closedColor = OPSStyle.Colors.statusColor(for: .closed)
+
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(committed ? closedColor : color)
+                .frame(width: 3, height: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(projectName.uppercased())
+                    .font(.headingBold)
+                    .foregroundStyle(OPSStyle.Colors.primaryText)
+                    .tracking(0.8)
+
+                Text(clientName)
+                    .font(.caption)
+                    .foregroundStyle(OPSStyle.Colors.secondaryText)
+            }
+
+            Spacer()
+
+            if committed {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 14))
+                    Text("CLOSED")
+                        .font(.status)
+                        .tracking(1.5)
+                }
+                .foregroundStyle(closedColor)
+                .transition(.opacity)
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 14))
+                    Text("PAID")
+                        .font(.status)
+                        .tracking(1.5)
+                }
+                .foregroundStyle(OPSStyle.Colors.successStatus)
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .fill(committed
+                    ? closedColor.opacity(0.05)
+                    : OPSStyle.Colors.cardBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(
+                    committed
+                        ? closedColor.opacity(0.3)
+                        : OPSStyle.Colors.successStatus.opacity(0.2),
+                    lineWidth: OPSStyle.Layout.Border.standard
+                )
+        )
+        .offset(x: dragOffset)
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    guard !committed else { return }
+                    dragOffset = max(0, value.translation.width) // Right-swipe only
+                    if dragOffset >= threshold && !hapticFired {
+                        let impact = UIImpactFeedbackGenerator(style: .medium)
+                        impact.impactOccurred()
+                        hapticFired = true
+                    }
+                }
+                .onEnded { value in
+                    guard !committed else { return }
+                    if value.translation.width >= threshold {
+                        // Commit: snap back, show CLOSED, then collapse
+                        committed = true
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            dragOffset = 0
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            onClosed()
+                        }
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            dragOffset = 0
+                        }
+                        hapticFired = false
+                    }
+                }
+        )
+        .animation(.easeOut(duration: 0.2), value: committed)
     }
 }
 

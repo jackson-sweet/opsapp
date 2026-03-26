@@ -360,20 +360,13 @@ struct LandingView: View {
                 .zIndex(3)
             }
 
-            // Forgot password overlay
-            if showForgotPassword {
-                ForgotPasswordView(
-                    isPresented: $showForgotPassword,
-                    prefilledEmail: $username
-                )
-                .transition(.opacity)
-                .zIndex(4)
-            }
         }
         .animation(hasAppeared ? .easeInOut(duration: 0.35) : nil, value: showLoginMode)
         .animation(.easeInOut, value: showOnboarding)
-        .animation(.easeInOut, value: showForgotPassword)
         .animation(.easeInOut, value: showLoginSuccess)
+        .sheet(isPresented: $showForgotPassword) {
+            ForgotPasswordView(prefilledEmail: username)
+        }
         .alert(isPresented: $showError, content: {
             Alert(
                 title: Text("Sign In Failed"),
@@ -455,6 +448,16 @@ struct LandingView: View {
     }
 
     private func checkResumeOnboarding() {
+        // Only resume onboarding if there's actual saved state from a previous
+        // incomplete onboarding session. Do NOT auto-trigger onboarding just
+        // because the user is unauthenticated — the LandingView itself is the
+        // correct screen for unauthenticated users. The "GET SIGNED UP" button
+        // handles fresh onboarding starts.
+        guard OnboardingState.load() != nil else {
+            UserDefaults.standard.removeObject(forKey: "resume_onboarding")
+            return
+        }
+
         let (shouldShow, manager) = OnboardingManager.shouldShowOnboarding(dataController: dataController)
 
         if shouldShow {

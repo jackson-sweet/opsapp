@@ -571,13 +571,13 @@ struct MonthGridView: View {
                 }
                 .coordinateSpace(name: "scroll")
                 .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
-                    // Track initial scroll offset for tutorial
-                    if tutorialMode && initialScrollOffset == nil {
+                    // Track initial scroll offset (used by both tutorial and wizard systems)
+                    if initialScrollOffset == nil {
                         initialScrollOffset = value
                     }
 
-                    // Detect user scroll for tutorial (significant movement from initial)
-                    if tutorialMode && !hasNotifiedTutorialScroll && !isProgrammaticScroll {
+                    // Detect user scroll — significant movement from initial position
+                    if !hasNotifiedTutorialScroll && !isProgrammaticScroll {
                         if let initial = initialScrollOffset, abs(value - initial) > 30 {
                             hasNotifiedTutorialScroll = true
                             NotificationCenter.default.post(
@@ -595,8 +595,8 @@ struct MonthGridView: View {
                             let newHeight = gestureStartHeight * value
                             cellHeight = min(max(newHeight, minHeight), maxHeight)
 
-                            // Detect pinch for tutorial
-                            if tutorialMode && !hasNotifiedTutorialPinch && abs(value - 1.0) > 0.1 {
+                            // Detect pinch (used by both tutorial and wizard systems)
+                            if !hasNotifiedTutorialPinch && abs(value - 1.0) > 0.1 {
                                 hasNotifiedTutorialPinch = true
                                 NotificationCenter.default.post(
                                     name: Notification.Name("CalendarMonthViewPinched"),
@@ -1217,6 +1217,7 @@ struct DayDetailsSheet: View {
             object: nil,
             userInfo: userInfo
         )
+        NotificationCenter.default.post(name: Notification.Name("WizardCalendarTaskTapped"), object: nil)
         dismiss()
     }
 }

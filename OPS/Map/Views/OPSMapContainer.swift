@@ -38,6 +38,9 @@ struct OPSMapContainer: View {
     @StateObject private var coordinator: OPSMapCoordinator
     @StateObject private var geofenceManager: GeofenceManager
 
+    /// Drag offset for the stacked group sheet (dismiss gesture)
+    @State private var stackedGroupDragOffset: CGFloat = 0
+
     // ──────────────────────────────────────────────
     // MARK: - Init
     // ──────────────────────────────────────────────
@@ -79,7 +82,7 @@ struct OPSMapContainer: View {
 
     /// True when any overlay card/tooltip is showing.
     private var isShowingOverlay: Bool {
-        coordinator.showingProjectCard || coordinator.showingCrewTooltip
+        coordinator.showingProjectCard || coordinator.showingCrewTooltip || coordinator.showingStackedGroup
     }
 
     /// The currently selected project, if any.
@@ -172,6 +175,7 @@ struct OPSMapContainer: View {
 
             // 5. Stacked group list — when tapping a multi-project pin
             // Styled to match ProjectPinCard: ultraThinMaterial, rounded top corners, drag handle
+            // Supports drag-to-dismiss (swipe down) matching ProjectPinCard behavior
             if coordinator.showingStackedGroup && !coordinator.stackedGroupProjects.isEmpty {
                 VStack {
                     Spacer()
@@ -201,15 +205,6 @@ struct OPSMapContainer: View {
                             }
 
                             Spacer()
-
-                            // Count badge (matching AppHeader badge pattern)
-                            Text("\(coordinator.stackedGroupProjects.count)")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.invertedText)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(OPSStyle.Colors.warningStatus)
-                                .clipShape(Capsule())
                         }
                         .padding(.horizontal, 16)
 
@@ -300,6 +295,37 @@ struct OPSMapContainer: View {
                             )
                             .stroke(Color.white.opacity(0.08), lineWidth: 1)
                         )
+                    )
+                    .offset(y: stackedGroupDragOffset)
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                let translation = value.translation.height
+                                if translation > 0 {
+                                    // Dragging down — allow with rubber-band feel
+                                    stackedGroupDragOffset = translation
+                                }
+                            }
+                            .onEnded { value in
+                                let translation = value.translation.height
+                                if translation > 50 {
+                                    // Swipe down past threshold — dismiss
+                                    withAnimation(OPSStyle.Animation.standard) {
+                                        stackedGroupDragOffset = 400
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                        coordinator.showingStackedGroup = false
+                                        coordinator.stackedGroupProjects = []
+                                        stackedGroupDragOffset = 0
+                                    }
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                } else {
+                                    // Snap back
+                                    withAnimation(OPSStyle.Animation.standard) {
+                                        stackedGroupDragOffset = 0
+                                    }
+                                }
+                            }
                     )
                     .padding(.bottom, 90)
                 }

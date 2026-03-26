@@ -14,6 +14,7 @@ struct JobBoardView: View {
     @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
+    @Environment(\.wizardTriggerService) private var wizardTriggerService
     @State private var selectedSection: JobBoardSection = .projects
     @State private var previousSection: JobBoardSection = .projects
     @State private var searchText = ""
@@ -172,7 +173,10 @@ struct JobBoardView: View {
                     // Action row: filter + active toggle (project sections only)
                     if !tutorialMode && (selectedSection == .projects || selectedSection == .myProjects) {
                         HStack(spacing: 12) {
-                            Button(action: { showingProjectFilterSheet = true }) {
+                            Button(action: {
+                                showingProjectFilterSheet = true
+                                NotificationCenter.default.post(name: Notification.Name("WizardJobBoardFilterOpened"), object: nil)
+                            }) {
                                 Image(systemName: "line.3.horizontal.decrease")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -184,6 +188,7 @@ struct JobBoardView: View {
                                             .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
                             }
+                            .wizardTarget("open_filters")
 
                             Button(action: {
                                 withAnimation(.easeInOut(duration: 0.2)) { activeOnly.toggle() }
@@ -271,7 +276,13 @@ struct JobBoardView: View {
                         }
                     }
                     .task {
-                        // Client preloading no longer needed — @Query is filtered at DB level
+                        // Wizard system: evaluate job board wizard trigger (requires ≥1 project)
+                        if let wizard = WizardRegistry.contextualWizard(for: "job_board") {
+                            let projectCount = await MainActor.run { dataController.getProjects().count }
+                            await MainActor.run {
+                                wizardTriggerService?.evaluateTrigger(for: wizard, context: "job_board_tab_visit", projectCount: projectCount)
+                            }
+                        }
                     }
                     .task {
                         // Compute overdue count for badge
@@ -288,6 +299,15 @@ struct JobBoardView: View {
                     .onAppear {
                         selectedSection = defaultSection(for: dataController.currentUser)
                         AnalyticsManager.shared.trackScreenView(screenName: .jobBoard, screenClass: "JobBoardView")
+                    }
+                    // Wizard: listen for section-level navigation requests
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardNavigateToSection"))) { notification in
+                        guard let sectionRaw = notification.userInfo?["section"] as? String,
+                              let target = JobBoardSection(rawValue: sectionRaw),
+                              sections.contains(target) else { return }
+                        withAnimation(.accessibleEaseInOut(duration: 0.2)) {
+                            selectedSection = target
+                        }
                     }
 
                 }

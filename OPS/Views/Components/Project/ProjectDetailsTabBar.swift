@@ -44,6 +44,7 @@ struct ProjectDetailsTabBar: View {
                                 .padding(.vertical, 12)
                         }
                         .buttonStyle(PlainButtonStyle())
+                        // No wizard targets needed on tabs — Documentation wizard skips tab navigation
                     }
                 }
 

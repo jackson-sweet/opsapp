@@ -545,6 +545,12 @@ struct ClientSheet: View {
                             userInfo: ["clientName": name]
                         )
 
+                        // Wizard system: notify client saved
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WizardClientSaved"),
+                            object: nil
+                        )
+
                         onSave(newClient)
 
                         // Brief delay for graceful dismissal

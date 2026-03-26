@@ -200,7 +200,7 @@ class LogActivityViewModel: ObservableObject {
                     contactName: newLeadName.trimmingCharacters(in: .whitespaces),
                     contactEmail: newLeadEmail.isEmpty ? nil : newLeadEmail,
                     contactPhone: newLeadPhone.isEmpty ? nil : newLeadPhone,
-                    jobDescription: nil,
+                    description: nil,
                     estimatedValue: nil,
                     source: "voice_log"
                 )
@@ -223,7 +223,7 @@ class LogActivityViewModel: ObservableObject {
                 opportunityId: opportunityId,
                 companyId: companyId,
                 type: selectedType.rawValue,
-                body: notesText.isEmpty ? nil : notesText
+                content: notesText.isEmpty ? nil : notesText
             )
             _ = try await repository.logActivity(activityDTO)
 

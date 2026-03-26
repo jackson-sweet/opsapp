@@ -10,16 +10,16 @@ import Foundation
 struct OpportunityDTO: Codable, Identifiable {
     let id: String
     let companyId: String
-    let contactName: String
+    let contactName: String?
     let contactEmail: String?
     let contactPhone: String?
-    let jobDescription: String?
+    let description: String?
     let estimatedValue: Double?
     let stage: String
     let source: String?
     let projectId: String?
     let clientId: String?
-    let lossReason: String?
+    let lostReason: String?
     let createdAt: String
     let updatedAt: String
     let lastActivityAt: String?
@@ -30,13 +30,13 @@ struct OpportunityDTO: Codable, Identifiable {
         case contactName      = "contact_name"
         case contactEmail     = "contact_email"
         case contactPhone     = "contact_phone"
-        case jobDescription   = "job_description"
+        case description
         case estimatedValue   = "estimated_value"
         case stage
         case source
         case projectId        = "project_id"
         case clientId         = "client_id"
-        case lossReason       = "loss_reason"
+        case lostReason       = "lost_reason"
         case createdAt        = "created_at"
         case updatedAt        = "updated_at"
         case lastActivityAt   = "last_activity_at"
@@ -46,19 +46,19 @@ struct OpportunityDTO: Codable, Identifiable {
         let opp = Opportunity(
             id: id,
             companyId: companyId,
-            contactName: contactName,
+            contactName: contactName ?? "",
             stage: PipelineStage(rawValue: stage) ?? .newLead,
             createdAt: SupabaseDate.parse(createdAt) ?? Date(),
             updatedAt: SupabaseDate.parse(updatedAt) ?? Date()
         )
         opp.contactEmail = contactEmail
         opp.contactPhone = contactPhone
-        opp.jobDescription = jobDescription
+        opp.jobDescription = description
         opp.estimatedValue = estimatedValue
         opp.source = source
         opp.projectId = projectId
         opp.clientId = clientId
-        opp.lossReason = lossReason
+        opp.lossReason = lostReason
         if let la = lastActivityAt { opp.lastActivityAt = SupabaseDate.parse(la) }
         return opp
     }
@@ -69,7 +69,7 @@ struct CreateOpportunityDTO: Codable {
     let contactName: String
     let contactEmail: String?
     let contactPhone: String?
-    let jobDescription: String?
+    let description: String?
     let estimatedValue: Double?
     let source: String?
 
@@ -78,7 +78,7 @@ struct CreateOpportunityDTO: Codable {
         case contactName    = "contact_name"
         case contactEmail   = "contact_email"
         case contactPhone   = "contact_phone"
-        case jobDescription = "job_description"
+        case description
         case estimatedValue = "estimated_value"
         case source
     }
@@ -88,7 +88,7 @@ struct UpdateOpportunityDTO: Codable {
     var contactName: String?
     var contactEmail: String?
     var contactPhone: String?
-    var jobDescription: String?
+    var description: String?
     var estimatedValue: Double?
     var source: String?
     var clientId: String?
@@ -98,7 +98,7 @@ struct UpdateOpportunityDTO: Codable {
         case contactName    = "contact_name"
         case contactEmail   = "contact_email"
         case contactPhone   = "contact_phone"
-        case jobDescription = "job_description"
+        case description
         case estimatedValue = "estimated_value"
         case source
         case clientId       = "client_id"
@@ -111,7 +111,7 @@ struct ActivityDTO: Codable, Identifiable {
     let opportunityId: String
     let companyId: String
     let type: String
-    let body: String?
+    let content: String?
     let createdBy: String?
     let createdAt: String
 
@@ -120,7 +120,7 @@ struct ActivityDTO: Codable, Identifiable {
         case opportunityId = "opportunity_id"
         case companyId     = "company_id"
         case type
-        case body
+        case content
         case createdBy     = "created_by"
         case createdAt     = "created_at"
     }
@@ -133,7 +133,7 @@ struct ActivityDTO: Codable, Identifiable {
             type: ActivityType(rawValue: type) ?? .note,
             createdAt: SupabaseDate.parse(createdAt) ?? Date()
         )
-        act.body = body
+        act.body = content
         act.createdBy = createdBy
         return act
     }
@@ -143,13 +143,13 @@ struct CreateActivityDTO: Codable {
     let opportunityId: String
     let companyId: String
     let type: String
-    let body: String?
+    let content: String?
 
     enum CodingKeys: String, CodingKey {
         case opportunityId = "opportunity_id"
         case companyId     = "company_id"
         case type
-        case body
+        case content
     }
 }
 

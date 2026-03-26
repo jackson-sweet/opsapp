@@ -218,6 +218,7 @@ struct OrganizationDetailsView: View {
         .loadingOverlay(isPresented: $isSaving, message: "Saving...")
         .onAppear {
             loadOrganizationData()
+            NotificationCenter.default.post(name: Notification.Name("WizardCompanyInfoViewed"), object: nil)
         }
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(

@@ -1524,8 +1524,12 @@ struct UniversalJobBoardCard: View {
     private func canSwipe(direction: CardSwipeDirection) -> Bool {
         switch cardType {
         case .project(let project):
+            // Permission gate: require projects.edit to change project status via swipe
+            guard PermissionStore.shared.can("projects.edit") else { return false }
             return direction == .right ? project.status.canSwipeForward : project.status.canSwipeBackward
         case .task(let task):
+            // Permission gate: require tasks.change_status to change task status via swipe
+            guard PermissionStore.shared.can("tasks.change_status") else { return false }
             return direction == .right ? task.status.canSwipeForward : task.status.canSwipeBackward
         case .client:
             return false
@@ -1559,6 +1563,11 @@ struct UniversalJobBoardCard: View {
                                 name: Notification.Name("ProjectStatusChanged"),
                                 object: nil,
                                 userInfo: ["projectId": project.id, "newStatus": status]
+                            )
+                            // Wizard system: notify project status changed
+                            NotificationCenter.default.post(
+                                name: Notification.Name("WizardProjectStatusChanged"),
+                                object: nil
                             )
                         }
                     } catch {

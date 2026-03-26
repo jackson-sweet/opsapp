@@ -47,6 +47,7 @@ extension SupabaseCompanyDTO {
         company.hasPrioritySupport = hasPrioritySupport ?? false
         company.stripeCustomerId = stripeCustomerId
         company.externalId = companyCode
+        company.accountHolderId = accountHolderId
         company.preciseSchedulingEnabled = preciseSchedulingEnabled ?? false
         company.skipWeekendsInAutoSchedule = skipWeekendsInAutoSchedule ?? true
         company.deletedAt = deletedAt.flatMap { SupabaseDate.parse($0) }

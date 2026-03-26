@@ -56,6 +56,9 @@ struct ActivityTabView: View {
             .onChange(of: noteFieldFocused) { _, newValue in
                 if newValue { isTextFieldFocused = true }
             }
+            .onAppear {
+                NotificationCenter.default.post(name: Notification.Name("WizardActivityTabViewed"), object: nil)
+            }
         }
     }
 
@@ -229,6 +232,7 @@ struct ActivityTabView: View {
         .animation(.easeInOut(duration: 0.2), value: isTextFieldFocused)
         .padding(.horizontal, 16)
         .padding(.top, 16)
+        .wizardTarget("write_note")
     }
 
     // MARK: - Mention Suggestions
@@ -312,6 +316,7 @@ struct ActivityTabView: View {
                                             .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
                                     }
                                     .buttonStyle(PlainButtonStyle())
+                                    .wizardTarget(index == 0 ? "view_photo" : "")
                                 }
                             }
                             .padding(14)

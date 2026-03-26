@@ -345,17 +345,32 @@ final class OutboundProcessor {
         }
     }
 
+    /// Valid Supabase column names for the project_tasks table.
+    /// Used to filter out local-only SwiftData properties (e.g. task_index, needs_sync)
+    /// that would cause "could not find column" errors if sent to PostgREST.
+    private static let validProjectTaskColumns: Set<String> = [
+        "id", "bubble_id", "company_id", "project_id", "task_type_id",
+        "custom_title", "task_notes", "status", "task_color", "display_order",
+        "team_member_ids", "source_line_item_id", "source_estimate_id",
+        "start_date", "end_date", "duration", "dependency_overrides",
+        "start_time", "end_time", "deleted_at", "created_at", "updated_at"
+    ]
+
     private func handleProjectTask(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
         let repo = TaskRepository(companyId: companyId)
 
+        // Filter payload to only include valid Supabase columns, stripping
+        // local-only SwiftData properties like task_index or needs_sync
+        let sanitizedPayload = payload.filter { Self.validProjectTaskColumns.contains($0.key) }
+
         switch operationType {
         case "create":
-            let jsonData = try JSONSerialization.data(withJSONObject: payload)
+            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
             let dto = try JSONDecoder().decode(SupabaseProjectTaskDTO.self, from: jsonData)
             _ = try await repo.create(dto)
 
         case "update":
-            let fields = payloadToAnyJSON(payload)
+            let fields = payloadToAnyJSON(sanitizedPayload)
             try await repo.updateFields(entityId, fields: fields)
 
         case "delete":

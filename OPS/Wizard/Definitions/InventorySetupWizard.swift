@@ -29,24 +29,28 @@ struct InventorySetupWizard: WizardDefinitionProtocol {
             id: "choose_method",
             instruction: "ADD YOUR ITEMS",
             description: "Choose how to add inventory items",
+            targetScreen: "Inventory",
             canSkip: true
         ),
         WizardStepDefinition(
             id: "add_items",
             instruction: "ADD YOUR ITEMS",
             description: "Add materials, supplies, and equipment",
+            targetScreen: "Inventory",
             canSkip: true
         ),
         WizardStepDefinition(
             id: "set_thresholds",
             instruction: "SET STOCK ALERTS",
             description: "Get notified when items run low",
+            targetScreen: "Inventory",
             canSkip: true
         ),
         WizardStepDefinition(
             id: "take_snapshot",
             instruction: "TAKE FIRST SNAPSHOT",
             description: "Start tracking usage trends",
+            targetScreen: "Inventory",
             canSkip: true
         ),
     ]

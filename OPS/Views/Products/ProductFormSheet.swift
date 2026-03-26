@@ -242,7 +242,7 @@ struct ProductFormSheet: View {
                         costPrice: Double(unitCost),
                         unit: unit.isEmpty ? nil : unit,
                         type: type.rawValue,
-                        taxable: taxable
+                        isTaxable: taxable
                     )
                     _ = try await repo.update(prod.id, fields: dto)
                 } else {
@@ -254,7 +254,7 @@ struct ProductFormSheet: View {
                         costPrice: Double(unitCost),
                         unit: unit.isEmpty ? nil : unit,
                         type: type.rawValue,
-                        taxable: taxable
+                        isTaxable: taxable
                     )
                     _ = try await repo.create(dto)
                 }

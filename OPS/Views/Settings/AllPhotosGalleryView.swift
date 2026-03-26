@@ -72,6 +72,8 @@ struct AllPhotosGalleryView: View {
     @State private var isSelectMode = false
     @State private var selectedPhotos: Set<String> = []
     @State private var selectedPhotoContext: GalleryPhotoContext? = nil
+    @State private var showFirstVisitInfo = false
+    @AppStorage("photosGalleryFirstVisitDone") private var firstVisitDone = false
 
     // Filter state
     @State private var filterUploaderIds: Set<String> = []
@@ -260,6 +262,20 @@ struct AllPhotosGalleryView: View {
             if expandedMonths.isEmpty, let first = monthGroups.first {
                 expandedMonths.insert(first.id)
             }
+
+            // Show first-visit info popup explaining defaults
+            if !firstVisitDone {
+                firstVisitDone = true
+                // Slight delay so the view renders before showing the popup
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    showFirstVisitInfo = true
+                }
+            }
+        }
+        .alert("Photo Storage Defaults", isPresented: $showFirstVisitInfo) {
+            Button("Got It") { }
+        } message: {
+            Text("Photos from your projects are stored in the cloud. By default, recent photos (last 3 months) are cached on your device for quick access.\n\nYou can pin specific photos to keep them downloaded, or enable \"Keep All Photos Downloaded\" to always have every photo available offline.\n\nManage storage anytime from the bottom of this screen.")
         }
         .sheet(isPresented: $showFilterSheet) {
             PhotoFilterSheet(
@@ -354,16 +370,48 @@ struct AllPhotosGalleryView: View {
     // MARK: - Group Toggle
 
     private var groupToggleRow: some View {
-        HStack {
-            Text("Group by Project")
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+        VStack(spacing: 12) {
+            HStack {
+                Text("Group by Project")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
 
-            Spacer()
+                Spacer()
 
-            Toggle("", isOn: $groupByProject)
+                Toggle("", isOn: $groupByProject)
+                    .labelsHidden()
+                    .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+            }
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Keep All Photos Downloaded")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    Text("Downloads and keeps all project photos on this device")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: Binding(
+                    get: { downloadManager.keepAllDownloaded },
+                    set: { newValue in
+                        downloadManager.keepAllDownloaded = newValue
+                        if newValue {
+                            // Trigger download of all photos not yet on device
+                            let urls = allPhotoItems.map { $0.url }
+                            Task {
+                                await downloadManager.downloadAllPhotos(urls)
+                            }
+                        }
+                    }
+                ))
                 .labelsHidden()
                 .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+            }
         }
         .padding(.horizontal, 20)
     }
@@ -530,6 +578,7 @@ struct AllPhotosGalleryView: View {
         let isOnDevice = downloadManager.isOnDevice(item.url)
         let isDownloading = downloadManager.activeDownloads[item.url] != nil
         let isSelected = selectedPhotos.contains(item.id)
+        let isPinned = downloadManager.isPinned(item.url)
 
         return ZStack(alignment: .bottomTrailing) {
             if isOnDevice {
@@ -552,6 +601,18 @@ struct AllPhotosGalleryView: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .padding(6)
                 }
+            }
+
+            // Pinned indicator — bottom-leading, only in normal mode
+            if isPinned && !isSelectMode {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 9))
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .padding(4)
+                    .background(Color.black.opacity(0.5))
+                    .clipShape(Circle())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    .padding(4)
             }
 
             // Select mode checkmark
@@ -668,28 +729,43 @@ struct AllPhotosGalleryView: View {
     // MARK: - Select Toolbar
 
     private var selectToolbar: some View {
-        HStack(spacing: OPSStyle.Layout.spacing4) {
+        HStack(spacing: OPSStyle.Layout.spacing3) {
             Button(action: shareSelectedPhotos) {
-                HStack(spacing: OPSStyle.Layout.spacing2) {
+                VStack(spacing: 4) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                     Text("Share")
-                        .font(OPSStyle.Typography.bodyBold)
+                        .font(OPSStyle.Typography.smallCaption)
                 }
                 .foregroundColor(OPSStyle.Colors.primaryText)
             }
+            .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+
+            Spacer()
+
+            Button(action: keepSelectedDownloaded) {
+                VStack(spacing: 4) {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                    Text("Keep Downloaded")
+                        .font(OPSStyle.Typography.smallCaption)
+                }
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+            }
+            .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
 
             Spacer()
 
             Button(action: saveSelectedToDevice) {
-                HStack(spacing: OPSStyle.Layout.spacing2) {
+                VStack(spacing: 4) {
                     Image(systemName: "arrow.down.to.line")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                     Text("Save to Device")
-                        .font(OPSStyle.Typography.bodyBold)
+                        .font(OPSStyle.Typography.smallCaption)
                 }
                 .foregroundColor(OPSStyle.Colors.primaryText)
             }
+            .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -781,6 +857,31 @@ struct AllPhotosGalleryView: View {
             }
         }
         // Exit select mode after save
+        isSelectMode = false
+        selectedPhotos.removeAll()
+    }
+
+    /// Pin selected photos so they stay on-device even after auto-keep policy cleanup.
+    /// Also downloads any that are not yet on-device.
+    private func keepSelectedDownloaded() {
+        let selectedItems = selectedPhotos.compactMap { photoId in
+            filteredPhotoItems.first(where: { $0.id == photoId })
+        }
+        let urls = selectedItems.map { $0.url }
+
+        // Pin all selected URLs
+        downloadManager.pinAll(urls)
+
+        // Download any that are not yet on device
+        Task {
+            for url in urls where !downloadManager.isOnDevice(url) {
+                await downloadManager.downloadPhoto(url)
+            }
+        }
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        // Exit select mode
         isSelectMode = false
         selectedPhotos.removeAll()
     }

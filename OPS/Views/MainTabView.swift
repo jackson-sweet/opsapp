@@ -8,6 +8,7 @@
 
 // MainTabView.swift
 import SwiftUI
+import SwiftData
 import Combine
 import MapKit
 
@@ -16,8 +17,11 @@ struct MainTabView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var permissionStore: PermissionStore
+    @Environment(\.wizardTriggerService) private var wizardTriggerService
+    @Environment(\.wizardStateManager) private var wizardStateManager
 
     @State private var selectedTab = 0
+    @State private var hasEvaluatedWizards = false
     @State private var previousTab = 0
     @State private var keyboardIsShowing = false
     @State private var sheetIsPresented = false
@@ -351,6 +355,68 @@ struct MainTabView: View {
                 keyboardIsShowing = false
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardOpenMostRecentProject"))) { _ in
+            if let modelContext = dataController.modelContext {
+                // Check if we have a stored project ID from a previous deep-nav (CONTINUE GUIDE)
+                if let storedId = wizardStateManager?.deepNavProjectId {
+                    let storedDescriptor = FetchDescriptor<Project>(
+                        predicate: #Predicate<Project> { $0.id == storedId }
+                    )
+                    if let existing = (try? modelContext.fetch(storedDescriptor))?.first {
+                        appState.viewProjectDetails(existing)
+                        return
+                    }
+                }
+
+                let companyId = dataController.currentUser?.companyId ?? ""
+                let userId = dataController.currentUser?.id ?? ""
+                let isFieldRole = dataController.currentUser?.role == .crew || dataController.currentUser?.role == .operator
+
+                // Scope-aware fetch: crew/operator see only assigned projects
+                let descriptor: FetchDescriptor<Project>
+                if isFieldRole {
+                    descriptor = FetchDescriptor<Project>(
+                        predicate: #Predicate<Project> { project in
+                            project.companyId == companyId &&
+                            project.teamMemberIdsString.contains(userId)
+                        },
+                        sortBy: [SortDescriptor(\.startDate, order: .reverse)]
+                    )
+                } else {
+                    descriptor = FetchDescriptor<Project>(
+                        predicate: #Predicate<Project> { project in
+                            project.companyId == companyId
+                        },
+                        sortBy: [SortDescriptor(\.startDate, order: .reverse)]
+                    )
+                }
+
+                if let project = (try? modelContext.fetch(descriptor))?.first {
+                    // Store the project ID so CONTINUE GUIDE reopens the same project
+                    wizardStateManager?.deepNavProjectId = project.id
+                    appState.viewProjectDetails(project)
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardNavigateToTarget"))) { notification in
+            guard let tabTarget = notification.userInfo?["tabTarget"] as? String else { return }
+            switch tabTarget {
+            case "Home":
+                withAnimation { selectedTab = 0 }
+            case "JobBoard":
+                withAnimation { selectedTab = jobBoardTabIndex }
+            case "Schedule":
+                withAnimation { selectedTab = scheduleTabIndex }
+            case "Inventory":
+                if let idx = inventoryTabIndex {
+                    withAnimation { selectedTab = idx }
+                }
+            case "Settings":
+                withAnimation { selectedTab = settingsTabIndex }
+            default:
+                break
+            }
+        }
         .onAppear {
             // Clear all pending image syncs on app bootup
             clearPendingImageSyncs()
@@ -365,6 +431,33 @@ struct MainTabView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
                 appState.checkOverdueProjects(dataController: dataController)
             }
+
+            // Evaluate wizard triggers after data has had time to load
+            if !hasEvaluatedWizards {
+                hasEvaluatedWizards = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                    evaluateWizardTriggers()
+                }
+            }
+        }
+        .onChange(of: selectedTab) { _, newTab in
+            // Broadcast current tab name for wizard context tracking
+            let tabName: String
+            switch newTab {
+            case 0: tabName = "Home"
+            case jobBoardTabIndex: tabName = "JobBoard"
+            case scheduleTabIndex: tabName = "Schedule"
+            case settingsTabIndex: tabName = "Settings"
+            default:
+                if let inv = inventoryTabIndex, newTab == inv { tabName = "Inventory" }
+                else if let pip = pipelineTabIndex, newTab == pip { tabName = "Pipeline" }
+                else { tabName = "Unknown" }
+            }
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardCurrentTabChanged"),
+                object: nil,
+                userInfo: ["tabName": tabName]
+            )
         }
         .onChange(of: dataController.currentUser?.role) { oldRole, newRole in
             print("[MAIN_TAB_VIEW] User role changed from \(String(describing: oldRole)) to \(String(describing: newRole))")
@@ -401,6 +494,55 @@ struct MainTabView: View {
     }
     
     // handlePermissionRefresh moved to PINGatedView (ContentView.swift)
+
+    /// Evaluate wizard triggers based on current data state.
+    /// Checks both sequenced wizards (project lifecycle) and data-condition wizards (task/payment review).
+    private func evaluateWizardTriggers() {
+        guard let triggerService = wizardTriggerService else { return }
+        guard let modelContext = dataController.modelContext else { return }
+
+        let companyId = dataController.currentUser?.companyId ?? ""
+
+        // Count projects for the current user's company
+        var projectDescriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { project in
+                project.companyId == companyId
+            }
+        )
+        projectDescriptor.propertiesToFetch = []
+        let projectCount = (try? modelContext.fetchCount(projectDescriptor)) ?? 0
+
+        // Sequenced wizards (e.g., ProjectLifecycleWizard triggers when 0 projects)
+        triggerService.evaluateSequencedWizards(projectCount: projectCount)
+
+        // Data-condition wizards: count overdue tasks and completed projects
+        // Fetch all tasks for the company and filter in memory (avoids complex #Predicate)
+        let taskDescriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { task in
+                task.companyId == companyId
+            }
+        )
+        let allTasks = (try? modelContext.fetch(taskDescriptor)) ?? []
+        let now = Date()
+        let overdueCount = allTasks.filter { task in
+            guard let endDate = task.endDate else { return false }
+            return endDate < now && task.status != .completed
+        }.count
+
+        // Fetch all company projects and filter in memory (enum predicates not supported in #Predicate)
+        let allProjectDescriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { project in
+                project.companyId == companyId
+            }
+        )
+        let allProjects = (try? modelContext.fetch(allProjectDescriptor)) ?? []
+        let completedCount = allProjects.filter { $0.status == .completed }.count
+
+        triggerService.evaluateDataConditions(
+            overdueTaskCount: overdueCount,
+            completedProjectCount: completedCount
+        )
+    }
 
     private func clearPendingImageSyncs() {
         

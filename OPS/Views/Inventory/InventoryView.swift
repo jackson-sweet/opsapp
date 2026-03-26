@@ -323,6 +323,7 @@ struct InventoryView: View {
                     showInventoryWizard = false
                 }
             )
+            .interactiveDismissDisabled(true)
             .environmentObject(dataController)
         }
         .overlay {
@@ -521,20 +522,22 @@ struct InventoryView: View {
         // Only show if user has permission
         guard PermissionStore.shared.can("inventory.manage") else { return }
 
-        // Check if wizard was already completed or dismissed
-        let wizardKey = "wizard_inventory_setup_status"
-        let status = UserDefaults.standard.string(forKey: wizardKey)
-        if status == "completed" || status == "dismissed" { return }
+        // Check wizard state via WizardStateManager (single source of truth)
+        if let stateManager = wizardStateManager,
+           let state = stateManager.wizardState(for: "inventory_setup") {
+            if state.status == .completed || state.status == .dismissed || state.doNotShow {
+                return
+            }
+        }
 
-        // Check if company already has inventory items (via @Query)
-        let activeItems = filteredItems // uses the existing computed property
-        if !activeItems.isEmpty {
-            UserDefaults.standard.set("completed", forKey: wizardKey)
+        // Check if company already has inventory items (unfiltered — ignores search/tag filters)
+        if !companyItems.isEmpty {
             return
         }
 
         // Show the wizard
         wizardCoordinator.dataController = dataController
+        wizardCoordinator.wizardStateManager = wizardStateManager
         showInventoryWizard = true
     }
 

@@ -36,8 +36,21 @@ struct RoleListView: View {
 
     private static let presetNames = ["admin", "owner", "office", "operator", "crew", "unassigned"]
 
+    /// Preset roles sorted: Owner first, then by hierarchy, Unassigned last.
     private var presetRoles: [AdminRoleRow] {
         roles.filter { Self.presetNames.contains($0.name.lowercased()) }
+            .sorted { r1, r2 in
+                let n1 = r1.name.lowercased()
+                let n2 = r2.name.lowercased()
+                // Owner always first
+                if n1 == "owner" { return true }
+                if n2 == "owner" { return false }
+                // Unassigned always last
+                if n1 == "unassigned" { return false }
+                if n2 == "unassigned" { return true }
+                // Everything else by hierarchy ascending
+                return r1.hierarchy < r2.hierarchy
+            }
     }
 
     private var customRoles: [AdminRoleRow] {
@@ -107,6 +120,7 @@ struct RoleListView: View {
                     .padding(.vertical, 16)
                     .tabBarPadding()
                 }
+                .wizardTarget("view_roles")
             }
         }
         .onAppear { loadRoles() }
@@ -255,6 +269,7 @@ struct RoleListView: View {
                 }
             }
         }
+        .wizardTarget("view_role_detail")
     }
 
     // MARK: - Role Form Sheet

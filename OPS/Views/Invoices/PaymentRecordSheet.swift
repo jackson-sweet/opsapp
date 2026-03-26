@@ -164,6 +164,7 @@ struct PaymentRecordSheet: View {
             await viewModel.recordPayment(
                 invoiceId: invoice.id,
                 companyId: companyId,
+                clientId: invoice.clientId ?? "",
                 amount: val,
                 method: method,
                 notes: notes.isEmpty ? nil : notes

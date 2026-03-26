@@ -156,7 +156,7 @@ class MoneyDashboardViewModel: ObservableObject {
         // ── Payments in period ──
         let paymentsInPeriod = allInvoices.flatMap { dto -> [PaymentDTO] in
             (dto.payments ?? []).filter { payment in
-                guard let paidAt = SupabaseDate.parse(payment.paidAt) else { return false }
+                guard let dateStr = payment.paymentDate, let paidAt = SupabaseDate.parse(dateStr) else { return false }
                 return paidAt >= periodStart && paidAt <= now && !(payment.isVoid ?? false)
             }
         }
@@ -301,7 +301,7 @@ class MoneyDashboardViewModel: ObservableObject {
             if let cid = dto.clientId, let name = clientNames[cid] {
                 clientName = name
             } else {
-                clientName = dto.title ?? dto.invoiceNumber
+                clientName = dto.subject ?? dto.invoiceNumber
             }
 
             var daysOverdue = 0
@@ -336,15 +336,15 @@ class MoneyDashboardViewModel: ObservableObject {
 
     private func buildPaymentBreakdown(_ payments: [PaymentDTO]) {
         paymentBreakdown = payments
-            .sorted { SupabaseDate.parse($0.paidAt) ?? Date.distantPast > SupabaseDate.parse($1.paidAt) ?? Date.distantPast }
+            .sorted { $0.paymentDate.flatMap { SupabaseDate.parse($0) } ?? Date.distantPast > $1.paymentDate.flatMap { SupabaseDate.parse($0) } ?? Date.distantPast }
             .map { payment in
-                let method = PaymentMethod(rawValue: payment.method)?.displayName ?? payment.method.uppercased()
+                let method = payment.paymentMethod.flatMap { PaymentMethod(rawValue: $0)?.displayName } ?? payment.paymentMethod?.uppercased() ?? "OTHER"
                 let invoiceNum = invoiceNumber(for: payment.invoiceId)
                 let label = "\(invoiceNum) — \(method)"
                 return BreakdownItem(
                     label: label,
                     amount: payment.amount,
-                    date: SupabaseDate.parse(payment.paidAt),
+                    date: payment.paymentDate.flatMap { SupabaseDate.parse($0) },
                     entityId: payment.invoiceId,
                     type: .payment
                 )
@@ -385,7 +385,7 @@ class MoneyDashboardViewModel: ObservableObject {
             if let cid = dto.clientId, let name = clientNames[cid] {
                 label = "\(name) — \(dto.invoiceNumber)"
             } else {
-                label = dto.title ?? dto.invoiceNumber
+                label = dto.subject ?? dto.invoiceNumber
             }
 
             return BreakdownItem(

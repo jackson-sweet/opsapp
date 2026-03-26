@@ -464,6 +464,7 @@ struct PINSetupSheet: View {
                             Button("SAVE") {
                                 if confirmedPIN == enteredPIN {
                                     pinManager.setPIN(enteredPIN)
+                                    NotificationCenter.default.post(name: Notification.Name("WizardPINEnabled"), object: nil)
                                     isPresented = false
                                 } else {
                                     errorMessage = "PINs don't match"

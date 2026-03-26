@@ -11,10 +11,19 @@ import Foundation
 struct WizardRegistry {
     /// All wizard definitions in display order
     static let allWizards: [any WizardDefinitionProtocol] = [
+        // Sequenced
         ProjectLifecycleWizard(),
+        // Contextual
+        SchedulingCalendarWizard(),
+        JobBoardWizard(),
+        DocumentationWizard(),
+        TeamManagementWizard(),
+        SettingsSecurityWizard(),
+        PermissionsRolesWizard(),
+        InventorySetupWizard(),
+        // Data-condition
         TaskReviewWizard(),
-        PaymentReviewWizard(),
-        InventorySetupWizard()
+        PaymentReviewWizard()
     ]
 
     /// Wizards filtered by role and permissions

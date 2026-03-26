@@ -20,6 +20,7 @@ class WizardTriggerService: ObservableObject {
     private weak var stateManager: WizardStateManager?
     private var userRole: UserRole?
     private var permissionCheck: ((String) -> Bool)?
+    private var isTutorialComplete: (() -> Bool)?
 
     /// Keys tracking which trigger contexts have been seen this session
     /// Prevents repeated banner shows within a single app session
@@ -28,25 +29,31 @@ class WizardTriggerService: ObservableObject {
     func configure(
         stateManager: WizardStateManager,
         userRole: UserRole,
-        permissionCheck: @escaping (String) -> Bool
+        permissionCheck: @escaping (String) -> Bool,
+        isTutorialComplete: @escaping () -> Bool = { true }
     ) {
         self.stateManager = stateManager
         self.userRole = userRole
         self.permissionCheck = permissionCheck
+        self.isTutorialComplete = isTutorialComplete
     }
 
     /// Call this when the user enters a feature area.
     /// Evaluates whether the corresponding wizard should be triggered.
     ///
     /// - Parameters:
-    ///   - wizardId: The wizard to potentially trigger
+    ///   - wizard: The wizard to potentially trigger
     ///   - context: Description of what triggered it (e.g., "calendar_tab_visit")
-    func evaluateTrigger(for wizard: any WizardDefinitionProtocol, context: String) {
+    ///   - projectCount: Number of visible projects for the current user (scoped). Pass -1 to skip the check.
+    func evaluateTrigger(for wizard: any WizardDefinitionProtocol, context: String, projectCount: Int = -1) {
         guard let stateManager, stateManager.isEnabled else { return }
         guard !stateManager.isActive else { return } // Don't interrupt an active wizard
 
-        // Check role access
-        guard let role = userRole else { return }
+        // Don't show wizards while the 25-phase interactive tutorial is still in progress
+        guard isTutorialComplete?() != false else { return }
+
+        // Check role access — unassigned users skip all wizards (pre-role-assignment)
+        guard let role = userRole, role != .unassigned else { return }
         let tier = WizardAccessTier.tier(for: role)
         guard tier.canAccess(minimumTier: wizard.minimumTier) else { return }
 
@@ -55,8 +62,16 @@ class WizardTriggerService: ObservableObject {
             guard permissionCheck?(required) == true else { return }
         }
 
+        // Data prerequisite: job_board wizard requires at least 1 project to be meaningful
+        if wizard.wizardId == "job_board" && projectCount == 0 {
+            return
+        }
+
         // Check if already triggered this session
         guard !triggeredThisSession.contains(wizard.wizardId) else { return }
+
+        // Check global cooldown (user said "Never" or "Not Now" too many times)
+        guard !stateManager.isInGlobalCooldown else { return }
 
         // Check wizard state
         guard let state = stateManager.wizardState(for: wizard.wizardId) else { return }
@@ -67,9 +82,26 @@ class WizardTriggerService: ObservableObject {
         // Don't show if already completed (unless they explicitly restart from settings)
         guard state.status != .completed else { return }
 
+        // Don't re-trigger banner if user is already mid-wizard
+        guard state.status != .inProgress else { return }
+
         // Show the banner
         triggeredThisSession.insert(wizard.wizardId)
         stateManager.showBanner(for: wizard)
+    }
+
+    /// Evaluate sequenced wizards that trigger proactively based on user lifecycle.
+    /// Call this after the main view appears and data has loaded.
+    ///
+    /// - Parameter projectCount: Number of projects the user has
+    func evaluateSequencedWizards(projectCount: Int) {
+        let sequenced = WizardRegistry.allWizards.filter { $0.triggerType == .sequenced }
+        for wizard in sequenced {
+            // ProjectLifecycleWizard: trigger when user has no projects
+            if wizard.wizardId == "project_lifecycle" && projectCount == 0 {
+                evaluateTrigger(for: wizard, context: "no_projects_first_session")
+            }
+        }
     }
 
     /// Evaluate data-condition wizards that trigger based on accumulated state.

@@ -2,63 +2,115 @@
 //  WizardBanner.swift
 //  OPS
 //
-//  A persistent, tappable banner that slides down from the top
+//  A notification-style banner that slides down from the top
 //  to prompt users to start a wizard guide.
-//  Unlike NotificationBanner, this does NOT auto-dismiss.
+//  Shows the wizard description with three inline action buttons:
+//  Launch, Not Now, Never.
 //
 
 import SwiftUI
 
 struct WizardBanner: View {
-    let message: String
-    let onTap: () -> Void
-    let onDismiss: () -> Void
+    let wizard: any WizardDefinitionProtocol
+    let onLaunch: () -> Void
+    let onNotNow: () -> Void
+    let onNever: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            // Status bar background
+            // Status bar fill
             Color.clear
                 .frame(height: 50)
                 .background(
                     BlurView(style: .systemUltraThinMaterialDark)
-                        .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.85))
+                        .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.92))
                 )
 
             // Banner content
-            Button(action: onTap) {
-                HStack(spacing: 12) {
-                    Image(systemName: "lightbulb.fill")
+            VStack(alignment: .leading, spacing: 16) {
+                // Icon + title row
+                HStack(spacing: 10) {
+                    Image(systemName: wizard.iconName)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.wizardAccent)
 
-                    Text(message)
-                        .font(OPSStyle.Typography.cardSubtitle)
+                    Text(wizard.displayName)
+                        .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
+                        .tracking(1.2)
+                }
 
-                    Spacer()
+                // Description
+                Text(wizard.bannerText)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineLimit(2)
 
-                    // Close button
-                    Button(action: onDismiss) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .semibold))
+                // Action buttons
+                HStack(spacing: 10) {
+                    // Launch — primary action
+                    Button(action: {
+                        TutorialHaptics.lightTap()
+                        onLaunch()
+                    }) {
+                        Text("LAUNCH")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.invertedText)
+                            .tracking(1.2)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 40)
+                            .background(OPSStyle.Colors.wizardAccent)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+
+                    // Not Now — secondary
+                    Button(action: {
+                        TutorialHaptics.lightTap()
+                        onNotNow()
+                    }) {
+                        Text("NOT NOW")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .tracking(1.2)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 40)
+                            .background(OPSStyle.Colors.background.opacity(0.3))
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+
+                    // Never — destructive/tertiary
+                    Button(action: {
+                        TutorialHaptics.lightTap()
+                        onNever()
+                    }) {
+                        Text("NEVER")
+                            .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .frame(width: 28, height: 28)
-                            .background(OPSStyle.Colors.background.opacity(0.5))
-                            .clipShape(Circle())
+                            .tracking(1.2)
+                            .frame(width: 72)
+                            .frame(height: 40)
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 14)
-                .frame(maxWidth: .infinity)
-                .background(
-                    BlurView(style: .systemUltraThinMaterialDark)
-                        .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.85))
-                )
             }
-            .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity)
+            .background(
+                BlurView(style: .systemUltraThinMaterialDark)
+                    .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.92))
+            )
+
+            // Bottom separator
+            Rectangle()
+                .fill(OPSStyle.Colors.wizardAccent.opacity(0.4))
+                .frame(height: 2)
         }
         .transition(.asymmetric(
             insertion: .move(edge: .top),
@@ -78,9 +130,10 @@ struct WizardBannerModifier: ViewModifier {
 
             if stateManager.showBanner, let wizard = stateManager.pendingBannerWizard {
                 WizardBanner(
-                    message: wizard.bannerText,
-                    onTap: { stateManager.bannerTapped() },
-                    onDismiss: { stateManager.bannerDismissed() }
+                    wizard: wizard,
+                    onLaunch: { stateManager.bannerLaunchTapped() },
+                    onNotNow: { stateManager.bannerNotNowTapped() },
+                    onNever: { stateManager.bannerNeverTapped() }
                 )
                 .ignoresSafeArea()
                 .zIndex(998)

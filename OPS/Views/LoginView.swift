@@ -184,18 +184,11 @@ struct LoginView: View {
                     .zIndex(2)
             }
 
-            // Forgot password overlay
-            if showForgotPassword {
-                ForgotPasswordView(
-                    isPresented: $showForgotPassword,
-                    prefilledEmail: $username
-                )
-                .transition(.opacity)
-                .zIndex(4)
-            }
         }
-        .animation(.easeInOut, value: showForgotPassword)
         .animation(.easeInOut, value: showLoginSuccess)
+        .sheet(isPresented: $showForgotPassword) {
+            ForgotPasswordView(prefilledEmail: username)
+        }
         .alert(isPresented: $showError, content: {
             Alert(
                 title: Text("Sign In Failed"),

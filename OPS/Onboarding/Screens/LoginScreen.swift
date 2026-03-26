@@ -213,10 +213,7 @@ struct LoginScreen: View {
         }
         .background(OPSStyle.Colors.background)
         .sheet(isPresented: $showForgotPassword) {
-            ForgotPasswordView(
-                isPresented: $showForgotPassword,
-                prefilledEmail: $email
-            )
+            ForgotPasswordView(prefilledEmail: email)
         }
     }
 

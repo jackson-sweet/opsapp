@@ -303,6 +303,7 @@ final class InboundProcessor {
                     "subscriptionStatus", "subscriptionPlan", "subscriptionEnd",
                     "subscriptionPeriod", "trialStartDate", "trialEndDate",
                     "hasPrioritySupport", "stripeCustomerId", "externalId",
+                    "accountHolderId",
                     "preciseSchedulingEnabled", "skipWeekendsInAutoSchedule", "deletedAt"
                 ],
                 context: context
@@ -330,6 +331,7 @@ final class InboundProcessor {
             if accept.contains("hasPrioritySupport") { existing.hasPrioritySupport = dto.hasPrioritySupport ?? false }
             if accept.contains("stripeCustomerId") { existing.stripeCustomerId = dto.stripeCustomerId }
             if accept.contains("externalId") { existing.externalId = dto.companyCode }
+            if accept.contains("accountHolderId") { existing.accountHolderId = dto.accountHolderId }
             if accept.contains("preciseSchedulingEnabled") { existing.preciseSchedulingEnabled = dto.preciseSchedulingEnabled ?? false }
             if accept.contains("skipWeekendsInAutoSchedule") { existing.skipWeekendsInAutoSchedule = dto.skipWeekendsInAutoSchedule ?? true }
             if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }

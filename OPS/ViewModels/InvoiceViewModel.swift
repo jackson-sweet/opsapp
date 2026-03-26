@@ -72,13 +72,14 @@ class InvoiceViewModel: ObservableObject {
         paymentDTOs[invoiceId]?.map { $0.toModel() } ?? []
     }
 
-    func recordPayment(invoiceId: String, companyId: String, amount: Double, method: PaymentMethod, notes: String?) async {
+    func recordPayment(invoiceId: String, companyId: String, clientId: String, amount: Double, method: PaymentMethod, notes: String?) async {
         guard let repo = repository else { return }
         let dto = CreatePaymentDTO(
             invoiceId: invoiceId,
             companyId: companyId,
+            clientId: clientId,
             amount: amount,
-            method: method.rawValue,
+            paymentMethod: method.rawValue,
             reference: nil,
             notes: notes
         )

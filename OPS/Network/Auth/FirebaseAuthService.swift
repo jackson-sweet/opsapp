@@ -230,8 +230,14 @@ class FirebaseAuthService: ObservableObject {
             _ = try await legacyAuthClient.auth.signIn(email: email, password: password)
             print("[FIREBASE AUTH] Supabase credentials valid, creating Firebase account...")
         } catch {
-            // Credentials invalid in both Firebase and Supabase — genuine bad credentials
-            print("[FIREBASE AUTH] Supabase validation failed — invalid credentials")
+            // Credentials invalid in both Firebase and Supabase.
+            // Check if the user exists in the users table — if so, they may have
+            // signed up with Google or Apple and need to use that method instead.
+            print("[FIREBASE AUTH] Supabase validation failed — checking if user exists with different auth method")
+            let userExists = await checkUserExistsByEmail(email)
+            if userExists {
+                throw FirebaseAuthServiceError.wrongAuthMethod
+            }
             throw FirebaseAuthServiceError.invalidCredentials
         }
 
@@ -252,14 +258,31 @@ class FirebaseAuthService: ObservableObject {
         } catch let error as NSError {
             let authErrorCode = AuthErrorCode(rawValue: error.code)
             if authErrorCode == .emailAlreadyInUse {
-                // Account was created between our check and create — try signing in
-                let result = try await Auth.auth().signIn(withEmail: email, password: password)
-                isAuthenticated = true
-                currentUserEmail = result.user.email
-                print("[FIREBASE AUTH] Migration race resolved — signed in to existing Firebase account")
+                // Account exists in Firebase with a different provider (Google/Apple).
+                // The user needs to sign in with that provider, not email+password.
+                print("[FIREBASE AUTH] Firebase account exists with different provider for: \(email)")
+                throw FirebaseAuthServiceError.wrongAuthMethod
             } else {
                 throw error
             }
+        }
+    }
+
+    /// Check if a user with this email exists in the users table.
+    /// Used to distinguish "wrong password" from "wrong auth method" errors.
+    private func checkUserExistsByEmail(_ email: String) async -> Bool {
+        do {
+            // Use a temporary anon-key-only client since the user isn't authenticated
+            // and the main SupabaseService client's accessToken would throw.
+            // The check_user_exists_by_email RPC is SECURITY DEFINER.
+            let result: [UserExistsResponse] = try await legacyAuthClient
+                .rpc("check_user_exists_by_email", params: ["p_email": email])
+                .execute()
+                .value
+            return result.first?.userExists ?? false
+        } catch {
+            print("[FIREBASE AUTH] User existence check failed: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -297,6 +320,7 @@ class FirebaseAuthService: ObservableObject {
         case missingNonce
         case nonceGenerationFailed
         case invalidCredentials
+        case wrongAuthMethod
         case migrationFailed(String)
 
         var errorDescription: String? {
@@ -309,9 +333,20 @@ class FirebaseAuthService: ObservableObject {
                 return "Unable to generate secure token. Please try again."
             case .invalidCredentials:
                 return "Incorrect email or password. Please try again."
+            case .wrongAuthMethod:
+                return "This account uses Google or Apple Sign-In. Please use the same method you signed up with."
             case .migrationFailed(let message):
                 return "Account migration failed: \(message)"
             }
         }
+    }
+}
+
+/// Response type for check_user_exists_by_email RPC
+private struct UserExistsResponse: Decodable {
+    let userExists: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case userExists = "user_exists"
     }
 }

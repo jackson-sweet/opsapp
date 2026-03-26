@@ -208,6 +208,7 @@ struct PhotoAnnotationView: View {
                 existingAnnotationId: existingAnnotation?.id,
                 modelContext: modelContext
             )
+            NotificationCenter.default.post(name: Notification.Name("WizardPhotoAnnotated"), object: nil)
             dismiss()
         } catch {
             self.error = error.localizedDescription

@@ -138,6 +138,7 @@ struct UserPermissionsListView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .wizardTarget("view_member_overrides")
     }
 
     // MARK: - Helpers

@@ -358,6 +358,9 @@ class DataController: ObservableObject {
                             await OneSignalService.shared.configure()
                         }
 
+                        // Fetch and cache notification preferences from Supabase
+                        NotificationManager.shared.refreshCachedPreferences()
+
                         // Initialize sync system and reconfigure with confirmed companyId
                         initializeSyncManager()
                         syncEngine.reconfigureForCompany()
@@ -412,6 +415,7 @@ class DataController: ObservableObject {
 
                     NotificationManager.shared.linkUserToOneSignal()
                     Task { await OneSignalService.shared.configure() }
+                    NotificationManager.shared.refreshCachedPreferences()
 
                     let localHasCompany = !(user.companyId ?? "").isEmpty
                     if user.hasCompletedAppOnboarding || localHasCompany {
@@ -1678,6 +1682,36 @@ class DataController: ObservableObject {
         }
     }
 
+    /// Get all scheduled tasks from a date forward where any of the given member IDs are assigned.
+    /// Unlike getScheduledTasksForMember(for:memberId:), this checks a date range (not single date)
+    /// and accepts multiple member IDs.
+    func getScheduledTasksForMembers(memberIds: Set<String>, from startDate: Date) -> [ProjectTask] {
+        guard !memberIds.isEmpty else { return [] }
+        guard let context = modelContext else { return [] }
+
+        do {
+            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+            let calendar = Calendar.current
+            let startDay = calendar.startOfDay(for: startDate)
+
+            return allTasks.filter { task in
+                guard task.deletedAt == nil else { return false }
+                guard let taskStart = task.startDate else { return false }
+                let taskEnd = task.endDate ?? taskStart
+
+                // Task must end on or after our start date
+                let taskEndDay = calendar.startOfDay(for: taskEnd)
+                guard taskEndDay >= startDay else { return false }
+
+                // Check if any requested member is assigned to this task
+                let taskMemberIds = Set(task.getTeamMemberIds())
+                return !taskMemberIds.isDisjoint(with: memberIds)
+            }.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
+        } catch {
+            return []
+        }
+    }
+
     /// Get all scheduled tasks from a given start date, filtered by current user access
     func getAllScheduledTasks(from startDate: Date) -> [ProjectTask] {
         guard let user = currentUser else { return [] }
@@ -2208,15 +2242,32 @@ class DataController: ObservableObject {
         }
     }
 
-    /// Request a password reset email via Supabase Auth
+    /// Request a password reset email via the OPS web API.
+    /// The API generates a Firebase reset link and sends a branded email via SendGrid.
     /// - Parameter email: The user's email address
     /// - Returns: Tuple with success flag and optional error message
     func requestPasswordReset(email: String) async -> (Bool, String?) {
+        let url = AppConfiguration.apiBaseURL.appendingPathComponent("/api/auth/reset-password")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["email": email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()])
+
         do {
-            try await authManager.resetPassword(email: email)
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200...299).contains(httpResponse.statusCode) else {
+                let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+                print("[PASSWORD_RESET] Server error: \(errorBody)")
+                return (false, "Failed to send reset email. Please try again.")
+            }
+
             return (true, nil)
         } catch {
-            return (false, "Failed to request password reset. Please try again.")
+            print("[PASSWORD_RESET] Network error: \(error)")
+            return (false, "Network error. Please check your connection and try again.")
         }
     }
     
@@ -2226,7 +2277,39 @@ class DataController: ObservableObject {
     @MainActor
     func deleteUserAccount(userId: String) async -> (Bool, String?) {
         do {
-            // 1. Delete the Firebase Auth account first (requires active session)
+            // 1. Soft-delete the user row in Supabase DIRECTLY (not via sync queue).
+            //    This must happen BEFORE Firebase deletion because the Supabase client
+            //    needs the Firebase JWT (via accessToken callback) to authenticate.
+            //    Using the sync queue would fail because logout() clears auth state
+            //    before the queued operation can execute.
+            do {
+                try await SupabaseService.shared.client
+                    .from("users")
+                    .update(["deleted_at": ISO8601DateFormatter().string(from: Date())])
+                    .eq("id", value: userId)
+                    .execute()
+                print("[DELETE_ACCOUNT] User soft-deleted in Supabase")
+            } catch {
+                print("[DELETE_ACCOUNT] Supabase soft-delete failed: \(error.localizedDescription)")
+                // Continue — we still want to delete the Firebase account
+            }
+
+            // 2. Remove user from company's seated_employee_ids (best-effort)
+            if let companyId = currentUser?.companyId, !companyId.isEmpty {
+                do {
+                    try await SupabaseService.shared.client
+                        .rpc("remove_seated_employee", params: [
+                            "p_company_id": companyId,
+                            "p_user_id": userId
+                        ])
+                        .execute()
+                    print("[DELETE_ACCOUNT] Removed from seated_employee_ids")
+                } catch {
+                    print("[DELETE_ACCOUNT] Failed to remove from seated employees (non-fatal): \(error.localizedDescription)")
+                }
+            }
+
+            // 3. Delete the Firebase Auth account (requires active session)
             do {
                 try await FirebaseAuthService.shared.deleteAccount()
                 print("[DELETE_ACCOUNT] Firebase Auth account deleted")
@@ -2237,16 +2320,21 @@ class DataController: ObservableObject {
                     print("[DELETE_ACCOUNT] Firebase requires re-authentication")
                     return (false, "Please sign out and sign back in, then try deleting your account again.")
                 }
-                // If Firebase deletion fails for other reasons, still proceed with soft delete
-                // The Firebase account will be orphaned but the user can't access the app
-                print("[DELETE_ACCOUNT] Firebase deletion failed (proceeding with soft delete): \(error.localizedDescription)")
+                // If Firebase deletion fails, the user row is already soft-deleted in Supabase.
+                // The Firebase account will be orphaned but won't map to an active user.
+                print("[DELETE_ACCOUNT] Firebase deletion failed (user already soft-deleted in Supabase): \(error.localizedDescription)")
             }
 
-            // 2. Soft-delete the user row via SyncEngine
-            try await deleteUser(userId: userId)
-            print("[DELETE_ACCOUNT] User soft-deleted via SyncEngine")
+            // 4. Also soft-delete locally so it's consistent
+            if let context = modelContext {
+                let descriptor = FetchDescriptor<User>(predicate: #Predicate { $0.id == userId })
+                if let localUser = try? context.fetch(descriptor).first {
+                    localUser.deletedAt = Date()
+                    try? context.save()
+                }
+            }
 
-            // 3. Clean up local data and log out
+            // 5. Clean up local data and log out
             logout()
 
             return (true, nil)
@@ -2763,16 +2851,40 @@ class DataController: ObservableObject {
                 if !projectTeamMemberIds.isEmpty {
                     let taskName = task.displayTitle
                     let projectName = project.title
-                    let completedByName = currentUser?.fullName
+                    let completedByName = currentUser?.fullName ?? "A team member"
+                    let capturedTaskId = task.id
+                    let capturedProjectId = project.id
+                    let capturedCompanyId = currentUser?.companyId
 
                     Task {
+                        // Create in-app notifications
+                        if let companyId = capturedCompanyId {
+                            let notifRepo = NotificationRepository()
+                            let currentId = UserDefaults.standard.string(forKey: "currentUserId")
+                            for memberId in projectTeamMemberIds where memberId != currentId {
+                                let dto = NotificationRepository.CreateNotificationDTO(
+                                    userId: memberId,
+                                    companyId: companyId,
+                                    type: "task_completion",
+                                    title: "Task Completed",
+                                    body: "\(completedByName) completed \"\(taskName)\" on \(projectName)",
+                                    projectId: capturedProjectId,
+                                    noteId: nil,
+                                    expenseId: nil,
+                                    batchId: nil,
+                                    deepLinkType: "projectDetails"
+                                )
+                                try? await notifRepo.createNotification(dto)
+                            }
+                        }
+                        // Send push
                         do {
                             try await OneSignalService.shared.notifyTaskCompletion(
                                 userIds: projectTeamMemberIds,
                                 taskName: taskName,
                                 projectName: projectName,
-                                taskId: task.id,
-                                projectId: project.id,
+                                taskId: capturedTaskId,
+                                projectId: capturedProjectId,
                                 completedByName: completedByName
                             )
                         } catch {
@@ -2906,16 +3018,40 @@ class DataController: ObservableObject {
             newStatus: newStatus.rawValue
         )
 
-        // Send push notification if project was just marked as completed
+        // Send push + in-app notification if project was just marked as completed
         if newStatus == .completed && previousStatus != .completed {
             let teamMemberIds = project.getTeamMemberIds()
             if !teamMemberIds.isEmpty {
+                let capturedProjectId = project.id
+                let capturedProjectName = project.title
+                let capturedCompanyId = currentUser?.companyId
                 Task {
+                    // Create in-app notifications
+                    if let companyId = capturedCompanyId {
+                        let notifRepo = NotificationRepository()
+                        let currentId = UserDefaults.standard.string(forKey: "currentUserId")
+                        for memberId in teamMemberIds where memberId != currentId {
+                            let dto = NotificationRepository.CreateNotificationDTO(
+                                userId: memberId,
+                                companyId: companyId,
+                                type: "project_completion",
+                                title: "Project Completed",
+                                body: "\"\(capturedProjectName)\" has been marked as completed",
+                                projectId: capturedProjectId,
+                                noteId: nil,
+                                expenseId: nil,
+                                batchId: nil,
+                                deepLinkType: "projectDetails"
+                            )
+                            try? await notifRepo.createNotification(dto)
+                        }
+                    }
+                    // Send push
                     do {
                         try await OneSignalService.shared.notifyProjectCompletion(
                             userIds: teamMemberIds,
-                            projectName: project.title,
-                            projectId: project.id
+                            projectName: capturedProjectName,
+                            projectId: capturedProjectId
                         )
                     } catch {
                         print("[NOTIFICATIONS] Failed to send project completion notification: \(error)")
@@ -2969,14 +3105,40 @@ class DataController: ObservableObject {
         if datesChanged, let project = project {
             let teamMemberIds = task.getTeamMemberIds()
             if !teamMemberIds.isEmpty {
+                let capturedTaskName = task.displayTitle
+                let capturedProjectName = project.title
+                let capturedTaskId = task.id
+                let capturedProjectId = project.id
+                let capturedCompanyId = currentUser?.companyId
                 Task {
+                    // Create in-app notifications
+                    if let companyId = capturedCompanyId {
+                        let notifRepo = NotificationRepository()
+                        let currentId = UserDefaults.standard.string(forKey: "currentUserId")
+                        for memberId in teamMemberIds where memberId != currentId {
+                            let dto = NotificationRepository.CreateNotificationDTO(
+                                userId: memberId,
+                                companyId: companyId,
+                                type: "schedule_change",
+                                title: "Schedule Update",
+                                body: "\"\(capturedTaskName)\" on \(capturedProjectName) has been rescheduled",
+                                projectId: capturedProjectId,
+                                noteId: nil,
+                                expenseId: nil,
+                                batchId: nil,
+                                deepLinkType: "taskDetails"
+                            )
+                            try? await notifRepo.createNotification(dto)
+                        }
+                    }
+                    // Send push
                     do {
                         try await OneSignalService.shared.notifyScheduleChange(
                             userIds: teamMemberIds,
-                            taskName: task.displayTitle,
-                            projectName: project.title,
-                            taskId: task.id,
-                            projectId: project.id
+                            taskName: capturedTaskName,
+                            projectName: capturedProjectName,
+                            taskId: capturedTaskId,
+                            projectId: capturedProjectId
                         )
                     } catch {
                         print("[NOTIFICATIONS] Failed to send schedule change notification: \(error)")
@@ -3125,6 +3287,27 @@ class DataController: ObservableObject {
 
             let projectTitle = dependentTask.project?.title ?? "Project"
 
+            // Create in-app notifications
+            if let companyId = currentUser?.companyId {
+                let notifRepo = NotificationRepository()
+                let currentId = UserDefaults.standard.string(forKey: "currentUserId")
+                for memberId in recipientIds where memberId != currentId {
+                    let dto = NotificationRepository.CreateNotificationDTO(
+                        userId: memberId,
+                        companyId: companyId,
+                        type: "dependency_completed",
+                        title: "Ready to start",
+                        body: "\(dependentTask.displayTitle) on \(projectTitle) — \(completedTask.displayTitle) is complete",
+                        projectId: dependentTask.projectId,
+                        noteId: nil,
+                        expenseId: nil,
+                        batchId: nil,
+                        deepLinkType: "taskDetails"
+                    )
+                    try? await notifRepo.createNotification(dto)
+                }
+            }
+            // Send push
             do {
                 try await OneSignalService.shared.notifyDependencyCompleted(
                     completedTaskTitle: completedTask.displayTitle,
@@ -3267,20 +3450,40 @@ class DataController: ObservableObject {
             changedFields: ["team_member_ids": memberIds]
         )
 
-        // Send push notifications to newly added team members
+        // Send push + in-app notifications to newly added team members
         if !addedMemberIds.isEmpty {
             let taskName = task.displayTitle
             let projectName = task.project?.title ?? "Project"
+            let capturedTaskId = task.id
+            let capturedProjectId = task.project?.id ?? ""
+            let capturedCompanyId = currentUser?.companyId
 
             for userId in addedMemberIds {
                 Task {
+                    // Create in-app notification
+                    if let companyId = capturedCompanyId {
+                        let dto = NotificationRepository.CreateNotificationDTO(
+                            userId: userId,
+                            companyId: companyId,
+                            type: "task_assignment",
+                            title: "New Task Assignment",
+                            body: "You've been assigned to \"\(taskName)\" on \(projectName)",
+                            projectId: capturedProjectId,
+                            noteId: nil,
+                            expenseId: nil,
+                            batchId: nil,
+                            deepLinkType: "taskDetails"
+                        )
+                        try? await NotificationRepository().createNotification(dto)
+                    }
+                    // Send push
                     do {
                         try await OneSignalService.shared.notifyTaskAssignment(
                             userId: userId,
                             taskName: taskName,
                             projectName: projectName,
-                            taskId: task.id,
-                            projectId: task.project?.id ?? ""
+                            taskId: capturedTaskId,
+                            projectId: capturedProjectId
                         )
                     } catch {
                         print("[NOTIFICATIONS] Failed to send task assignment notification: \(error)")

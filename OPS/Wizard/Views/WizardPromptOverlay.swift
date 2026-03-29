@@ -29,7 +29,7 @@ struct WizardPromptOverlay: View {
                 HStack(spacing: 12) {
                     Image(systemName: wizard.iconName)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.wizardAccent)
 
                     Text(wizard.displayName)
                         .font(OPSStyle.Typography.cardTitle)
@@ -50,7 +50,7 @@ struct WizardPromptOverlay: View {
                         HStack(spacing: 10) {
                             Text("\(index + 1)")
                                 .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .foregroundColor(OPSStyle.Colors.wizardAccent)
                                 .frame(width: 20, alignment: .center)
 
                             Text(point)
@@ -113,7 +113,7 @@ struct WizardPromptOverlay: View {
                     HStack(spacing: 10) {
                         Image(systemName: doNotShowAgain ? "checkmark.square.fill" : "square")
                             .font(.system(size: 18))
-                            .foregroundColor(doNotShowAgain ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                            .foregroundColor(doNotShowAgain ? OPSStyle.Colors.wizardAccent : OPSStyle.Colors.tertiaryText)
 
                         Text("Don't show me this again")
                             .font(OPSStyle.Typography.caption)

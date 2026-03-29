@@ -2,41 +2,154 @@
 //  WizardTargetModifier.swift
 //  OPS
 //
-//  A view modifier that marks a UI element as the target for a wizard step.
-//  When the current wizard step matches, the element gets a pulsing orange
-//  background fill that draws the user's eye to the action they need to take.
+//  View modifiers that mark UI elements as wizard step targets.
+//  When the current wizard step matches, the element gets a pulsing
+//  orange glow whose shape and intensity are driven by the element type.
+//
+//  All styling tokens live in OPSStyle.Wizard — edit there to change
+//  every wizard glow centrally.
 //
 //  Usage:
-//    settingsRow(icon: "person", title: "Profile")
-//        .wizardTarget("open_profile")
+//    Button("Save") { ... }
+//        .wizardTarget("save_project")
+//
+//    fabButton
+//        .wizardTarget("open_fab", style: .circle)
+//
+//    TextField("Name", text: $name)
+//        .wizardTarget("enter_name", style: .input)
+//
+//    settingsRow(...)
+//        .wizardTarget("open_profile", style: .row)
 //
 
 import SwiftUI
 
-// MARK: - Wizard Target Modifier
+// MARK: - Wizard Target Style
 
+/// The shape / intensity profile for a wizard glow.
+/// Each case maps to a token set in `OPSStyle.Wizard`.
+enum WizardTargetStyle {
+    /// Rounded rectangle — buttons, tappable areas (default)
+    case button
+    /// Circle — FAB, avatars, round buttons
+    case circle
+    /// Text field / input — subtle fill, prominent border
+    case input
+    /// List row / card — full-width highlight
+    case row
+}
+
+// MARK: - Environment Bridge
+
+/// Reads the wizard state manager from Environment and bridges it
+/// to an @ObservedObject so SwiftUI properly observes @Published changes.
 struct WizardTargetModifier: ViewModifier {
-    let stepId: String
+    let stepIds: [String]
+    let style: WizardTargetStyle
     @Environment(\.wizardStateManager) private var stateManager
 
-    private var isActive: Bool {
-        guard let manager = stateManager,
-              manager.isActive,
-              let currentStep = manager.currentStep else { return false }
-        return currentStep.id == stepId
+    func body(content: Content) -> some View {
+        if let manager = stateManager {
+            WizardTargetGlow(
+                stepIds: stepIds,
+                style: style,
+                stateManager: manager
+            ) {
+                content
+            }
+        } else {
+            content
+        }
     }
+}
+
+// MARK: - Glow View (observes state manager)
+
+/// Inner view that uses @ObservedObject to properly react to wizard state changes.
+private struct WizardTargetGlow<Content: View>: View {
+    let stepIds: [String]
+    let style: WizardTargetStyle
+    @ObservedObject var stateManager: WizardStateManager
+    @ViewBuilder let content: Content
 
     @State private var pulsePhase: Bool = false
 
-    func body(content: Content) -> some View {
+    private var isActive: Bool {
+        guard stateManager.isActive,
+              let currentStep = stateManager.currentStep else { return false }
+        return stepIds.contains(currentStep.id)
+    }
+
+    // MARK: - Token resolution
+
+    private var fillOpacityHigh: Double {
+        switch style {
+        case .button: return OPSStyle.Wizard.Button.fillOpacityHigh
+        case .circle: return OPSStyle.Wizard.Circle.fillOpacityHigh
+        case .input:  return OPSStyle.Wizard.Input.fillOpacityHigh
+        case .row:    return OPSStyle.Wizard.Row.fillOpacityHigh
+        }
+    }
+
+    private var fillOpacityLow: Double {
+        switch style {
+        case .button: return OPSStyle.Wizard.Button.fillOpacityLow
+        case .circle: return OPSStyle.Wizard.Circle.fillOpacityLow
+        case .input:  return OPSStyle.Wizard.Input.fillOpacityLow
+        case .row:    return OPSStyle.Wizard.Row.fillOpacityLow
+        }
+    }
+
+    private var borderOpacityHigh: Double {
+        switch style {
+        case .button: return OPSStyle.Wizard.Button.borderOpacityHigh
+        case .circle: return OPSStyle.Wizard.Circle.borderOpacityHigh
+        case .input:  return OPSStyle.Wizard.Input.borderOpacityHigh
+        case .row:    return OPSStyle.Wizard.Row.borderOpacityHigh
+        }
+    }
+
+    private var borderOpacityLow: Double {
+        switch style {
+        case .button: return OPSStyle.Wizard.Button.borderOpacityLow
+        case .circle: return OPSStyle.Wizard.Circle.borderOpacityLow
+        case .input:  return OPSStyle.Wizard.Input.borderOpacityLow
+        case .row:    return OPSStyle.Wizard.Row.borderOpacityLow
+        }
+    }
+
+    private var borderWidth: CGFloat {
+        switch style {
+        case .button: return OPSStyle.Wizard.Button.borderWidth
+        case .circle: return OPSStyle.Wizard.Circle.borderWidth
+        case .input:  return OPSStyle.Wizard.Input.borderWidth
+        case .row:    return OPSStyle.Wizard.Row.borderWidth
+        }
+    }
+
+    private var cornerRadius: CGFloat {
+        switch style {
+        case .button: return OPSStyle.Wizard.Button.cornerRadius
+        case .circle: return 0
+        case .input:  return OPSStyle.Wizard.Input.cornerRadius
+        case .row:    return OPSStyle.Wizard.Row.cornerRadius
+        }
+    }
+
+    private let color = OPSStyle.Wizard.accentColor
+    private let duration = OPSStyle.Wizard.pulseDuration
+
+    // MARK: - Body
+
+    var body: some View {
         content
             .background(
                 Group {
                     if isActive {
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(OPSStyle.Colors.wizardAccent.opacity(pulsePhase ? 0.35 : 0.15))
+                        glowFill
                             .animation(
-                                .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
+                                .easeInOut(duration: duration).repeatForever(autoreverses: true),
                                 value: pulsePhase
                             )
                     }
@@ -45,38 +158,75 @@ struct WizardTargetModifier: ViewModifier {
             .overlay(
                 Group {
                     if isActive {
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.wizardAccent.opacity(pulsePhase ? 0.9 : 0.4), lineWidth: 2)
+                        glowBorder
                             .animation(
-                                .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
+                                .easeInOut(duration: duration).repeatForever(autoreverses: true),
                                 value: pulsePhase
                             )
                     }
                 }
             )
+            .id(isActive ? "wizard_active_\(stepIds.first ?? "")" : "")
             .onChange(of: isActive) { _, active in
-                if active {
-                    pulsePhase = true
-                } else {
-                    pulsePhase = false
+                pulsePhase = active
+                if active, let stepId = stepIds.first {
+                    // Request scroll to this element
+                    NotificationCenter.default.post(
+                        name: Notification.Name("WizardScrollToTarget"),
+                        object: nil,
+                        userInfo: ["stepId": stepId]
+                    )
                 }
             }
             .onAppear {
-                if isActive {
-                    pulsePhase = true
-                }
+                if isActive { pulsePhase = true }
             }
+    }
+
+    // MARK: - Shape builders
+
+    @ViewBuilder
+    private var glowFill: some View {
+        let opacity = pulsePhase ? fillOpacityHigh : fillOpacityLow
+        switch style {
+        case .circle:
+            Circle().fill(color.opacity(opacity))
+        case .button, .input, .row:
+            RoundedRectangle(cornerRadius: cornerRadius).fill(color.opacity(opacity))
+        }
+    }
+
+    @ViewBuilder
+    private var glowBorder: some View {
+        let opacity = pulsePhase ? borderOpacityHigh : borderOpacityLow
+        switch style {
+        case .circle:
+            Circle().stroke(color.opacity(opacity), lineWidth: borderWidth)
+        case .button, .input, .row:
+            RoundedRectangle(cornerRadius: cornerRadius).stroke(color.opacity(opacity), lineWidth: borderWidth)
+        }
     }
 }
 
-// MARK: - View Extension
+// MARK: - View Extensions
 
 extension View {
     /// Marks this view as the target for a wizard step.
-    /// When the wizard reaches this step, the view gets a pulsing orange highlight.
+    /// When the wizard reaches this step, the view gets a pulsing orange glow.
     ///
-    /// - Parameter stepId: The wizard step ID that this view corresponds to (e.g., "open_profile")
-    func wizardTarget(_ stepId: String) -> some View {
-        modifier(WizardTargetModifier(stepId: stepId))
+    /// - Parameters:
+    ///   - stepId: The wizard step ID (e.g., "open_profile")
+    ///   - style: The glow shape/intensity profile. Defaults to `.button`.
+    func wizardTarget(_ stepId: String, style: WizardTargetStyle = .button) -> some View {
+        modifier(WizardTargetModifier(stepIds: [stepId], style: style))
+    }
+
+    /// Marks this view as the target for multiple wizard steps (e.g., FAB matches two steps).
+    ///
+    /// - Parameters:
+    ///   - style: The glow shape/intensity profile.
+    ///   - stepIds: The wizard step IDs this view corresponds to.
+    func wizardTarget(style: WizardTargetStyle, _ stepIds: String...) -> some View {
+        modifier(WizardTargetModifier(stepIds: stepIds, style: style))
     }
 }

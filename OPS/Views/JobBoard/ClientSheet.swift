@@ -102,6 +102,7 @@ struct ClientSheet: View {
                     .ignoresSafeArea()
 
                 ScrollView {
+                    ScrollViewReader { proxy in
                     VStack(spacing: 24) {
                         // PREVIEW CARD
                         previewCard
@@ -140,6 +141,7 @@ struct ClientSheet: View {
                                                     lineWidth: OPSStyle.Layout.Border.standard
                                                 )
                                         )
+                                        .wizardTarget("fill_client_name", style: .input)
                                         .onChange(of: name) { _, newValue in
                                             if mode.isCreate {
                                                 checkForDuplicates()
@@ -328,6 +330,17 @@ struct ClientSheet: View {
                     }
                     .padding()
                     .padding(.bottom, 100)
+                    // Wizard system: scroll to the target element when a wizard step activates
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
+                        guard let stepId = notification.userInfo?["stepId"] as? String else { return }
+                        let wizardId = "wizard_active_\(stepId)"
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            withAnimation {
+                                proxy.scrollTo(wizardId, anchor: .top)
+                            }
+                        }
+                    }
+                    }
                 }
             }
             .standardSheetToolbar(

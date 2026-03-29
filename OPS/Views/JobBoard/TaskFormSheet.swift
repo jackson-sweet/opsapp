@@ -502,6 +502,7 @@ struct TaskFormSheet: View {
                 .ignoresSafeArea()
 
             ScrollView {
+                ScrollViewReader { proxy in
                 VStack(spacing: 24) {
                     // Live preview card at top (greyed out in tutorial mode to reduce distraction)
                     previewCard
@@ -529,9 +530,11 @@ struct TaskFormSheet: View {
                                 .allowsHitTesting(!tutorialMode && !needsProjectSelection)
                                 .opacity(tutorialMode || needsProjectSelection ? 0.5 : 1.0)
                             teamField
+                                .wizardTarget("assign_crew", style: .row)
                                 .allowsHitTesting(isCrewFieldEnabled && !needsProjectSelection)
                                 .opacity((tutorialMode && !isCrewFieldEnabled) || needsProjectSelection ? 0.5 : 1.0)
                             datesField
+                                .wizardTarget("assign_date", style: .row)
                                 .allowsHitTesting(isDatesFieldEnabled && !needsProjectSelection)
                                 .opacity((tutorialMode && !isDatesFieldEnabled) || needsProjectSelection ? 0.5 : 1.0)
                             dependenciesSection
@@ -543,6 +546,17 @@ struct TaskFormSheet: View {
                 }
                 .padding()
                 .padding(.bottom, 100)
+                // Wizard system: scroll to the target element when a wizard step activates
+                .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
+                    guard let stepId = notification.userInfo?["stepId"] as? String else { return }
+                    let wizardId = "wizard_active_\(stepId)"
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        withAnimation {
+                            proxy.scrollTo(wizardId, anchor: .top)
+                        }
+                    }
+                }
+                }
             }
         }
         .toolbar {

@@ -27,14 +27,14 @@ struct ProjectLifecycleWizard: WizardDefinitionProtocol {
     let steps: [WizardStepDefinition] = [
         WizardStepDefinition(
             id: "open_fab",
-            instruction: "TAP THE + BUTTON",
-            description: "This is where you create projects, clients, and more.",
+            instruction: "TAP THE ACTION BUTTON",
+            description: "The ⚡ button in the bottom-right corner — it's where you create projects, clients, and more.",
             targetScreen: "JobBoard",
             completionNotification: "WizardFABTapped"
         ),
         WizardStepDefinition(
             id: "select_create_client",
-            instruction: "TAP \"CREATE CLIENT\"",
+            instruction: "TAP \"NEW CLIENT\"",
             description: "Let's start by adding a client — the customer this job is for.",
             targetScreen: "FABMenu",
             completionNotification: "WizardCreateClientTapped"
@@ -48,14 +48,14 @@ struct ProjectLifecycleWizard: WizardDefinitionProtocol {
         ),
         WizardStepDefinition(
             id: "open_fab_project",
-            instruction: "TAP THE + BUTTON AGAIN",
+            instruction: "TAP THE ACTION BUTTON AGAIN",
             description: "Now let's create a project for this client.",
             targetScreen: "JobBoard",
             completionNotification: "WizardFABTapped"
         ),
         WizardStepDefinition(
             id: "select_create_project",
-            instruction: "TAP \"CREATE PROJECT\"",
+            instruction: "TAP \"NEW PROJECT\"",
             description: nil,
             targetScreen: "FABMenu",
             completionNotification: "WizardCreateProjectTapped"

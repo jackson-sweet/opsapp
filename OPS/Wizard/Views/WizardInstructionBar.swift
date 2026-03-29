@@ -19,31 +19,50 @@ struct WizardInstructionBar: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle()
-                        .fill(OPSStyle.Colors.primaryAccent.opacity(0.15))
+                        .fill(OPSStyle.Colors.wizardAccent.opacity(0.15))
 
                     Rectangle()
-                        .fill(OPSStyle.Colors.primaryAccent)
+                        .fill(OPSStyle.Colors.wizardAccent)
                         .frame(width: geo.size.width * stateManager.progressFraction)
                         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: stateManager.progressFraction)
                 }
             }
             .frame(height: 3)
 
-            // Content
-            VStack(spacing: 6) {
-                // Instruction text + step counter
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        if stateManager.isPaused {
-                            HStack(spacing: 8) {
-                                Image(systemName: "arrow.uturn.backward.circle.fill")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                Text("TAP TO RETURN TO GUIDE")
-                                    .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            }
-                        } else {
+            // Content — paused and active are separate branches so the paused
+            // tap gesture never interferes with the active-state buttons.
+            if stateManager.isPaused {
+                // Paused: entire bar is one big tappable area
+                VStack(spacing: 6) {
+                    HStack(alignment: .top) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.uturn.backward.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(OPSStyle.Colors.wizardAccent)
+                            Text("TAP TO RETURN TO GUIDE")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.wizardAccent)
+                        }
+
+                        Spacer()
+
+                        Text("\(stateManager.currentStepIndex + 1) / \(stateManager.totalSteps)")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .monospacedDigit()
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onPausedBarTapped?()
+                }
+            } else {
+                // Active: skip and exit are individual buttons — no parent tap gesture
+                VStack(spacing: 6) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text(stateManager.currentInstruction)
                                 .font(OPSStyle.Typography.captionBold)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -55,70 +74,63 @@ struct WizardInstructionBar: View {
                                     .lineLimit(2)
                             }
                         }
+
+                        Spacer()
+
+                        Text("\(stateManager.currentStepIndex + 1) / \(stateManager.totalSteps)")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .monospacedDigit()
                     }
 
-                    Spacer()
+                    // Action buttons
+                    HStack(spacing: 12) {
+                        // Skip button
+                        if let step = stateManager.currentStep, step.canSkip {
+                            Button {
+                                TutorialHaptics.lightTap()
+                                stateManager.skipCurrentStep()
+                            } label: {
+                                Text("SKIP")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(OPSStyle.Colors.background.opacity(0.5))
+                                    .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+                            }
+                        }
 
-                    Text("\(stateManager.currentStepIndex + 1) / \(stateManager.totalSteps)")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .monospacedDigit()
-                }
+                        Spacer()
 
-                // Action buttons
-                HStack(spacing: 12) {
-                    // Skip button
-                    if let step = stateManager.currentStep, step.canSkip, !stateManager.isPaused {
+                        // Exit button
                         Button {
                             TutorialHaptics.lightTap()
-                            stateManager.skipCurrentStep()
+                            stateManager.exitWizard()
                         } label: {
-                            Text("SKIP")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(OPSStyle.Colors.background.opacity(0.5))
-                                .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+                            HStack(spacing: 6) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text("EXIT")
+                                    .font(OPSStyle.Typography.captionBold)
+                            }
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(OPSStyle.Colors.background.opacity(0.5))
+                            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                         }
-                        .buttonStyle(PlainButtonStyle())
                     }
-
-                    Spacer()
-
-                    // Exit button
-                    Button {
-                        TutorialHaptics.lightTap()
-                        stateManager.exitWizard()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 10, weight: .bold))
-                            Text("EXIT")
-                                .font(OPSStyle.Typography.captionBold)
-                        }
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(OPSStyle.Colors.background.opacity(0.5))
-                        .cornerRadius(OPSStyle.Layout.smallCornerRadius)
-                    }
-                    .buttonStyle(PlainButtonStyle())
                 }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .background(
-                BlurView(style: .systemUltraThinMaterialDark)
-                    .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.9))
-            )
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if stateManager.isPaused {
-                onPausedBarTapped?()
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
             }
         }
+        .background(
+            BlurView(style: .systemUltraThinMaterialDark)
+                .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.9))
+                .ignoresSafeArea(edges: .bottom)
+        )
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 }

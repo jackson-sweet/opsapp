@@ -86,10 +86,18 @@ private struct WizardOverlayView: View {
         ZStack {
             // Exit prompt overlay
             if showExitPrompt {
+                // Scrim — tapping outside the dialog returns to the wizard.
+                // allowsHitTesting(false) on the scrim itself; a background tap
+                // handler on the full ZStack layer handles dismiss so it never
+                // competes with the dialog buttons.
                 Color.black.opacity(0.5)
                     .ignoresSafeArea()
+                    .allowsHitTesting(false)
+
+                // Invisible tap catcher behind the dialog — returns to wizard
+                Color.clear
+                    .contentShape(Rectangle())
                     .onTapGesture {
-                        // Dismiss and return to wizard
                         TutorialHaptics.lightTap()
                         showExitPrompt = false
                         stateManager.navigateToCurrentStep()
@@ -98,20 +106,16 @@ private struct WizardOverlayView: View {
                         }
                     }
 
-                VStack(spacing: 20) {
-                    VStack(spacing: 8) {
-                        Image(systemName: "arrow.uturn.backward.circle")
-                            .font(.system(size: 36))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-
+                // Dialog card
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("LEAVE GUIDE?")
-                            .font(OPSStyle.Typography.title)
+                            .font(OPSStyle.Typography.cardTitle)
                             .foregroundColor(OPSStyle.Colors.primaryText)
 
-                        Text("You navigated away from the setup guide. Would you like to continue or exit?")
+                        Text("You navigated away from the setup guide.")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .multilineTextAlignment(.center)
                     }
 
                     VStack(spacing: 12) {
@@ -128,7 +132,7 @@ private struct WizardOverlayView: View {
                                 .foregroundColor(OPSStyle.Colors.buttonText)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: OPSStyle.Layout.touchTargetStandard)
-                                .background(OPSStyle.Colors.primaryAccent)
+                                .background(OPSStyle.Colors.wizardAccent)
                                 .cornerRadius(OPSStyle.Layout.cornerRadius)
                         }
 
@@ -151,15 +155,20 @@ private struct WizardOverlayView: View {
                         }
                     }
                 }
-                .padding(28)
-                .background(OPSStyle.Colors.cardBackgroundDark)
-                .cornerRadius(12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                .padding(24)
+                .background(
+                    BlurView(style: .systemUltraThinMaterialDark)
+                        .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.85))
                 )
-                .padding(.horizontal, 32)
-                .transition(.scale.combined(with: .opacity))
+                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .padding(.horizontal, 24)
+                // Prevent taps on the dialog from falling through to the dismiss handler
+                .contentShape(Rectangle())
+                .transition(.opacity)
             }
 
             // Instruction bar at bottom

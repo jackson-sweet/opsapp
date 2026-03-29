@@ -58,11 +58,11 @@ enum OPSStyle {
         static let inactiveStatus = Color("StatusInactive") // Gray (#8E8E93)
 
         // Accounting & Financial colors
-        static let accountingRevenue = Color("AccountingRevenue") // Amber gold (#C4A868)
-        static let accountingProfit = Color("AccountingProfit") // Muted green (#9DB582)
-        static let accountingCost = Color("AccountingCost") // Muted rose (#B58289)
-        static let accountingReceivables = Color("AccountingReceivables") // Warm amber (#D4A574)
-        static let accountingOverdue = Color("AccountingOverdue") // Deep red (#93321A)
+        static let accountingRevenue = Color("Accounting/AccountingRevenue") // Amber gold (#C4A868)
+        static let accountingProfit = Color("Accounting/AccountingProfit") // Muted green (#9DB582)
+        static let accountingCost = Color("Accounting/AccountingCost") // Muted rose (#B58289)
+        static let accountingReceivables = Color("Accounting/AccountingReceivables") // Warm amber (#D4A574)
+        static let accountingOverdue = Color("Accounting/AccountingOverdue") // Deep red (#93321A)
 
         // Wizard highlight color
         static let wizardAccent = Color(red: 0.92, green: 0.55, blue: 0.15) // Tactical orange (#EB8C26)
@@ -341,6 +341,53 @@ enum OPSStyle {
         static let faster = SwiftUI.Animation.easeOut(duration: 0.15)
         static let spring = SwiftUI.Animation.spring(response: 0.3, dampingFraction: 0.7)
         static let springFast = SwiftUI.Animation.spring(response: 0.2, dampingFraction: 0.7)
+    }
+
+    // MARK: - Wizard
+    /// Centralized styling tokens for the wizard glow system.
+    /// Edit these to change how wizard targets look across all element types.
+    enum Wizard {
+        static let accentColor = Colors.wizardAccent
+        static let pulseDuration: Double = 1.0
+
+        /// Button / tappable element — rounded rectangle glow
+        enum Button {
+            static let fillOpacityHigh: Double = 0.35
+            static let fillOpacityLow: Double = 0.15
+            static let borderOpacityHigh: Double = 0.9
+            static let borderOpacityLow: Double = 0.4
+            static let borderWidth: CGFloat = 2
+            static let cornerRadius: CGFloat = Layout.cornerRadius
+        }
+
+        /// Circular element — FAB, avatar, round button
+        enum Circle {
+            static let fillOpacityHigh: Double = 0.35
+            static let fillOpacityLow: Double = 0.15
+            static let borderOpacityHigh: Double = 0.9
+            static let borderOpacityLow: Double = 0.4
+            static let borderWidth: CGFloat = 2
+        }
+
+        /// Input field — subtle fill so text stays readable, prominent border
+        enum Input {
+            static let fillOpacityHigh: Double = 0.12
+            static let fillOpacityLow: Double = 0.04
+            static let borderOpacityHigh: Double = 0.9
+            static let borderOpacityLow: Double = 0.4
+            static let borderWidth: CGFloat = 2
+            static let cornerRadius: CGFloat = Layout.smallCornerRadius
+        }
+
+        /// List row / card — full-width highlight
+        enum Row {
+            static let fillOpacityHigh: Double = 0.25
+            static let fillOpacityLow: Double = 0.10
+            static let borderOpacityHigh: Double = 0.7
+            static let borderOpacityLow: Double = 0.3
+            static let borderWidth: CGFloat = 1.5
+            static let cornerRadius: CGFloat = Layout.cornerRadius
+        }
     }
 
     // MARK: - Icons

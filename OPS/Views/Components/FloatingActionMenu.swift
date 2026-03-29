@@ -698,6 +698,21 @@ struct FloatingActionMenu: View {
                 NotificationCenter.default.post(name: Notification.Name("CalendarUserEventsDidChange"), object: nil)
             }
         }
+        .onChange(of: showCreateMenu) { oldValue, newValue in
+            // Wizard system: when the FAB menu closes, notify so the exit prompt
+            // can fire if the user didn't tap the expected menu item.
+            // Delay slightly so completion notifications process first — the wizard
+            // advances before the dismissal check runs.
+            if oldValue && !newValue {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("WizardScreenDismissed"),
+                        object: nil,
+                        userInfo: ["screen": "FABMenu"]
+                    )
+                }
+            }
+        }
         .onAppear {
             calendarViewModel.setDataController(dataController)
         }
@@ -773,6 +788,7 @@ struct FloatingActionMenu: View {
                     }
                 }
         }
+        .wizardTarget(style: .circle, "open_fab", "open_fab_project")
         .allowsHitTesting(!isFABDisabledInTutorial)
     }
 
@@ -1114,6 +1130,11 @@ struct FloatingActionMenu: View {
                     )
             }
         }
+        // Wizard system: glow the menu items that match active wizard steps
+        .wizardTarget(
+            item.id == "new-client" ? "select_create_client" :
+            item.id == "new-project" ? "select_create_project" : ""
+        )
         .opacity(isDisabledByTutorial ? 0.4 : 1.0)
         .allowsHitTesting(!isDisabledByTutorial)
         .simultaneousGesture(

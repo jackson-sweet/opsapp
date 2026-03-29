@@ -553,6 +553,16 @@ struct ProjectFormSheet: View {
                             }
                         }
                     }
+                    // Wizard system: scroll to the target element when a wizard step activates
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
+                        guard let stepId = notification.userInfo?["stepId"] as? String else { return }
+                        let wizardId = "wizard_active_\(stepId)"
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            withAnimation {
+                                proxy.scrollTo(wizardId, anchor: .top)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -690,6 +700,7 @@ struct ProjectFormSheet: View {
                     )
                     .modifier(TutorialPulseModifier(isHighlighted: clientHighlight.isHighlighted))
             )
+            .wizardTarget("select_client", style: .input)
 
             // Show suggestions when input is focused and (text is not empty OR in tutorial mode during client phase)
             if focusedField == .client && (!clientSearchText.isEmpty || (tutorialMode && tutorialPhase == .projectFormClient)) {
@@ -778,17 +789,15 @@ struct ProjectFormSheet: View {
                         )
                         .modifier(TutorialPulseModifier(isHighlighted: titleHighlight.isHighlighted))
                 )
-                .onChange(of: title) { oldValue, newValue in
-                    // Wizard system: notify project name entered when title becomes non-empty
-                    if oldValue.isEmpty && !newValue.isEmpty {
+                .onSubmit {
+                    // Wizard system: notify project name entered on keyboard dismiss
+                    if !title.isEmpty {
                         NotificationCenter.default.post(
                             name: Notification.Name("WizardProjectNameEntered"),
                             object: nil
                         )
                     }
-                }
-                .onSubmit {
-                    // Tutorial mode: notify project name entered when keyboard is dismissed via return key
+                    // Tutorial mode
                     if tutorialMode && !title.isEmpty {
                         NotificationCenter.default.post(
                             name: Notification.Name("TutorialProjectNameEntered"),
@@ -796,6 +805,16 @@ struct ProjectFormSheet: View {
                         )
                     }
                 }
+                .onChange(of: focusedField) { oldValue, newValue in
+                    // Wizard system: also fire when field loses focus (tap away)
+                    if oldValue == .title && newValue != .title && !title.isEmpty {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WizardProjectNameEntered"),
+                            object: nil
+                        )
+                    }
+                }
+                .wizardTarget("enter_project_name", style: .input)
 
             // Autofill suggestions (hidden in tutorial mode)
             if !tutorialMode && title.isEmpty {
@@ -1213,6 +1232,7 @@ struct ProjectFormSheet: View {
                             .modifier(TutorialPulseModifier(isHighlighted: addTaskButtonHighlight.isHighlighted))
                     )
                 }
+                .wizardTarget("add_task")
                 .allowsHitTesting(isAddTaskEnabled)
                 .opacity(tutorialMode && !isAddTaskEnabled ? 0.5 : 1.0)
                 .id("addTaskButton")

@@ -453,6 +453,15 @@ class WizardStateManager: ObservableObject {
         updateInstructionForCurrentStep()
         observeStepCompletion()
 
+        // Notify targets to scroll into view
+        if let stepId = currentStep?.id {
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardStepChanged"),
+                object: nil,
+                userInfo: ["stepId": stepId]
+            )
+        }
+
         TutorialHaptics.lightTap()
     }
 

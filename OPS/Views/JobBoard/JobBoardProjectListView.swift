@@ -169,6 +169,7 @@ struct JobBoardProjectListView: View {
                                         .wizardTarget("browse_projects")
                                         .wizardTarget("swipe_status")
                                         .wizardTarget("tap_project")
+                                        .wizardTarget("view_on_board", style: .row)
                                 }
                                 // Tutorial mode: Grey out non-focused projects during status demo/swipe phases
                                 // Also grey out focused card during status transition animation

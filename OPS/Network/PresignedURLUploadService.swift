@@ -262,15 +262,16 @@ class PresignedURLUploadService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
 
-        let body: [String: String] = [
-            "filename": filename,
-            "contentType": contentType,
-            "folder": folder
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "filename", value: filename),
+            URLQueryItem(name: "contentType", value: contentType),
+            URLQueryItem(name: "folder", value: folder)
         ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
 
         let (data, response) = try await URLSession.shared.data(for: request)
 

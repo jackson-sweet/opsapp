@@ -10,6 +10,7 @@ import SwiftData
 struct ProjectPaymentReviewView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.wizardStateManager) private var wizardStateManager
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var permissionStore: PermissionStore
 
@@ -93,13 +94,43 @@ struct ProjectPaymentReviewView: View {
                 name: Notification.Name("WizardPaymentReviewOpened"),
                 object: nil
             )
+            // Wizard system: auto-skip "tap_review_completed" when overdue exist
+            // (card stack is shown immediately, no intermediate screen).
+            // Also pass card count for swipe step auto-skip.
+            if let mgr = wizardStateManager, mgr.isActive {
+                let cardCount = activeProjects.count
+                mgr.evaluateStepPrerequisites(
+                    paymentReviewCardCount: cardCount,
+                    hasOverdueProjects: !overdueProjects.isEmpty
+                )
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardEvaluatePrerequisites"))) { _ in
+            // Re-evaluate prerequisites when wizard advances to a new step
+            if let mgr = wizardStateManager, mgr.isActive {
+                let remainingCards = max(0, activeProjects.count - reviewedCount)
+                mgr.evaluateStepPrerequisites(
+                    paymentReviewCardCount: remainingCards,
+                    hasOverdueProjects: !overdueProjects.isEmpty
+                )
+            }
         }
         .onDisappear {
-            // Wizard system: notify payment review dismissed
+            // Wizard system: notify payment review dismissed (step 5 completion)
             NotificationCenter.default.post(
                 name: Notification.Name("WizardPaymentReviewDismissed"),
                 object: nil
             )
+            // Wizard system: notify screen dismissed (exit prompt for steps 2-5).
+            // Delay so step completion notifications process first — the wizard
+            // advances before the dismissal check runs.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                NotificationCenter.default.post(
+                    name: Notification.Name("WizardScreenDismissed"),
+                    object: nil,
+                    userInfo: ["screen": "PaymentReview"]
+                )
+            }
         }
         .sheet(isPresented: $showBio) {
             if let project = selectedProject {
@@ -212,7 +243,7 @@ struct ProjectPaymentReviewView: View {
             Text("You have \(completedProjects.count) completed project\(completedProjects.count == 1 ? "" : "s") to review")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .multilineTextAlignment(.center)
+                .multilineTextAlignment(.leading)
 
             Spacer()
 
@@ -223,6 +254,11 @@ struct ProjectPaymentReviewView: View {
                         activeProjects = completedProjects
                         reviewingCompleted = true
                     }
+                    // Wizard system: notify completed projects loaded into card stack
+                    NotificationCenter.default.post(
+                        name: Notification.Name("WizardCompletedProjectsLoaded"),
+                        object: nil
+                    )
                 }) {
                     HStack {
                         Text("REVIEW COMPLETED PROJECTS")
@@ -240,6 +276,7 @@ struct ProjectPaymentReviewView: View {
                     .background(OPSStyle.Colors.primaryText)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
+                .wizardTarget("tap_review_completed")
 
                 // Secondary dismiss
                 Button(action: { dismiss() }) {
@@ -349,10 +386,13 @@ struct ProjectPaymentReviewView: View {
             executeSendReminder(project)
             NotificationCenter.default.post(name: Notification.Name("WizardProjectSwipedUp"), object: nil)
         case .down:
-            // Don't increment yet -- confirmation pending
+            // Don't increment yet — confirmation pending
             reviewedCount -= 1
             pendingWriteOffProject = project
             showWriteOffConfirmation = true
+            // Wizard notification fires on swipe initiation (user saw the gesture work).
+            // The confirmation dialog is a separate UX step, not part of the wizard demo.
+            NotificationCenter.default.post(name: Notification.Name("WizardProjectSwipedDown"), object: nil)
         }
 
         checkCompletion()
@@ -392,7 +432,7 @@ struct ProjectPaymentReviewView: View {
             let allDTOs = try await repo.fetchAll()
             let outstanding = allDTOs.filter { dto in
                 dto.projectId == project.id
-                    && dto.balanceDue > 0
+                    && (dto.balanceDue ?? 0) > 0
                     && dto.status != InvoiceStatus.void.rawValue
                     && dto.status != InvoiceStatus.writtenOff.rawValue
             }

@@ -7,9 +7,16 @@
 //  Walks users through roles, permission editing, and per-user overrides.
 //
 //  Audit fixes (2026-03-26):
-//  - view_roles: canSkip=false — auto-completes via delayed notification (3s)
-//  - Fixed timing race: notification delayed to fire after wizard starts listening
+//  - view_roles: canSkip=true — auto-completes via delayed notification (1s + 5s fallback)
+//  - Fixed timing race: notification re-fires on WizardNavigateToTarget
 //  - Added deep navigation for CONTINUE GUIDE
+//
+//  Audit fixes (2026-03-30):
+//  - view_role_detail: notification moved to onDisappear (was onAppear) — prevents
+//    step 3 activating while user is inside RoleDetailView fullScreenCover
+//  - Exit prompt suppression extended to step transitions (was only wizard start)
+//  - view_member_overrides: auto-skip added when team is empty
+//  - Step 1 description: "preset roles" → "roles" (view shows both preset + custom)
 //
 
 import Foundation
@@ -34,9 +41,9 @@ struct PermissionsRolesWizard: WizardDefinitionProtocol {
         WizardStepDefinition(
             id: "view_roles",
             instruction: "BROWSE THE ROLES",
-            description: "These are the preset roles that control what each team member can do.",
+            description: "These are the roles that control what each team member can do.",
             targetScreen: "Permissions",
-            canSkip: false,
+            canSkip: true,
             completionNotification: "WizardRolesTabViewed"
         ),
         WizardStepDefinition(

@@ -42,7 +42,7 @@ struct SchedulingCalendarWizard: WizardDefinitionProtocol {
         WizardStepDefinition(
             id: "toggle_month",
             instruction: "SWITCH TO MONTH VIEW",
-            description: "Tap the month button in the header to see the full month.",
+            description: "Tap the calendar icon in the top-right header.",
             targetScreen: "Schedule",
             completionNotification: "WizardCalendarMonthToggled"
         ),
@@ -55,9 +55,17 @@ struct SchedulingCalendarWizard: WizardDefinitionProtocol {
             completionNotification: "WizardCalendarMonthExplored"
         ),
         WizardStepDefinition(
+            id: "tap_month_day",
+            instruction: "TAP A DAY TO SEE ITS EVENTS",
+            description: "Tap any day in the month grid to open its event list.",
+            targetScreen: "Schedule",
+            canSkip: true,
+            completionNotification: "WizardCalendarMonthDayTapped"
+        ),
+        WizardStepDefinition(
             id: "tap_task",
             instruction: "TAP A TASK FOR DETAILS",
-            description: "Tap any task card to see the full project and assignment info.",
+            description: "Tap any task card to open the full project view.",
             targetScreen: "Schedule",
             canSkip: true,
             completionNotification: "WizardCalendarTaskTapped"

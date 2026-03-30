@@ -222,7 +222,7 @@ struct InventoryThresholdSetupView: View {
                     .foregroundColor(OPSStyle.Colors.invertedText)
                     .frame(maxWidth: .infinity)
                     .frame(height: OPSStyle.Layout.touchTargetStandard)
-                    .background(OPSStyle.Colors.primaryAccent)
+                    .background(OPSStyle.Colors.wizardAccent)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
             .disabled(isSaving)

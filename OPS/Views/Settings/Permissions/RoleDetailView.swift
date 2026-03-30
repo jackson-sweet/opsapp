@@ -319,6 +319,11 @@ struct RoleDetailView: View {
         .navigationBarBackButtonHidden(true)
         .onAppear {
             loadPermissions()
+        }
+        .onDisappear {
+            // Wizard: notify step 2 completion when user RETURNS to the permissions list,
+            // not when they first open the detail. Prevents step 3 activating while
+            // the user is still inside this fullScreenCover.
             NotificationCenter.default.post(name: Notification.Name("WizardRoleDetailViewed"), object: nil)
         }
         .alert("In Testing", isPresented: $showFeatureGateAlert) {

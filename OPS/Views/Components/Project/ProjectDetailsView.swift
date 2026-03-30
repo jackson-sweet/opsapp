@@ -83,9 +83,12 @@ struct ProjectDetailsView: View {
                         CameraBatchView { capturedImages in
                             viewModel.selectedImages = capturedImages
                             if !capturedImages.isEmpty {
-                                NotificationCenter.default.post(name: Notification.Name("WizardPhotoCaptured"), object: nil)
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    viewModel.addPhotosToProject(tutorialMode: tutorialMode)
+                                viewModel.addPhotosToProject(tutorialMode: tutorialMode)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    NotificationCenter.default.post(
+                                        name: Notification.Name("WizardPhotoCaptured"),
+                                        object: nil
+                                    )
                                 }
                             }
                         }
@@ -251,6 +254,36 @@ struct ProjectDetailsView: View {
                             object: nil,
                             userInfo: ["screen": "ProjectDetails"]
                         )
+                    }
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardEvaluatePrerequisites"))) { _ in
+                        // Re-evaluate prerequisites with current photo count
+                        wizardStateManager?.evaluateStepPrerequisites(
+                            projectPhotoCount: viewModel.project.getProjectImages().count
+                        )
+                    }
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardStepChanged"))) { notification in
+                        guard let mgr = wizardStateManager,
+                              mgr.isActive,
+                              mgr.activeWizard?.wizardId == "documentation",
+                              let stepId = notification.userInfo?["stepId"] as? String else { return }
+
+                        switch stepId {
+                        case "write_note", "view_photo":
+                            // Ensure Activity tab is visible — compose bar and photo gallery live there
+                            if viewModel.selectedTab != .activity {
+                                viewModel.selectedTab = .activity
+                            }
+                        case "capture_photo":
+                            // Dismiss keyboard so the floating action bar reappears
+                            isNoteComposing = false
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                            // Ensure Activity tab is visible (photos section is there)
+                            if viewModel.selectedTab != .activity {
+                                viewModel.selectedTab = .activity
+                            }
+                        default:
+                            break
+                        }
                     }
             }
         }
@@ -920,6 +953,12 @@ struct ProjectDetailsView: View {
             name: Notification.Name("WizardJobBoardProjectTapped"),
             object: nil
         )
+
+        // Wizard system: store this project for documentation wizard deep navigation
+        // so CONTINUE GUIDE and initial deep nav return to THIS project, not "most recent"
+        if let mgr = wizardStateManager {
+            mgr.deepNavProjectId = project.id
+        }
 
         // Wizard system: trigger documentation wizard on first project detail visit
         if let wizard = WizardRegistry.contextualWizard(for: "documentation") {

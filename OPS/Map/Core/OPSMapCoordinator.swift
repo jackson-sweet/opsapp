@@ -515,6 +515,9 @@ final class OPSMapCoordinator: ObservableObject {
         showingProjectCard = true
         showingCrewTooltip = false
 
+        // Rebuild annotations so the selection highlight updates
+        refreshProjectAnnotations()
+
         guard let coord = project.coordinate else { return }
         isFollowingUser = false
         flyTo(
@@ -755,7 +758,12 @@ final class OPSMapCoordinator: ObservableObject {
                 // Show all tasks scheduled today — active AND completed.
                 // Cancelled tasks are excluded since they are no longer relevant.
                 guard task.status == .active || task.status == .completed else { return false }
-                return calendar.isDateInToday(start)
+                // Use date-range check matching the carousel: startDate <= today <= endDate
+                let end = task.endDate ?? start
+                let startDay = calendar.startOfDay(for: start)
+                let endDay = calendar.startOfDay(for: end)
+                let today = calendar.startOfDay(for: Date())
+                return startDay <= today && endDay >= today
             }
 
             guard !todaysTasks.isEmpty else { continue }

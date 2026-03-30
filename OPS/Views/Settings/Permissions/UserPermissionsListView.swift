@@ -10,6 +10,7 @@ import SwiftUI
 
 struct UserPermissionsListView: View {
     @EnvironmentObject private var dataController: DataController
+    @Environment(\.wizardStateManager) private var wizardStateManager
 
     @State private var teamMembers: [User] = []
     @State private var overrideCounts: [String: Int] = [:]
@@ -40,39 +41,48 @@ struct UserPermissionsListView: View {
                 )
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        // Section header
-                        HStack(spacing: 6) {
-                            Image(systemName: OPSStyle.Icons.crew)
-                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            Text("\(teamMembers.count) TEAM MEMBER\(teamMembers.count == 1 ? "" : "S")")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                    ScrollViewReader { proxy in
+                        VStack(alignment: .leading, spacing: 8) {
+                            // Section header
+                            HStack(spacing: 6) {
+                                Image(systemName: OPSStyle.Icons.crew)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                Text("\(teamMembers.count) TEAM MEMBER\(teamMembers.count == 1 ? "" : "S")")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+                            .padding(.horizontal, 20)
+
+                            // Team members card
+                            VStack(spacing: 0) {
+                                ForEach(teamMembers) { member in
+                                    memberRow(member)
+
+                                    if member.id != teamMembers.last?.id {
+                                        Divider()
+                                            .background(OPSStyle.Colors.cardBorder)
+                                    }
+                                }
+                            }
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            )
+                            .padding(.horizontal, 20)
                         }
-                        .padding(.horizontal, 20)
-
-                        // Team members card
-                        VStack(spacing: 0) {
-                            ForEach(teamMembers) { member in
-                                memberRow(member)
-
-                                if member.id != teamMembers.last?.id {
-                                    Divider()
-                                        .background(OPSStyle.Colors.cardBorder)
+                        .padding(.vertical, 16)
+                        .tabBarPadding()
+                        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
+                            if let stepId = notification.userInfo?["stepId"] as? String {
+                                withAnimation {
+                                    proxy.scrollTo("wizard_active_\(stepId)", anchor: .top)
                                 }
                             }
                         }
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
-                        .padding(.horizontal, 20)
                     }
-                    .padding(.vertical, 16)
-                    .tabBarPadding()
                 }
             }
         }
@@ -171,6 +181,9 @@ struct UserPermissionsListView: View {
 
         teamMembers = members
         isLoading = false
+
+        // Wizard: auto-skip step 4 if no team members to tap
+        wizardStateManager?.evaluateStepPrerequisites(eligibleTeamMemberCount: members.count)
 
         // Load override counts in background
         Task {

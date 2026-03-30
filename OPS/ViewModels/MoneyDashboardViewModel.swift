@@ -148,10 +148,10 @@ class MoneyDashboardViewModel: ObservableObject {
 
         // ── Invoices in period (by createdAt) ──
         let invoicesInPeriod = allInvoices.filter { dto in
-            guard let created = SupabaseDate.parse(dto.createdAt) else { return false }
+            guard let ca = dto.createdAt, let created = SupabaseDate.parse(ca) else { return false }
             return created >= periodStart && created <= now && dto.status != InvoiceStatus.void.rawValue
         }
-        totalSales = invoicesInPeriod.reduce(0) { $0 + $1.total }
+        totalSales = invoicesInPeriod.reduce(0) { $0 + ($1.total ?? 0) }
 
         // ── Payments in period ──
         let paymentsInPeriod = allInvoices.flatMap { dto -> [PaymentDTO] in
@@ -160,7 +160,7 @@ class MoneyDashboardViewModel: ObservableObject {
                 return paidAt >= periodStart && paidAt <= now && !(payment.isVoid ?? false)
             }
         }
-        totalPayments = paymentsInPeriod.reduce(0) { $0 + $1.amount }
+        totalPayments = paymentsInPeriod.reduce(0) { $0 + ($1.amount ?? 0) }
 
         // ── Expenses in period ──
         let expensesInPeriod = allExpenses.filter { dto in
@@ -186,11 +186,11 @@ class MoneyDashboardViewModel: ObservableObject {
         let overdueInvoices = allInvoices.filter { dto in
             guard let dueDateStr = dto.dueDate,
                   let dueDate = SupabaseDate.parse(dueDateStr) else { return false }
-            let status = InvoiceStatus(rawValue: dto.status)
-            return dto.balanceDue > 0 && dueDate < now && status != .void
+            let status = InvoiceStatus(rawValue: dto.status ?? "")
+            return (dto.balanceDue ?? 0) > 0 && dueDate < now && status != .void
         }
         overdueInvoicesCount = overdueInvoices.count
-        overdueInvoicesValue = overdueInvoices.reduce(0) { $0 + $1.balanceDue }
+        overdueInvoicesValue = overdueInvoices.reduce(0) { $0 + ($1.balanceDue ?? 0) }
 
         // ── Close rate (estimates in period) ──
         let estimatesInPeriod = allEstimates.filter { dto in
@@ -268,7 +268,7 @@ class MoneyDashboardViewModel: ObservableObject {
         for invoice in invoicesInPeriod {
             guard let paidAtStr = invoice.paidAt,
                   let paidAt = SupabaseDate.parse(paidAtStr),
-                  let createdAt = SupabaseDate.parse(invoice.createdAt) else { continue }
+                  let ca = invoice.createdAt, let createdAt = SupabaseDate.parse(ca) else { continue }
             let days = Calendar.current.dateComponents([.day], from: createdAt, to: paidAt).day ?? 0
             totalDays += Double(max(0, days))
             count += 1
@@ -284,13 +284,13 @@ class MoneyDashboardViewModel: ObservableObject {
 
         // Filter to invoices with a balance due that are not void
         let unpaid = allInvoices.filter { dto in
-            let status = InvoiceStatus(rawValue: dto.status)
-            return dto.balanceDue > 0 && status != .void
+            let status = InvoiceStatus(rawValue: dto.status ?? "")
+            return (dto.balanceDue ?? 0) > 0 && status != .void
         }
 
         // Sort by balance due descending, take top 3
         let top3 = unpaid
-            .sorted { $0.balanceDue > $1.balanceDue }
+            .sorted { ($0.balanceDue ?? 0) > ($1.balanceDue ?? 0) }
             .prefix(3)
 
         // Build client name lookup from ModelContext if available
@@ -301,7 +301,7 @@ class MoneyDashboardViewModel: ObservableObject {
             if let cid = dto.clientId, let name = clientNames[cid] {
                 clientName = name
             } else {
-                clientName = dto.subject ?? dto.invoiceNumber
+                clientName = dto.subject ?? dto.invoiceNumber ?? "Invoice"
             }
 
             var daysOverdue = 0
@@ -311,7 +311,7 @@ class MoneyDashboardViewModel: ObservableObject {
                 daysOverdue = max(0, Calendar.current.dateComponents([.day], from: dueDate, to: now).day ?? 0)
             }
 
-            return (clientName: clientName, amount: dto.balanceDue, daysOverdue: daysOverdue)
+            return (clientName: clientName, amount: dto.balanceDue ?? 0, daysOverdue: daysOverdue)
         }
     }
 
@@ -339,13 +339,13 @@ class MoneyDashboardViewModel: ObservableObject {
             .sorted { $0.paymentDate.flatMap { SupabaseDate.parse($0) } ?? Date.distantPast > $1.paymentDate.flatMap { SupabaseDate.parse($0) } ?? Date.distantPast }
             .map { payment in
                 let method = payment.paymentMethod.flatMap { PaymentMethod(rawValue: $0)?.displayName } ?? payment.paymentMethod?.uppercased() ?? "OTHER"
-                let invoiceNum = invoiceNumber(for: payment.invoiceId)
+                let invoiceNum = invoiceNumber(for: payment.invoiceId ?? "")
                 let label = "\(invoiceNum) — \(method)"
                 return BreakdownItem(
                     label: label,
-                    amount: payment.amount,
+                    amount: payment.amount ?? 0,
                     date: payment.paymentDate.flatMap { SupabaseDate.parse($0) },
-                    entityId: payment.invoiceId,
+                    entityId: payment.invoiceId ?? "",
                     type: .payment
                 )
             }
@@ -373,24 +373,24 @@ class MoneyDashboardViewModel: ObservableObject {
 
     private func buildOutstandingInvoiceBreakdown() {
         let outstanding = allInvoices.filter { dto in
-            let status = InvoiceStatus(rawValue: dto.status)
-            return dto.balanceDue > 0 && status != .void
+            let status = InvoiceStatus(rawValue: dto.status ?? "")
+            return (dto.balanceDue ?? 0) > 0 && status != .void
         }
-        .sorted { $0.balanceDue > $1.balanceDue }
+        .sorted { ($0.balanceDue ?? 0) > ($1.balanceDue ?? 0) }
 
         let clientNames = lookupClientNames(for: outstanding.compactMap { $0.clientId })
 
         outstandingInvoiceBreakdown = outstanding.map { dto in
             let label: String
             if let cid = dto.clientId, let name = clientNames[cid] {
-                label = "\(name) — \(dto.invoiceNumber)"
+                label = "\(name) — \(dto.invoiceNumber ?? "Invoice")"
             } else {
-                label = dto.subject ?? dto.invoiceNumber
+                label = dto.subject ?? dto.invoiceNumber ?? "Invoice"
             }
 
             return BreakdownItem(
                 label: label,
-                amount: dto.balanceDue,
+                amount: dto.balanceDue ?? 0,
                 date: dto.dueDate.flatMap { SupabaseDate.parse($0) },
                 entityId: dto.id,
                 type: .invoice

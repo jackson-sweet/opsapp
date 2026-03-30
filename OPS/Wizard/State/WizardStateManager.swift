@@ -62,6 +62,7 @@ class WizardStateManager: ObservableObject {
     private var wizardStartTime: Date?
     private var cancellables = Set<AnyCancellable>()
     private var stepObserver: AnyCancellable?
+    private var backgroundObserver: Any?
 
     // MARK: - Analytics
 
@@ -90,7 +91,16 @@ class WizardStateManager: ObservableObject {
         self.modelContext = modelContext
         self.userId = userId
         self.userRole = userRole
-        self.isEnabled = !UserDefaults.standard.bool(forKey: "wizard_system_disabled")
+        self.isEnabled = UserDefaults.standard.object(forKey: "wizard_system_enabled") as? Bool ?? true
+
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.saveCurrentState()
+            }
+        }
     }
 
     // MARK: - State Persistence
@@ -460,6 +470,13 @@ class WizardStateManager: ObservableObject {
                 object: nil,
                 userInfo: ["stepId": stepId]
             )
+
+            // Allow views to re-evaluate prerequisites for the new step
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardEvaluatePrerequisites"),
+                object: nil,
+                userInfo: ["stepId": stepId]
+            )
         }
 
         TutorialHaptics.lightTap()
@@ -493,6 +510,21 @@ class WizardStateManager: ObservableObject {
 
         updateInstructionForCurrentStep()
         observeStepCompletion()
+
+        // Notify targets of the new step (matches completeCurrentStep behavior)
+        if let stepId = currentStep?.id {
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardStepChanged"),
+                object: nil,
+                userInfo: ["stepId": stepId]
+            )
+
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardEvaluatePrerequisites"),
+                object: nil,
+                userInfo: ["stepId": stepId]
+            )
+        }
 
         TutorialHaptics.lightTap()
     }
@@ -640,6 +672,15 @@ class WizardStateManager: ObservableObject {
                 name: Notification.Name("WizardOpenPermissions"),
                 object: nil
             )
+        case "payment_review":
+            // Deep-navigate into the PaymentReview sheet from JobBoard.
+            // Only needed for steps 2+ (steps targeting "PaymentReview" screen).
+            guard let targetScreen = currentStep?.targetScreen,
+                  targetScreen == "PaymentReview" else { break }
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenPaymentReview"),
+                object: nil
+            )
         default:
             break
         }
@@ -694,7 +735,8 @@ class WizardStateManager: ObservableObject {
             .publisher(for: Notification.Name(notificationName))
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.completeCurrentStep()
+                guard let self, !self.isPaused else { return }
+                self.completeCurrentStep()
             }
     }
 
@@ -704,7 +746,11 @@ class WizardStateManager: ObservableObject {
         closedProjectCount: Int = -1,
         swipeableProjectCount: Int = -1,
         projectPhotoCount: Int = -1,
-        eligibleTeamMemberCount: Int = -1
+        eligibleTeamMemberCount: Int = -1,
+        scheduledTaskCount: Int = -1,
+        paymentReviewCardCount: Int = -1,
+        taskReviewCardCount: Int = -1,
+        hasOverdueProjects: Bool = false
     ) {
         guard let step = currentStep, step.canSkip else { return }
 
@@ -738,6 +784,49 @@ class WizardStateManager: ObservableObject {
             // Auto-skip when a PIN is already enabled — "SET UP A PIN" is misleading.
             // hasPINEnabled is stored in UserDefaults via @AppStorage("hasPINEnabled").
             if UserDefaults.standard.bool(forKey: "hasPINEnabled") {
+                shouldAutoSkip = true
+            }
+        case "tap_month_day", "tap_task":
+            // Auto-skip when the user has no scheduled tasks on the selected day —
+            // there are no task cards to tap.
+            if scheduledTaskCount == 0 {
+                shouldAutoSkip = true
+            }
+        case "view_member_overrides":
+            // Auto-skip when no team members exist — empty list with nothing to tap
+            if eligibleTeamMemberCount == 0 {
+                shouldAutoSkip = true
+            }
+        case "view_on_board":
+            // Auto-skip when user lacks projects.edit — swipe-to-change-status is disabled
+            // so the completion notification (WizardProjectStatusChanged) can never fire.
+            if !PermissionStore.shared.can("projects.edit") {
+                shouldAutoSkip = true
+            }
+        case "task_demo_swipe_right", "task_demo_swipe_left":
+            // Auto-skip when no task review cards remain — nothing to swipe.
+            if taskReviewCardCount == 0 {
+                shouldAutoSkip = true
+            }
+        case "task_demo_swipe_up":
+            // Auto-skip when user lacks calendar.edit — the UP swipe (reschedule) is
+            // blocked in TaskReviewCardStack and the hint pill is hidden. The user
+            // cannot perform the action so the notification can never fire.
+            // Also auto-skip when no cards remain.
+            if !PermissionStore.shared.can("calendar.edit") || taskReviewCardCount == 0 {
+                shouldAutoSkip = true
+            }
+        case "tap_review_completed":
+            // Auto-skip when overdue projects exist — the card stack is shown
+            // immediately on appear, so no intermediate screen to tap through.
+            if hasOverdueProjects {
+                shouldAutoSkip = true
+            }
+        case "payment_demo_swipe_right", "payment_demo_swipe_left",
+             "payment_demo_swipe_up", "payment_demo_swipe_down":
+            // Auto-skip when no cards remain in the stack — the swipe gesture
+            // cannot be performed on an empty stack.
+            if paymentReviewCardCount == 0 {
                 shouldAutoSkip = true
             }
         default:
@@ -802,11 +891,22 @@ class WizardStateManager: ObservableObject {
     /// Toggle master enable/disable
     func toggleEnabled() {
         isEnabled.toggle()
-        UserDefaults.standard.set(!isEnabled, forKey: "wizard_system_disabled")
+        UserDefaults.standard.set(isEnabled, forKey: "wizard_system_enabled")
         if !isEnabled {
             deactivate()
             showBanner = false
             showPromptOverlay = false
         }
+    }
+
+    // MARK: - Background Save
+
+    private func saveCurrentState() {
+        guard let wizard = activeWizard,
+              let state = wizardState(for: wizard.wizardId) else { return }
+        let stepDuration = stepStartTime.map { Int(Date().timeIntervalSince($0) * 1000) } ?? 0
+        state.addDuration(stepDuration)
+        state.lastActiveAt = Date()
+        try? modelContext?.save()
     }
 }

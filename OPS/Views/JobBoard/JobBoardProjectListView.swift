@@ -276,6 +276,13 @@ struct JobBoardProjectListView: View {
                             }
                         }
                     }
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
+                        if let stepId = notification.userInfo?["stepId"] as? String {
+                            withAnimation {
+                                scrollProxy.scrollTo("wizard_active_\(stepId)", anchor: .top)
+                            }
+                        }
+                    }
                 }
                 .coordinateSpace(name: "jobBoardScroll") // End ScrollView
                 } // End ScrollViewReader
@@ -293,13 +300,48 @@ struct JobBoardProjectListView: View {
             if tutorialPhase == .projectListStatusDemo && !hasStartedStatusAnimation {
                 startTutorialStatusAnimation()
             }
-            // Wizard: evaluate step prerequisites with actual project data
+            // Wizard: evaluate step prerequisites with actual project data.
+            // Swipeable count excludes .inProgress projects with incomplete tasks —
+            // those will be blocked by the completion check dialog, not actually swipeable.
             if let mgr = wizardStateManager, mgr.isActive {
-                let swipeable = activeProjects.filter { $0.status.canSwipeForward }.count
+                let swipeable = activeProjects.filter { project in
+                    guard project.status.canSwipeForward else { return false }
+                    if project.status == .inProgress {
+                        let incomplete = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
+                        if !incomplete.isEmpty { return false }
+                    }
+                    return true
+                }.count
                 mgr.evaluateStepPrerequisites(
                     closedProjectCount: closedProjects.count,
                     swipeableProjectCount: swipeable
                 )
+            }
+        }
+        // Wizard: re-evaluate step prerequisites when the wizard transitions to a new step.
+        // Ensures view_closed auto-skip fires immediately, not only on next onAppear.
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardEvaluatePrerequisites"))) { _ in
+            if let mgr = wizardStateManager, mgr.isActive {
+                let swipeable = activeProjects.filter { project in
+                    guard project.status.canSwipeForward else { return false }
+                    if project.status == .inProgress {
+                        let incomplete = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
+                        if !incomplete.isEmpty { return false }
+                    }
+                    return true
+                }.count
+                mgr.evaluateStepPrerequisites(
+                    closedProjectCount: closedProjects.count,
+                    swipeableProjectCount: swipeable
+                )
+            }
+        }
+        // Wizard: reset scroll tracking flag when the wizard activates on the browse_projects step
+        // so that pre-scrolled lists can still trigger the completion notification.
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardStepChanged"))) { notification in
+            if let stepId = notification.userInfo?["stepId"] as? String,
+               stepId == "browse_projects" {
+                hasPostedScrollNotification = false
             }
         }
         // Listen for swipe status change notifications from UniversalJobBoardCard
@@ -322,6 +364,9 @@ struct JobBoardProjectListView: View {
             .environmentObject(dataController)
             .onDisappear {
                 updateFilterVisibility()
+                // Wizard: notify filter opened AFTER the sheet dismisses, so the user
+                // has the project list visible before the wizard advances to the next step.
+                NotificationCenter.default.post(name: Notification.Name("WizardJobBoardFilterOpened"), object: nil)
             }
         }
         .sheet(isPresented: $showingClosedSheet) {

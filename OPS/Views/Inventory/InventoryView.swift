@@ -336,12 +336,17 @@ struct InventoryView: View {
             )
         }
         .onChange(of: wizardStateManager?.isActive) { _, isActive in
-            // Respond to force trigger from settings/developer dashboard
             if isActive == true,
                wizardStateManager?.activeWizard?.wizardId == "inventory_setup",
                !showInventoryWizard {
+                // Respond to force trigger from settings/developer dashboard
                 wizardCoordinator.dataController = dataController
+                wizardCoordinator.wizardStateManager = wizardStateManager
                 showInventoryWizard = true
+            } else if isActive == false, showInventoryWizard {
+                // Wizard deactivated externally (e.g., EXIT on instruction bar overlay) —
+                // dismiss the fullscreen cover so the user isn't trapped.
+                showInventoryWizard = false
             }
         }
     }
@@ -522,6 +527,12 @@ struct InventoryView: View {
         // Only show if user has permission
         guard PermissionStore.shared.can("inventory.manage") else { return }
 
+        // Don't interrupt an active wizard
+        guard wizardStateManager?.isActive != true else { return }
+
+        // Respect global cooldown
+        guard wizardStateManager?.isInGlobalCooldown != true else { return }
+
         // Check wizard state via WizardStateManager (single source of truth)
         if let stateManager = wizardStateManager,
            let state = stateManager.wizardState(for: "inventory_setup") {
@@ -535,10 +546,11 @@ struct InventoryView: View {
             return
         }
 
-        // Show the wizard
-        wizardCoordinator.dataController = dataController
-        wizardCoordinator.wizardStateManager = wizardStateManager
-        showInventoryWizard = true
+        // Show the banner so the user can opt out (Not Now / Never).
+        // Coordinator setup happens in onChange(of: isActive) when the wizard actually starts.
+        if let wizard = WizardRegistry.wizard(for: "inventory_setup") {
+            wizardStateManager?.showBanner(for: wizard)
+        }
     }
 
     // MARK: - Refresh

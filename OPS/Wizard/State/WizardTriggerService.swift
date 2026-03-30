@@ -98,7 +98,12 @@ class WizardTriggerService: ObservableObject {
         let sequenced = WizardRegistry.allWizards.filter { $0.triggerType == .sequenced }
         for wizard in sequenced {
             // ProjectLifecycleWizard: trigger when user has no projects
+            // Requires clients.create (steps 2-3 create a client) and projects.edit
+            // (final step swipes project status) in addition to the wizard-level
+            // projects.create gate. Without clients.create the user is hard-stuck
+            // at step 2 because the "New Client" FAB menu item is hidden.
             if wizard.wizardId == "project_lifecycle" && projectCount == 0 {
+                guard permissionCheck?("clients.create") == true else { continue }
                 evaluateTrigger(for: wizard, context: "no_projects_first_session")
             }
         }
@@ -110,9 +115,12 @@ class WizardTriggerService: ObservableObject {
     /// - Parameters:
     ///   - overdueTaskCount: Number of active tasks with end dates in the past
     ///   - completedProjectCount: Number of projects in .completed status
-    func evaluateDataConditions(overdueTaskCount: Int, completedProjectCount: Int) {
-        // Task Review: 5+ overdue tasks
-        if overdueTaskCount >= 5 {
+    ///   - completedTaskCount: Number of tasks in .completed status (used to gate task review unlock)
+    func evaluateDataConditions(overdueTaskCount: Int, completedProjectCount: Int, completedTaskCount: Int = 0) {
+        // Task Review: 5+ overdue tasks AND 5+ completed tasks (button unlock threshold).
+        // Without the completed-task gate the wizard triggers while the review button
+        // is still locked, leaving the user hard-stuck on the non-skippable first step.
+        if overdueTaskCount >= 5 && completedTaskCount >= 5 {
             if let wizard = WizardRegistry.wizard(for: "task_review") {
                 evaluateTrigger(for: wizard, context: "overdue_tasks_\(overdueTaskCount)")
             }

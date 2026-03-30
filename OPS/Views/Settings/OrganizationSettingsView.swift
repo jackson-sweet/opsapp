@@ -14,6 +14,8 @@ struct OrganizationSettingsView: View {
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.wizardStateManager) private var wizardStateManager
+    @Environment(\.wizardTriggerService) private var wizardTriggerService
 
     @State private var organization: Company?
     @State private var isLoading = true
@@ -110,7 +112,13 @@ struct OrganizationSettingsView: View {
             NavigationStack {
                 ManageTeamView()
                     .environmentObject(dataController)
+                    .environment(\.wizardStateManager, wizardStateManager)
+                    .environment(\.wizardTriggerService, wizardTriggerService)
             }
+        }
+        // Wizard deep navigation: open ManageTeam when forwarded from SettingsView
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardOpenManageTeamFromOrg"))) { _ in
+            showManageTeam = true
         }
         .fullScreenCover(isPresented: $showManageSubscription) {
             NavigationStack {

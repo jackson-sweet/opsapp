@@ -16,31 +16,27 @@ struct SettingsView: View {
     @State private var showLogoutConfirmation = false
     @State private var showingSearchSheet = false
     @State private var isRestartingTutorial = false
-    @State private var showTutorialExperience = false
-    @State private var showTutorialV2 = false
 
     // Developer mode state
     @State private var developerModeEnabled: Bool = false
     @State private var developerModeExplicitlyDisabled: Bool = false
 
-    // Navigation destinations (fullScreenCover)
-    @State private var showProfileSettings = false
-    @State private var showOrganizationSettings = false
-    @State private var showSubscriptionSettings = false
-    @State private var showNotificationSettings = false
-    @State private var showMapSettings = false
-    @State private var showDataSettings = false
-    @State private var showSecuritySettings = false
-    @State private var showProductsServices = false
-    @State private var showIntegrations = false
-    @State private var showProjectSettings = false
-    @State private var showWhatsNew = false
-    @State private var showReportIssue = false
-    @State private var showDeveloperDashboard = false
-    @State private var showAllPhotosGallery = false
-    @State private var showMyExpenses = false
-    @State private var showReviewExpenses = false
-    @State private var showPermissions = false
+    // MARK: - Navigation Destination Enum
+
+    private enum SettingsDestination: String, Identifiable {
+        case profile, organization, subscription
+        case notifications, map, dataStorage, security
+        case productsServices, integrations, projectSettings
+        case whatsNew, reportIssue, developerDashboard
+        case allPhotos, myExpenses, reviewExpenses
+        case permissions
+        case tutorialExperience, tutorialV2
+        case wizardManagement
+
+        var id: String { rawValue }
+    }
+
+    @State private var activeDestination: SettingsDestination?
     @State private var showFeatureGateAlert = false
 
     // Role checks
@@ -364,7 +360,7 @@ struct SettingsView: View {
                                 settingsRow(
                                     icon: "building.2",
                                     title: "Organization",
-                                    action: { showOrganizationSettings = true }
+                                    action: { activeDestination = .organization }
                                 )
 
                                 if isAdmin {
@@ -373,7 +369,7 @@ struct SettingsView: View {
                                     settingsRow(
                                         icon: "creditcard",
                                         title: "Subscription",
-                                        action: { showSubscriptionSettings = true }
+                                        action: { activeDestination = .subscription }
                                     )
                                 }
                             }
@@ -384,7 +380,7 @@ struct SettingsView: View {
                                 settingsRow(
                                     icon: OPSStyle.Icons.bellFill,
                                     title: "Notifications",
-                                    action: { showNotificationSettings = true }
+                                    action: { activeDestination = .notifications }
                                 )
 
                                 sectionDivider
@@ -392,7 +388,7 @@ struct SettingsView: View {
                                 settingsRow(
                                     icon: OPSStyle.Icons.map,
                                     title: "Map Settings",
-                                    action: { showMapSettings = true }
+                                    action: { activeDestination = .map }
                                 )
 
                                 sectionDivider
@@ -400,7 +396,7 @@ struct SettingsView: View {
                                 settingsRow(
                                     icon: "externaldrive",
                                     title: "Data & Storage",
-                                    action: { showDataSettings = true }
+                                    action: { activeDestination = .dataStorage }
                                 )
 
                                 sectionDivider
@@ -408,7 +404,7 @@ struct SettingsView: View {
                                 settingsRow(
                                     icon: "lock",
                                     title: "Security & Privacy",
-                                    action: { showSecuritySettings = true }
+                                    action: { activeDestination = .security }
                                 )
                             }
                             .padding(.horizontal, 20)
@@ -418,7 +414,7 @@ struct SettingsView: View {
                                 settingsRow(
                                     icon: "photo.on.rectangle.angled",
                                     title: "Photos",
-                                    action: { showAllPhotosGallery = true }
+                                    action: { activeDestination = .allPhotos }
                                 )
 
                                 if permissionStore.can("expenses.view", requiredScope: "own") {
@@ -427,7 +423,7 @@ struct SettingsView: View {
                                     settingsRow(
                                         icon: "dollarsign.circle",
                                         title: "My Expenses",
-                                        action: { showMyExpenses = true }
+                                        action: { activeDestination = .myExpenses }
                                     )
                                 }
 
@@ -437,7 +433,7 @@ struct SettingsView: View {
                                     settingsRow(
                                         icon: "doc.text.magnifyingglass",
                                         title: "Review Expenses",
-                                        action: { showReviewExpenses = true }
+                                        action: { activeDestination = .reviewExpenses }
                                     )
                                 }
                             }
@@ -450,7 +446,7 @@ struct SettingsView: View {
                                         settingsRow(
                                             icon: OPSStyle.Icons.productTag,
                                             title: "Products & Services",
-                                            action: { showProductsServices = true }
+                                            action: { activeDestination = .productsServices }
                                         )
 
                                         sectionDivider
@@ -458,7 +454,7 @@ struct SettingsView: View {
                                         settingsRow(
                                             icon: OPSStyle.Icons.accountingChart,
                                             title: "Integrations",
-                                            action: { showIntegrations = true }
+                                            action: { activeDestination = .integrations }
                                         )
 
                                         if isAdminOrOffice || isAdmin {
@@ -486,7 +482,7 @@ struct SettingsView: View {
                                         settingsRow(
                                             icon: "hammer.circle",
                                             title: "Project Settings",
-                                            action: { showProjectSettings = true }
+                                            action: { activeDestination = .projectSettings }
                                         )
                                     }
 
@@ -496,7 +492,7 @@ struct SettingsView: View {
                                         settingsRow(
                                             icon: "person.badge.key.fill",
                                             title: "Permissions",
-                                            action: { showPermissions = true }
+                                            action: { activeDestination = .permissions }
                                         )
                                     }
                                 }
@@ -506,9 +502,17 @@ struct SettingsView: View {
                             // Support section
                             settingsSection(title: "SUPPORT") {
                                 settingsRow(
+                                    icon: "paperplane.fill",
+                                    title: "Setup",
+                                    action: { activeDestination = .wizardManagement }
+                                )
+
+                                sectionDivider
+
+                                settingsRow(
                                     icon: "sparkles",
                                     title: "What's New",
-                                    action: { showWhatsNew = true }
+                                    action: { activeDestination = .whatsNew }
                                 )
 
                                 sectionDivider
@@ -516,23 +520,15 @@ struct SettingsView: View {
                                 settingsRow(
                                     icon: OPSStyle.Icons.alert,
                                     title: "Report Issue",
-                                    action: { showReportIssue = true }
-                                )
-
-                                sectionDivider
-
-                                settingsRow(
-                                    icon: "graduationcap",
-                                    title: "Restart Tutorial",
-                                    action: { restartTutorial() }
+                                    action: { activeDestination = .reportIssue }
                                 )
 
                                 sectionDivider
 
                                 settingsRow(
                                     icon: "graduationcap.fill",
-                                    title: "Restart Tutorial V2",
-                                    action: { showTutorialV2 = true }
+                                    title: "Restart Tutorial",
+                                    action: { activeDestination = .tutorialV2 }
                                 )
                             }
                             .padding(.horizontal, 20)
@@ -543,7 +539,7 @@ struct SettingsView: View {
                                     settingsRow(
                                         icon: "hammer.circle.fill",
                                         title: "Developer Tools",
-                                        action: { showDeveloperDashboard = true }
+                                        action: { activeDestination = .developerDashboard }
                                     )
                                 }
                                 .padding(.horizontal, 20)
@@ -591,130 +587,141 @@ struct SettingsView: View {
         } message: {
             Text("This feature is currently in testing. Reach out if you'd like to be added to the testing group.")
         }
-        // MARK: - Navigation Covers
-        .fullScreenCover(isPresented: $showProfileSettings) {
-            NavigationStack {
-                ProfileSettingsView()
-                    .environmentObject(dataController)
-            }
+        // MARK: - Navigation Cover (consolidated enum-based)
+        .fullScreenCover(item: $activeDestination) { destination in
+            settingsDestinationView(for: destination)
         }
-        .fullScreenCover(isPresented: $showOrganizationSettings) {
-            NavigationStack {
-                OrganizationSettingsView()
-                    .environmentObject(dataController)
-            }
-        }
-        .fullScreenCover(isPresented: $showSubscriptionSettings) {
-            NavigationStack {
-                ManageSubscriptionView()
-                    .environmentObject(dataController)
-                    .environmentObject(SubscriptionManager.shared)
-            }
-        }
-        .fullScreenCover(isPresented: $showNotificationSettings) {
-            NavigationStack {
-                NotificationSettingsView()
-                    .environmentObject(dataController)
-                    .environmentObject(NotificationManager.shared)
-            }
-        }
-        .fullScreenCover(isPresented: $showMapSettings) {
-            NavigationStack {
-                MapSettingsView()
-                    .environmentObject(dataController)
-            }
-        }
-        .fullScreenCover(isPresented: $showDataSettings) {
-            NavigationStack {
-                DataStorageSettingsView()
-                    .environmentObject(dataController)
-            }
-        }
-        .fullScreenCover(isPresented: $showSecuritySettings) {
-            NavigationStack {
-                SecuritySettingsView()
-                    .environmentObject(dataController)
-            }
-        }
-        .fullScreenCover(isPresented: $showProductsServices) {
-            NavigationStack {
-                ProductsListView()
-                    .environmentObject(dataController)
-            }
-        }
-        .fullScreenCover(isPresented: $showIntegrations) {
-            NavigationStack {
-                IntegrationsSettingsView()
-                    .environmentObject(dataController)
-            }
-        }
-        .fullScreenCover(isPresented: $showProjectSettings) {
-            NavigationStack {
-                ProjectSettingsView()
-                    .environmentObject(dataController)
-                    .environmentObject(permissionStore)
-            }
-        }
-        .fullScreenCover(isPresented: $showWhatsNew) {
-            NavigationStack {
-                WhatsNewView()
-            }
-        }
-        .fullScreenCover(isPresented: $showReportIssue) {
-            NavigationStack {
-                ReportIssueView()
-            }
-        }
-        .fullScreenCover(isPresented: $showDeveloperDashboard) {
-            NavigationStack {
-                DeveloperDashboard()
-                    .environmentObject(dataController)
-            }
-        }
-        .fullScreenCover(isPresented: $showAllPhotosGallery) {
-            NavigationStack {
-                AllPhotosGalleryView()
-                    .environmentObject(dataController)
-                    .environmentObject(appState)
-            }
-        }
-        .fullScreenCover(isPresented: $showMyExpenses) {
-            NavigationStack {
-                MyExpensesView()
-                    .environmentObject(dataController)
-            }
-        }
-        .fullScreenCover(isPresented: $showReviewExpenses) {
-            NavigationStack {
-                ExpensesListView()
-                    .environmentObject(dataController)
-            }
-        }
-        .fullScreenCover(isPresented: $showPermissions) {
-            NavigationStack {
-                PermissionsManagementView()
-                    .environmentObject(dataController)
-                    .environmentObject(permissionStore)
-            }
-        }
-        .fullScreenCover(isPresented: $showTutorialExperience) {
-            TutorialFlowView {
-                showTutorialExperience = false
-            }
-        }
-        .fullScreenCover(isPresented: $showTutorialV2) {
-            TutorialFlowViewV2 {
-                showTutorialV2 = false
-            }
-        }
-        .onChange(of: showDeveloperDashboard) { _, isShowing in
-            if !isShowing {
+        .onChange(of: activeDestination) { oldValue, _ in
+            if oldValue == .developerDashboard {
                 developerModeEnabled = UserDefaults.standard.bool(forKey: "developerModeEnabled")
                 #if DEBUG
                 if !developerModeEnabled && UserDefaults.standard.object(forKey: "developerModeEnabled") != nil {
                     developerModeExplicitlyDisabled = true
                 }
                 #endif
+            }
+        }
+        // MARK: - Wizard Deep Navigation Receivers
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SettingsOpenSecurity"))) { _ in
+            activeDestination = .security
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SettingsOpenNotifications"))) { _ in
+            activeDestination = .notifications
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SettingsOpenOrganization"))) { _ in
+            activeDestination = .organization
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SettingsOpenPermissions"))) { _ in
+            activeDestination = .permissions
+        }
+    }
+
+    // MARK: - Destination View Builder
+
+    @ViewBuilder
+    private func settingsDestinationView(for destination: SettingsDestination) -> some View {
+        switch destination {
+        case .profile:
+            NavigationStack {
+                ProfileSettingsView()
+                    .environmentObject(dataController)
+            }
+        case .organization:
+            NavigationStack {
+                OrganizationSettingsView()
+                    .environmentObject(dataController)
+            }
+        case .subscription:
+            NavigationStack {
+                ManageSubscriptionView()
+                    .environmentObject(dataController)
+                    .environmentObject(SubscriptionManager.shared)
+            }
+        case .notifications:
+            NavigationStack {
+                NotificationSettingsView()
+                    .environmentObject(dataController)
+                    .environmentObject(NotificationManager.shared)
+            }
+        case .map:
+            NavigationStack {
+                MapSettingsView()
+                    .environmentObject(dataController)
+            }
+        case .dataStorage:
+            NavigationStack {
+                DataStorageSettingsView()
+                    .environmentObject(dataController)
+            }
+        case .security:
+            NavigationStack {
+                SecuritySettingsView()
+                    .environmentObject(dataController)
+            }
+        case .productsServices:
+            NavigationStack {
+                ProductsListView()
+                    .environmentObject(dataController)
+            }
+        case .integrations:
+            NavigationStack {
+                IntegrationsSettingsView()
+                    .environmentObject(dataController)
+            }
+        case .projectSettings:
+            NavigationStack {
+                ProjectSettingsView()
+                    .environmentObject(dataController)
+                    .environmentObject(permissionStore)
+            }
+        case .whatsNew:
+            NavigationStack {
+                WhatsNewView()
+            }
+        case .reportIssue:
+            NavigationStack {
+                ReportIssueView()
+            }
+        case .developerDashboard:
+            NavigationStack {
+                DeveloperDashboard()
+                    .environmentObject(dataController)
+            }
+        case .allPhotos:
+            NavigationStack {
+                AllPhotosGalleryView()
+                    .environmentObject(dataController)
+                    .environmentObject(appState)
+            }
+        case .myExpenses:
+            NavigationStack {
+                MyExpensesView()
+                    .environmentObject(dataController)
+            }
+        case .reviewExpenses:
+            NavigationStack {
+                ExpensesListView()
+                    .environmentObject(dataController)
+            }
+        case .permissions:
+            NavigationStack {
+                PermissionsManagementView()
+                    .environmentObject(dataController)
+                    .environmentObject(permissionStore)
+            }
+        case .tutorialExperience:
+            TutorialFlowView {
+                activeDestination = nil
+            }
+        case .tutorialV2:
+            TutorialFlowViewV2 {
+                activeDestination = nil
+            }
+        case .wizardManagement:
+            NavigationStack {
+                WizardManagementView()
+                    .environmentObject(dataController)
+                    .environmentObject(permissionStore)
             }
         }
     }
@@ -748,7 +755,7 @@ struct SettingsView: View {
     // MARK: - Profile Card
 
     private var profileCard: some View {
-        Button(action: { showProfileSettings = true }) {
+        Button(action: { activeDestination = .profile }) {
             HStack(spacing: 14) {
                 // Avatar
                 profileAvatar
@@ -1006,7 +1013,7 @@ struct SettingsView: View {
 
     private func restartTutorial() {
         guard dataController.currentUser != nil else { return }
-        showTutorialExperience = true
+        activeDestination = .tutorialExperience
     }
 }
 

@@ -119,17 +119,17 @@ struct NotificationSettingsView: View {
                         } else {
                             // Channel Preferences — Project Updates
                             settingsSection(title: "PROJECT NOTIFICATIONS") {
-                                channelPreferencesGrid(eventTypes: projectEventTypes)
+                                channelPreferencesSection(eventTypes: projectEventTypes)
                             }
 
                             // Channel Preferences — Financial
                             settingsSection(title: "FINANCIAL NOTIFICATIONS") {
-                                channelPreferencesGrid(eventTypes: financialEventTypes)
+                                channelPreferencesSection(eventTypes: financialEventTypes)
                             }
 
                             // Channel Preferences — Other
                             settingsSection(title: "OTHER") {
-                                channelPreferencesGrid(eventTypes: otherEventTypes)
+                                channelPreferencesSection(eventTypes: otherEventTypes)
                             }
 
                             // Quiet Hours (Supabase-backed)
@@ -156,10 +156,18 @@ struct NotificationSettingsView: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 40)
                 }
+                .wizardTarget("configure_notifications")
             }
         }
         .trackScreen("Settings.Notifications")
         .navigationBarBackButtonHidden(true)
+        .onDisappear {
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardScreenDismissed"),
+                object: nil,
+                userInfo: ["screen": "NotificationSettings"]
+            )
+        }
         .onAppear {
             notificationManager.getAuthorizationStatus()
             checkMuteExpiration()
@@ -278,32 +286,26 @@ struct NotificationSettingsView: View {
     // MARK: - Notification Status Card
 
     private var notificationStatusCard: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(notificationManager.isNotificationsEnabled ?
-                          OPSStyle.Colors.successStatus.opacity(0.2) :
-                          OPSStyle.Colors.errorStatus.opacity(0.2))
-                    .frame(width: 48, height: 48)
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            Circle()
+                .fill(notificationManager.isNotificationsEnabled
+                      ? OPSStyle.Colors.successStatus
+                      : OPSStyle.Colors.errorStatus)
+                .frame(width: OPSStyle.Layout.Indicator.dotMD,
+                       height: OPSStyle.Layout.Indicator.dotMD)
 
-                Image(systemName: notificationManager.isNotificationsEnabled ?
-                      OPSStyle.Icons.bellFill : "bell.slash.fill")
-                    .font(OPSStyle.Typography.headingLarge)
-                    .foregroundColor(notificationManager.isNotificationsEnabled ?
-                                   OPSStyle.Colors.successStatus :
-                                   OPSStyle.Colors.errorStatus)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(notificationManager.isNotificationsEnabled ?
-                     "NOTIFICATIONS ENABLED" : "NOTIFICATIONS DISABLED")
-                    .font(OPSStyle.Typography.cardTitle)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(notificationManager.isNotificationsEnabled
+                     ? "NOTIFICATIONS ENABLED"
+                     : "NOTIFICATIONS DISABLED")
+                    .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
-                Text(notificationManager.isNotificationsEnabled ?
-                     "Stay updated on projects" : "Enable to receive updates")
-                    .font(OPSStyle.Typography.cardBody)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Text(notificationManager.isNotificationsEnabled
+                     ? "Stay updated on projects"
+                     : "Enable to receive updates")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
 
             Spacer()
@@ -316,23 +318,26 @@ struct NotificationSettingsView: View {
                 }
             } label: {
                 Text(notificationManager.isNotificationsEnabled ? "MANAGE" : "ENABLE")
-                    .font(OPSStyle.Typography.button)
-                    .foregroundColor(notificationManager.isNotificationsEnabled ?
-                                   OPSStyle.Colors.primaryText : OPSStyle.Colors.invertedText)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(notificationManager.isNotificationsEnabled ?
-                                Color.clear : OPSStyle.Colors.primaryText)
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(notificationManager.isNotificationsEnabled
+                                     ? OPSStyle.Colors.primaryAccent
+                                     : OPSStyle.Colors.invertedText)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
+                    .background(notificationManager.isNotificationsEnabled
+                                ? Color.clear
+                                : OPSStyle.Colors.primaryText)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(notificationManager.isNotificationsEnabled ?
-                                  OPSStyle.Colors.primaryText : Color.clear,
-                                  lineWidth: OPSStyle.Layout.Border.standard)
+                            .stroke(notificationManager.isNotificationsEnabled
+                                    ? OPSStyle.Colors.primaryAccent
+                                    : Color.clear,
+                                    lineWidth: OPSStyle.Layout.Border.standard)
                     )
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
         }
-        .padding(24)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
@@ -341,118 +346,134 @@ struct NotificationSettingsView: View {
         )
     }
 
-    // MARK: - Channel Preferences Grid
+    // MARK: - Channel Mode Enum
 
-    private func channelPreferencesGrid(eventTypes: [NotificationEventType]) -> some View {
-        VStack(spacing: 0) {
-            // Column headers
-            HStack {
-                Text("")
-                    .frame(maxWidth: .infinity, alignment: .leading)
+    /// Represents the four notification delivery modes for a single event type
+    private enum ChannelMode: String, CaseIterable {
+        case off = "OFF"
+        case phone = "PHONE"
+        case email = "EMAIL"
+        case both = "BOTH"
 
-                // Phone column header
-                VStack(spacing: 2) {
-                    Image(systemName: "iphone")
-                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Text("PHONE")
-                        .font(OPSStyle.Typography.microLabel)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-                .frame(width: 60)
-
-                // Email column header
-                VStack(spacing: 2) {
-                    Image(systemName: OPSStyle.Icons.envelope)
-                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Text("EMAIL")
-                        .font(OPSStyle.Typography.microLabel)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-                .frame(width: 60)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-
-            Divider().background(OPSStyle.Colors.cardBorder)
-
-            // Event type rows
-            ForEach(Array(eventTypes.enumerated()), id: \.element) { index, eventType in
-                channelPreferenceRow(eventType: eventType)
-                    .padding(.vertical, 14)
-                    .padding(.horizontal, 16)
-
-                if index < eventTypes.count - 1 {
-                    Divider().background(OPSStyle.Colors.cardBorder)
-                }
+        static func from(toggle: ChannelToggle) -> ChannelMode {
+            switch (toggle.push, toggle.email) {
+            case (false, false): return .off
+            case (true, false):  return .phone
+            case (false, true):  return .email
+            case (true, true):   return .both
             }
         }
+
+        var toToggle: ChannelToggle {
+            switch self {
+            case .off:   return ChannelToggle(push: false, email: false)
+            case .phone: return ChannelToggle(push: true, email: false)
+            case .email: return ChannelToggle(push: false, email: true)
+            case .both:  return ChannelToggle(push: true, email: true)
+            }
+        }
+    }
+
+    // MARK: - Channel Preferences Section (matches Permission Override layout)
+
+    private func channelPreferencesSection(eventTypes: [NotificationEventType]) -> some View {
+        VStack(spacing: 0) {
+            // Category header with bulk picker (lighter background — matches permissions)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text("ALL IN SECTION")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    Spacer()
+
+                    if sectionBulkMode(eventTypes: eventTypes) == nil {
+                        Text("MIXED")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+
+                SettingsSegmentedPicker(
+                    selection: sectionBulkMode(eventTypes: eventTypes),
+                    options: ChannelMode.allCases.map { ($0, $0.rawValue) },
+                    isMixed: sectionBulkMode(eventTypes: eventTypes) == nil
+                ) { newMode in
+                    for eventType in eventTypes {
+                        setChannelMode(eventType: eventType, mode: newMode)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(OPSStyle.Colors.subtleBackground)
+
+            // Individual event type rows (darker background)
+            ForEach(eventTypes, id: \.self) { eventType in
+                Rectangle()
+                    .fill(OPSStyle.Colors.cardBorderSubtle)
+                    .frame(height: 1)
+
+                channelPreferenceRow(eventType: eventType)
+            }
+        }
+    }
+
+    /// Determine the bulk mode for a section (mixed → nil, uniform → that mode)
+    private func sectionBulkMode(eventTypes: [NotificationEventType]) -> ChannelMode? {
+        let modes = eventTypes.map { eventType -> ChannelMode in
+            let toggle = preferences?.toggle(for: eventType) ?? ChannelToggle(push: true, email: false)
+            return ChannelMode.from(toggle: toggle)
+        }
+        let unique = Set(modes)
+        return unique.count == 1 ? unique.first : nil
     }
 
     private func channelPreferenceRow(eventType: NotificationEventType) -> some View {
         let toggle = preferences?.toggle(for: eventType) ?? ChannelToggle(push: true, email: false)
+        let currentMode = ChannelMode.from(toggle: toggle)
 
-        return HStack {
-            // Label
-            VStack(alignment: .leading, spacing: 4) {
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
                 Text(eventType.displayName)
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .foregroundColor(currentMode != .off ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+
+                Spacer()
 
                 Text(eventType.displayDescription)
                     .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .lineLimit(2)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .lineLimit(1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Push toggle
-            Toggle("", isOn: Binding(
-                get: { toggle.push },
-                set: { newValue in
-                    updateChannelToggle(eventType: eventType, channel: "push", enabled: newValue)
-                }
-            ))
-            .labelsHidden()
-            .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
-            .frame(width: 60)
-
-            // Email toggle
-            Toggle("", isOn: Binding(
-                get: { toggle.email },
-                set: { newValue in
-                    updateChannelToggle(eventType: eventType, channel: "email", enabled: newValue)
-                }
-            ))
-            .labelsHidden()
-            .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
-            .frame(width: 60)
+            SettingsSegmentedPicker(
+                selection: currentMode,
+                options: ChannelMode.allCases.map { ($0, $0.rawValue) },
+                isMixed: false
+            ) { newMode in
+                setChannelMode(eventType: eventType, mode: newMode)
+            }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
-    // MARK: - Channel Toggle Write-Through
+    // Picker is now SettingsSegmentedPicker in Styles/Components/SegmentedControl.swift
 
-    private func updateChannelToggle(eventType: NotificationEventType, channel: String, enabled: Bool) {
-        // Haptic feedback
-        let generator = UIImpactFeedbackGenerator(style: .light)
-        generator.impactOccurred()
+    /// Set channel mode for a single event type — updates both push and email in one write
+    private func setChannelMode(eventType: NotificationEventType, mode: ChannelMode) {
+        let newToggle = mode.toToggle
 
         // Optimistic local update
         guard var prefs = preferences else { return }
-        var toggle = prefs.channelPreferences[eventType.rawValue] ?? ChannelToggle(push: true, email: false)
-        switch channel {
-        case "push":  toggle.push = enabled
-        case "email": toggle.email = enabled
-        default: break
-        }
-        prefs.channelPreferences[eventType.rawValue] = toggle
+        prefs.channelPreferences[eventType.rawValue] = newToggle
         preferences = prefs
 
         // Update NotificationManager cache
         notificationManager.cachedChannelPreferences = prefs.channelPreferences
 
-        // Write-through to Supabase
+        // Write-through to Supabase (update both channels)
         guard let userId = UserDefaults.standard.string(forKey: "currentUserId"),
               let companyId = UserDefaults.standard.string(forKey: "company_id") else { return }
 
@@ -462,17 +483,24 @@ struct NotificationSettingsView: View {
                     userId: userId,
                     companyId: companyId,
                     eventType: eventType.rawValue,
-                    channel: channel,
-                    enabled: enabled
+                    channel: "push",
+                    enabled: newToggle.push
                 )
-                print("[NOTIFICATION PREFS] Updated \(eventType.rawValue).\(channel) = \(enabled)")
+                try await repository.updateChannelPreference(
+                    userId: userId,
+                    companyId: companyId,
+                    eventType: eventType.rawValue,
+                    channel: "email",
+                    enabled: newToggle.email
+                )
             } catch {
-                // Revert on failure — re-fetch from server
-                print("[NOTIFICATION PREFS] Write failed, reverting: \(error)")
+                print("[NOTIFICATION PREFS] Channel mode update failed, reverting: \(error)")
                 loadPreferences()
             }
         }
     }
+
+    // MARK: - Channel Toggle Write-Through (legacy — kept for quiet hours compatibility)
 
     // MARK: - Quiet Hours (Supabase-backed)
 

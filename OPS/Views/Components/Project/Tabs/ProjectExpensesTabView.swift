@@ -16,10 +16,6 @@ struct ProjectExpensesTabView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Section header (outside card)
-            sectionLabel("EXPENSES")
-                .padding(.top, 8)
-
             // Running total card (hidden when no expenses)
             if !viewModel.projectExpenses.isEmpty {
                 totalCard

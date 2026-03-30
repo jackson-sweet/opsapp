@@ -11,6 +11,13 @@
 //  - swipe_status: canSkip=true explicit — crew lacks projects.edit, needs skip path
 //  - view_closed: canSkip=true — auto-skipped when no closed projects exist
 //
+//  Audit fixes (2026-03-30):
+//  - open_filters: notification moved to filter sheet onDisappear (was blocking step 3 with open sheet)
+//  - open_filters: instruction updated to "OPEN THE FILTER MENU" with clear dismiss guidance
+//  - swipe_status: swipeable count now excludes .inProgress with incomplete tasks (completion check blocker)
+//  - view_closed: instruction updated to "TAP CLOSED TO SEE FINISHED WORK" with accurate button label
+//  - view_closed: description guides user back to project list after step 4 opens detail view
+//
 
 import Foundation
 
@@ -35,13 +42,13 @@ struct JobBoardWizard: WizardDefinitionProtocol {
             instruction: "SCROLL THROUGH YOUR PROJECTS",
             description: "Your active projects are listed here. Scroll to browse.",
             targetScreen: "JobBoard",
-            canSkip: false,
+            canSkip: true,
             completionNotification: "WizardJobBoardScrolled"
         ),
         WizardStepDefinition(
             id: "open_filters",
-            instruction: "TAP THE FILTER BUTTON",
-            description: "Filter projects by status, team member, or sort order.",
+            instruction: "OPEN THE FILTER MENU",
+            description: "Tap the filter icon to sort and filter your projects, then close it.",
             targetScreen: "JobBoard",
             canSkip: true,
             completionNotification: "WizardJobBoardFilterOpened"
@@ -64,8 +71,8 @@ struct JobBoardWizard: WizardDefinitionProtocol {
         ),
         WizardStepDefinition(
             id: "view_closed",
-            instruction: "CHECK YOUR CLOSED PROJECTS",
-            description: "Scroll down and tap the Closed section to see completed work.",
+            instruction: "TAP CLOSED TO SEE FINISHED WORK",
+            description: "Find the CLOSED button below your active projects on the project list.",
             targetScreen: "JobBoard",
             canSkip: true,
             completionNotification: "WizardJobBoardClosedViewed"

@@ -14,7 +14,7 @@ struct EstimateDTO: Codable, Identifiable {
     let opportunityId: String?
     let projectId: String?
     let clientId: String?
-    let title: String
+    let title: String?
     let status: String
     let subtotal: Double
     let taxRate: Double?
@@ -66,7 +66,7 @@ struct EstimateDTO: Codable, Identifiable {
             updatedAt: SupabaseDate.parse(updatedAt) ?? Date()
         )
         est.estimateNumber = estimateNumber ?? ""
-        est.title = title
+        est.title = title ?? ""
         est.subtotal = subtotal
         est.taxAmount = taxAmount ?? 0
         est.total = total
@@ -81,13 +81,14 @@ struct EstimateDTO: Codable, Identifiable {
 
 struct EstimateLineItemDTO: Codable, Identifiable {
     let id: String
-    let estimateId: String
+    let estimateId: String?
     let productId: String?
-    let description: String
+    let name: String?
+    let description: String?
     let quantity: Double
     let unitPrice: Double
     let unit: String?
-    let total: Double
+    let lineTotal: Double?
     let sortOrder: Int
     let isOptional: Bool?
     let taskTypeId: String?
@@ -97,11 +98,12 @@ struct EstimateLineItemDTO: Codable, Identifiable {
         case id
         case estimateId  = "estimate_id"
         case productId   = "product_id"
+        case name
         case description
         case quantity
         case unitPrice   = "unit_price"
         case unit
-        case total
+        case lineTotal   = "line_total"
         case sortOrder   = "sort_order"
         case isOptional  = "is_optional"
         case taskTypeId  = "task_type_id"
@@ -109,10 +111,11 @@ struct EstimateLineItemDTO: Codable, Identifiable {
     }
 
     func toModel() -> EstimateLineItem {
+        let displayName = name ?? description ?? ""
         let item = EstimateLineItem(
             id: id,
-            estimateId: estimateId,
-            name: description,
+            estimateId: estimateId ?? "",
+            name: displayName,
             type: type.flatMap { LineItemType(rawValue: $0) } ?? .labor,
             quantity: quantity,
             unitPrice: unitPrice,
@@ -121,7 +124,7 @@ struct EstimateLineItemDTO: Codable, Identifiable {
         item.productId = productId
         item.unit = unit
         item.optional = isOptional ?? false
-        item.lineTotal = total
+        item.lineTotal = lineTotal ?? (quantity * unitPrice)
         item.taskTypeId = taskTypeId
         return item
     }

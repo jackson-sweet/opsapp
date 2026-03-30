@@ -63,6 +63,12 @@ struct TaskReviewCardStack: View {
                     .gesture(index == currentIndex ? dragGesture : nil)
                     .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dragOffset)
                     .animation(.spring(response: 0.4, dampingFraction: 0.7), value: currentIndex)
+                    .modifier(WizardTargetModifier(
+                        stepIds: index == currentIndex
+                            ? ["task_demo_swipe_right", "task_demo_swipe_left", "task_demo_swipe_up"]
+                            : [],
+                        style: .button
+                    ))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

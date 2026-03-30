@@ -39,8 +39,8 @@ struct SettingsSecurityWizard: WizardDefinitionProtocol {
         ),
         WizardStepDefinition(
             id: "open_company",
-            instruction: "VIEW COMPANY SETTINGS",
-            description: "Check your company name, logo, and contact information.",
+            instruction: "VIEW YOUR ORGANIZATION",
+            description: "Check your organization name, logo, and contact information.",
             targetScreen: "Settings",
             canSkip: true,
             completionNotification: "WizardCompanyInfoViewed"

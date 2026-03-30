@@ -58,14 +58,28 @@ struct PermissionsManagementView: View {
         }
         .trackScreen("Settings.Permissions")
         .navigationBarBackButtonHidden(true)
+        .onDisappear {
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardScreenDismissed"),
+                object: nil,
+                userInfo: ["screen": "Permissions"]
+            )
+        }
         .onAppear {
             // Wizard system: evaluate permissions wizard trigger
             if let wizard = WizardRegistry.contextualWizard(for: "permissions_roles") {
                 wizardTriggerService?.evaluateTrigger(for: wizard, context: "permissions_visit")
             }
-            // Wizard system: notify roles tab viewed (delayed to avoid timing race —
-            // evaluateTrigger shows the banner; user must tap Launch before this fires)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            // Wizard system: notify roles tab viewed with staggered delays to eliminate race condition.
+            // Re-fires each time view appears (safe — observer auto-cancels after step completes)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                NotificationCenter.default.post(
+                    name: Notification.Name("WizardRolesTabViewed"),
+                    object: nil
+                )
+            }
+            // Also post with longer delay as fallback
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
                 NotificationCenter.default.post(
                     name: Notification.Name("WizardRolesTabViewed"),
                     object: nil
@@ -78,6 +92,18 @@ struct PermissionsManagementView: View {
                     name: Notification.Name("WizardTeamPermissionsViewed"),
                     object: nil
                 )
+            }
+        }
+        // Wizard: re-fire step 1 notification when wizard navigates here while the view is already visible.
+        // Handles the race where .onAppear notifications fired before the wizard's step observer was listening.
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardNavigateToTarget"))) { notification in
+            if let targetScreen = notification.userInfo?["targetScreen"] as? String, targetScreen == "Permissions" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("WizardRolesTabViewed"),
+                        object: nil
+                    )
+                }
             }
         }
     }

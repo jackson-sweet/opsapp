@@ -27,8 +27,8 @@ struct InventorySetupWizard: WizardDefinitionProtocol {
     let steps: [WizardStepDefinition] = [
         WizardStepDefinition(
             id: "choose_method",
-            instruction: "ADD YOUR ITEMS",
-            description: "Choose how to add inventory items",
+            instruction: "CHOOSE YOUR INPUT METHOD",
+            description: "Pick how you want to add inventory — manually or from a spreadsheet.",
             targetScreen: "Inventory",
             canSkip: true
         ),
@@ -48,7 +48,7 @@ struct InventorySetupWizard: WizardDefinitionProtocol {
         ),
         WizardStepDefinition(
             id: "take_snapshot",
-            instruction: "TAKE FIRST SNAPSHOT",
+            instruction: "TAKE YOUR FIRST SNAPSHOT",
             description: "Start tracking usage trends",
             targetScreen: "Inventory",
             canSkip: true

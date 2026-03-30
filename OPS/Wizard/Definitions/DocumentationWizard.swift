@@ -27,7 +27,7 @@ struct DocumentationWizard: WizardDefinitionProtocol {
         WizardStepDefinition(
             id: "write_note",
             instruction: "WRITE A NOTE",
-            description: "Type a note in the compose bar below. Use @ to mention a crew member.",
+            description: "Type a note and tap send. Use @ to mention a crew member.",
             targetScreen: "ProjectDetails",
             canSkip: true,
             completionNotification: "WizardNotePosted"
@@ -35,7 +35,7 @@ struct DocumentationWizard: WizardDefinitionProtocol {
         WizardStepDefinition(
             id: "capture_photo",
             instruction: "TAKE A PHOTO",
-            description: "Tap the camera button to document the job site.",
+            description: "Tap PHOTO in the action bar to capture job site photos.",
             targetScreen: "ProjectDetails",
             canSkip: true,
             completionNotification: "WizardPhotoCaptured"

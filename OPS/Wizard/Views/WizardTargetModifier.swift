@@ -179,7 +179,20 @@ private struct WizardTargetGlow<Content: View>: View {
                 }
             }
             .onAppear {
-                if isActive { pulsePhase = true }
+                if isActive {
+                    pulsePhase = true
+                    // Post scroll request on appear — handles the case where the view
+                    // wasn't in the hierarchy when the step activated (e.g., returning
+                    // from a detail view). The onChange(of: isActive) only fires on
+                    // transitions, so this covers the "already active" case.
+                    if let stepId = stepIds.first {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WizardScrollToTarget"),
+                            object: nil,
+                            userInfo: ["stepId": stepId]
+                        )
+                    }
+                }
             }
     }
 

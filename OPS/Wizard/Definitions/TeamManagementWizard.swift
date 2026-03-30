@@ -12,16 +12,22 @@
 //  - view_team: canSkip=false — auto-completes on genuine scroll
 //  - view_company_code: canSkip=true explicit — requires invite button visibility
 //
+//  Audit fixes (2026-03-30):
+//  - view_company_code: "COMPANY CODE" → "CREW CODE" to match UI label
+//  - view_company_code: "Tap Invite" → "Tap INVITE TEAM MEMBERS" to match button
+//  - assign_role: instruction updated to describe the ··· menu interaction
+//  - bulletPoints updated to match corrected step language
+//
 
 import Foundation
 
 struct TeamManagementWizard: WizardDefinitionProtocol {
     let wizardId = "team_management"
     let displayName = "TEAM MANAGEMENT"
-    let displayDescription = "Build your crew. View your team, invite new members with your company code, and assign roles that control what everyone can see and do."
+    let displayDescription = "Build your crew. View your team, invite new members with your crew code, and assign roles that control what everyone can see and do."
     let bulletPoints = [
         "View your team roster",
-        "Share your company code to invite crew",
+        "Share your crew code to invite members",
         "Send invitations by email or phone",
         "Assign roles to control access"
     ]
@@ -37,21 +43,21 @@ struct TeamManagementWizard: WizardDefinitionProtocol {
             instruction: "BROWSE YOUR TEAM",
             description: "Your team members are grouped by role. Scroll to see everyone.",
             targetScreen: "ManageTeam",
-            canSkip: false,
+            canSkip: true,
             completionNotification: "WizardTeamListViewed"
         ),
         WizardStepDefinition(
             id: "view_company_code",
-            instruction: "FIND YOUR COMPANY CODE",
-            description: "Tap Invite to see the code your crew uses to join.",
+            instruction: "FIND YOUR CREW CODE",
+            description: "Tap INVITE TEAM MEMBERS to see the crew code your team uses to join.",
             targetScreen: "ManageTeam",
             canSkip: true,
             completionNotification: "WizardCompanyCodeViewed"
         ),
         WizardStepDefinition(
             id: "send_invite",
-            instruction: "INVITE A TEAM MEMBER",
-            description: "Send an invite by email or phone. They'll get a link to join.",
+            instruction: "SEND AN INVITE",
+            description: "Enter an email or phone number, then tap Send Invites. They'll get a link to join.",
             targetScreen: "TeamInvite",
             canSkip: true,
             completionNotification: "WizardTeamInviteSent"
@@ -59,7 +65,7 @@ struct TeamManagementWizard: WizardDefinitionProtocol {
         WizardStepDefinition(
             id: "assign_role",
             instruction: "ASSIGN A ROLE",
-            description: "Tap a team member's role to change it. Roles control what they can access.",
+            description: "Tap the \u{22EF} menu on a team member, then choose a new role under Change Role.",
             targetScreen: "ManageTeam",
             canSkip: true,
             completionNotification: "WizardTeamRoleAssigned"

@@ -39,6 +39,11 @@ struct TaskDetailPopupSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     header
+                    if task.status == .active {
+                        completeButton
+                    } else if task.status == .completed {
+                        reopenButton
+                    }
                     infoCard
                     actionButtons
                 }
@@ -46,12 +51,10 @@ struct TaskDetailPopupSheet: View {
                 .padding(.bottom, 32)
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(OPSStyle.Colors.background)
         .environment(\.colorScheme, .dark)
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.hidden)
-        .presentationBackground(OPSStyle.Colors.background)
+        .opsSheet(detents: [.medium, .large])
         .alert("Reopen Task?", isPresented: $showReopenAlert) {
             Button("Reopen", role: .destructive) {
                 onComplete(task)
@@ -73,68 +76,93 @@ struct TaskDetailPopupSheet: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 12) {
-            let taskColor = Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent
-            TaskBadge(
-                name: task.displayTitle,
-                color: taskColor,
-                size: .large,
-                faded: task.status == .completed
-            )
+        let taskColor = Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent
 
-            StatusBadgePill(
-                text: task.status.displayName.uppercased(),
-                color: task.status.color,
-                size: .medium
-            )
+        return VStack(alignment: .leading, spacing: 12) {
+            // Task type badge + status pill
+            HStack(spacing: 8) {
+                TaskBadge(
+                    name: task.taskType?.display ?? "Task",
+                    color: taskColor,
+                    size: .medium,
+                    faded: task.status == .completed
+                )
 
-            Spacer()
+                StatusBadgePill(
+                    text: task.status.displayName.uppercased(),
+                    color: task.status.color,
+                    size: .medium
+                )
 
-            // Inline status toggle
-            if task.status == .active {
-                Button(action: {
-                    onComplete(task)
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                        Text("COMPLETE")
-                            .font(OPSStyle.Typography.smallCaption)
-                    }
-                    .foregroundColor(OPSStyle.Colors.successStatus)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(OPSStyle.Colors.successStatus.opacity(0.1))
-                    .cornerRadius(OPSStyle.Layout.buttonRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                            .stroke(OPSStyle.Colors.successStatus.opacity(0.3), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(PlainButtonStyle())
-            } else if task.status == .completed {
-                Button(action: {
-                    showReopenAlert = true
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.uturn.backward")
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                        Text("REOPEN")
-                            .font(OPSStyle.Typography.smallCaption)
-                    }
-                    .foregroundColor(OPSStyle.Colors.warningStatus)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(OPSStyle.Colors.warningStatus.opacity(0.1))
-                    .cornerRadius(OPSStyle.Layout.buttonRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                            .stroke(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(PlainButtonStyle())
+                Spacer()
+            }
+
+            // Title
+            Text(task.displayTitle)
+                .font(OPSStyle.Typography.headingBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .opacity(task.status == .completed ? 0.5 : 1.0)
+
+            // Notes (if present)
+            if let notes = task.taskNotes, !notes.isEmpty {
+                Text(notes)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineLimit(3)
             }
         }
+    }
+
+    // MARK: - Complete Button
+
+    private var completeButton: some View {
+        Button(action: {
+            onComplete(task)
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
+                Text("MARK COMPLETE")
+                    .font(OPSStyle.Typography.captionBold)
+                    .tracking(0.5)
+            }
+            .foregroundColor(OPSStyle.Colors.successStatus)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(OPSStyle.Colors.successStatus.opacity(0.1))
+            .cornerRadius(OPSStyle.Layout.buttonRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                    .stroke(OPSStyle.Colors.successStatus.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Reopen Button
+
+    private var reopenButton: some View {
+        Button(action: {
+            showReopenAlert = true
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.uturn.backward.circle.fill")
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
+                Text("REOPEN TASK")
+                    .font(OPSStyle.Typography.captionBold)
+                    .tracking(0.5)
+            }
+            .foregroundColor(OPSStyle.Colors.warningStatus)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(OPSStyle.Colors.warningStatus.opacity(0.1))
+            .cornerRadius(OPSStyle.Layout.buttonRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                    .stroke(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 
     // MARK: - Info Card
@@ -421,3 +449,4 @@ struct TaskDetailPopupSheet: View {
         }
     }
 }
+

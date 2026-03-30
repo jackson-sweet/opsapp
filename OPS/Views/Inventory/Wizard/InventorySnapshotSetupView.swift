@@ -47,18 +47,16 @@ struct InventorySnapshotSetupView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                Spacer()
+                headerSection
 
-                iconSection
-                titleSection
-                descriptionSection
+                Spacer()
 
                 if phase == .snapshotTaken {
                     frequencySection
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
-                }
 
-                Spacer()
+                    Spacer()
+                }
 
                 bottomSection
 
@@ -75,55 +73,38 @@ struct InventorySnapshotSetupView: View {
         .animation(OPSStyle.Animation.standard, value: phase)
     }
 
-    // MARK: - Icon
+    // MARK: - Header
 
-    private var iconSection: some View {
-        Group {
-            if phase == .initial {
-                Image(systemName: "camera.viewfinder")
-                    .font(.system(size: 56, weight: .light))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .padding(.bottom, OPSStyle.Layout.spacing4)
-            } else {
-                // Checkmark after snapshot taken
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 56, weight: .light))
-                    .foregroundColor(OPSStyle.Colors.successStatus)
-                    .padding(.bottom, OPSStyle.Layout.spacing4)
-                    .transition(.scale.combined(with: .opacity))
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: 12) {
+                Image(systemName: phase == .initial ? "camera.viewfinder" : "checkmark.circle.fill")
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                    .foregroundColor(phase == .initial ? OPSStyle.Colors.wizardAccent : OPSStyle.Colors.successStatus)
+
+                Text(phase == .initial ? "TAKE YOUR FIRST SNAPSHOT" : "SNAPSHOT TAKEN")
+                    .font(OPSStyle.Typography.headingBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
             }
+
+            Text(phase == .initial
+                ? "Snapshots record your inventory levels over time. OPS uses them to show consumption trends and predict when you'll run out of materials."
+                : "Your inventory levels have been recorded. Set how often OPS should auto-snapshot."
+            )
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .lineSpacing(3)
         }
-    }
-
-    // MARK: - Title
-
-    private var titleSection: some View {
-        Text(phase == .initial ? "TAKE YOUR FIRST SNAPSHOT" : "SNAPSHOT TAKEN")
-            .font(OPSStyle.Typography.headingBold)
-            .foregroundColor(OPSStyle.Colors.primaryText)
-            .multilineTextAlignment(.center)
-            .padding(.bottom, OPSStyle.Layout.spacing2)
-    }
-
-    // MARK: - Description
-
-    private var descriptionSection: some View {
-        Text(phase == .initial
-            ? "Snapshots record your inventory levels over time. OPS uses them to show consumption trends and predict when you'll run out of materials."
-            : "Your inventory levels have been recorded. Set how often OPS should auto-snapshot."
-        )
-            .font(OPSStyle.Typography.caption)
-            .foregroundColor(OPSStyle.Colors.secondaryText)
-            .multilineTextAlignment(.center)
-            .lineSpacing(3)
-            .padding(.horizontal, OPSStyle.Layout.spacing5)
-            .padding(.bottom, OPSStyle.Layout.spacing4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.top, OPSStyle.Layout.spacing4)
+        .padding(.bottom, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Frequency Picker
 
     private var frequencySection: some View {
-        VStack(spacing: OPSStyle.Layout.spacing3) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             Text("HOW OFTEN SHOULD OPS AUTO-SNAPSHOT?")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -134,6 +115,7 @@ struct InventorySnapshotSetupView: View {
                 }
             }
         }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     private func frequencyPill(_ frequency: SnapshotFrequency) -> some View {
@@ -150,7 +132,7 @@ struct InventorySnapshotSetupView: View {
                 .frame(height: OPSStyle.Layout.touchTargetMin)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .fill(isSelected ? OPSStyle.Colors.primaryAccent : Color.clear)
+                        .fill(isSelected ? OPSStyle.Colors.wizardAccent : Color.clear)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -186,7 +168,7 @@ struct InventorySnapshotSetupView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: OPSStyle.Layout.touchTargetStandard)
-                    .background(OPSStyle.Colors.primaryAccent)
+                    .background(OPSStyle.Colors.wizardAccent)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
                 .disabled(isTakingSnapshot)
@@ -203,7 +185,7 @@ struct InventorySnapshotSetupView: View {
                         .foregroundColor(OPSStyle.Colors.invertedText)
                         .frame(maxWidth: .infinity)
                         .frame(height: OPSStyle.Layout.touchTargetStandard)
-                        .background(OPSStyle.Colors.primaryAccent)
+                        .background(OPSStyle.Colors.wizardAccent)
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)

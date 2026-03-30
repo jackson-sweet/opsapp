@@ -12,6 +12,7 @@ import SwiftData
 struct TaskCompletionReviewView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.wizardStateManager) private var wizardStateManager
     @EnvironmentObject var permissionStore: PermissionStore
 
     let tasks: [ProjectTask]
@@ -74,6 +75,7 @@ struct TaskCompletionReviewView: View {
                     directionHints
                         .padding(.bottom, 8)
                         .ignoresSafeArea(.container, edges: .bottom)
+                        .wizardTarget("task_free_review", style: .row)
                 }
             }
         }
@@ -93,11 +95,13 @@ struct TaskCompletionReviewView: View {
                     task: task,
                     onRescheduled: {
                         reviewedCount += 1
+                        NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedUp"), object: nil)
                         checkCompletion()
                     },
                     onDismiss: {
                         // User dismissed without rescheduling — still count as reviewed
                         reviewedCount += 1
+                        NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedUp"), object: nil)
                         checkCompletion()
                     }
                 )
@@ -130,13 +134,34 @@ struct TaskCompletionReviewView: View {
                 name: Notification.Name("WizardTaskReviewOpened"),
                 object: nil
             )
+            // Evaluate prerequisites on appear for the first swipe step
+            wizardStateManager?.evaluateStepPrerequisites(
+                taskReviewCardCount: max(0, tasks.count - reviewedCount)
+            )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardEvaluatePrerequisites"))) { _ in
+            // Re-evaluate with current remaining card count.
+            // Handles auto-skip for: swipe steps when cards run out, swipe-up without calendar.edit.
+            wizardStateManager?.evaluateStepPrerequisites(
+                taskReviewCardCount: max(0, tasks.count - reviewedCount)
+            )
         }
         .onDisappear {
-            // Wizard system: notify task review dismissed
+            // Wizard system: notify task review dismissed (step 5 completion)
             NotificationCenter.default.post(
                 name: Notification.Name("WizardTaskReviewDismissed"),
                 object: nil
             )
+            // Wizard system: notify screen dismissed (exit prompt trigger).
+            // Delay so step completion notifications process first — mirrors
+            // the FABMenu and TeamInvite patterns.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                NotificationCenter.default.post(
+                    name: Notification.Name("WizardScreenDismissed"),
+                    object: nil,
+                    userInfo: ["screen": "TaskReview"]
+                )
+            }
         }
     }
 
@@ -318,11 +343,12 @@ struct TaskCompletionReviewView: View {
             NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedLeft"), object: nil)
             break
         case .up:
-            // Reschedule — decrement count, will re-increment on complete/dismiss
+            // Reschedule — decrement count, will re-increment on complete/dismiss.
+            // WizardTaskSwipedUp is deferred to the reschedule sheet callbacks
+            // so the wizard doesn't advance while the sheet is still visible.
             reviewedCount -= 1
             pendingRescheduleTask = task
             showRescheduleSheet = true
-            NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedUp"), object: nil)
         case .down:
             // Cancel — show confirmation
             reviewedCount -= 1

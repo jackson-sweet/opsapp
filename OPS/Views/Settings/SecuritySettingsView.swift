@@ -71,6 +71,7 @@ struct SecuritySettingsView: View {
                                     .tint(OPSStyle.Colors.primaryAccent)
                                 }
                                 .padding(16)
+                                .wizardTarget("enable_pin", style: .row)
 
                                 if pinManager.hasPINEnabled {
                                     Divider()
@@ -126,6 +127,13 @@ struct SecuritySettingsView: View {
         }
         .trackScreen("Settings.Security")
         .navigationBarBackButtonHidden(true)
+        .onDisappear {
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardScreenDismissed"),
+                object: nil,
+                userInfo: ["screen": "SecuritySettings"]
+            )
+        }
         .sheet(isPresented: $showPINSetup) {
             PINSetupSheet(pinManager: pinManager, isPresented: $showPINSetup)
         }

@@ -444,13 +444,15 @@ class OneSignalService {
             throw OneSignalError.invalidResponse
         }
 
+        let responseBody = String(data: responseData, encoding: .utf8) ?? "Unknown"
+
         if httpResponse.statusCode != 200 {
-            let errorMessage = String(data: responseData, encoding: .utf8) ?? "Unknown error"
-            print("[ONESIGNAL SERVICE] API Error (\(httpResponse.statusCode)): \(errorMessage)")
-            throw OneSignalError.apiError(statusCode: httpResponse.statusCode, message: errorMessage)
+            print("[ONESIGNAL SERVICE] API Error (\(httpResponse.statusCode)): \(responseBody)")
+            throw OneSignalError.apiError(statusCode: httpResponse.statusCode, message: responseBody)
         }
 
-        print("[ONESIGNAL SERVICE] Notification sent successfully via ops-web")
+        print("[ONESIGNAL SERVICE] ✅ Response (\(httpResponse.statusCode)): \(responseBody)")
+        print("[ONESIGNAL SERVICE] Sent to user IDs: \(recipientUserIds)")
     }
 }
 

@@ -16,6 +16,7 @@ struct ExpensesListView: View {
     @EnvironmentObject private var dataController: DataController
     @State private var selectedTab: ReviewTab = .review
     @State private var showExpenseSettings = false
+    @State private var showAddExpense = false
 
     enum ReviewTab: String, CaseIterable {
         case review = "REVIEW"
@@ -129,11 +130,26 @@ struct ExpensesListView: View {
                     .padding(.bottom, 100)
                 }
             }
+
+            // FAB — add expense
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    addExpenseFAB
+                        .padding(.trailing, 36)
+                }
+                .padding(.bottom, 140)
+            }
         }
         .trackScreen("Expenses")
         .navigationBarBackButtonHidden(true)
         .navigationDestination(isPresented: $showExpenseSettings) {
             ExpenseSettingsView(viewModel: viewModel)
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showAddExpense) {
+            ExpenseFormSheet(viewModel: viewModel)
                 .environmentObject(dataController)
         }
         .task {
@@ -409,6 +425,28 @@ struct ExpensesListView: View {
         .buttonStyle(PlainButtonStyle())
         .padding(.horizontal, 20)
         .padding(.top, 20)
+    }
+
+    // MARK: - FAB
+
+    private var addExpenseFAB: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            showAddExpense = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: OPSStyle.Layout.IconSize.xl, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.buttonText)
+                .frame(width: 64, height: 64)
+                .background {
+                    Circle().fill(.ultraThinMaterial.opacity(0.8))
+                }
+                .clipShape(Circle())
+                .overlay {
+                    Circle()
+                        .stroke(OPSStyle.Colors.buttonText, lineWidth: OPSStyle.Layout.Border.thick)
+                }
+        }
     }
 
     // MARK: - Empty State

@@ -104,7 +104,7 @@ struct InventoryWizardFlow: View {
                     } label: {
                         Text(activeItems.isEmpty ? "CANCEL" : "DONE ADDING")
                             .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(activeItems.isEmpty ? OPSStyle.Colors.secondaryText : OPSStyle.Colors.primaryAccent)
+                            .foregroundColor(activeItems.isEmpty ? OPSStyle.Colors.secondaryText : OPSStyle.Colors.wizardAccent)
                             .frame(height: 44)
                     }
                 }
@@ -167,16 +167,19 @@ struct InventoryWizardFlow: View {
                                 Text("ADD ITEM")
                                     .font(OPSStyle.Typography.bodyBold)
                             }
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .foregroundColor(OPSStyle.Colors.wizardAccent)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
                             .background(OPSStyle.Colors.cardBackgroundDark)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
+                                    .stroke(OPSStyle.Colors.wizardAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                             )
                         }
+
+                        // Exit option — always available
+                        skipSetupButton
                     }
                     .padding(20)
                 }
@@ -221,7 +224,7 @@ struct InventoryWizardFlow: View {
                         } label: {
                             Text("CONTINUE")
                                 .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .foregroundColor(OPSStyle.Colors.wizardAccent)
                                 .frame(height: 44)
                         }
                     }
@@ -229,22 +232,22 @@ struct InventoryWizardFlow: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
 
-                Spacer()
+                // Import prompt — left-aligned, icon inline with title
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
+                            .foregroundColor(OPSStyle.Colors.wizardAccent)
 
-                // Import prompt
-                VStack(spacing: 20) {
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.system(size: 40))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-
-                    Text("IMPORT FROM SPREADSHEET")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        Text("IMPORT FROM SPREADSHEET")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
 
                     Text("Upload a CSV or Excel file with your inventory list.")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .multilineTextAlignment(.center)
+                        .lineSpacing(3)
 
                     Button {
                         showingImportSheet = true
@@ -257,8 +260,11 @@ struct InventoryWizardFlow: View {
                             .background(OPSStyle.Colors.primaryText)
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
                     }
-                    .padding(.horizontal, 40)
+                    // Exit option — always available
+                    skipSetupButton
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, OPSStyle.Layout.spacing4)
 
                 Spacer()
             }
@@ -277,15 +283,30 @@ struct InventoryWizardFlow: View {
         }
     }
 
+    // MARK: - Shared Components
+
+    /// Persistent exit button available on every step after method choice
+    private var skipSetupButton: some View {
+        Button {
+            TutorialHaptics.lightTap()
+            dismissWizard()
+        } label: {
+            Text("SKIP SETUP")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .frame(maxWidth: .infinity)
+                .frame(height: OPSStyle.Layout.touchTargetMin)
+        }
+        .padding(.top, OPSStyle.Layout.spacing2)
+    }
+
     // MARK: - Helpers
 
     private func dismissWizard() {
-        UserDefaults.standard.set("dismissed", forKey: "wizard_inventory_setup_status")
         onSkip()
     }
 
     private func finishWizard() {
-        UserDefaults.standard.set("completed", forKey: "wizard_inventory_setup_status")
         onComplete()
     }
 }

@@ -11,11 +11,11 @@ import SwiftUI
 
 struct WizardDetailView: View {
     let wizard: any WizardDefinitionProtocol
-    @ObservedObject var stateManager: WizardStateManager
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.wizardStateManager) private var stateManager
 
     private var wizardState: WizardState? {
-        stateManager.wizardState(for: wizard.wizardId)
+        stateManager?.wizardState(for: wizard.wizardId)
     }
 
     var body: some View {
@@ -104,28 +104,28 @@ struct WizardDetailView: View {
                 case .inProgress:
                     VStack(spacing: 12) {
                         primaryButton(title: "RESUME", icon: "play.fill") {
-                            stateManager.startWizardDirectly(wizard)
+                            stateManager?.startWizardDirectly(wizard)
                             dismiss()
                         }
                         secondaryButton(title: "RESTART") {
-                            stateManager.startWizardDirectly(wizard, isRestart: true)
+                            stateManager?.startWizardDirectly(wizard, isRestart: true)
                             dismiss()
                         }
                     }
                 case .completed:
                     secondaryButton(title: "RESTART GUIDE") {
-                        stateManager.startWizardDirectly(wizard, isRestart: true)
+                        stateManager?.startWizardDirectly(wizard, isRestart: true)
                         dismiss()
                     }
                 case .notStarted, .dismissed:
                     primaryButton(title: "START GUIDE", icon: "arrow.right") {
-                        stateManager.startWizardDirectly(wizard)
+                        stateManager?.startWizardDirectly(wizard)
                         dismiss()
                     }
                 }
             } else {
                 primaryButton(title: "START GUIDE", icon: "arrow.right") {
-                    stateManager.startWizardDirectly(wizard)
+                    stateManager?.startWizardDirectly(wizard)
                     dismiss()
                 }
             }
@@ -205,7 +205,7 @@ struct WizardDetailView: View {
                                     state.status = .notStarted
                                 }
 
-                                stateManager.analytics.recordEvent(
+                                stateManager?.analytics.recordEvent(
                                     event: "wizard_prompt_re_enabled",
                                     wizardId: wizard.wizardId,
                                     sessionId: state.currentSessionId,

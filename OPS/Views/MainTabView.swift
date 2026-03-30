@@ -417,6 +417,35 @@ struct MainTabView: View {
                 break
             }
         }
+        // Wizard deep nav for settings sub-screens — handled here because SettingsView's
+        // modifier stack is too deep for additional .onReceive handlers
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardOpenSecuritySettings"))) { _ in
+            withAnimation { selectedTab = settingsTabIndex }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("SettingsOpenSecurity"), object: nil)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardOpenNotificationSettings"))) { _ in
+            withAnimation { selectedTab = settingsTabIndex }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("SettingsOpenNotifications"), object: nil)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardOpenManageTeam"))) { _ in
+            withAnimation { selectedTab = settingsTabIndex }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("SettingsOpenOrganization"), object: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    NotificationCenter.default.post(name: Notification.Name("WizardOpenManageTeamFromOrg"), object: nil)
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardOpenPermissions"))) { _ in
+            withAnimation { selectedTab = settingsTabIndex }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("SettingsOpenPermissions"), object: nil)
+            }
+        }
         .onAppear {
             // Clear all pending image syncs on app bootup
             clearPendingImageSyncs()
@@ -537,10 +566,12 @@ struct MainTabView: View {
         )
         let allProjects = (try? modelContext.fetch(allProjectDescriptor)) ?? []
         let completedCount = allProjects.filter { $0.status == .completed }.count
+        let completedTaskCount = allTasks.filter { $0.status == .completed }.count
 
         triggerService.evaluateDataConditions(
             overdueTaskCount: overdueCount,
-            completedProjectCount: completedCount
+            completedProjectCount: completedCount,
+            completedTaskCount: completedTaskCount
         )
     }
 

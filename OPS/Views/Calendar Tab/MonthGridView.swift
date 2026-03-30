@@ -520,8 +520,10 @@ struct MonthGridView: View {
                                                                 cellHeight: cellHeight,
                                                                 onTap: {
                                                                     sheetDate = IdentifiableDate(date: date)
+                                                                    NotificationCenter.default.post(name: Notification.Name("WizardCalendarMonthDayTapped"), object: nil)
                                                                 }
                                                             )
+                                                            .wizardTarget("tap_month_day")
                                                         } else {
                                                             Color.clear
                                                                 .frame(maxWidth: .infinity)
@@ -1129,6 +1131,7 @@ struct DayDetailsSheet: View {
     }
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text(date.formatted(date: .complete, time: .omitted))
@@ -1165,6 +1168,7 @@ struct DayDetailsSheet: View {
                                 handleTaskTap(task)
                             }
                         )
+                        .wizardTarget("tap_task")
                         .padding(.horizontal)
                     }
 
@@ -1195,6 +1199,7 @@ struct DayDetailsSheet: View {
                                     handleTaskTap(task)
                                 }
                             )
+                            .wizardTarget("tap_task")
                             .padding(.horizontal)
                         }
                     }
@@ -1202,6 +1207,15 @@ struct DayDetailsSheet: View {
             }
             .padding(.vertical)
         }
+        // Wizard: scroll to the active target when a new step activates
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
+            if let stepId = notification.userInfo?["stepId"] as? String {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    proxy.scrollTo("wizard_active_\(stepId)", anchor: .top)
+                }
+            }
+        }
+        } // ScrollViewReader
         .background(OPSStyle.Colors.background)
         .presentationDetents([.fraction(0.3), .fraction(0.7), .large])
     }

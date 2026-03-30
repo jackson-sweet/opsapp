@@ -11,9 +11,9 @@ import SwiftUI
 
 struct WizardManagementView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.wizardStateManager) private var optionalStateManager
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
-    @ObservedObject var stateManager: WizardStateManager
 
     private var availableWizards: [any WizardDefinitionProtocol] {
         guard let role = dataController.currentUser?.role else { return [] }
@@ -49,10 +49,10 @@ struct WizardManagementView: View {
 
     @ViewBuilder
     private func wizardRow(wizard: any WizardDefinitionProtocol) -> some View {
-        let state = stateManager.wizardState(for: wizard.wizardId)
+        let state = optionalStateManager?.wizardState(for: wizard.wizardId)
 
         NavigationLink {
-            WizardDetailView(wizard: wizard, stateManager: stateManager)
+            WizardDetailView(wizard: wizard)
                 .environmentObject(dataController)
                 .environmentObject(permissionStore)
         } label: {

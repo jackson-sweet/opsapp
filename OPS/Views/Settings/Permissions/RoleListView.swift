@@ -83,42 +83,51 @@ struct RoleListView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        // Preset roles section
-                        if !presetRoles.isEmpty {
-                            roleSection(title: "PRESET ROLES", icon: "shield.fill", roles: presetRoles, isPreset: true)
-                        }
-
-                        // Custom roles section
-                        if !customRoles.isEmpty {
-                            roleSection(title: "CUSTOM ROLES", icon: "person.badge.key.fill", roles: customRoles, isPreset: false)
-                        }
-
-                        // New role button
-                        Button(action: {
-                            roleFormMode = .create
-                            roleFormName = ""
-                            showingRoleForm = true
-                        }) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "plus")
-                                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
-                                Text("NEW ROLE")
-                                    .font(OPSStyle.Typography.captionBold)
+                    ScrollViewReader { proxy in
+                        VStack(alignment: .leading, spacing: 20) {
+                            // Preset roles section
+                            if !presetRoles.isEmpty {
+                                roleSection(title: "PRESET ROLES", icon: "shield.fill", roles: presetRoles, isPreset: true)
                             }
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
-                            )
+
+                            // Custom roles section
+                            if !customRoles.isEmpty {
+                                roleSection(title: "CUSTOM ROLES", icon: "person.badge.key.fill", roles: customRoles, isPreset: false)
+                            }
+
+                            // New role button
+                            Button(action: {
+                                roleFormMode = .create
+                                roleFormName = ""
+                                showingRoleForm = true
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
+                                    Text("NEW ROLE")
+                                        .font(OPSStyle.Typography.captionBold)
+                                }
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .padding(.horizontal, 20)
                         }
-                        .buttonStyle(PlainButtonStyle())
-                        .padding(.horizontal, 20)
+                        .padding(.vertical, 16)
+                        .tabBarPadding()
+                        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
+                            if let stepId = notification.userInfo?["stepId"] as? String {
+                                withAnimation {
+                                    proxy.scrollTo("wizard_active_\(stepId)", anchor: .top)
+                                }
+                            }
+                        }
                     }
-                    .padding(.vertical, 16)
-                    .tabBarPadding()
                 }
                 .wizardTarget("view_roles")
             }

@@ -23,19 +23,15 @@ struct ActivityTabView: View {
     var body: some View {
         ScrollViewReader { proxy in
             VStack(alignment: .leading, spacing: 0) {
-                // Section header
-                sectionLabel("ACTIVITY")
-                    .padding(.top, 8)
-
-                // Notes feed
-                notesFeed
+                // Project photos
+                projectPhotosSection
 
                 // Compose bar
                 composeBar
                     .id("composeBar")
 
-                // Project photos (below notes)
-                projectPhotosSection
+                // Notes feed
+                notesFeed
 
                 // Bottom spacer for scroll
                 Spacer()
@@ -58,6 +54,13 @@ struct ActivityTabView: View {
             }
             .onAppear {
                 NotificationCenter.default.post(name: Notification.Name("WizardActivityTabViewed"), object: nil)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
+                if let stepId = notification.userInfo?["stepId"] as? String {
+                    withAnimation {
+                        proxy.scrollTo("wizard_active_\(stepId)", anchor: .top)
+                    }
+                }
             }
         }
     }
@@ -151,6 +154,28 @@ struct ActivityTabView: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, OPSStyle.Layout.spacing1)
+            }
+
+            // Error banner
+            if let error = notesViewModel.error {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
+                    Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                    Text(error)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                    Spacer()
+                    Button {
+                        notesViewModel.error = nil
+                    } label: {
+                        Image(systemName: OPSStyle.Icons.xmark)
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, OPSStyle.Layout.spacing1)
@@ -296,48 +321,40 @@ struct ActivityTabView: View {
     private var projectPhotosSection: some View {
         let photos = project.getProjectImages()
 
-        return Group {
-            if !photos.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("[ PHOTOS ]")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .textCase(.uppercase)
-                        .tracking(1)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .padding(.horizontal, 16)
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack {
+                Text(photos.isEmpty
+                     ? "NO PHOTOS"
+                     : "\(photos.count) PHOTO\(photos.count == 1 ? "" : "S")")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
 
-                    VStack(spacing: 0) {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(Array(photos.enumerated()), id: \.element) { index, url in
-                                    Button(action: { onProjectPhotoTap?(index) }) {
-                                        PhotoThumbnail(url: url, project: project)
-                                            .frame(width: 72, height: 72)
-                                            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                    .wizardTarget(index == 0 ? "view_photo" : "")
-                                }
+            if photos.isEmpty {
+                Text("Tap the camera to add project photos")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(photos.enumerated()), id: \.element) { index, url in
+                            Button(action: { onProjectPhotoTap?(index) }) {
+                                PhotoThumbnail(url: url, project: project)
+                                    .frame(width: 72, height: 72)
+                                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
                             }
-                            .padding(14)
+                            .buttonStyle(PlainButtonStyle())
+                            .wizardTarget(index == 0 ? "view_photo" : "")
                         }
-
-                        Text("\(photos.count) PHOTO\(photos.count == 1 ? "" : "S")")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .padding(.horizontal, 14)
-                            .padding(.bottom, 10)
                     }
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                    )
                     .padding(.horizontal, 16)
                 }
-                .padding(.top, 24)
             }
         }
+        .padding(.top, 16)
     }
 }

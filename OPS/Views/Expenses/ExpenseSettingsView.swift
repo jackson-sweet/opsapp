@@ -10,6 +10,7 @@ import SwiftUI
 struct ExpenseSettingsView: View {
     @ObservedObject var viewModel: ExpenseViewModel
     @EnvironmentObject private var dataController: DataController
+    @Environment(\.dismiss) private var dismiss
     @State private var reviewFrequency: ReviewFrequency = .weekly
     @State private var autoApproveThreshold = ""
     @State private var adminApprovalThreshold = ""
@@ -20,34 +21,40 @@ struct ExpenseSettingsView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            OPSStyle.Colors.background.ignoresSafeArea()
+            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
 
-            ScrollView {
-                VStack(spacing: OPSStyle.Layout.spacing3) {
-                    // REVIEW FREQUENCY
-                    sectionHeader("REVIEW FREQUENCY")
-                        .padding(.top, OPSStyle.Layout.spacing3)
-                    reviewFrequencyCard
+            VStack(spacing: 0) {
+                SettingsHeader(
+                    title: "Expense Settings",
+                    onBackTapped: { dismiss() }
+                )
+                .padding(.bottom, OPSStyle.Layout.spacing3)
 
-                    // THRESHOLDS
-                    sectionHeader("AUTO-APPROVAL THRESHOLDS")
-                    thresholdsCard
+                ScrollView {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
+                        // REVIEW FREQUENCY
+                        sectionHeader("REVIEW FREQUENCY")
+                        reviewFrequencyCard
 
-                    // AUTO-APPROVE RULES
-                    autoApproveRulesSection
+                        // THRESHOLDS
+                        sectionHeader("AUTO-APPROVAL THRESHOLDS")
+                        thresholdsCard
 
-                    // POLICY TOGGLES
-                    sectionHeader("SUBMISSION POLICY")
-                    policyCard
+                        // AUTO-APPROVE RULES
+                        autoApproveRulesSection
+
+                        // POLICY TOGGLES
+                        sectionHeader("SUBMISSION POLICY")
+                        policyCard
+                    }
+                    .padding(.bottom, 100)
                 }
-                .padding(.bottom, 100)
             }
 
             saveFooter
         }
         .trackScreen("Settings.Expenses")
-        .navigationTitle("EXPENSE SETTINGS")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .task {
             if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
                 viewModel.setup(companyId: companyId)
@@ -108,9 +115,9 @@ struct ExpenseSettingsView: View {
             }
         }
         .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -140,7 +147,7 @@ struct ExpenseSettingsView: View {
                 }
                 Text("Expenses under this amount are automatically approved.")
                     .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2)
@@ -167,15 +174,15 @@ struct ExpenseSettingsView: View {
                 }
                 Text("Expenses over this amount require admin approval.")
                     .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2)
         }
         .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -185,46 +192,24 @@ struct ExpenseSettingsView: View {
 
     private var policyCard: some View {
         VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("REQUIRE RECEIPT PHOTO")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                    Text("Expenses must include a photo of the receipt.")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-                Spacer()
-                Toggle("", isOn: $requireReceiptPhoto)
-                    .labelsHidden()
-                    .tint(OPSStyle.Colors.primaryAccent)
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+            SettingsToggle(
+                title: "Require Receipt Photo",
+                description: "Expenses must include a photo of the receipt.",
+                isOn: $requireReceiptPhoto
+            )
 
             Divider().background(OPSStyle.Colors.cardBorder)
 
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("REQUIRE PROJECT ASSIGNMENT")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                    Text("Expenses must be assigned to at least one project.")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-                Spacer()
-                Toggle("", isOn: $requireProjectAssignment)
-                    .labelsHidden()
-                    .tint(OPSStyle.Colors.primaryAccent)
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+            SettingsToggle(
+                title: "Require Project Assignment",
+                description: "Expenses must be assigned to at least one project.",
+                isOn: $requireProjectAssignment
+            )
         }
         .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -252,7 +237,7 @@ struct ExpenseSettingsView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
                 )
             }
@@ -298,9 +283,9 @@ struct ExpenseSettingsView: View {
         }
         .padding(14)
         .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }

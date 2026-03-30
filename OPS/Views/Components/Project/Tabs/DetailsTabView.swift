@@ -33,10 +33,11 @@ struct DetailsTabView: View {
             // CLIENT
             ClientSection(
                 project: project,
-                onTap: onClientTap,
+                canEdit: viewModel.canEditProject,
+                onContactTap: onClientTap,
                 onCall: { if let p = project.effectiveClientPhone { viewModel.callPhone(p) } },
                 onEmail: { if let e = project.effectiveClientEmail { viewModel.sendEmail(e) } },
-                onLongPress: onClientLongPress
+                onAssignClient: onClientLongPress
             )
 
             // ADDRESS (below client)
@@ -203,90 +204,144 @@ private struct ProjectTimelineSection: View {
 
 struct ClientSection: View {
     let project: Project
-    let onTap: () -> Void
+    let canEdit: Bool
+    let onContactTap: () -> Void
     let onCall: () -> Void
     let onEmail: () -> Void
-    var onLongPress: (() -> Void)? = nil
+    var onAssignClient: (() -> Void)? = nil
+
+    private var hasClient: Bool { project.client != nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Section label
             sectionLabel("CLIENT")
 
-            // Client card
-            Button(action: onTap) {
+            if hasClient {
+                // Client assigned — tap to view contact, long press to reassign
+                clientCard
+            } else if canEdit {
+                // No client, user can assign — tap to pick
+                emptyCard
+                    .onTapGesture {
+                        if let assign = onAssignClient {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            assign()
+                        }
+                    }
+            } else {
+                // No client, no permission — static display
+                emptyCard
+            }
+        }
+    }
+
+    private var clientCard: some View {
+        HStack(spacing: 12) {
+            // Left side — tap to open contact details
+            Button(action: onContactTap) {
                 HStack(spacing: 12) {
                     if let client = project.client {
                         UserAvatar(client: client, size: 36)
-                    } else {
-                        Circle()
-                            .fill(OPSStyle.Colors.cardBackgroundDark)
-                            .frame(width: 36, height: 36)
-                            .overlay(
-                                Image(systemName: "building.2")
-                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            )
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(project.effectiveClientName)
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                        if project.client != nil {
-                            Text("Client")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
+                        Text("Client")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
-
-                    Spacer()
-
-                    // Contact action icons — always visible, dim when unavailable
-                    HStack(spacing: 16) {
-                        let hasPhone = project.effectiveClientPhone != nil && !project.effectiveClientPhone!.isEmpty
-                        let hasEmail = project.effectiveClientEmail != nil && !project.effectiveClientEmail!.isEmpty
-
-                        Button(action: onCall) {
-                            Image(systemName: "phone.fill")
-                                .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                .foregroundColor(hasPhone ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText.opacity(0.3))
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .disabled(!hasPhone)
-
-                        Button(action: onEmail) {
-                            Image(systemName: "envelope.fill")
-                                .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                .foregroundColor(hasEmail ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText.opacity(0.3))
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .disabled(!hasEmail)
-                    }
-
-                    Image(systemName: OPSStyle.Icons.chevronRight)
-                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
-            .padding(14)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-            )
-            .onLongPressGesture {
-                if let onLongPress = onLongPress {
-                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                    generator.impactOccurred()
-                    onLongPress()
+
+            Spacer()
+
+            // Contact action buttons — independent tap targets
+            HStack(spacing: 16) {
+                let hasPhone = project.effectiveClientPhone != nil && !project.effectiveClientPhone!.isEmpty
+                let hasEmail = project.effectiveClientEmail != nil && !project.effectiveClientEmail!.isEmpty
+
+                Button(action: onCall) {
+                    Image(systemName: "phone.fill")
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                        .foregroundColor(hasPhone ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText.opacity(0.3))
                 }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(!hasPhone)
+                .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+
+                Button(action: onEmail) {
+                    Image(systemName: "envelope.fill")
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                        .foregroundColor(hasEmail ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText.opacity(0.3))
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(!hasEmail)
+                .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
             }
-            .padding(.horizontal, 16)
+
+            Button(action: onContactTap) {
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .buttonStyle(PlainButtonStyle())
         }
+        .padding(14)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.5)
+                .onEnded { _ in
+                    if canEdit, let assign = onAssignClient {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        assign()
+                    }
+                }
+        )
+        .padding(.horizontal, 16)
+    }
+
+    private var emptyCard: some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(OPSStyle.Colors.cardBackgroundDark)
+                .frame(width: 36, height: 36)
+                .overlay(
+                    Image(systemName: "building.2")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                )
+
+            Text("NO CLIENT ASSIGNED")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            Spacer()
+
+            if canEdit {
+                Text("ASSIGN")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+            }
+        }
+        .contentShape(Rectangle())
+        .padding(14)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+        )
+        .padding(.horizontal, 16)
     }
 }
 

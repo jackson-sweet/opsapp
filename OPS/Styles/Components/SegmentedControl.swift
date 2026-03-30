@@ -69,6 +69,83 @@ extension SegmentedControl where SelectionValue: CaseIterable & RawRepresentable
     }
 }
 
+// MARK: - Settings Segmented Picker
+
+/// Subtle segmented picker for settings screens (permissions, notifications).
+/// Uses `subtleBackground` fill for selected segment, `tertiaryText` for unselected.
+/// Supports optional "mixed" state where no segment is highlighted.
+struct SettingsSegmentedPicker<SelectionValue>: View where SelectionValue: Hashable {
+    let selection: SelectionValue?
+    let options: [(value: SelectionValue, label: String)]
+    let isMixed: Bool
+    let onChange: (SelectionValue) -> Void
+
+    init(
+        selection: SelectionValue?,
+        options: [(SelectionValue, String)],
+        isMixed: Bool = false,
+        onChange: @escaping (SelectionValue) -> Void
+    ) {
+        self.selection = selection
+        self.options = options.map { (value: $0.0, label: $0.1) }
+        self.isMixed = isMixed
+        self.onChange = onChange
+    }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(options, id: \.value) { option in
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onChange(option.value)
+                }) {
+                    Text(option.label)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .tracking(0.3)
+                        .foregroundColor(
+                            !isMixed && selection == option.value
+                                ? OPSStyle.Colors.primaryText
+                                : OPSStyle.Colors.tertiaryText
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .fill(
+                                    !isMixed && selection == option.value
+                                        ? OPSStyle.Colors.subtleBackground
+                                        : Color.clear
+                                )
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .fill(OPSStyle.Colors.subtleBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        // Always fully interactive — mixed state just means no segment is highlighted
+    }
+}
+
+/// Convenience initializer for CaseIterable enums
+extension SettingsSegmentedPicker where SelectionValue: CaseIterable & RawRepresentable, SelectionValue.RawValue == String {
+    init(
+        selection: SelectionValue?,
+        isMixed: Bool = false,
+        onChange: @escaping (SelectionValue) -> Void
+    ) {
+        let options = SelectionValue.allCases.map { ($0, $0.rawValue) }
+        self.init(selection: selection, options: options, isMixed: isMixed, onChange: onChange)
+    }
+}
+
 // Preview
 struct SegmentedControl_Previews: PreviewProvider {
     enum TestTab: String, CaseIterable {

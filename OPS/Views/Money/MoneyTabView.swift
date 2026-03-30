@@ -89,8 +89,9 @@ struct MoneyTabView: View {
             .background(OPSStyle.Colors.background.ignoresSafeArea())
         }
         .trackScreen("Pipeline")
-        .onAppear {
+        .task {
             setupViewModels()
+            await dashboardVM.loadData()
         }
     }
 

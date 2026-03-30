@@ -32,9 +32,11 @@ struct ScheduleView: View {
     @Environment(\.tutorialPhase) private var tutorialPhase
     @Environment(\.wizardTriggerService) private var wizardTriggerService
     @Environment(\.wizardActive) private var wizardActive
+    @Environment(\.wizardStateManager) private var wizardStateManager
     @StateObject private var viewModel = CalendarViewModel()
     @State private var hasPostedWeekScrollNotification = false
     @State private var hasPostedMonthExploredNotification = false
+    @State private var hasPostedWizardWeekScroll = false
     @State private var hasUserScrolledInWeekView = false
     @State private var hasUserScrolledInMonthView = false
     @State private var hasUserPinchedInMonthView = false
@@ -116,6 +118,19 @@ struct ScheduleView: View {
             // Wizard system: evaluate scheduling/calendar wizard trigger
             if let wizard = WizardRegistry.contextualWizard(for: "scheduling_calendar") {
                 wizardTriggerService?.evaluateTrigger(for: wizard, context: "calendar_tab_visit")
+            }
+        }
+        // Wizard: collapse to week view when the wizard navigates here for a week-mode step.
+        // Without this, steps 1-2 (scroll_week, tap_day) are unreachable if the user was
+        // already in month view when the wizard started.
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardNavigateToTarget"))) { notification in
+            guard let targetScreen = notification.userInfo?["targetScreen"] as? String,
+                  targetScreen == "Schedule" else { return }
+            // If the wizard's current step needs week view and we're in month view, collapse
+            if let stepId = wizardStateManager?.currentStep?.id,
+               (stepId == "scroll_week" || stepId == "tap_day"),
+               viewModel.isMonthExpanded {
+                viewModel.toggleMonthExpanded()
             }
         }
         // Watch for calendar event changes and reload data
@@ -254,7 +269,10 @@ struct ScheduleView: View {
         }
         // Tutorial mode: Listen for scroll in week view
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarWeekViewScrolled"))) { _ in
-            NotificationCenter.default.post(name: Notification.Name("WizardCalendarWeekScrolled"), object: nil)
+            if !hasPostedWizardWeekScroll {
+                hasPostedWizardWeekScroll = true
+                NotificationCenter.default.post(name: Notification.Name("WizardCalendarWeekScrolled"), object: nil)
+            }
             if tutorialMode && tutorialPhase == .calendarWeek && !hasPostedWeekScrollNotification {
                 hasUserScrolledInWeekView = true
                 hasPostedWeekScrollNotification = true
@@ -311,6 +329,13 @@ struct ScheduleView: View {
                     }
                 }
             }
+        }
+        // Wizard: evaluate prerequisites when a new step activates (auto-skip steps with missing data)
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardEvaluatePrerequisites"))) { notification in
+            guard let stepId = notification.userInfo?["stepId"] as? String,
+                  stepId == "tap_month_day" || stepId == "tap_task" else { return }
+            let taskCount = viewModel.scheduledTasks(for: viewModel.selectedDate).count
+            wizardStateManager?.evaluateStepPrerequisites(scheduledTaskCount: taskCount)
         }
     }
 }

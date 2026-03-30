@@ -407,6 +407,23 @@ struct TaskFormSheet: View {
             if tutorialMode {
                 tutorialHighlightPulse = true
             }
+
+            // Wizard system: notify task added when form opens for new tasks (not edits)
+            // This fires on appear so steps 9-10 (assign_date, assign_crew)
+            // can complete while the form is still visible
+            if mode.localTask == nil && mode.isCreate {
+                NotificationCenter.default.post(
+                    name: Notification.Name("WizardTaskAdded"),
+                    object: nil
+                )
+            }
+        }
+        .onDisappear {
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardScreenDismissed"),
+                object: nil,
+                userInfo: ["screen": "TaskForm"]
+            )
         }
         .loadingOverlay(isPresented: $isSaving, message: "Saving...")
         .onChange(of: selectedTaskTypeId) { _, newId in
@@ -849,6 +866,11 @@ struct TaskFormSheet: View {
                     ForEach(availableTaskTypes.sorted(by: { $0.display < $1.display })) { taskType in
                         Button(action: {
                             selectedTaskTypeId = taskType.id
+                            // Wizard system: notify task type selected
+                            NotificationCenter.default.post(
+                                name: Notification.Name("WizardTaskTypeSelected"),
+                                object: nil
+                            )
                             // Tutorial mode: notify task type selected
                             if tutorialMode {
                                 NotificationCenter.default.post(
@@ -899,6 +921,7 @@ struct TaskFormSheet: View {
                     .stroke(taskTypeHighlight.borderColor, lineWidth: taskTypeHighlight.isHighlighted ? 2 : 1)
                     .modifier(TutorialPulseModifier(isHighlighted: taskTypeHighlight.isHighlighted))
             )
+            .wizardTarget("select_task_type", style: .input)
         }
     }
 
@@ -1502,6 +1525,12 @@ struct TaskFormSheet: View {
 
         // Call the draft save callback
         onSaveDraft?(localTask)
+
+        // Wizard system: notify task saved (draft mode = task added to project form)
+        NotificationCenter.default.post(
+            name: Notification.Name("WizardTaskSaved"),
+            object: nil
+        )
 
         // Tutorial mode: notify task form done
         if tutorialMode {

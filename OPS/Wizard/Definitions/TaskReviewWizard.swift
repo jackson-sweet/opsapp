@@ -35,28 +35,28 @@ struct TaskReviewWizard: WizardDefinitionProtocol {
             completionNotification: "WizardTaskReviewOpened"
         ),
         WizardStepDefinition(
-            id: "demo_swipe_right",
+            id: "task_demo_swipe_right",
             instruction: "SWIPE RIGHT → COMPLETE",
             description: "Swipe a card right to mark the task as done.",
             targetScreen: "TaskReview",
             completionNotification: "WizardTaskSwipedRight"
         ),
         WizardStepDefinition(
-            id: "demo_swipe_left",
+            id: "task_demo_swipe_left",
             instruction: "SWIPE LEFT → SKIP",
             description: "Not ready to decide? Swipe left to skip for now.",
             targetScreen: "TaskReview",
             completionNotification: "WizardTaskSwipedLeft"
         ),
         WizardStepDefinition(
-            id: "demo_swipe_up",
+            id: "task_demo_swipe_up",
             instruction: "SWIPE UP → RESCHEDULE",
             description: "Push the task to a new date — choose +1 day, +1 week, or pick a date.",
             targetScreen: "TaskReview",
             completionNotification: "WizardTaskSwipedUp"
         ),
         WizardStepDefinition(
-            id: "free_review",
+            id: "task_free_review",
             instruction: "YOU'RE ALL SET — KEEP REVIEWING",
             description: "You've got the hang of it. Review the rest at your own pace.",
             targetScreen: "TaskReview",

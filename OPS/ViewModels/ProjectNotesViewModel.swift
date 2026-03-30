@@ -105,7 +105,7 @@ class ProjectNotesViewModel: ObservableObject {
         let pid = projectId
         let descriptor = FetchDescriptor<ProjectNote>(
             predicate: #Predicate { $0.projectId == pid && $0.deletedAt == nil },
-            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
         notes = (try? context.fetch(descriptor)) ?? []
     }
@@ -131,10 +131,15 @@ class ProjectNotesViewModel: ObservableObject {
     func postNote() async {
         let text = newNoteText.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasImages = !pendingImages.isEmpty
-        guard !text.isEmpty || hasImages,
-              let repo = repository,
+        guard !text.isEmpty || hasImages else { return }
+
+        guard let repo = repository,
               let companyId = companyId,
-              let currentUserId = currentUserId else { return }
+              let currentUserId = currentUserId else {
+            self.error = "Not signed in — please restart the app"
+            print("[NOTES] postNote guard failed: repo=\(repository != nil) companyId=\(self.companyId ?? "nil") userId=\(self.currentUserId ?? "nil")")
+            return
+        }
 
         // Extract @mentions
         let mentionedIds = extractMentionedUserIds(from: text)
@@ -151,7 +156,8 @@ class ProjectNotesViewModel: ObservableObject {
                     companyId: companyId
                 )
             } catch {
-                self.error = "Failed to upload images: \(error.localizedDescription)"
+                print("[NOTES] Image upload failed: \(error)")
+                self.error = "Photo upload failed. Try again."
                 isUploading = false
                 return
             }

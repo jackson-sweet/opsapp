@@ -15,6 +15,7 @@ struct JobBoardView: View {
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
     @Environment(\.wizardTriggerService) private var wizardTriggerService
+    @Environment(\.wizardStateManager) private var wizardStateManager
     @State private var selectedSection: JobBoardSection = .projects
     @State private var previousSection: JobBoardSection = .projects
     @State private var searchText = ""
@@ -131,10 +132,16 @@ struct JobBoardView: View {
                         isPaymentReviewLocked: isPaymentReviewLocked,
                         paymentReviewLockedMessage: "Complete \(Self.paymentReviewThreshold) projects to unlock payment review. You've completed \(completedProjectCount) so far.",
                         onTaskReviewTapped: {
-                            if !UserDefaults.standard.bool(forKey: "review_task_intro_shown") {
+                            // When a wizard is guiding the user to open task review,
+                            // bypass the first-open intro alert to avoid an unexpected
+                            // intermediate step that the wizard doesn't account for.
+                            let wizardActive = wizardStateManager?.isActive == true
+                                && wizardStateManager?.currentStep?.id == "open_task_review"
+                            if !wizardActive && !UserDefaults.standard.bool(forKey: "review_task_intro_shown") {
                                 UserDefaults.standard.set(true, forKey: "review_task_intro_shown")
                                 showTaskReviewIntro = true
                             } else {
+                                UserDefaults.standard.set(true, forKey: "review_task_intro_shown")
                                 computeReviewableTasks()
                                 showTaskReview = true
                             }
@@ -175,7 +182,6 @@ struct JobBoardView: View {
                         HStack(spacing: 12) {
                             Button(action: {
                                 showingProjectFilterSheet = true
-                                NotificationCenter.default.post(name: Notification.Name("WizardJobBoardFilterOpened"), object: nil)
                             }) {
                                 Image(systemName: "line.3.horizontal.decrease")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))

@@ -409,6 +409,13 @@ struct ClientSheet: View {
                 // Track screen view for analytics
                 AnalyticsManager.shared.trackScreenView(screenName: .clientForm, screenClass: "ClientSheet")
             }
+            .onDisappear {
+                NotificationCenter.default.post(
+                    name: Notification.Name("WizardScreenDismissed"),
+                    object: nil,
+                    userInfo: ["screen": "ClientForm"]
+                )
+            }
         }
     }
     

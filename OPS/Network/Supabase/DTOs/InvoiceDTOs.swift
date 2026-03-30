@@ -14,21 +14,21 @@ struct InvoiceDTO: Codable, Identifiable {
     let opportunityId: String?
     let projectId: String?
     let clientId: String?
-    let invoiceNumber: String
+    let invoiceNumber: String?
     let subject: String?
-    let status: String
-    let subtotal: Double
+    let status: String?
+    let subtotal: Double?
     let taxRate: Double?
     let taxAmount: Double?
-    let total: Double
-    let amountPaid: Double
-    let balanceDue: Double
+    let total: Double?
+    let amountPaid: Double?
+    let balanceDue: Double?
     let dueDate: String?
     let sentAt: String?
     let paidAt: String?
     let notes: String?
-    let createdAt: String
-    let updatedAt: String
+    let createdAt: String?
+    let updatedAt: String?
     let lineItems: [InvoiceLineItemDTO]?
     let payments: [PaymentDTO]?
 
@@ -62,17 +62,17 @@ struct InvoiceDTO: Codable, Identifiable {
         let inv = Invoice(
             id: id,
             companyId: companyId,
-            invoiceNumber: invoiceNumber,
-            status: InvoiceStatus(rawValue: status) ?? .draft,
+            invoiceNumber: invoiceNumber ?? "",
+            status: InvoiceStatus(rawValue: status ?? "") ?? .draft,
             taxRate: taxRate ?? 0,
-            createdAt: SupabaseDate.parse(createdAt) ?? Date(),
-            updatedAt: SupabaseDate.parse(updatedAt) ?? Date()
+            createdAt: createdAt.flatMap { SupabaseDate.parse($0) } ?? Date(),
+            updatedAt: updatedAt.flatMap { SupabaseDate.parse($0) } ?? Date()
         )
-        inv.subtotal = subtotal
+        inv.subtotal = subtotal ?? 0
         inv.taxAmount = taxAmount ?? 0
-        inv.total = total
-        inv.amountPaid = amountPaid
-        inv.balanceDue = balanceDue
+        inv.total = total ?? 0
+        inv.amountPaid = amountPaid ?? 0
+        inv.balanceDue = balanceDue ?? 0
         inv.title = subject
         inv.estimateId = estimateId
         inv.opportunityId = opportunityId
@@ -89,14 +89,14 @@ struct InvoiceLineItemDTO: Codable, Identifiable {
     let id: String
     let invoiceId: String?
     let productId: String?
-    let name: String
+    let name: String?
     let description: String?
-    let quantity: Double
-    let unitPrice: Double
+    let quantity: Double?
+    let unitPrice: Double?
     let unit: String?
     let type: String?
     let lineTotal: Double?
-    let sortOrder: Int
+    let sortOrder: Int?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -113,16 +113,18 @@ struct InvoiceLineItemDTO: Codable, Identifiable {
     }
 
     func toModel() -> InvoiceLineItem {
+        let qty = quantity ?? 0
+        let price = unitPrice ?? 0
         let item = InvoiceLineItem(
             id: id,
             invoiceId: invoiceId ?? "",
-            name: name,
+            name: name ?? "",
             type: type.flatMap { LineItemType(rawValue: $0) } ?? .labor,
-            quantity: quantity,
-            unitPrice: unitPrice,
-            displayOrder: sortOrder
+            quantity: qty,
+            unitPrice: price,
+            displayOrder: sortOrder ?? 0
         )
-        item.lineTotal = lineTotal ?? (quantity * unitPrice)
+        item.lineTotal = lineTotal ?? (qty * price)
         item.unit = unit
         item.itemDescription = description
         return item
@@ -131,16 +133,16 @@ struct InvoiceLineItemDTO: Codable, Identifiable {
 
 struct PaymentDTO: Codable, Identifiable {
     let id: String
-    let invoiceId: String
-    let companyId: String
-    let clientId: String
-    let amount: Double
+    let invoiceId: String?
+    let companyId: String?
+    let clientId: String?
+    let amount: Double?
     let paymentMethod: String?
     let reference: String?
     let notes: String?
     let isVoid: Bool?
     let paymentDate: String?
-    let createdAt: String
+    let createdAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -159,12 +161,12 @@ struct PaymentDTO: Codable, Identifiable {
     func toModel() -> Payment {
         let pay = Payment(
             id: id,
-            invoiceId: invoiceId,
-            companyId: companyId,
-            amount: amount,
+            invoiceId: invoiceId ?? "",
+            companyId: companyId ?? "",
+            amount: amount ?? 0,
             method: paymentMethod.flatMap { PaymentMethod(rawValue: $0) } ?? .other,
             paidAt: paymentDate.flatMap { SupabaseDate.parse($0) } ?? Date(),
-            createdAt: SupabaseDate.parse(createdAt) ?? Date()
+            createdAt: createdAt.flatMap { SupabaseDate.parse($0) } ?? Date()
         )
         pay.notes = notes
         return pay

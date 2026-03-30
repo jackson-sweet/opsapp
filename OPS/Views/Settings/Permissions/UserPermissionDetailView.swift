@@ -386,51 +386,19 @@ struct UserPermissionDetailView: View {
         .padding(.vertical, 12)
     }
 
-    // MARK: - Override Scope Picker
+    // MARK: - Override Scope Picker (uses shared SettingsSegmentedPicker)
 
     private func overrideScopePicker(
         selection: PermissionLevel,
         isMixed: Bool,
         onChange: @escaping (PermissionLevel) -> Void
     ) -> some View {
-        HStack(spacing: 2) {
-            ForEach(PermissionLevel.allCases) { level in
-                Button(action: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onChange(level)
-                }) {
-                    Text(level.displayName)
-                        .font(OPSStyle.Typography.smallCaption)
-                        .tracking(0.3)
-                        .foregroundColor(
-                            !isMixed && selection == level
-                                ? OPSStyle.Colors.primaryText
-                                : OPSStyle.Colors.tertiaryText
-                        )
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .fill(
-                                    !isMixed && selection == level
-                                        ? OPSStyle.Colors.subtleBackground
-                                        : Color.clear
-                                )
-                        )
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-        }
-        .padding(2)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .fill(OPSStyle.Colors.subtleBackground)
+        SettingsSegmentedPicker(
+            selection: selection,
+            options: PermissionLevel.allCases.map { ($0, $0.displayName) },
+            isMixed: isMixed,
+            onChange: onChange
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .opacity(isMixed ? 0.4 : 1.0)
     }
 
     // MARK: - Override Helpers

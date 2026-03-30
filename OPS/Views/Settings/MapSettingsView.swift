@@ -416,60 +416,50 @@ struct MapSettingsView: View {
     }
 
     private var locationStatusCard: some View {
-        HStack(spacing: 16) {
-            // Status Icon
-            ZStack {
-                Circle()
-                    .fill((isLocationAuthorized
-                           ? OPSStyle.Colors.successStatus
-                           : OPSStyle.Colors.errorStatus).opacity(0.2))
-                    .frame(width: 48, height: 48)
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            Circle()
+                .fill(isLocationAuthorized
+                      ? OPSStyle.Colors.successStatus
+                      : OPSStyle.Colors.errorStatus)
+                .frame(width: OPSStyle.Layout.Indicator.dotMD,
+                       height: OPSStyle.Layout.Indicator.dotMD)
 
-                Image(systemName: isLocationAuthorized
-                      ? OPSStyle.Icons.locationFill
-                      : "location.slash.fill")
-                    .font(OPSStyle.Typography.headingLarge)
-                    .foregroundColor(isLocationAuthorized
-                                     ? OPSStyle.Colors.successStatus
-                                     : OPSStyle.Colors.errorStatus)
-            }
-
-            // Status Text
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(locationStatusText)
-                    .font(OPSStyle.Typography.cardTitle)
+                    .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
                 Text(locationStatusDescription)
-                    .font(OPSStyle.Typography.cardBody)
+                    .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
 
             Spacer()
 
-            // Action Button
             Button {
                 handleLocationAction()
             } label: {
                 Text(locationActionText)
-                    .font(OPSStyle.Typography.button)
+                    .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(isLocationAuthorized
-                                     ? OPSStyle.Colors.primaryText
+                                     ? OPSStyle.Colors.primaryAccent
                                      : OPSStyle.Colors.invertedText)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(isLocationAuthorized ? Color.clear : OPSStyle.Colors.primaryText)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
+                    .background(isLocationAuthorized
+                                ? Color.clear
+                                : OPSStyle.Colors.primaryText)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                             .stroke(isLocationAuthorized
-                                    ? OPSStyle.Colors.primaryText
+                                    ? OPSStyle.Colors.primaryAccent
                                     : Color.clear,
                                     lineWidth: OPSStyle.Layout.Border.standard)
                     )
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
         }
-        .padding(24)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(

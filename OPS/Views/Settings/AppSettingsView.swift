@@ -175,12 +175,10 @@ struct AppSettingsView: View {
             }
         }
         .fullScreenCover(isPresented: $showWizardManagement) {
-            if let stateManager = wizardStateManager {
-                NavigationStack {
-                    WizardManagementView(stateManager: stateManager)
-                        .environmentObject(dataController)
-                        .environmentObject(permissionStore)
-                }
+            NavigationStack {
+                WizardManagementView()
+                    .environmentObject(dataController)
+                    .environmentObject(permissionStore)
             }
         }
         // Re-check developer mode state when dashboard dismisses (in case user tapped "Exit Dev Mode")

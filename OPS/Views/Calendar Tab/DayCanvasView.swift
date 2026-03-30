@@ -299,6 +299,14 @@ struct DayPageView: View {
                             proxy.scrollTo(shared, anchor: .top)
                         }
                     }
+                    // Wizard: scroll to the active target when a new step activates
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
+                        if let stepId = notification.userInfo?["stepId"] as? String {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                proxy.scrollTo("wizard_active_\(stepId)", anchor: .top)
+                            }
+                        }
+                    }
                 }
             }
         }

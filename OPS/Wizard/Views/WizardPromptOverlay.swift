@@ -77,17 +77,17 @@ struct WizardPromptOverlay: View {
                     HStack {
                         Text("START GUIDE")
                             .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.invertedText)
+                            .foregroundColor(OPSStyle.Colors.buttonText)
 
                         Spacer()
 
                         Image(systemName: "arrow.right")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                            .foregroundColor(OPSStyle.Colors.invertedText)
+                            .foregroundColor(OPSStyle.Colors.buttonText)
                     }
                     .padding(.horizontal, 20)
                     .frame(height: 56)
-                    .background(OPSStyle.Colors.primaryText)
+                    .background(OPSStyle.Colors.wizardAccent)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
                 .padding(.bottom, 12)
@@ -130,7 +130,7 @@ struct WizardPromptOverlay: View {
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(0.08), lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .padding(.horizontal, 24)
         }

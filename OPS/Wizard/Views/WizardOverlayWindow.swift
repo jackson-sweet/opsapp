@@ -82,10 +82,19 @@ private struct WizardOverlayView: View {
     @State private var currentTab: String = ""
     @State private var exitPromptSuppressedUntil: Date = .distantPast
 
+    /// Wizards that manage their own fullscreen flow and should not show
+    /// the overlay instruction bar or exit-prompt detection.
+    private static let fullscreenManagedWizards: Set<String> = ["inventory_setup"]
+
+    private var isFullscreenManaged: Bool {
+        guard let wizardId = stateManager.activeWizard?.wizardId else { return false }
+        return Self.fullscreenManagedWizards.contains(wizardId)
+    }
+
     var body: some View {
         ZStack {
-            // Exit prompt overlay
-            if showExitPrompt {
+            // Exit prompt overlay — suppressed for wizards with their own fullscreen flow
+            if showExitPrompt && !isFullscreenManaged {
                 // Scrim — tapping outside the dialog returns to the wizard.
                 // allowsHitTesting(false) on the scrim itself; a background tap
                 // handler on the full ZStack layer handles dismiss so it never
@@ -100,6 +109,7 @@ private struct WizardOverlayView: View {
                     .onTapGesture {
                         TutorialHaptics.lightTap()
                         showExitPrompt = false
+                        stateManager.isPaused = false
                         stateManager.navigateToCurrentStep()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                             stateManager.requestDeepNavigation()
@@ -122,6 +132,7 @@ private struct WizardOverlayView: View {
                         Button {
                             TutorialHaptics.lightTap()
                             showExitPrompt = false
+                            stateManager.isPaused = false
                             stateManager.navigateToCurrentStep()
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                                 stateManager.requestDeepNavigation()
@@ -139,6 +150,7 @@ private struct WizardOverlayView: View {
                         Button {
                             TutorialHaptics.lightTap()
                             showExitPrompt = false
+                            stateManager.isPaused = false
                             stateManager.exitWizard()
                         } label: {
                             Text("EXIT GUIDE")
@@ -168,14 +180,15 @@ private struct WizardOverlayView: View {
                 .padding(.horizontal, 24)
                 // Prevent taps on the dialog from falling through to the dismiss handler
                 .contentShape(Rectangle())
+                .onTapGesture { } // Block taps from falling through to dismiss handler
                 .transition(.opacity)
             }
 
-            // Instruction bar at bottom
+            // Instruction bar at bottom — hidden for wizards that manage their own fullscreen flow
             VStack {
                 Spacer()
 
-                if stateManager.isActive && !showExitPrompt {
+                if stateManager.isActive && !showExitPrompt && !isFullscreenManaged {
                     WizardInstructionBar(
                         stateManager: stateManager,
                         onPausedBarTapped: {
@@ -201,6 +214,12 @@ private struct WizardOverlayView: View {
                 exitPromptSuppressedUntil = Date().addingTimeInterval(2.0)
             }
         }
+        .onChange(of: stateManager.currentStepIndex) { _, _ in
+            // Suppress exit prompt for 2s after each step advancement.
+            // Prevents false exit prompts when a step completion triggers a sheet/cover dismiss
+            // that fires WizardScreenDismissed before the user has returned to the target view.
+            exitPromptSuppressedUntil = Date().addingTimeInterval(2.0)
+        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardCurrentTabChanged"))) { notification in
             guard stateManager.isActive,
                   let tabName = notification.userInfo?["tabName"] as? String else { return }
@@ -214,7 +233,8 @@ private struct WizardOverlayView: View {
             // the underlying tab may differ from the expected tab, but the user is still
             // correctly inside the wizard context (e.g., documentation wizard in project details).
             let isDeepNavOpen = stateManager.deepNavProjectId != nil
-            if tabName != expectedTab && !showExitPrompt && Date() > exitPromptSuppressedUntil && !isDeepNavOpen {
+            if tabName != expectedTab && !showExitPrompt && Date() > exitPromptSuppressedUntil && !isDeepNavOpen && !isFullscreenManaged {
+                stateManager.isPaused = true
                 showExitPrompt = true
             }
         }
@@ -224,7 +244,8 @@ private struct WizardOverlayView: View {
 
             // If the dismissed screen matches the wizard's current target, prompt to exit
             if let targetScreen = stateManager.currentStep?.targetScreen,
-               targetScreen == dismissedScreen && !showExitPrompt && Date() > exitPromptSuppressedUntil {
+               targetScreen == dismissedScreen && !showExitPrompt && Date() > exitPromptSuppressedUntil && !isFullscreenManaged {
+                stateManager.isPaused = true
                 showExitPrompt = true
             }
         }

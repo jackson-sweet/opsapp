@@ -130,59 +130,75 @@ struct ManageTeamView: View {
                 if isLoading {
                     loadingView
                 } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 24) {
-                            // Search + seat count
-                            headerSection
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 24) {
+                                // Search + seat count
+                                headerSection
 
-                            // Error
-                            if let error = errorMessage {
-                                errorBanner(error)
-                            }
+                                // Error
+                                if let error = errorMessage {
+                                    errorBanner(error)
+                                }
 
-                            // Team member sections by role
-                            if filteredMembers.isEmpty {
-                                emptyStateView
-                                    .padding(.horizontal, 20)
-                            } else {
-                                teamSections
-                            }
+                                // Team member sections by role
+                                if filteredMembers.isEmpty {
+                                    emptyStateView
+                                        .padding(.horizontal, 20)
+                                } else {
+                                    teamSections
+                                }
 
-                            // Pending invitations (admin only)
-                            if isCompanyAdmin && !pendingInvitations.isEmpty {
-                                pendingInvitesSection
-                            }
+                                // Pending invitations (admin only)
+                                if isCompanyAdmin && !pendingInvitations.isEmpty {
+                                    pendingInvitesSection
+                                }
 
-                            // Invite button (admin only)
-                            if isCompanyAdmin {
-                                inviteButton
+                                // Invite button (admin only)
+                                if isCompanyAdmin {
+                                    inviteButton
+                                }
                             }
-                        }
-                        .padding(.vertical, 16)
-                        .refreshable {
-                            await refreshTeamData()
-                        }
-                        .tabBarPadding()
-                        .background(
-                            // Wizard: detect genuine scroll (≥50pt) before posting completion
-                            GeometryReader { scrollGeo in
-                                Color.clear
-                                    .onChange(of: scrollGeo.frame(in: .named("manageTeamScroll")).minY) { _, newMinY in
-                                        if !hasPostedTeamScrollNotification && newMinY < -50 && !teamMembers.isEmpty {
-                                            hasPostedTeamScrollNotification = true
-                                            NotificationCenter.default.post(name: Notification.Name("WizardTeamListViewed"), object: nil)
+                            .padding(.vertical, 16)
+                            .refreshable {
+                                await refreshTeamData()
+                            }
+                            .tabBarPadding()
+                            .background(
+                                // Wizard: detect genuine scroll (≥50pt) before posting completion
+                                GeometryReader { scrollGeo in
+                                    Color.clear
+                                        .onChange(of: scrollGeo.frame(in: .named("manageTeamScroll")).minY) { _, newMinY in
+                                            if !hasPostedTeamScrollNotification && newMinY < -50 && !teamMembers.isEmpty {
+                                                hasPostedTeamScrollNotification = true
+                                                NotificationCenter.default.post(name: Notification.Name("WizardTeamListViewed"), object: nil)
+                                            }
                                         }
-                                    }
+                                }
+                            )
+                        }
+                        .coordinateSpace(name: "manageTeamScroll")
+                        .wizardTarget("view_team")
+                        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
+                            if let stepId = notification.userInfo?["stepId"] as? String {
+                                withAnimation {
+                                    proxy.scrollTo("wizard_active_\(stepId)", anchor: .top)
+                                }
                             }
-                        )
+                        }
                     }
-                    .coordinateSpace(name: "manageTeamScroll")
-                    .wizardTarget("view_team")
                 }
             }
         }
         .trackScreen("Settings.ManageTeam")
         .navigationBarBackButtonHidden(true)
+        .onDisappear {
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardScreenDismissed"),
+                object: nil,
+                userInfo: ["screen": "ManageTeam"]
+            )
+        }
         .onAppear {
             loadTeamMembers()
             if isCompanyAdmin {
@@ -194,13 +210,11 @@ struct ManageTeamView: View {
                 wizardTriggerService?.evaluateTrigger(for: wizard, context: "manage_team_visit")
             }
 
-            // Wizard: evaluate step prerequisites (auto-skip assign_role if no eligible members)
-            if let mgr = wizardStateManager, mgr.isActive {
-                let currentUserId = dataController.currentUser?.id ?? ""
-                let creatorId = companyCreatorId ?? ""
-                let eligibleForRoleChange = teamMembers.filter { $0.id != currentUserId && $0.id != creatorId }.count
-                mgr.evaluateStepPrerequisites(eligibleTeamMemberCount: eligibleForRoleChange)
-            }
+            evaluateWizardPrerequisites()
+        }
+        // Re-evaluate prerequisites when the wizard advances to a new step
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardEvaluatePrerequisites"))) { _ in
+            evaluateWizardPrerequisites()
         }
         .sheet(isPresented: $showEditSheet) {
             if let member = selectedMember {
@@ -220,8 +234,20 @@ struct ManageTeamView: View {
         .sheet(isPresented: $showInviteSheet) {
             TeamInviteSheet(companyId: company?.id ?? "")
                 .environmentObject(dataController)
+                .environment(\.wizardStateManager, wizardStateManager)
                 .onAppear {
                     NotificationCenter.default.post(name: Notification.Name("WizardCompanyCodeViewed"), object: nil)
+                }
+                .onDisappear {
+                    // Delay dismissal notification so step completion (WizardTeamInviteSent)
+                    // processes before the exit-prompt-triggering screen dismissed event
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WizardScreenDismissed"),
+                            object: nil,
+                            userInfo: ["screen": "TeamInvite"]
+                        )
+                    }
                 }
         }
         .sheet(isPresented: $showSeatManagement) {
@@ -544,6 +570,7 @@ struct ManageTeamView: View {
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
+                    .wizardTarget("assign_role")
                 } else if isCreator && isCompanyAdmin {
                     // Creator: show locked icon (no role change, no removal)
                     Image(systemName: "lock.fill")
@@ -561,7 +588,6 @@ struct ManageTeamView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
-        .wizardTarget("assign_role")
     }
 
     // MARK: - Pending Invitations Section
@@ -717,6 +743,66 @@ struct ManageTeamView: View {
                 .foregroundColor(OPSStyle.Colors.errorStatus)
         }
         .padding(.horizontal, 20)
+    }
+
+    // MARK: - Wizard Prerequisites
+
+    /// Evaluate wizard step prerequisites for the team management wizard.
+    /// Auto-skips steps whose preconditions are not met.
+    /// Called on appear and whenever the wizard advances to a new step.
+    private func evaluateWizardPrerequisites() {
+        guard let mgr = wizardStateManager, mgr.isActive,
+              let step = mgr.currentStep else { return }
+
+        let currentUserId = dataController.currentUser?.id ?? ""
+        let creatorId = companyCreatorId ?? ""
+
+        switch step.id {
+        case "view_team":
+            // Small teams (≤5 members) fit on screen without scrolling.
+            // Auto-complete after 1.5s viewing delay so the user sees the roster
+            // before the wizard advances, rather than requiring an impossible scroll.
+            if teamMembers.count <= 5 && !teamMembers.isEmpty && !hasPostedTeamScrollNotification {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [self] in
+                    if !hasPostedTeamScrollNotification {
+                        hasPostedTeamScrollNotification = true
+                        NotificationCenter.default.post(name: Notification.Name("WizardTeamListViewed"), object: nil)
+                    }
+                }
+            }
+        case "view_company_code":
+            // Auto-skip when the company has no crew code — the code card won't show
+            let code = company?.externalId ?? ""
+            if code.isEmpty {
+                mgr.skipCurrentStep()
+            }
+        case "assign_role":
+            // Auto-skip when no team members are eligible for role change
+            let eligible = teamMembers.filter { $0.id != currentUserId && $0.id != creatorId }
+            mgr.evaluateStepPrerequisites(eligibleTeamMemberCount: eligible.count)
+
+            // If the only eligible members are in the collapsed unassigned section,
+            // expand it so the wizard glow and scroll-to-target can reach them.
+            if eligible.count > 0 {
+                let eligibleInVisibleSections = eligible.filter { $0.role != .unassigned }
+                if eligibleInVisibleSections.isEmpty && isUnassignedCollapsed {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isUnassignedCollapsed = false
+                    }
+                    // After expansion, the wizardTarget appears already-active so onChange
+                    // won't fire. Manually request scroll-to-target after the view updates.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WizardScrollToTarget"),
+                            object: nil,
+                            userInfo: ["stepId": "assign_role"]
+                        )
+                    }
+                }
+            }
+        default:
+            break
+        }
     }
 
     // MARK: - Data Loading

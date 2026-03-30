@@ -26,7 +26,7 @@ struct InventoryMethodChoiceView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "shippingbox.fill")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .foregroundColor(OPSStyle.Colors.wizardAccent)
 
                     Text("SET UP YOUR INVENTORY")
                         .font(OPSStyle.Typography.cardTitle)

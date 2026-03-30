@@ -134,28 +134,24 @@ struct AppHeader: View {
                             )
                         }
 
-                        // Bell icon — bottom-left of avatar
+                        // Notification indicator — bottom-left of avatar
+                        // Shows bell when no unread; shows count replacing bell when unread
                         ZStack {
                             Circle()
                                 .fill(OPSStyle.Colors.background)
                                 .frame(width: 22, height: 22)
 
-                            Image(systemName: appState.unreadNotificationCount > 0 ? "bell.fill" : "bell")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(appState.unreadNotificationCount > 0 ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                            if appState.unreadNotificationCount > 0 {
+                                Text("\(min(appState.unreadNotificationCount, 99))")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            } else {
+                                Image(systemName: "bell")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                            }
                         }
                         .offset(x: -14, y: 14)
-
-                        // Unread count badge — top-right of avatar
-                        if appState.unreadNotificationCount > 0 {
-                            Text("\(min(appState.unreadNotificationCount, 99))")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .padding(4)
-                                .background(OPSStyle.Colors.primaryAccent)
-                                .clipShape(Circle())
-                                .offset(x: 14, y: -14)
-                        }
                     }
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -235,7 +231,7 @@ struct AppHeader: View {
                                 .clipShape(Circle())
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .wizardTarget("toggle_month")
+                        .wizardTarget("toggle_month", style: .circle)
                     }
 
                     // Filter button (schedule only)
@@ -345,6 +341,7 @@ struct AppHeader: View {
                                 }
                             }
                             .buttonStyle(PlainButtonStyle())
+                            .wizardTarget("open_task_review")
                         }
 
                         // Payment review button
@@ -378,6 +375,7 @@ struct AppHeader: View {
                                 }
                             }
                             .buttonStyle(PlainButtonStyle())
+                            .wizardTarget("open_payment_review")
                         }
 
                     }

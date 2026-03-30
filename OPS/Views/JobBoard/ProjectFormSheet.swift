@@ -298,10 +298,19 @@ struct ProjectFormSheet: View {
 
     var body: some View {
         // Tutorial mode uses custom header since NavigationView toolbar doesn't render in custom containers
-        if tutorialMode {
-            tutorialModeProjectContent
-        } else {
-            standardProjectContent
+        Group {
+            if tutorialMode {
+                tutorialModeProjectContent
+            } else {
+                standardProjectContent
+            }
+        }
+        .onDisappear {
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardScreenDismissed"),
+                object: nil,
+                userInfo: ["screen": "ProjectForm"]
+            )
         }
     }
 
@@ -458,11 +467,6 @@ struct ProjectFormSheet: View {
                     localTasks[editIndex] = savedTask
                 } else {
                     localTasks.append(savedTask)
-                    // Wizard system: notify task added (only for new tasks, not edits)
-                    NotificationCenter.default.post(
-                        name: Notification.Name("WizardTaskAdded"),
-                        object: nil
-                    )
                 }
                 editingTaskIndex = nil
             }
@@ -550,6 +554,17 @@ struct ProjectFormSheet: View {
                                 withAnimation {
                                     proxy.scrollTo("addTaskButton", anchor: .center)
                                 }
+                            }
+                        }
+                    }
+                    // Wizard system: auto-expand collapsed sections when a wizard step targets
+                    // an element inside them (e.g., "add_task" is inside the TASKS section)
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardStepChanged"))) { notification in
+                        guard let stepId = notification.userInfo?["stepId"] as? String else { return }
+                        if stepId == "add_task" && !isTasksExpanded {
+                            withAnimation(.accessibleEaseInOut()) {
+                                bringSectionToTop(.tasks)
+                                isTasksExpanded = true
                             }
                         }
                     }

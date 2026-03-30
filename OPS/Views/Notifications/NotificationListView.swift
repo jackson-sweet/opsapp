@@ -28,6 +28,13 @@ struct NotificationListView: View {
                     VStack(spacing: 0) {
                         userInfoHeader
 
+                        // Push notification disabled warning
+                        if !NotificationManager.shared.isNotificationsEnabled {
+                            pushDisabledBanner
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                .padding(.bottom, 12)
+                        }
+
                         // Sync status section — shows pending/failed operations
                         SyncStatusSection()
                             .environmentObject(dataController)
@@ -77,6 +84,48 @@ struct NotificationListView: View {
         .task {
             await loadNotifications()
         }
+    }
+
+    // MARK: - Push Disabled Banner
+
+    private var pushDisabledBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "bell.slash.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.warningStatus)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("PUSH NOTIFICATIONS OFF")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                Text("You'll only see notifications when you open the app")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+
+            Spacer()
+
+            Button {
+                NotificationManager.shared.openAppSettings()
+            } label: {
+                Text("ENABLE")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .tracking(0.5)
+                    .foregroundColor(OPSStyle.Colors.invertedText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(OPSStyle.Colors.warningStatus)
+                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+            }
+        }
+        .padding(12)
+        .background(OPSStyle.Colors.warningStatus.opacity(0.1))
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: 1)
+        )
     }
 
     // MARK: - Empty State

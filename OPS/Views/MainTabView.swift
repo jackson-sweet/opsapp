@@ -403,6 +403,10 @@ struct MainTabView: View {
             switch tabTarget {
             case "Home":
                 withAnimation { selectedTab = 0 }
+            case "Pipeline":
+                if let idx = pipelineTabIndex {
+                    withAnimation { selectedTab = idx }
+                }
             case "JobBoard":
                 withAnimation { selectedTab = jobBoardTabIndex }
             case "Schedule":
@@ -529,6 +533,17 @@ struct MainTabView: View {
     private func evaluateWizardTriggers() {
         guard let triggerService = wizardTriggerService else { return }
         guard let modelContext = dataController.modelContext else { return }
+
+        // Welcome tour: auto-start on first app entry (before other wizards)
+        if let stateManager = wizardStateManager {
+            let welcomeWizard = WelcomeTourWizard(permissionStore: permissionStore)
+            if welcomeWizard.steps.count > 0,
+               let state = stateManager.wizardState(for: "welcome_tour"),
+               state.status == .notStarted {
+                stateManager.startWizardDirectly(welcomeWizard)
+                return // Don't evaluate other wizards — welcome tour takes priority
+            }
+        }
 
         let companyId = dataController.currentUser?.companyId ?? ""
 

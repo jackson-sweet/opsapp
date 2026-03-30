@@ -11,6 +11,8 @@ import Foundation
 struct WizardRegistry {
     /// All wizard definitions in display order
     static let allWizards: [any WizardDefinitionProtocol] = [
+        // Welcome tour (auto-starts on first app entry)
+        WelcomeTourWizard(),
         // Sequenced
         ProjectLifecycleWizard(),
         // Contextual

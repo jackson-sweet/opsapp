@@ -692,6 +692,9 @@ class WizardStateManager: ObservableObject {
         // Home tab
         case "Home":
             return "Home"
+        // Pipeline tab
+        case "Pipeline":
+            return "Pipeline"
         // Job Board tab
         case "JobBoard", "FABMenu", "ProjectForm", "ClientForm", "TaskForm":
             return "JobBoard"

@@ -85,7 +85,7 @@ struct WizardInstructionBar: View {
 
                     // Action buttons
                     HStack(spacing: 12) {
-                        // Skip button
+                        // Skip button (hidden for welcome tour — NEXT replaces it)
                         if let step = stateManager.currentStep, step.canSkip {
                             Button {
                                 TutorialHaptics.lightTap()
@@ -97,6 +97,30 @@ struct WizardInstructionBar: View {
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 8)
                                     .background(OPSStyle.Colors.background.opacity(0.5))
+                                    .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+                            }
+                        }
+
+                        // NEXT button for welcome tour (informational steps)
+                        if stateManager.activeWizard?.wizardId == "welcome_tour" {
+                            let isLastStep = stateManager.currentStepIndex >= stateManager.totalSteps - 1
+                            Button {
+                                TutorialHaptics.lightTap()
+                                // Call completeCurrentStep directly (not via notification)
+                                // so we can navigate to the next tab immediately after.
+                                stateManager.completeCurrentStep()
+                                // Auto-navigate to the next step's tab after step advances
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    stateManager.navigateToCurrentStep()
+                                }
+                            } label: {
+                                Text(isLastStep ? "GET STARTED" : "NEXT")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.invertedText)
+                                    .tracking(1.2)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 8)
+                                    .background(OPSStyle.Colors.wizardAccent)
                                     .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                             }
                         }

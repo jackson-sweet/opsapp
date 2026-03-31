@@ -563,12 +563,16 @@ struct SettingsView: View {
         .trackScreen("Settings")
         .onAppear {
             AnalyticsManager.shared.trackScreenView(screenName: .settings, screenClass: "SettingsView")
+            AnalyticsService.shared.trackScreenView(screenName: "settings")
             developerModeEnabled = UserDefaults.standard.bool(forKey: "developerModeEnabled")
             #if DEBUG
             if !developerModeEnabled && UserDefaults.standard.object(forKey: "developerModeEnabled") != nil {
                 developerModeExplicitlyDisabled = true
             }
             #endif
+        }
+        .onDisappear {
+            AnalyticsService.shared.endScreenView(screenName: "settings")
         }
         .sheet(isPresented: $showingSearchSheet) {
             SettingsSearchSheet(allSearchableSettings: allSearchableSettings)

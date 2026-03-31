@@ -408,8 +408,10 @@ struct ClientSheet: View {
             .onAppear {
                 // Track screen view for analytics
                 AnalyticsManager.shared.trackScreenView(screenName: .clientForm, screenClass: "ClientSheet")
+                AnalyticsService.shared.trackScreenView(screenName: "client_form")
             }
             .onDisappear {
+                AnalyticsService.shared.endScreenView(screenName: "client_form")
                 NotificationCenter.default.post(
                     name: Notification.Name("WizardScreenDismissed"),
                     object: nil,
@@ -556,6 +558,16 @@ struct ClientSheet: View {
                             hasPhone: !phone.isEmpty,
                             hasAddress: !address.isEmpty,
                             importMethod: .manual
+                        )
+                        AnalyticsService.shared.track(
+                            eventType: .action,
+                            eventName: "client_created",
+                            properties: [
+                                "has_email": !email.isEmpty,
+                                "has_phone": !phone.isEmpty,
+                                "has_address": !address.isEmpty,
+                                "import_method": ClientImportMethod.manual.rawValue
+                            ]
                         )
 
                         // Post notification for success message overlay

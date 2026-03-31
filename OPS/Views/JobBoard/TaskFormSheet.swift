@@ -391,6 +391,7 @@ struct TaskFormSheet: View {
         .onAppear {
             // Track screen view for analytics
             AnalyticsManager.shared.trackScreenView(screenName: .taskForm, screenClass: "TaskFormSheet")
+            AnalyticsService.shared.trackScreenView(screenName: "task_form")
 
             if let selectedProject = selectedProject {
                 projectSearchText = selectedProject.title
@@ -419,6 +420,7 @@ struct TaskFormSheet: View {
             }
         }
         .onDisappear {
+            AnalyticsService.shared.endScreenView(screenName: "task_form")
             NotificationCenter.default.post(
                 name: Notification.Name("WizardScreenDismissed"),
                 object: nil,
@@ -1473,6 +1475,15 @@ struct TaskFormSheet: View {
                             taskType: selectedTaskType?.display,
                             hasSchedule: hasSchedule,
                             teamSize: selectedTeamMemberIds.count
+                        )
+                        AnalyticsService.shared.track(
+                            eventType: .action,
+                            eventName: "task_created",
+                            properties: [
+                                "task_type": selectedTaskType?.display ?? "unknown",
+                                "has_schedule": hasSchedule,
+                                "team_size": selectedTeamMemberIds.count
+                            ]
                         )
                     } else if case .edit = mode {
                         AnalyticsManager.shared.trackTaskEdited(taskId: task.id)

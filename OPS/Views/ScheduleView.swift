@@ -111,6 +111,7 @@ struct ScheduleView: View {
         .onAppear {
             // Track screen view for analytics
             AnalyticsManager.shared.trackScreenView(screenName: .schedule, screenClass: "ScheduleView")
+            AnalyticsService.shared.trackScreenView(screenName: "schedule")
 
             // Initialize with proper data controller
             viewModel.setDataController(dataController)
@@ -119,6 +120,9 @@ struct ScheduleView: View {
             if let wizard = WizardRegistry.contextualWizard(for: "scheduling_calendar") {
                 wizardTriggerService?.evaluateTrigger(for: wizard, context: "calendar_tab_visit")
             }
+        }
+        .onDisappear {
+            AnalyticsService.shared.endScreenView(screenName: "schedule")
         }
         // Wizard: collapse to week view when the wizard navigates here for a week-mode step.
         // Without this, steps 1-2 (scroll_week, tap_day) are unreachable if the user was

@@ -127,6 +127,7 @@ class SubscriptionManager: ObservableObject {
             currency: "USD",
             userType: userType
         )
+        AnalyticsService.shared.track(eventType: .lifecycle, eventName: "subscribe", properties: ["plan": planName, "price": price, "currency": "USD"])
         AnalyticsManager.shared.setSubscriptionStatus(true)
 
         print("[SUBSCRIPTION] 📊 Tracked subscription purchase - plan: \(planName)")

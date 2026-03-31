@@ -309,14 +309,32 @@ struct MinimalSignupView: View {
                 let userId = UserDefaults.standard.string(forKey: "user_id") ?? ""
                 let userEmail = appleResult.email ?? UserDefaults.standard.string(forKey: "user_email") ?? ""
 
+                // Apple only provides name on FIRST sign-in ever.
+                // Persist it so retries / re-installs can still pre-fill.
+                var resolvedFirstName = appleResult.givenName
+                var resolvedLastName = appleResult.familyName
+
+                if let givenName = appleResult.givenName {
+                    UserDefaults.standard.set(givenName, forKey: "apple_given_name")
+                } else if let saved = UserDefaults.standard.string(forKey: "apple_given_name"), !saved.isEmpty {
+                    resolvedFirstName = saved
+                }
+
+                if let familyName = appleResult.familyName {
+                    UserDefaults.standard.set(familyName, forKey: "apple_family_name")
+                } else if let saved = UserDefaults.standard.string(forKey: "apple_family_name"), !saved.isEmpty {
+                    resolvedLastName = saved
+                }
+
                 try await onboardingManager.handleSocialAuth(
                     userId: userId,
                     email: userEmail,
-                    firstName: appleResult.givenName,
-                    lastName: appleResult.familyName
+                    firstName: resolvedFirstName,
+                    lastName: resolvedLastName
                 )
 
                 AnalyticsManager.shared.trackSignUp(userType: .company, method: .apple)
+                AnalyticsService.shared.track(eventType: .lifecycle, eventName: "sign_up", properties: ["method": "apple"])
 
                 isLoading = false
                 onAuthenticated()
@@ -374,7 +392,20 @@ struct MinimalSignupView: View {
                     lastName: googleUser.profile?.familyName
                 )
 
+                // Download Google profile photo in background
+                if let photoURL = googleUser.profile?.imageURL(withDimension: 400) {
+                    Task {
+                        if let (data, _) = try? await URLSession.shared.data(from: photoURL),
+                           UIImage(data: data) != nil {
+                            await MainActor.run {
+                                onboardingManager.state.userData.avatarData = data
+                            }
+                        }
+                    }
+                }
+
                 AnalyticsManager.shared.trackSignUp(userType: .company, method: .google)
+                AnalyticsService.shared.track(eventType: .lifecycle, eventName: "sign_up", properties: ["method": "google"])
 
                 isLoading = false
                 onAuthenticated()

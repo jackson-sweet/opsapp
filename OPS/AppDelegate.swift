@@ -80,6 +80,15 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         print("[ONESIGNAL] Project: \(projectId ?? "none"), Task: \(taskId ?? "none")")
         print("[ONESIGNAL] Screen: \(screen ?? "none")")
 
+        // Track push notification opened
+        Task { @MainActor in
+            AnalyticsService.shared.track(
+                eventType: .featureUse,
+                eventName: "push_notification_opened",
+                properties: ["notification_type": notificationType ?? "unknown"]
+            )
+        }
+
         // Delay routing to allow app to fully initialize if cold-launched
         // This gives time for view observers to be set up
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {

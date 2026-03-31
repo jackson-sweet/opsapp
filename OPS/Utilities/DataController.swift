@@ -426,7 +426,16 @@ class DataController: ObservableObject {
                     if let companyId = user.companyId {
                         UserDefaults.standard.set(companyId, forKey: "currentUserCompanyId")
                         UserDefaults.standard.set(companyId, forKey: "company_id")
+
+                        // Cache identity fields for analytics
+                        let companyDescriptor = FetchDescriptor<Company>(
+                            predicate: #Predicate<Company> { $0.id == companyId }
+                        )
+                        if let company = try? context.fetch(companyDescriptor).first {
+                            UserDefaults.standard.set(company.subscriptionPlan, forKey: "subscription_plan")
+                        }
                     }
+                    UserDefaults.standard.set(user.role.rawValue, forKey: "user_role")
 
                     initializeSyncManager()
                     syncEngine.reconfigureForCompany()
@@ -476,6 +485,7 @@ class DataController: ObservableObject {
 
                     // Track login conversion for Google Ads
                     AnalyticsManager.shared.trackLogin(userType: user.userType, method: .email)
+                    AnalyticsService.shared.track(eventType: .lifecycle, eventName: "login", properties: ["method": "email"])
                     AnalyticsManager.shared.setUserType(user.userType)
                     AnalyticsManager.shared.setUserId(userId)
                 }
@@ -550,8 +560,10 @@ class DataController: ObservableObject {
                 // Track analytics (Apple sign-in)
                 if needsOnboarding {
                     AnalyticsManager.shared.trackSignUp(userType: user.userType, method: .apple)
+                    AnalyticsService.shared.track(eventType: .lifecycle, eventName: "sign_up", properties: ["method": "apple"])
                 } else {
                     AnalyticsManager.shared.trackLogin(userType: user.userType, method: .apple)
+                    AnalyticsService.shared.track(eventType: .lifecycle, eventName: "login", properties: ["method": "apple"])
                 }
                 AnalyticsManager.shared.setUserType(user.userType)
                 AnalyticsManager.shared.setUserId(userId)
@@ -654,8 +666,10 @@ class DataController: ObservableObject {
                 // Track analytics (Google sign-in)
                 if needsOnboarding {
                     AnalyticsManager.shared.trackSignUp(userType: user.userType, method: .google)
+                    AnalyticsService.shared.track(eventType: .lifecycle, eventName: "sign_up", properties: ["method": "google"])
                 } else {
                     AnalyticsManager.shared.trackLogin(userType: user.userType, method: .google)
+                    AnalyticsService.shared.track(eventType: .lifecycle, eventName: "login", properties: ["method": "google"])
                 }
                 AnalyticsManager.shared.setUserType(user.userType)
                 AnalyticsManager.shared.setUserId(userId)
@@ -972,87 +986,108 @@ class DataController: ObservableObject {
             print("[LOGOUT] No model context available for data wipe")
             return
         }
-        
+
         print("[LOGOUT] Deleting all SwiftData models...")
-        
-        // Wrap in autoreleasepool to manage memory properly
+
+        // Phase 1: Bulk-delete standalone/leaf models (no inbound relationships)
+        let leafModels: [(any PersistentModel.Type, String)] = [
+            (WizardState.self, "WizardState"),
+            (SyncOperation.self, "SyncOperation"),
+            (LocalPhoto.self, "LocalPhoto"),
+            (PhotoAnnotation.self, "PhotoAnnotation"),
+            (SignatureCapture.self, "SignatureCapture"),
+            (FormSubmission.self, "FormSubmission"),
+            (TimeEntry.self, "TimeEntry"),
+            (Activity.self, "Activity"),
+            (FollowUp.self, "FollowUp"),
+            (StageTransition.self, "StageTransition"),
+            (SiteVisit.self, "SiteVisit"),
+            (CalendarUserEvent.self, "CalendarUserEvent"),
+            (ProjectNote.self, "ProjectNote"),
+            (EstimateLineItem.self, "EstimateLineItem"),
+            (InvoiceLineItem.self, "InvoiceLineItem"),
+            (Estimate.self, "Estimate"),
+            (Invoice.self, "Invoice"),
+            (Payment.self, "Payment"),
+            (InventorySnapshotItem.self, "InventorySnapshotItem"),
+            (InventorySnapshot.self, "InventorySnapshot"),
+            (InventoryItem.self, "InventoryItem"),
+            (InventoryTag.self, "InventoryTag"),
+            (InventoryUnit.self, "InventoryUnit"),
+            (Opportunity.self, "Opportunity"),
+            (Product.self, "Product"),
+            (OpsContact.self, "OpsContact"),
+            (TaskStatusOption.self, "TaskStatusOption"),
+            (SubClient.self, "SubClient"),
+        ]
+
+        for (modelType, name) in leafModels {
+            do {
+                try context.delete(model: modelType)
+                print("[LOGOUT] Deleted all \(name)")
+            } catch {
+                print("[LOGOUT] Error deleting \(name): \(error)")
+            }
+        }
+
+        // Phase 2: Delete core models with relationship clearing (order matters)
         autoreleasepool {
-            // Delete in correct order to avoid relationship issues
-            // Start with leaf entities that don't have critical relationships
-            
-            // 1. Delete ProjectTasks (they reference projects)
             if let tasks = try? context.fetch(FetchDescriptor<ProjectTask>()) {
-                print("[LOGOUT] Deleting \(tasks.count) tasks...")
-                for task in tasks {
-                    context.delete(task)
-                }
+                for task in tasks { context.delete(task) }
+                print("[LOGOUT] Deleted \(tasks.count) tasks")
             }
-            
-            // 3. Delete TaskTypes
+
             if let taskTypes = try? context.fetch(FetchDescriptor<TaskType>()) {
-                print("[LOGOUT] Deleting \(taskTypes.count) task types...")
-                for taskType in taskTypes {
-                    context.delete(taskType)
-                }
+                for taskType in taskTypes { context.delete(taskType) }
+                print("[LOGOUT] Deleted \(taskTypes.count) task types")
             }
-            
-            // 4. Delete Projects (they have relationships to companies and users)
+
             if let projects = try? context.fetch(FetchDescriptor<Project>()) {
-                print("[LOGOUT] Deleting \(projects.count) projects...")
                 for project in projects {
-                    // Clear relationships first to avoid crashes
                     project.teamMembers.removeAll()
                     context.delete(project)
                 }
+                print("[LOGOUT] Deleted \(projects.count) projects")
             }
-            
-            // 5. Delete Clients
+
             if let clients = try? context.fetch(FetchDescriptor<Client>()) {
-                print("[LOGOUT] Deleting \(clients.count) clients...")
-                for client in clients {
-                    context.delete(client)
-                }
+                for client in clients { context.delete(client) }
+                print("[LOGOUT] Deleted \(clients.count) clients")
             }
-            
-            // 6. Delete TeamMembers (they reference companies)
+
             if let teamMembers = try? context.fetch(FetchDescriptor<TeamMember>()) {
-                print("[LOGOUT] Deleting \(teamMembers.count) team members...")
                 for member in teamMembers {
-                    // Clear company relationship first
                     member.company = nil
                     context.delete(member)
                 }
+                print("[LOGOUT] Deleted \(teamMembers.count) team members")
             }
-            
-            // 7. Delete Users
+
             if let users = try? context.fetch(FetchDescriptor<User>()) {
-                print("[LOGOUT] Deleting \(users.count) users...")
                 for user in users {
-                    // Clear relationships first
                     user.assignedProjects.removeAll()
                     context.delete(user)
                 }
+                print("[LOGOUT] Deleted \(users.count) users")
             }
-            
-            // 8. Delete Companies last (they have relationships to many entities)
+
             if let companies = try? context.fetch(FetchDescriptor<Company>()) {
-                print("[LOGOUT] Deleting \(companies.count) companies...")
                 for company in companies {
-                    // Clear relationships first
                     company.teamMembers.removeAll()
                     context.delete(company)
                 }
+                print("[LOGOUT] Deleted \(companies.count) companies")
             }
         }
-        
-        // Save all deletions outside autoreleasepool
+
+        // Save all deletions
         do {
             try context.save()
             print("[LOGOUT] All data deleted and saved")
         } catch {
             print("[LOGOUT] Error saving after data wipe: \(error)")
         }
-        
+
         // Clear sync timestamps so next login does a full sync, not a delta
         syncEngine.clearAllTimestamps()
 
@@ -1104,6 +1139,8 @@ class DataController: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "company_id")
         UserDefaults.standard.removeObject(forKey: "Company Name")
         UserDefaults.standard.removeObject(forKey: "has_joined_company")
+        UserDefaults.standard.removeObject(forKey: "subscription_plan")
+        UserDefaults.standard.removeObject(forKey: "user_role")
         
         // Clear user type data - CRITICAL for proper onboarding
         UserDefaults.standard.removeObject(forKey: "selected_user_type")
@@ -2840,10 +2877,23 @@ class DataController: ObservableObject {
             oldStatus: oldStatus.rawValue,
             newStatus: newStatus.rawValue
         )
+        AnalyticsService.shared.track(
+            eventType: .action,
+            eventName: "task_status_changed",
+            properties: [
+                "old_status": oldStatus.rawValue,
+                "new_status": newStatus.rawValue
+            ]
+        )
 
         // Track task completion as high-value event
         if newStatus == .completed {
             AnalyticsManager.shared.trackTaskCompleted(taskType: task.taskType?.display)
+            AnalyticsService.shared.track(
+                eventType: .action,
+                eventName: "task_completed",
+                properties: ["task_type": task.taskType?.display ?? "unknown"]
+            )
 
             // Send task completion notification to all project team members
             if let project = project {
@@ -3016,6 +3066,14 @@ class DataController: ObservableObject {
         AnalyticsManager.shared.trackProjectStatusChanged(
             oldStatus: previousStatus.rawValue,
             newStatus: newStatus.rawValue
+        )
+        AnalyticsService.shared.track(
+            eventType: .action,
+            eventName: "project_status_changed",
+            properties: [
+                "old_status": previousStatus.rawValue,
+                "new_status": newStatus.rawValue
+            ]
         )
 
         // Send push + in-app notification if project was just marked as completed

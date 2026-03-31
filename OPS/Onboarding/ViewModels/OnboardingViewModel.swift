@@ -586,8 +586,18 @@ class OnboardingViewModel: ObservableObject {
                 }
 
                 AnalyticsManager.shared.trackSignUp(userType: selectedUserType, method: .email)
+                AnalyticsService.shared.track(eventType: .lifecycle, eventName: "sign_up", properties: ["method": "email"])
                 AnalyticsManager.shared.setUserType(selectedUserType)
                 AnalyticsManager.shared.setUserId(userIdValue)
+
+                // Clear stale profile data from any prior onboarding attempt
+                // so the userDetails screen is never auto-skipped
+                UserDefaults.standard.removeObject(forKey: "user_first_name")
+                UserDefaults.standard.removeObject(forKey: "user_last_name")
+                UserDefaults.standard.removeObject(forKey: "user_phone_number")
+                self.firstName = ""
+                self.lastName = ""
+                self.phoneNumber = ""
 
                 UserDefaults.standard.set(false, forKey: "is_authenticated")
                 UserDefaults.standard.set(false, forKey: "onboarding_completed")
@@ -1040,27 +1050,8 @@ class OnboardingViewModel: ObservableObject {
             return
         }
         
-        // Skip user details if already have the information
-        if currentStep == .userDetails && !firstName.isEmpty && !lastName.isEmpty && !phoneNumber.isEmpty {
-            // Check if company is already joined before deciding next step
-            let nextStep: OnboardingStep
-            if selectedUserType == .employee {
-                if isCompanyJoined {
-                    // Skip to permissions if already have a company
-                    nextStep = .permissions
-                } else {
-                    // Go to company code if no company yet
-                    nextStep = .companyCode
-                }
-            } else {
-                // Company owner flow
-                nextStep = .companyBasicInfo
-            }
-            DispatchQueue.main.async {
-                self.currentStep = nextStep
-            }
-            return
-        }
+        // Always show userDetails (name/phone) — never auto-skip.
+        // The user must confirm their profile even if data was pre-filled.
         
         // Normal flow - get the next step
         if var nextStep = currentStep.nextStep(userType: selectedUserType) {
@@ -1475,10 +1466,12 @@ class OnboardingViewModel: ObservableObject {
                 // Track onboarding completion for Google Ads
                 let hasCompany = dataController?.currentUser?.companyId != nil && !(dataController?.currentUser?.companyId ?? "").isEmpty
                 AnalyticsManager.shared.trackCompleteOnboarding(userType: selectedUserType, hasCompany: hasCompany)
+                AnalyticsService.shared.track(eventType: .lifecycle, eventName: "complete_onboarding", properties: ["has_company": hasCompany])
 
                 // Track trial start for company owners
                 if selectedUserType == .company {
                     AnalyticsManager.shared.trackBeginTrial(userType: selectedUserType, trialDays: 30)
+                    AnalyticsService.shared.track(eventType: .lifecycle, eventName: "begin_trial", properties: ["trial_days": 30])
                 }
 
                 // Dismiss the onboarding overlay

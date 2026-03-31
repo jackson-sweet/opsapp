@@ -329,6 +329,11 @@ struct PINGatedView: View {
                             let projectCount = await dataController.getProjectCount()
                             let userType = dataController.currentUser?.userType
                             AnalyticsManager.shared.trackCreateProject(projectCount: projectCount, userType: userType)
+                            AnalyticsService.shared.track(
+                                eventType: .action,
+                                eventName: "project_created",
+                                properties: ["project_count": projectCount]
+                            )
                         }
                     }
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ClientCreatedSuccess"))) { notification in

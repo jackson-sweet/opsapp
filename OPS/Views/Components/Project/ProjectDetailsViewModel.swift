@@ -442,12 +442,19 @@ class ProjectDetailsViewModel: ObservableObject {
             NotificationCenter.default.post(name: Notification.Name("TutorialPhotoAdded"), object: nil)
         }
 
+        let photoCount = selectedImages.count
         processingImages = true
 
         Task {
             if let imageSyncManager = dataController?.imageSyncManager {
                 let urls = await imageSyncManager.saveImages(selectedImages, for: project)
                 if !urls.isEmpty {
+                    // Track photo capture
+                    AnalyticsService.shared.track(
+                        eventType: .action,
+                        eventName: "photo_captured",
+                        properties: ["count": photoCount, "context": "project"]
+                    )
                     selectedImages.removeAll()
                     processingImages = false
                 } else {
@@ -467,6 +474,12 @@ class ProjectDetailsViewModel: ObservableObject {
                         project.setProjectImageURLs(images)
                     }
                 }
+                // Track photo capture (local fallback path)
+                AnalyticsService.shared.track(
+                    eventType: .action,
+                    eventName: "photo_captured",
+                    properties: ["count": photoCount, "context": "project"]
+                )
                 selectedImages.removeAll()
                 processingImages = false
             }

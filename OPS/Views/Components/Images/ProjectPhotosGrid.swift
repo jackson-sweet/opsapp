@@ -698,14 +698,20 @@ extension ProjectPhotosGrid {
         Task {
             // Use the ImageSyncManager if available
             if let imageSyncManager = dataController.imageSyncManager {
-                
+
                 // Process the image through the ImageSyncManager
                 let urls = await imageSyncManager.saveImages([image], for: project)
-                
+
                 if let url = urls.first, !url.isEmpty {
                     // ImageSyncManager already added the image to the project
-                    
+
                     await MainActor.run {
+                        // Track photo capture
+                        AnalyticsService.shared.track(
+                            eventType: .action,
+                            eventName: "photo_captured",
+                            properties: ["count": 1, "context": "project"]
+                        )
                         // Clear selected image and hide loading
                         cameraImage = nil
                         processingImage = false

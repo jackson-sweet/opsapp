@@ -124,6 +124,7 @@ struct HomeView: View {
         .onAppear {
             // Track screen view for analytics
             AnalyticsManager.shared.trackScreenView(screenName: .home, screenClass: "HomeView")
+            AnalyticsService.shared.trackScreenView(screenName: "home")
 
             // Initialize location status
             locationStatus = locationManager.authorizationStatus
@@ -142,6 +143,7 @@ struct HomeView: View {
         .onDisappear {
             // Clean up any timers
             stopRouteRefreshTimer()
+            AnalyticsService.shared.endScreenView(screenName: "home")
         }
         // Watch for changes to locationManager's denied state
         .onChange(of: locationManager.isLocationDenied) { _, isDenied in

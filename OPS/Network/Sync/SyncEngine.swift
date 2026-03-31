@@ -382,7 +382,19 @@ final class SyncEngine {
         } catch {
             print("[SYNC_ENGINE] Full sync pull error: \(error)")
             hasError = true
-            if case .authExpired = classifySyncError(error) {
+
+            let classified = classifySyncError(error)
+            AnalyticsService.shared.track(
+                eventType: .error,
+                eventName: "sync_failed",
+                properties: [
+                    "error_type": classified.localizedDescription,
+                    "retry_count": 0,
+                    "sync_phase": "full_sync_pull"
+                ]
+            )
+
+            if case .authExpired = classified {
                 NotificationCenter.default.post(name: .syncAuthExpired, object: nil)
                 return
             }
@@ -462,7 +474,19 @@ final class SyncEngine {
             print("[SYNC_ENGINE] pullDelta error: \(error)")
             hasError = true
             statusText = "Sync error"
-            if case .authExpired = classifySyncError(error) {
+
+            let classified = classifySyncError(error)
+            AnalyticsService.shared.track(
+                eventType: .error,
+                eventName: "sync_failed",
+                properties: [
+                    "error_type": classified.localizedDescription,
+                    "retry_count": 0,
+                    "sync_phase": "delta_pull"
+                ]
+            )
+
+            if case .authExpired = classified {
                 NotificationCenter.default.post(name: .syncAuthExpired, object: nil)
             }
         }

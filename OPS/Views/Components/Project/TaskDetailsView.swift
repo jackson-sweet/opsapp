@@ -177,6 +177,7 @@ struct TaskDetailsView: View {
         .onAppear {
             // Track screen view for analytics
             AnalyticsManager.shared.trackScreenView(screenName: .taskDetails, screenClass: "TaskDetailsView")
+            AnalyticsService.shared.trackScreenView(screenName: "task_details")
 
             loadTaskTeamMembers()
             logTaskTeamMemberData()
@@ -234,6 +235,7 @@ struct TaskDetailsView: View {
             .environmentObject(dataController)
         }
         .onDisappear {
+            AnalyticsService.shared.endScreenView(screenName: "task_details")
             notificationTimer?.invalidate()
             notificationTimer = nil
         }

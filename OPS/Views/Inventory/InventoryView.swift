@@ -305,12 +305,16 @@ struct InventoryView: View {
         }
         .onAppear {
             AnalyticsManager.shared.trackScreenView(screenName: .inventory)
+            AnalyticsService.shared.trackScreenView(screenName: "inventory")
             // Set default sort mode: by tag if tags exist, otherwise by name
             if allTags.isEmpty && sortMode == .tag {
                 sortMode = .name
             }
             // Check if inventory wizard should be shown
             checkInventoryWizard()
+        }
+        .onDisappear {
+            AnalyticsService.shared.endScreenView(screenName: "inventory")
         }
         .fullScreenCover(isPresented: $showInventoryWizard) {
             InventoryWizardFlow(

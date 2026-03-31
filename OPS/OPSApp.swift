@@ -17,6 +17,7 @@ struct OPSApp: App {
 
     init() {
         MapboxConfig.configure()
+        AnalyticsService.shared.start()
     }
     
     // Observe scene phase for app lifecycle events

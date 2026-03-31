@@ -186,7 +186,8 @@ struct JobBoardView: View {
                                 Image(systemName: "line.3.horizontal.decrease")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
                                     .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .frame(width: 36, height: 36)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
                                     .background(OPSStyle.Colors.cardBackgroundDark)
                                     .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                                     .overlay(
@@ -218,6 +219,7 @@ struct JobBoardView: View {
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
+                        .padding(.bottom, 12)
                     }
 
                     // Main content with slide transitions
@@ -305,6 +307,10 @@ struct JobBoardView: View {
                     .onAppear {
                         selectedSection = defaultSection(for: dataController.currentUser)
                         AnalyticsManager.shared.trackScreenView(screenName: .jobBoard, screenClass: "JobBoardView")
+                        AnalyticsService.shared.trackScreenView(screenName: "job_board")
+                    }
+                    .onDisappear {
+                        AnalyticsService.shared.endScreenView(screenName: "job_board")
                     }
                     // Wizard: listen for section-level navigation requests
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardNavigateToSection"))) { notification in

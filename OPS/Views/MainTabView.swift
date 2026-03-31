@@ -22,6 +22,7 @@ struct MainTabView: View {
 
     @State private var selectedTab = 0
     @State private var hasEvaluatedWizards = false
+    @State private var needsWizardRetry = false
     @State private var previousTab = 0
     @State private var keyboardIsShowing = false
     @State private var sheetIsPresented = false
@@ -97,26 +98,26 @@ struct MainTabView: View {
     // Dynamic tabs based on user role
     private var tabs: [TabItem] {
         var baseTabs: [TabItem] = [
-            TabItem(iconName: "house.fill")
+            TabItem(iconName: "house.fill", wizardStepId: "welcome_home")
         ]
 
         // Add Pipeline tab for admin/office crew only
         if hasPipelineAccess {
-            baseTabs.append(TabItem(iconName: "chart.line.uptrend.xyaxis"))
+            baseTabs.append(TabItem(iconName: "chart.line.uptrend.xyaxis", wizardStepId: "welcome_pipeline"))
         }
 
         // Add Job Board tab for all users (admin, office crew, and field crew)
-        baseTabs.append(TabItem(iconName: "briefcase.fill"))
+        baseTabs.append(TabItem(iconName: "briefcase.fill", wizardStepId: "welcome_job_board"))
 
         // Add Inventory tab if user has inventory access
         if hasInventoryAccess {
-            baseTabs.append(TabItem(iconName: "shippingbox.fill"))
+            baseTabs.append(TabItem(iconName: "shippingbox.fill", wizardStepId: "welcome_inventory"))
         }
 
         // Add Schedule and Settings for all users
         baseTabs.append(contentsOf: [
-            TabItem(iconName: "calendar"),
-            TabItem(iconName: "gearshape.fill")
+            TabItem(iconName: "calendar", wizardStepId: "welcome_schedule"),
+            TabItem(iconName: "gearshape.fill", wizardStepId: "welcome_settings")
         ])
 
         return baseTabs
@@ -334,6 +335,11 @@ struct MainTabView: View {
                 return .home
             }()
             AnalyticsManager.shared.trackTabSelected(tabName: tabName)
+            AnalyticsService.shared.track(
+                eventType: .action,
+                eventName: "tab_selected",
+                properties: ["tab_name": tabName.rawValue, "tab_index": tabName.index]
+            )
         }
 
         // Handle keyboard appearance - but ignore if from a sheet
@@ -524,6 +530,17 @@ struct MainTabView: View {
                 selectedTab = 0 // Reset to home if current tab no longer exists
             }
         }
+        // C2: Re-evaluate wizard triggers once initial sync completes
+        .onChange(of: dataController.isPerformingInitialSync) { _, isLoading in
+            if !isLoading && needsWizardRetry {
+                evaluateWizardTriggers()
+            }
+        }
+        .onChange(of: appState.isLoadingProjects) { _, isLoading in
+            if !isLoading && needsWizardRetry {
+                evaluateWizardTriggers()
+            }
+        }
     }
     
     // handlePermissionRefresh moved to PINGatedView (ContentView.swift)
@@ -534,20 +551,22 @@ struct MainTabView: View {
         guard let triggerService = wizardTriggerService else { return }
         guard let modelContext = dataController.modelContext else { return }
 
-        // Welcome tour: auto-start on first app entry (before other wizards)
-        if let stateManager = wizardStateManager {
-            let welcomeWizard = WelcomeTourWizard(permissionStore: permissionStore)
-            if welcomeWizard.steps.count > 0,
-               let state = stateManager.wizardState(for: "welcome_tour"),
-               state.status == .notStarted {
-                stateManager.startWizardDirectly(welcomeWizard)
-                return // Don't evaluate other wizards — welcome tour takes priority
-            }
+        // C2: Don't evaluate while initial sync is in progress — re-schedule via onChange
+        guard !dataController.isPerformingInitialSync, !appState.isLoadingProjects else {
+            needsWizardRetry = true
+            return
         }
+        needsWizardRetry = false
+
+        // C3: Don't start wizards while the interactive tutorial is still in progress
+        guard dataController.currentUser?.hasCompletedAppTutorial == true else { return }
+
+        // H2: Don't start wizards for unassigned users (pre-role-assignment)
+        guard dataController.currentUser?.role != .unassigned else { return }
 
         let companyId = dataController.currentUser?.companyId ?? ""
 
-        // Count projects for the current user's company
+        // Count projects for the current user's company (used by welcome tour + sequenced wizards)
         var projectDescriptor = FetchDescriptor<Project>(
             predicate: #Predicate<Project> { project in
                 project.companyId == companyId
@@ -555,6 +574,30 @@ struct MainTabView: View {
         )
         projectDescriptor.propertiesToFetch = []
         let projectCount = (try? modelContext.fetchCount(projectDescriptor)) ?? 0
+
+        // Welcome tour: auto-start on first app entry or resume if interrupted (C1)
+        if let stateManager = wizardStateManager, !stateManager.isActive {
+            let welcomeWizard = WelcomeTourWizard(permissionStore: permissionStore)
+            if welcomeWizard.steps.count > 0,
+               let state = stateManager.wizardState(for: "welcome_tour") {
+
+                if state.status == .notStarted {
+                    // Existing users updating to this version already have projects —
+                    // silently mark the tour as completed so they don't get an unwanted tour.
+                    if projectCount > 0 {
+                        state.markCompleted()
+                        try? modelContext.save()
+                    } else {
+                        stateManager.startWizardDirectly(welcomeWizard)
+                        return
+                    }
+                } else if state.status == .inProgress {
+                    // Resume an interrupted tour
+                    stateManager.startWizardDirectly(welcomeWizard)
+                    return
+                }
+            }
+        }
 
         // Sequenced wizards (e.g., ProjectLifecycleWizard triggers when 0 projects)
         triggerService.evaluateSequencedWizards(projectCount: projectCount)

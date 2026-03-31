@@ -258,6 +258,19 @@ final class OutboundProcessor {
             if case .authExpired = classified {
                 operation.status = "failed"
                 print("[OutboundProcessor] Auth expired — stopping sync for \(operation.entityType) \(operation.entityId)")
+
+                // Track auth-expired sync failure
+                AnalyticsService.shared.track(
+                    eventType: .error,
+                    eventName: "sync_failed",
+                    properties: [
+                        "error_type": "auth_expired",
+                        "retry_count": operation.retryCount,
+                        "entity_type": operation.entityType,
+                        "operation_type": operation.operationType
+                    ]
+                )
+
                 await MainActor.run {
                     NotificationCenter.default.post(
                         name: .syncAuthExpired,
@@ -271,6 +284,18 @@ final class OutboundProcessor {
             if operation.retryCount >= maxRetries {
                 operation.status = "failed"
                 print("[OutboundProcessor] Permanently failed \(operation.entityType) \(operation.entityId) after \(operation.retryCount) retries")
+
+                // Track permanent sync failure
+                AnalyticsService.shared.track(
+                    eventType: .error,
+                    eventName: "sync_failed",
+                    properties: [
+                        "error_type": classified.localizedDescription,
+                        "retry_count": operation.retryCount,
+                        "entity_type": operation.entityType,
+                        "operation_type": operation.operationType
+                    ]
+                )
             } else {
                 operation.status = "pending"
                 print("[OutboundProcessor] Retry \(operation.retryCount)/\(maxRetries) for \(operation.entityType) \(operation.entityId): \(classified.localizedDescription)")

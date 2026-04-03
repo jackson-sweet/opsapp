@@ -65,8 +65,16 @@ struct OPSApp: App {
             SignatureCapture.self,
             FormSubmission.self,
             LocalPhoto.self,
+            // Inventory models
+            InventoryItem.self,
+            InventorySnapshot.self,
+            InventorySnapshotItem.self,
+            InventoryTag.self,
+            InventoryUnit.self,
             // Wizard system
-            WizardState.self
+            WizardState.self,
+            // Deck builder
+            DeckDesign.self
         ])
         
         let modelConfiguration = ModelConfiguration(
@@ -126,8 +134,11 @@ struct OPSApp: App {
                     // Initialize SubscriptionManager with DataController
                     subscriptionManager.setDataController(dataController)
                     
-                    // Check notification authorization status
+                    // Check notification authorization status and request if not yet determined
                     notificationManager.getAuthorizationStatus()
+                    if dataController.isAuthenticated {
+                        notificationManager.requestPermission()
+                    }
 
                     // Perform data health check before syncing
                     Task {

@@ -34,6 +34,7 @@ final class InboundProcessor {
     private var taskTypeRepo: TaskTypeRepository
     private var projectNoteRepo: ProjectNoteRepository
     private var photoAnnotationRepo: PhotoAnnotationRepository
+    private var deckDesignRepo: DeckDesignRepository
 
     // MARK: - Init
 
@@ -51,6 +52,7 @@ final class InboundProcessor {
         self.taskTypeRepo = TaskTypeRepository(companyId: companyId)
         self.projectNoteRepo = ProjectNoteRepository(companyId: companyId)
         self.photoAnnotationRepo = PhotoAnnotationRepository(companyId: companyId)
+        self.deckDesignRepo = DeckDesignRepository(companyId: companyId)
     }
 
     // MARK: - Reconfigure
@@ -81,6 +83,7 @@ final class InboundProcessor {
         self.taskTypeRepo = TaskTypeRepository(companyId: newCompanyId)
         self.projectNoteRepo = ProjectNoteRepository(companyId: newCompanyId)
         self.photoAnnotationRepo = PhotoAnnotationRepository(companyId: newCompanyId)
+        self.deckDesignRepo = DeckDesignRepository(companyId: newCompanyId)
     }
 
     // MARK: - Sync Priority Order
@@ -96,7 +99,8 @@ final class InboundProcessor {
         .project,
         .projectTask,
         .projectNote,
-        .photoAnnotation
+        .photoAnnotation,
+        .deckDesign
     ]
 
     // MARK: - Full Sync
@@ -190,6 +194,8 @@ final class InboundProcessor {
             try await syncProjectNotes(since: since, context: context)
         case .photoAnnotation:
             try await syncPhotoAnnotations(since: since, context: context)
+        case .deckDesign:
+            try await syncDeckDesigns(since: since, context: context)
         default:
             print("[InboundProcessor] Entity type \(entityType.rawValue) not yet supported for inbound sync")
         }
@@ -836,6 +842,55 @@ final class InboundProcessor {
 
             existing.lastSyncedAt = Date()
             let hasPending = hasPendingOperations(entityType: .photoAnnotation, entityId: existing.id, context: context)
+            if !hasPending {
+                existing.needsSync = false
+            }
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+
+        try context.save()
+    }
+
+    // MARK: - DeckDesign Sync
+
+    private func syncDeckDesigns(since: Date?, context: ModelContext) async throws {
+        let dtos = try await deckDesignRepo.fetchAll(since: since)
+        for dto in dtos {
+            try mergeDeckDesign(dto: dto, context: context)
+        }
+        print("[InboundProcessor] Merged \(dtos.count) deck designs")
+    }
+
+    private func mergeDeckDesign(dto: SupabaseDeckDesignDTO, context: ModelContext) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<DeckDesign>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try context.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .deckDesign,
+                entityId: id,
+                fields: [
+                    "title", "drawingDataJSON", "thumbnailURL",
+                    "version", "updatedAt", "deletedAt"
+                ],
+                context: context
+            )
+
+            if accept.contains("title") { existing.title = dto.title }
+            if accept.contains("drawingDataJSON") { existing.drawingDataJSON = dto.drawingData.toJSON() }
+            if accept.contains("thumbnailURL") { existing.thumbnailURL = dto.thumbnailUrl }
+            if accept.contains("version") { existing.version = dto.version }
+            if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            existing.lastSyncedAt = Date()
+            let hasPending = hasPendingOperations(entityType: .deckDesign, entityId: existing.id, context: context)
             if !hasPending {
                 existing.needsSync = false
             }

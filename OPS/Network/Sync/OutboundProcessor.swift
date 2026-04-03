@@ -335,6 +335,8 @@ final class OutboundProcessor {
             try await handleCompany(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
         case .taskType:
             try await handleTaskType(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
+        case .deckDesign:
+            try await handleDeckDesign(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
         default:
             // For entity types without a dedicated handler, use generic table push
             try await genericTablePush(
@@ -505,6 +507,27 @@ final class OutboundProcessor {
 
         default:
             print("[OutboundProcessor] Unknown operation type '\(operationType)' for taskType")
+        }
+    }
+
+    private func handleDeckDesign(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
+        let repo = DeckDesignRepository(companyId: companyId)
+
+        switch operationType {
+        case "create":
+            let jsonData = try JSONSerialization.data(withJSONObject: payload)
+            let dto = try JSONDecoder().decode(SupabaseDeckDesignDTO.self, from: jsonData)
+            _ = try await repo.create(dto)
+
+        case "update":
+            let fields = payloadToAnyJSON(payload)
+            try await repo.updateFields(entityId, fields: fields)
+
+        case "delete":
+            try await repo.softDelete(entityId)
+
+        default:
+            print("[OutboundProcessor] Unknown operation type '\(operationType)' for deckDesign")
         }
     }
 

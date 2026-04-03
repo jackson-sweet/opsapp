@@ -6,6 +6,7 @@ import SwiftData
 struct DeckBuilderView: View {
     @StateObject private var viewModel: DeckBuilderViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var isSaving = false
 
     let projectId: String?
     let companyId: String
@@ -24,8 +25,18 @@ struct DeckBuilderView: View {
             // Title bar
             titleBar
 
-            // Canvas
-            DeckCanvasView(viewModel: viewModel)
+            // Canvas + Assignment Wheel overlay
+            ZStack(alignment: .bottomTrailing) {
+                DeckCanvasView(viewModel: viewModel)
+
+                // Assignment wheel — visible when any element is selected
+                if !viewModel.selection.isEmpty {
+                    AssignmentWheelView(viewModel: viewModel)
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 20)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
 
             // Toolbar
             DeckToolbar(viewModel: viewModel)
@@ -52,16 +63,25 @@ struct DeckBuilderView: View {
         HStack {
             // Close button
             Button {
+                guard !isSaving else { return }
+                isSaving = true
                 Task {
                     await viewModel.renderAndSave()
+                    dismiss()
                 }
-                dismiss()
             } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                if isSaving {
+                    ProgressView()
+                        .tint(.white)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                } else {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                }
             }
+            .disabled(isSaving)
 
             Spacer()
 

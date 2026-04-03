@@ -227,10 +227,40 @@ struct DeckDrawingData: Codable {
 
     var isClosed: Bool {
         guard vertices.count >= 3, edges.count >= 3 else { return false }
-        // Check if edges form a cycle
-        let firstVertexId = vertices.first?.id
-        let lastEdge = edges.last
-        return lastEdge?.endVertexId == firstVertexId
+
+        // Build adjacency: vertex → [connected vertex ids]
+        var adjacency: [String: Set<String>] = [:]
+        for edge in edges {
+            adjacency[edge.startVertexId, default: []].insert(edge.endVertexId)
+            adjacency[edge.endVertexId, default: []].insert(edge.startVertexId)
+        }
+
+        // Every vertex must have exactly 2 connections for a simple polygon
+        for vertex in vertices {
+            let connections = adjacency[vertex.id]?.count ?? 0
+            if connections != 2 { return false }
+        }
+
+        // Walk the graph from the first vertex — must visit all vertices and return to start
+        guard let startId = vertices.first?.id else { return false }
+        var visited: Set<String> = [startId]
+        var currentId = startId
+
+        for _ in 0..<vertices.count {
+            guard let neighbors = adjacency[currentId] else { return false }
+            let unvisited = neighbors.subtracting(visited)
+
+            if unvisited.isEmpty {
+                // Only valid if we've visited all vertices and can return to start
+                return visited.count == vertices.count && neighbors.contains(startId)
+            }
+
+            guard let nextId = unvisited.first else { return false }
+            visited.insert(nextId)
+            currentId = nextId
+        }
+
+        return false
     }
 
     /// Ordered vertex positions for rendering

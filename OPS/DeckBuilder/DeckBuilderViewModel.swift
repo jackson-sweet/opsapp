@@ -3,6 +3,8 @@
 import Foundation
 import SwiftUI
 import SwiftData
+import Supabase
+import UIKit
 
 @MainActor
 class DeckBuilderViewModel: ObservableObject {
@@ -81,6 +83,7 @@ class DeckBuilderViewModel: ObservableObject {
         guard let snapshot = undoStack.popLast() else { return }
         redoStack.append(DrawingSnapshot(drawingData: drawingData, description: "redo"))
         drawingData = snapshot.drawingData
+        hapticLight()
         save()
     }
 
@@ -88,6 +91,7 @@ class DeckBuilderViewModel: ObservableObject {
         guard let snapshot = redoStack.popLast() else { return }
         undoStack.append(DrawingSnapshot(drawingData: drawingData, description: "undo"))
         drawingData = snapshot.drawingData
+        hapticLight()
         save()
     }
 
@@ -184,6 +188,9 @@ class DeckBuilderViewModel: ObservableObject {
         // Check if we closed the polygon
         if drawingData.isClosed {
             drawingData.footprint.isClosed = true
+            hapticSuccess() // polygon closed — key moment
+        } else {
+            hapticMedium() // line committed
         }
 
         drawingMode = .idle
@@ -198,6 +205,7 @@ class DeckBuilderViewModel: ObservableObject {
             selection.clear()
             selection.toggleVertex(vertexId)
             editingVertexId = vertexId
+            hapticLight()
             return
         }
 
@@ -206,6 +214,7 @@ class DeckBuilderViewModel: ObservableObject {
             selection.clear()
             selection.toggleEdge(edgeId)
             editingEdgeId = edgeId
+            hapticLight()
             return
         }
 
@@ -213,6 +222,7 @@ class DeckBuilderViewModel: ObservableObject {
         if drawingData.isClosed && PolygonMath.pointInPolygon(point, vertices: drawingData.orderedPositions) {
             selection.clear()
             selection.selectedFootprint = true
+            hapticLight()
             return
         }
 
@@ -226,6 +236,7 @@ class DeckBuilderViewModel: ObservableObject {
         // Same hit detection as tap, but always shows property sheet
         handleTap(at: point)
         if !selection.isEmpty {
+            hapticMedium()
             showingPropertySheet = true
         }
     }
@@ -254,6 +265,44 @@ class DeckBuilderViewModel: ObservableObject {
         // Select all vertices inside the rectangle
         for vertex in drawingData.vertices {
             if rect.contains(vertex.position) {
+                selection.selectedVertexIds.insert(vertex.id)
+            }
+        }
+
+        // Select all edges where both endpoints are inside
+        for edge in drawingData.edges {
+            if selection.selectedVertexIds.contains(edge.startVertexId) &&
+               selection.selectedVertexIds.contains(edge.endVertexId) {
+                selection.selectedEdgeIds.insert(edge.id)
+            }
+        }
+
+        drawingMode = .idle
+    }
+
+    // MARK: - Lasso Selection
+
+    func beginLasso(at point: CGPoint) {
+        drawingMode = .lassoing(points: [point])
+    }
+
+    func updateLasso(to point: CGPoint) {
+        guard case .lassoing(var points) = drawingMode else { return }
+        points.append(point)
+        drawingMode = .lassoing(points: points)
+    }
+
+    func endLasso() {
+        guard case .lassoing(let points) = drawingMode else { return }
+        guard points.count >= 3 else {
+            drawingMode = .idle
+            return
+        }
+        selection.clear()
+
+        // Select all vertices inside the lasso polygon
+        for vertex in drawingData.vertices {
+            if PolygonMath.pointInPolygon(vertex.position, vertices: points) {
                 selection.selectedVertexIds.insert(vertex.id)
             }
         }
@@ -307,6 +356,7 @@ class DeckBuilderViewModel: ObservableObject {
                 }
             }
         }
+        hapticMedium()
         save()
     }
 
@@ -412,6 +462,7 @@ class DeckBuilderViewModel: ObservableObject {
         drawingData.vertices.removeAll { !connectedVertexIds.contains($0.id) }
         drawingData.footprint.isClosed = drawingData.isClosed
         selection.clear()
+        hapticMedium()
         save()
     }
 
@@ -424,6 +475,7 @@ class DeckBuilderViewModel: ObservableObject {
         }
         drawingData.footprint.isClosed = drawingData.isClosed
         selection.clear()
+        hapticMedium()
         save()
     }
 
@@ -443,9 +495,47 @@ class DeckBuilderViewModel: ObservableObject {
             let url = try await DeckRenderer.saveToS3(image: image, deckDesign: deckDesign)
             deckDesign.thumbnailURL = url
             save()
+
+            // Insert project_photos row so the deck drawing appears in the project gallery
+            if let projectId = deckDesign.projectId {
+                try await insertProjectPhoto(
+                    url: url,
+                    projectId: projectId,
+                    companyId: deckDesign.companyId,
+                    uploadedBy: deckDesign.createdBy ?? ""
+                )
+            }
         } catch {
             print("[DeckBuilder] Failed to save thumbnail: \(error)")
         }
+    }
+
+    /// Insert a project_photos row for the deck design thumbnail
+    private func insertProjectPhoto(url: String, projectId: String, companyId: String, uploadedBy: String) async throws {
+        struct ProjectPhotoInsert: Codable {
+            let project_id: String
+            let company_id: String
+            let url: String
+            let source: String
+            let uploaded_by: String
+            let caption: String
+            let is_client_visible: Bool
+        }
+
+        let insert = ProjectPhotoInsert(
+            project_id: projectId,
+            company_id: companyId,
+            url: url,
+            source: "deck_design",
+            uploaded_by: uploadedBy,
+            caption: deckDesign.title,
+            is_client_visible: false
+        )
+
+        try await SupabaseService.shared.client
+            .from("project_photos")
+            .insert(insert)
+            .execute()
     }
 
     // MARK: - Helpers
@@ -456,5 +546,19 @@ class DeckBuilderViewModel: ObservableObject {
             return drawingData.config.lengthSnapIncrement
         }
         return SnapEngine.inchesToCanvasPoints(drawingData.config.lengthSnapIncrement, scaleFactor: scale)
+    }
+
+    // MARK: - Haptics
+
+    private func hapticLight() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func hapticMedium() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    private func hapticSuccess() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 }

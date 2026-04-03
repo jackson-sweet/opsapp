@@ -8,6 +8,7 @@ struct DeckCanvasView: View {
     // MARK: - Gesture State
 
     @State private var canvasScale: CGFloat = 1.0
+    @State private var baseScale: CGFloat = 1.0
     @State private var canvasOffset: CGSize = .zero
     @State private var lastDragValue: CGSize = .zero
     @State private var drawingStarted = false
@@ -331,6 +332,16 @@ struct DeckCanvasView: View {
                 .frame(width: rect.width, height: rect.height)
                 .position(x: rect.midX, y: rect.midY)
         }
+
+        if case .lassoing(let points) = viewModel.drawingMode, points.count >= 2 {
+            Path { path in
+                path.move(to: points[0])
+                for i in 1..<points.count {
+                    path.addLine(to: points[i])
+                }
+            }
+            .stroke(OPSStyle.Colors.primaryAccent, style: StrokeStyle(lineWidth: 1.5, dash: [6, 3]))
+        }
     }
 
     // MARK: - Info Bar
@@ -381,14 +392,35 @@ struct DeckCanvasView: View {
             .onChanged { value in
                 switch value {
                 case .second(true, let drag):
-                    guard let drag = drag, viewModel.activeTool == .draw else { return }
+                    guard let drag = drag else { return }
                     let point = canvasPoint(from: drag.location, in: size)
+                    let startPoint = canvasPoint(from: drag.startLocation, in: size)
 
-                    if !drawingStarted {
-                        drawingStarted = true
-                        viewModel.beginLine(from: canvasPoint(from: drag.startLocation, in: size))
+                    switch viewModel.activeTool {
+                    case .draw:
+                        if !drawingStarted {
+                            drawingStarted = true
+                            viewModel.beginLine(from: startPoint)
+                        }
+                        viewModel.updateLine(to: point)
+
+                    case .select:
+                        if !drawingStarted {
+                            drawingStarted = true
+                            viewModel.beginMarquee(at: startPoint)
+                        }
+                        viewModel.updateMarquee(to: point)
+
+                    case .lasso:
+                        if !drawingStarted {
+                            drawingStarted = true
+                            viewModel.beginLasso(at: startPoint)
+                        }
+                        viewModel.updateLasso(to: point)
+
+                    case .none:
+                        break
                     }
-                    viewModel.updateLine(to: point)
                 default:
                     break
                 }
@@ -398,7 +430,17 @@ struct DeckCanvasView: View {
                 case .second(true, let drag):
                     guard let drag = drag, drawingStarted else { break }
                     let point = canvasPoint(from: drag.location, in: size)
-                    viewModel.endLine(at: point)
+
+                    switch viewModel.activeTool {
+                    case .draw:
+                        viewModel.endLine(at: point)
+                    case .select:
+                        viewModel.endMarquee()
+                    case .lasso:
+                        viewModel.endLasso()
+                    case .none:
+                        break
+                    }
                 default:
                     break
                 }
@@ -432,7 +474,11 @@ struct DeckCanvasView: View {
     private var pinchGesture: some Gesture {
         MagnificationGesture()
             .onChanged { scale in
-                canvasScale = max(0.3, min(5.0, scale))
+                canvasScale = max(0.3, min(5.0, baseScale * scale))
+            }
+            .onEnded { scale in
+                baseScale = max(0.3, min(5.0, baseScale * scale))
+                canvasScale = baseScale
             }
     }
 

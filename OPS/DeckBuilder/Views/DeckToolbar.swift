@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/DeckToolbar.swift
 
 import SwiftUI
+import UIKit
 
 struct DeckToolbar: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
@@ -76,6 +77,7 @@ struct DeckToolbar: View {
 
         Button {
             viewModel.activeTool = tool
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
             VStack(spacing: 4) {
                 Image(systemName: icon)

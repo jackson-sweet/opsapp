@@ -19,6 +19,7 @@ struct ProjectQuickActionsBar: View {
     let onReschedule: () -> Void
     let onContact: () -> Void
     let onAddTask: () -> Void
+    var onDeckDesign: (() -> Void)? = nil
 
     /// Builds the list of actions based on current context
     private var actions: [ActionItem] {
@@ -27,6 +28,10 @@ struct ProjectQuickActionsBar: View {
             ActionItem(icon: "note.text", label: "NOTE", action: onNote),
             ActionItem(icon: "doc.text.viewfinder", label: "EXPENSE", action: onExpense),
         ]
+
+        if let onDeckDesign = onDeckDesign {
+            items.append(ActionItem(icon: "ruler.fill", label: "DECK", action: onDeckDesign))
+        }
 
         if let task = selectedTask {
             let isCompleted = task.status == .completed

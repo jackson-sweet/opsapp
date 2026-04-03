@@ -33,6 +33,7 @@ struct ProjectDetailsView: View {
     @State private var showNewExpenseSheet = false
     @State private var showingStatusPicker = false
     @State private var showingCameraBatch = false
+    @State private var showingDeckBuilder = false
     @State private var isNoteComposing = false
     @State private var showingTaskPicker = false
     @State private var taskDetailTask: ProjectTask? = nil
@@ -98,6 +99,9 @@ struct ProjectDetailsView: View {
                     }
                     .fullScreenCover(isPresented: $viewModel.showingNotePhotoViewer) {
                         notePhotoViewerContent
+                    }
+                    .fullScreenCover(isPresented: $showingDeckBuilder) {
+                        deckBuilderContent
                     }
                     .sheet(isPresented: $viewModel.showingClientContact) {
                         clientContactSheet
@@ -353,7 +357,8 @@ struct ProjectDetailsView: View {
                         onComplete: { viewModel.toggleTaskStatus() },
                         onReschedule: { viewModel.showingTaskScheduler = true },
                         onContact: { viewModel.showingClientContact = true },
-                        onAddTask: { viewModel.showingAddTaskSheet = true }
+                        onAddTask: { viewModel.showingAddTaskSheet = true },
+                        onDeckDesign: { showingDeckBuilder = true }
                     )
                     .padding(.bottom, 16)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -650,6 +655,21 @@ struct ProjectDetailsView: View {
                 noteSelectedImages = []
             }
         )
+    }
+
+    @ViewBuilder
+    private var deckBuilderContent: some View {
+        if let modelContext = dataController.modelContext {
+            let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
+            let userId = UserDefaults.standard.string(forKey: "currentUserId")
+            let design = DeckDesign(
+                companyId: companyId,
+                projectId: project.id,
+                createdBy: userId
+            )
+            let _ = modelContext.insert(design)
+            DeckBuilderView(deckDesign: design, modelContext: modelContext)
+        }
     }
 
     private var notePhotoViewerContent: some View {

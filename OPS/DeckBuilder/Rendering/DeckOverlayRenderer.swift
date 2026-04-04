@@ -4,6 +4,9 @@ import UIKit
 
 struct DeckOverlayRenderer {
 
+    /// Ratio of overlay width to container width — shared between editor display and compositor
+    static let overlayWidthRatio: CGFloat = 0.6
+
     // MARK: - Railing Type Colors
 
     private static func railingColor(for type: RailingType) -> UIColor {
@@ -208,7 +211,7 @@ struct DeckOverlayRenderer {
 
             // Calculate overlay display size in photo coordinates
             // The overlay was displayed at a size proportional to the display area
-            let overlayDisplayWidth = displaySize.width * 0.6  // overlay takes ~60% of display width
+            let overlayDisplayWidth = displaySize.width * overlayWidthRatio
             let overlayDisplayHeight = overlayDisplayWidth * (overlay.size.height / overlay.size.width)
             let overlayPhotoWidth = overlayDisplayWidth * coordScale
             let overlayPhotoHeight = overlayDisplayHeight * coordScale

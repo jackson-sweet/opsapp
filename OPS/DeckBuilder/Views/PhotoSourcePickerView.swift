@@ -117,27 +117,9 @@ struct PhotoSourcePickerView: View {
         Button {
             loadImageFromURL(urlString)
         } label: {
-            AsyncImage(url: URL(string: urlString)) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                case .failure:
-                    Color(OPSStyle.Colors.cardBackground)
-                        .overlay {
-                            Image(systemName: "photo")
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                case .empty:
-                    Color(OPSStyle.Colors.cardBackground)
-                        .overlay { ProgressView().tint(.white) }
-                @unknown default:
-                    Color(OPSStyle.Colors.cardBackground)
-                }
-            }
-            .frame(width: 80, height: 80)
-            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+            PhotoThumbnail(url: urlString, project: nil)
+                .frame(width: 80, height: 80)
+                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
         }
     }
 

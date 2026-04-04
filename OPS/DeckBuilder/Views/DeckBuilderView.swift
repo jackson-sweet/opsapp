@@ -157,11 +157,12 @@ struct DeckBuilderView: View {
         .fullScreenCover(isPresented: $viewModel.showingPhotoOverlayEditor) {
             if let photo = viewModel.selectedSitePhoto {
                 PhotoOverlayEditorView(
-                    sitePhoto: photo,
+                    initialSitePhoto: photo,
                     drawingData: viewModel.drawingData,
                     projectId: viewModel.deckDesign.projectId,
                     companyId: viewModel.deckDesign.companyId,
                     userId: viewModel.deckDesign.createdBy,
+                    deckTitle: viewModel.deckDesign.title,
                     onSave: { state in
                         viewModel.savePhotoOverlayState(state)
                         viewModel.showingPhotoOverlayEditor = false

@@ -4,13 +4,18 @@ import SwiftUI
 import Supabase
 
 struct PhotoOverlayEditorView: View {
-    let sitePhoto: UIImage
+    let initialSitePhoto: UIImage
     let drawingData: DeckDrawingData
     let projectId: String?
     let companyId: String
     let userId: String?
+    let deckTitle: String
     let onSave: (PhotoOverlayState) -> Void
     let onDismiss: () -> Void
+
+    // MARK: - Photo State
+
+    @State private var currentPhoto: UIImage?
 
     // MARK: - Gesture State (using @State per OPS pattern, NOT @GestureState)
 
@@ -32,6 +37,15 @@ struct PhotoOverlayEditorView: View {
     @State private var showingShareSheet: Bool = false
     @State private var compositeImage: UIImage?
     @State private var photoDisplaySize: CGSize = .zero
+    @State private var saveError: String?
+
+    // MARK: - Retake Photo
+
+    @State private var showingRetakePhotoPicker: Bool = false
+
+    private var sitePhoto: UIImage {
+        currentPhoto ?? initialSitePhoto
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -96,6 +110,47 @@ struct PhotoOverlayEditorView: View {
                 ActivityView(items: [image])
             }
         }
+        .sheet(isPresented: $showingRetakePhotoPicker) {
+            PhotoSourcePickerView(
+                projectId: projectId,
+                onPhotoSelected: { photo in
+                    currentPhoto = photo
+                    showingRetakePhotoPicker = false
+                    resetPosition()
+                    // Recompute display size on next layout pass
+                    photoDisplaySize = .zero
+                }
+            )
+        }
+        // Error toast
+        .overlay(alignment: .bottom) {
+            if let error = saveError {
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.errorStatus)
+
+                    Text(error)
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity)
+                .background(OPSStyle.Colors.errorStatus.opacity(0.15))
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.bottom, 100)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .onAppear {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(5))
+                        withAnimation { saveError = nil }
+                    }
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: saveError)
     }
 
     // MARK: - Top Bar
@@ -174,7 +229,7 @@ struct PhotoOverlayEditorView: View {
             // Action buttons
             HStack {
                 Button {
-                    onDismiss()
+                    showingRetakePhotoPicker = true
                 } label: {
                     Text("Retake Photo")
                         .font(OPSStyle.Typography.caption)
@@ -298,7 +353,7 @@ struct PhotoOverlayEditorView: View {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch {
             print("[PhotoOverlayEditor] Failed to save composite: \(error)")
-            isSaving = false
+            saveError = "Save failed \u{2014} check your connection and try again."
         }
     }
 
@@ -353,7 +408,7 @@ struct PhotoOverlayEditorView: View {
 
     private func overlayDisplaySize(in containerSize: CGSize) -> CGSize {
         guard let overlay = overlayImage else { return .zero }
-        let maxWidth = containerSize.width * 0.6
+        let maxWidth = containerSize.width * DeckOverlayRenderer.overlayWidthRatio
         let aspectRatio = overlay.size.height / overlay.size.width
         return CGSize(width: maxWidth, height: maxWidth * aspectRatio)
     }
@@ -386,7 +441,7 @@ struct PhotoOverlayEditorView: View {
             url: url,
             source: "deck_design",
             uploaded_by: uploadedBy,
-            caption: "Deck overlay",
+            caption: "Deck overlay \u{2014} \(deckTitle)",
             is_client_visible: true
         )
 

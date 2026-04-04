@@ -5,6 +5,7 @@ import SwiftUI
 import SwiftData
 import Supabase
 import UIKit
+import Combine
 
 @MainActor
 class DeckBuilderViewModel: ObservableObject {
@@ -31,9 +32,36 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var editingEdgeId: String?
     @Published var editingVertexId: String?
 
+    // MARK: - Estimate & Share
+
+    @Published var showingEstimatePreview: Bool = false
+    @Published var showingShareOptions: Bool = false
+    @Published var estimateCreated: Bool = false
+    @Published var createdEstimateNumber: String?
+    @Published var createdEstimateId: String?
+    @Published var isGeneratingEstimate: Bool = false
+    @Published var shareImage: UIImage?
+    @Published var sharePDFData: Data?
+    @Published var showingShareSheet: Bool = false
+
     // MARK: - Assignment Wheel
 
     @Published var activeAssignment: AssignedItem?
+
+    // MARK: - Laser Meter
+
+    @Published var isLaserConnected: Bool = false
+    @Published var bufferedMeasurement: LaserMeasurement?
+    @Published var showMeasurementToast: Bool = false
+    @Published var measurementToastText: String = ""
+    @Published var showLaserErrorToast: Bool = false
+    @Published var laserErrorText: String = ""
+    @Published var showDisconnectToast: Bool = false
+    @Published var disconnectToastText: String = ""
+    private var laserCancellables = Set<AnyCancellable>()
+    private var bufferTimer: Timer?
+    private var errorTimer: Timer?
+    private var disconnectTimer: Timer?
 
     // MARK: - Undo/Redo
 
@@ -67,6 +95,7 @@ class DeckBuilderViewModel: ObservableObject {
         self.deckDesign = deckDesign
         self.modelContext = modelContext
         self.drawingData = deckDesign.drawingData
+        setupLaserSubscription()
     }
 
     // MARK: - Undo/Redo
@@ -215,6 +244,9 @@ class DeckBuilderViewModel: ObservableObject {
             selection.toggleEdge(edgeId)
             editingEdgeId = edgeId
             hapticLight()
+
+            // Apply buffered laser measurement if available
+            applyBufferedMeasurementIfNeeded(toEdge: edgeId)
             return
         }
 
@@ -540,6 +572,226 @@ class DeckBuilderViewModel: ObservableObject {
             .from("project_photos")
             .insert(insert)
             .execute()
+    }
+
+    // MARK: - Laser Meter Integration
+
+    private func setupLaserSubscription() {
+        let service = LaserMeterService.shared
+
+        // Track connection state
+        service.$connectionState
+            .receive(on: DispatchQueue.main)
+            .map { $0 == .connected }
+            .sink { [weak self] connected in
+                self?.isLaserConnected = connected
+            }
+            .store(in: &laserCancellables)
+
+        // Subscribe to measurements
+        service.$latestMeasurement
+            .receive(on: DispatchQueue.main)
+            .compactMap { $0 }
+            .sink { [weak self] measurement in
+                self?.handleLaserMeasurement(measurement)
+            }
+            .store(in: &laserCancellables)
+
+        // Subscribe to measurement errors (Fix #2)
+        service.$measurementError
+            .receive(on: DispatchQueue.main)
+            .compactMap { $0 }
+            .sink { [weak self] error in
+                self?.handleLaserError(error)
+            }
+            .store(in: &laserCancellables)
+
+        // Subscribe to disconnect/reconnect events (Fix #3)
+        service.$connectionState
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                self?.handleConnectionStateChange(state)
+            }
+            .store(in: &laserCancellables)
+    }
+
+    private func handleLaserMeasurement(_ measurement: LaserMeasurement) {
+        // If a single edge is selected, apply immediately
+        if selection.selectedEdgeIds.count == 1, let edgeId = selection.selectedEdgeIds.first {
+            setEdgeDimension(edgeId, inches: measurement.inches, source: .laser)
+            hapticLight()
+            return
+        }
+
+        // No edge selected — buffer the measurement for 5 seconds
+        bufferedMeasurement = measurement
+        let formatted = DimensionEngine.format(measurement.inches, system: drawingData.config.measurementSystem)
+        measurementToastText = "\(formatted) received — tap an edge to apply"
+        showMeasurementToast = true
+
+        bufferTimer?.invalidate()
+        bufferTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.bufferedMeasurement = nil
+                self?.showMeasurementToast = false
+            }
+        }
+    }
+
+    func applyBufferedMeasurementIfNeeded(toEdge edgeId: String) {
+        if let buffered = bufferedMeasurement {
+            setEdgeDimension(edgeId, inches: buffered.inches, source: .laser)
+            bufferedMeasurement = nil
+            showMeasurementToast = false
+            bufferTimer?.invalidate()
+            hapticLight()
+        }
+    }
+
+    private func handleLaserError(_ error: String) {
+        laserErrorText = error
+        showLaserErrorToast = true
+
+        // Clear the error on the service so it doesn't re-fire
+        LaserMeterService.shared.measurementError = nil
+
+        errorTimer?.invalidate()
+        errorTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.showLaserErrorToast = false
+            }
+        }
+    }
+
+    private func handleConnectionStateChange(_ state: LaserConnectionState) {
+        switch state {
+        case .reconnecting:
+            disconnectToastText = "Laser disconnected — reconnecting..."
+            showDisconnectToast = true
+
+            // Auto-dismiss after 10 seconds if still reconnecting
+            disconnectTimer?.invalidate()
+            disconnectTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self = self, self.showDisconnectToast else { return }
+                    self.disconnectToastText = "Reconnection failed"
+                    // Dismiss after 2 more seconds
+                    self.disconnectTimer?.invalidate()
+                    self.disconnectTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+                        Task { @MainActor in
+                            self?.showDisconnectToast = false
+                        }
+                    }
+                }
+            }
+
+        case .connected:
+            if showDisconnectToast {
+                // Connection restored — brief confirmation then dismiss
+                disconnectToastText = "Laser reconnected"
+                disconnectTimer?.invalidate()
+                disconnectTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
+                    Task { @MainActor in
+                        self?.showDisconnectToast = false
+                    }
+                }
+            }
+
+        default:
+            break
+        }
+    }
+
+    // MARK: - Estimate & Share
+
+    var canGenerateEstimate: Bool {
+        EstimateGeneratorService.hasAssignments(drawingData) &&
+        drawingData.edges.contains(where: { $0.dimension != nil })
+    }
+
+    func generateEstimate() async {
+        guard !isGeneratingEstimate else { return }
+        isGeneratingEstimate = true
+        defer { isGeneratingEstimate = false }
+
+        let lineItems = EstimateGeneratorService.generateLineItems(from: drawingData)
+        guard !lineItems.isEmpty else { return }
+
+        let repo = EstimateRepository(companyId: deckDesign.companyId)
+
+        // Build estimate title
+        let title = "Deck Estimate \u{2014} \(deckDesign.title)"
+
+        // AR accuracy note for internal notes
+        let arNote = EstimateGeneratorService.arAccuracyNote(from: drawingData)
+
+        let dto = CreateEstimateDTO(
+            companyId: deckDesign.companyId,
+            projectId: deckDesign.projectId,
+            clientId: nil,
+            title: title,
+            notes: arNote
+        )
+
+        do {
+            let created = try await repo.create(dto)
+
+            // Add each line item
+            for item in lineItems {
+                let lineDTO = CreateLineItemDTO(
+                    estimateId: created.id,
+                    productId: item.productId,
+                    name: item.name,
+                    description: item.description ?? item.name,
+                    quantity: item.quantity,
+                    unitPrice: item.unitPrice,
+                    unit: item.unit,
+                    sortOrder: item.sortOrder,
+                    isOptional: item.isOptional,
+                    taskTypeId: nil,
+                    type: item.type.rawValue
+                )
+                _ = try await repo.addLineItem(lineDTO)
+            }
+
+            createdEstimateNumber = created.estimateNumber
+            createdEstimateId = created.id
+            estimateCreated = true
+            hapticSuccess()
+
+            // Auto-dismiss success toast after 5 seconds
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(5))
+                estimateCreated = false
+            }
+        } catch {
+            print("[DeckBuilder] Failed to create estimate: \(error)")
+        }
+    }
+
+    func prepareShareImage() async {
+        guard let image = DeckShareRenderer.renderShareImage(
+            drawingData: drawingData,
+            title: deckDesign.title,
+            clientName: nil
+        ) else { return }
+        shareImage = image
+        showingShareSheet = true
+    }
+
+    func prepareSharePDF() async {
+        guard let data = DeckShareRenderer.renderPDF(
+            drawingData: drawingData,
+            title: deckDesign.title,
+            clientName: nil,
+            companyName: nil
+        ) else { return }
+        sharePDFData = data
+        showingShareSheet = true
+    }
+
+    func materialSummaryText() -> String {
+        EstimateGeneratorService.materialSummary(from: drawingData)
     }
 
     // MARK: - Helpers

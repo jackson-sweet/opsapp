@@ -10,8 +10,8 @@ struct LevelConnectionSheet: View {
     @State private var lowerLevelIndex: Int = 1
     @State private var selectedEdgeId: String?
     @State private var stairWidthInches: Double = 48  // 4 feet default
-    @State private var showElevationWarning: Bool = false
-    @State private var elevationWarningLevelName: String = ""
+    @State private var elevationInputText: String = ""
+    @State private var elevationInputLevelIndex: Int?
 
     private var levels: [DeckLevel] { viewModel.drawingData.levels }
 
@@ -50,11 +50,11 @@ struct LevelConnectionSheet: View {
                     // Level selectors
                     levelPickerSection
 
-                    // Elevation warning
+                    // Elevation warning with inline input
                     if let upper = upperLevel, upper.elevation == nil {
-                        elevationWarningBanner(levelName: upper.name)
+                        elevationInputSection(levelName: upper.name, levelIndex: upperLevelIndex)
                     } else if let lower = lowerLevel, lower.elevation == nil {
-                        elevationWarningBanner(levelName: lower.name)
+                        elevationInputSection(levelName: lower.name, levelIndex: lowerLevelIndex)
                     }
 
                     // Edge picker (only if upper level has edges)
@@ -272,18 +272,49 @@ struct LevelConnectionSheet: View {
         }
     }
 
-    // MARK: - Elevation Warning
+    // MARK: - Elevation Input
 
-    private func elevationWarningBanner(levelName: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(OPSStyle.Colors.warningStatus)
-            Text("Set elevation for \(levelName) to calculate stairs")
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.warningStatus)
+    private func elevationInputSection(levelName: String, levelIndex: Int) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
+                Text("Set elevation for \(levelName)")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
+            }
+
+            HStack(spacing: 8) {
+                TextField("Height in feet", text: $elevationInputText)
+                    .keyboardType(.decimalPad)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(OPSStyle.Colors.cardBackground)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+
+                Text("ft")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Button {
+                    guard let feet = Double(elevationInputText), feet > 0 else { return }
+                    viewModel.setLevelElevation(at: levelIndex, elevation: feet)
+                    elevationInputText = ""
+                } label: {
+                    Text("Set")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(OPSStyle.Colors.primaryAccent)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                }
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(OPSStyle.Colors.warningStatus.opacity(0.1))
         .cornerRadius(OPSStyle.Layout.cornerRadius)

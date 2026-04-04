@@ -114,6 +114,35 @@ final class MultiLevelTests: XCTestCase {
         XCTAssertEqual(data.levels[0].name, "Level 1")
     }
 
+    func testAllEdges_multiLevel() {
+        var data = DeckDrawingData()
+        var l1 = DeckLevel(name: "L1")
+        l1.edges = [
+            DeckEdge(startVertexId: "v1", endVertexId: "v2"),
+            DeckEdge(startVertexId: "v2", endVertexId: "v3"),
+        ]
+        var l2 = DeckLevel(name: "L2")
+        l2.edges = [
+            DeckEdge(startVertexId: "v4", endVertexId: "v5"),
+        ]
+        data.levels = [l1, l2]
+        XCTAssertEqual(data.allEdges.count, 3) // 2 from L1 + 1 from L2
+    }
+
+    func testDeckLevel_isClosed_openPolygon() {
+        var level = DeckLevel(name: "Test")
+        let v1 = DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0))
+        let v2 = DeckVertex(id: "v2", position: CGPoint(x: 100, y: 0))
+        let v3 = DeckVertex(id: "v3", position: CGPoint(x: 100, y: 100))
+        level.vertices = [v1, v2, v3]
+        level.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2"),
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+        ]
+        // Open polygon: 3 vertices but only 2 edges (no closing edge)
+        XCTAssertFalse(level.isClosed)
+    }
+
     // MARK: - LevelConnection
 
     func testLevelConnection_stairCalcFromElevation() {

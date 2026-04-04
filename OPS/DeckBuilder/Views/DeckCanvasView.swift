@@ -439,14 +439,10 @@ struct DeckCanvasView: View {
         let midX = (startVertex.position.x + currentEnd.x) / 2
         let midY = (startVertex.position.y + currentEnd.y) / 2
 
-        // Dimension text (if scale is set)
-        let dimText: String?
-        if let scale = viewModel.drawingData.scaleFactor, scale > 0 {
-            let inches = distance / scale
-            dimText = DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
-        } else {
-            dimText = nil
-        }
+        // Dimension text — always show length. Use real scale if set, else 1pt = 1"
+        let scale = viewModel.drawingData.scaleFactor ?? 1.0
+        let inches = distance / max(scale, 0.001)
+        let dimText = DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
 
         // Angle text: relative to connected edge if one exists, otherwise absolute
         let activeEdges = viewModel.isMultiLevel
@@ -476,7 +472,7 @@ struct DeckCanvasView: View {
             angleText = String(format: "%.0f°", absolute)
         }
 
-        let label = dimText != nil ? "\(dimText!) · \(angleText)" : angleText
+        let label = "\(dimText) · \(angleText)"
 
         context.draw(
             Text(label)

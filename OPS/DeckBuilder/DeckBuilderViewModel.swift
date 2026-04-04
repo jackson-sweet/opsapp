@@ -35,6 +35,7 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - 3D Mode
 
     @Published var is3DMode: Bool = false
+    @Published var showingARVisualization: Bool = false
 
     var can3DMode: Bool {
         if isMultiLevel {
@@ -42,6 +43,8 @@ class DeckBuilderViewModel: ObservableObject {
         }
         return drawingData.vertices.count >= 3 && drawingData.isClosed
     }
+
+    var canViewInAR: Bool { can3DMode }
 
     // MARK: - Photo Overlay
 

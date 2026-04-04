@@ -82,6 +82,24 @@ struct DeckToolbar: View {
             }
             .disabled(!viewModel.canShowOverlay)
 
+            // View in AR
+            Button {
+                viewModel.showingARVisualization = true
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            } label: {
+                VStack(spacing: 4) {
+                    Image(systemName: "arkit")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(viewModel.canViewInAR ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+
+                    Text("AR")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(viewModel.canViewInAR ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                }
+                .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
+            }
+            .disabled(!viewModel.canViewInAR)
+
             // BLE laser indicator (only when connected)
             if viewModel.isLaserConnected {
                 Image(systemName: "antenna.radiowaves.left.and.right")

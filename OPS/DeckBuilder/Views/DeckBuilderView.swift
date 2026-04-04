@@ -166,6 +166,9 @@ struct DeckBuilderView: View {
                 showingARPerimeter = false
             }
         }
+        .fullScreenCover(isPresented: $viewModel.showingARVisualization) {
+            ARVisualizationView(drawingData: viewModel.drawingData)
+        }
         // Photo source picker
         .sheet(isPresented: $viewModel.showingPhotoSourcePicker) {
             PhotoSourcePickerView(

@@ -12,7 +12,7 @@ struct DeckBuilderView: View {
     @State private var showingARPerimeter = false
     @State private var hideVerifiedBanner = false
     @State private var showingEstimateDetail = false
-    @State private var scene3DCoordinator: DeckScene3DView.Coordinator?
+    @StateObject private var scene3DController = Scene3DController()
     @State private var showing3DScreenshotShare = false
     @State private var screenshotImage: UIImage?
     @StateObject private var estimateVM = EstimateViewModel()
@@ -41,12 +41,13 @@ struct DeckBuilderView: View {
 
             if viewModel.is3DMode {
                 // 3D perspective view
-                DeckScene3DView(drawingData: viewModel.drawingData)
-                    .onAppear { scene3DCoordinator = DeckScene3DView.Coordinator() }
+                DeckScene3DView(drawingData: viewModel.drawingData, controller: scene3DController)
+                    .transition(.opacity)
 
                 CameraPresetBar { preset in
-                    scene3DCoordinator?.setCameraPreset(preset, drawingData: viewModel.drawingData)
+                    scene3DController.setCameraPreset(preset)
                 }
+                .transition(.opacity)
             } else {
                 // Level tab bar (multi-level mode)
                 if viewModel.isMultiLevel || viewModel.drawingData.vertices.count >= 3 {
@@ -336,7 +337,14 @@ struct DeckBuilderView: View {
             }
 
             // 2D/3D toggle
-            Picker("View Mode", selection: $viewModel.is3DMode) {
+            Picker("View Mode", selection: Binding(
+                get: { viewModel.is3DMode },
+                set: { newValue in
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        viewModel.is3DMode = newValue
+                    }
+                }
+            )) {
                 Image(systemName: "square.grid.2x2").tag(false)
                 Image(systemName: "cube").tag(true)
             }
@@ -349,7 +357,7 @@ struct DeckBuilderView: View {
             if viewModel.is3DMode {
                 // Screenshot button in 3D mode
                 Button {
-                    if let screenshot = scene3DCoordinator?.captureScreenshot() {
+                    if let screenshot = scene3DController.captureScreenshot() {
                         screenshotImage = screenshot
                         showing3DScreenshotShare = true
                     }

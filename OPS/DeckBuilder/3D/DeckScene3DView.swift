@@ -3,82 +3,85 @@
 import SwiftUI
 import SceneKit
 
+// MARK: - Scene Controller (shared between 3D view and parent)
+
+@MainActor
+class Scene3DController: ObservableObject {
+    fileprivate var scnView: SCNView?
+    fileprivate var scene: SCNScene?
+    fileprivate var lastDrawingJSON: String = ""
+
+    func setCameraPreset(_ preset: CameraPreset) {
+        guard let scnView = scnView, let scene = scene else { return }
+
+        let (minBound, maxBound) = scene.rootNode.boundingBox
+        let centerX = (minBound.x + maxBound.x) / 2
+        let centerY = (minBound.y + maxBound.y) / 2
+        let centerZ = (minBound.z + maxBound.z) / 2
+        let spanX = maxBound.x - minBound.x
+        let spanZ = maxBound.z - minBound.z
+        let maxSpan = max(spanX, spanZ) * 1.2
+        let distance = max(maxSpan * 2.0, 3.0)
+
+        let azimuthRad = preset.azimuth * .pi / 180.0
+        let elevationRad = preset.elevation * .pi / 180.0
+
+        let camX = centerX + distance * cos(elevationRad) * sin(azimuthRad)
+        let camY = centerY + distance * sin(elevationRad)
+        let camZ = centerZ + distance * cos(elevationRad) * cos(azimuthRad)
+
+        SCNTransaction.begin()
+        SCNTransaction.animationDuration = 0.5
+
+        scnView.pointOfView?.position = SCNVector3(camX, camY, camZ)
+        scnView.pointOfView?.look(at: SCNVector3(centerX, centerY, centerZ))
+
+        SCNTransaction.commit()
+    }
+
+    func captureScreenshot() -> UIImage? {
+        scnView?.snapshot()
+    }
+}
+
+// MARK: - 3D View
+
 struct DeckScene3DView: UIViewRepresentable {
     let drawingData: DeckDrawingData
-    let onScreenshot: ((UIImage) -> Void)?
-
-    // Coordinator holds the SCNView reference for camera presets + screenshots
-    class Coordinator {
-        var scnView: SCNView?
-        var scene: SCNScene?
-
-        func setCameraPreset(_ preset: CameraPreset, drawingData: DeckDrawingData) {
-            guard let scnView = scnView, let scene = scene else { return }
-
-            // Find bounding box center from scene
-            let (minBound, maxBound) = scene.rootNode.boundingBox
-            let centerX = (minBound.x + maxBound.x) / 2
-            let centerY = (minBound.y + maxBound.y) / 2
-            let centerZ = (minBound.z + maxBound.z) / 2
-            let spanX = maxBound.x - minBound.x
-            let spanZ = maxBound.z - minBound.z
-            let maxSpan = max(spanX, spanZ) * 1.2
-            let distance = max(maxSpan * 2.0, 3.0)
-
-            let azimuthRad = preset.azimuth * .pi / 180.0
-            let elevationRad = preset.elevation * .pi / 180.0
-
-            let camX = centerX + distance * cos(elevationRad) * sin(azimuthRad)
-            let camY = centerY + distance * sin(elevationRad)
-            let camZ = centerZ + distance * cos(elevationRad) * cos(azimuthRad)
-
-            SCNTransaction.begin()
-            SCNTransaction.animationDuration = 0.5
-
-            scnView.pointOfView?.position = SCNVector3(camX, camY, camZ)
-            scnView.pointOfView?.look(at: SCNVector3(centerX, centerY, centerZ))
-
-            SCNTransaction.commit()
-        }
-
-        func captureScreenshot() -> UIImage? {
-            scnView?.snapshot()
-        }
-    }
-
-    init(drawingData: DeckDrawingData, onScreenshot: ((UIImage) -> Void)? = nil) {
-        self.drawingData = drawingData
-        self.onScreenshot = onScreenshot
-    }
+    let controller: Scene3DController
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
+
+    class Coordinator {}
 
     func makeUIView(context: Context) -> SCNView {
         let scnView = SCNView()
         scnView.allowsCameraControl = true
         scnView.autoenablesDefaultLighting = false
         scnView.antialiasingMode = .multisampling4X
-        scnView.backgroundColor = UIColor(red: 10/255, green: 10/255, blue: 10/255, alpha: 1) // OPS background
+        scnView.backgroundColor = UIColor(red: 10/255, green: 10/255, blue: 10/255, alpha: 1)
         scnView.preferredFramesPerSecond = 60
 
         let scene = DeckSceneBuilder.buildScene(from: drawingData)
         scnView.scene = scene
 
-        // Set the camera as point of view
         if let cameraNode = scene.rootNode.childNode(withName: "camera", recursively: true) {
             scnView.pointOfView = cameraNode
         }
 
-        context.coordinator.scnView = scnView
-        context.coordinator.scene = scene
+        controller.scnView = scnView
+        controller.scene = scene
+        controller.lastDrawingJSON = drawingData.toJSON()
 
         return scnView
     }
 
     func updateUIView(_ uiView: SCNView, context: Context) {
-        // Rebuild scene when drawing data changes
+        let currentJSON = drawingData.toJSON()
+        guard currentJSON != controller.lastDrawingJSON else { return }
+
         let scene = DeckSceneBuilder.buildScene(from: drawingData)
         uiView.scene = scene
 
@@ -86,7 +89,8 @@ struct DeckScene3DView: UIViewRepresentable {
             uiView.pointOfView = cameraNode
         }
 
-        context.coordinator.scene = scene
+        controller.scene = scene
+        controller.lastDrawingJSON = currentJSON
     }
 }
 

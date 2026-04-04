@@ -1,0 +1,293 @@
+// OPS/OPS/DeckBuilder/Rendering/DeckOverlayRenderer.swift
+
+import UIKit
+
+struct DeckOverlayRenderer {
+
+    // MARK: - Railing Type Colors
+
+    private static func railingColor(for type: RailingType) -> UIColor {
+        switch type {
+        case .glass:      return UIColor(red: 0.4, green: 0.6, blue: 0.9, alpha: 1)
+        case .picket:     return UIColor(red: 0.7, green: 0.7, blue: 0.7, alpha: 1)
+        case .cable:      return UIColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 1)
+        case .horizontal: return UIColor(red: 0.6, green: 0.5, blue: 0.3, alpha: 1)
+        case .wood:       return UIColor(red: 0.5, green: 0.35, blue: 0.2, alpha: 1)
+        }
+    }
+
+    // MARK: - Dimension Label Attributes
+
+    private static func dimensionLabelAttributes(fontSize: CGFloat = 14) -> [NSAttributedString.Key: Any] {
+        let shadow = NSShadow()
+        shadow.shadowOffset = CGSize(width: 1, height: 1)
+        shadow.shadowBlurRadius = 2
+        shadow.shadowColor = UIColor.black.withAlphaComponent(0.8)
+
+        return [
+            .font: UIFont.systemFont(ofSize: fontSize, weight: .semibold),
+            .foregroundColor: UIColor.white,
+            .shadow: shadow
+        ]
+    }
+
+    // MARK: - Render Overlay
+
+    /// Renders the deck drawing as a transparent UIImage for overlay compositing.
+    /// - Parameters:
+    ///   - drawingData: The deck drawing data
+    ///   - fillOpacity: Fill opacity for the footprint (0.1 to 0.8)
+    ///   - size: Output image size in points
+    /// - Returns: Transparent UIImage with the deck overlay
+    static func renderOverlay(
+        drawingData: DeckDrawingData,
+        fillOpacity: Double,
+        size: CGSize = CGSize(width: 1000, height: 1000)
+    ) -> UIImage? {
+        let positions = drawingData.orderedPositions
+        guard !positions.isEmpty else { return nil }
+
+        let bounds = boundingRect(for: positions)
+        guard bounds.width > 0, bounds.height > 0 else { return nil }
+
+        let padding: CGFloat = 80
+        let availableSize = CGSize(
+            width: size.width - padding * 2,
+            height: size.height - padding * 2
+        )
+
+        let scaleX = availableSize.width / bounds.width
+        let scaleY = availableSize.height / bounds.height
+        let fitScale = min(scaleX, scaleY)
+
+        let offsetX = padding + (availableSize.width - bounds.width * fitScale) / 2 - bounds.origin.x * fitScale
+        let offsetY = padding + (availableSize.height - bounds.height * fitScale) / 2 - bounds.origin.y * fitScale
+
+        func transform(_ point: CGPoint) -> CGPoint {
+            CGPoint(x: point.x * fitScale + offsetX, y: point.y * fitScale + offsetY)
+        }
+
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { ctx in
+            let gc = ctx.cgContext
+
+            // Transparent background (no fill)
+
+            // 1. Footprint fill at user-adjustable opacity
+            if drawingData.isClosed && positions.count >= 3 {
+                let fillColor = UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: CGFloat(fillOpacity))
+                gc.setFillColor(fillColor.cgColor)
+                gc.beginPath()
+                gc.move(to: transform(positions[0]))
+                for i in 1..<positions.count {
+                    gc.addLine(to: transform(positions[i]))
+                }
+                gc.closePath()
+                gc.fillPath()
+            }
+
+            // 2. Draw edges
+            for edge in drawingData.edges {
+                guard let start = drawingData.vertex(byId: edge.startVertexId),
+                      let end = drawingData.vertex(byId: edge.endVertexId) else { continue }
+                let p1 = transform(start.position)
+                let p2 = transform(end.position)
+
+                // House edges: dashed white line
+                if edge.edgeType == .houseEdge {
+                    gc.setStrokeColor(UIColor.white.cgColor)
+                    gc.setLineWidth(2.0)
+                    gc.setLineDash(phase: 0, lengths: [8, 4])
+                    gc.beginPath()
+                    gc.move(to: p1)
+                    gc.addLine(to: p2)
+                    gc.strokePath()
+                    gc.setLineDash(phase: 0, lengths: [])
+                    continue
+                }
+
+                // Railing edges: thicker colored stroke underneath
+                if let railingConfig = edge.railingConfig {
+                    gc.setStrokeColor(railingColor(for: railingConfig.railingType).cgColor)
+                    gc.setLineWidth(4.0)
+                    gc.beginPath()
+                    gc.move(to: p1)
+                    gc.addLine(to: p2)
+                    gc.strokePath()
+                }
+
+                // Stair edges: perpendicular tread lines
+                if edge.stairConfig != nil {
+                    drawStairIndicator(gc: gc, from: p1, to: p2)
+                }
+
+                // Standard edge line: white, 2pt
+                gc.setStrokeColor(UIColor.white.cgColor)
+                gc.setLineWidth(2.0)
+                gc.beginPath()
+                gc.move(to: p1)
+                gc.addLine(to: p2)
+                gc.strokePath()
+
+                // Dimension label at midpoint
+                if let dim = edge.dimension {
+                    let midX = (p1.x + p2.x) / 2
+                    let midY = (p1.y + p2.y) / 2
+                    let label = DimensionEngine.format(dim, system: drawingData.config.measurementSystem)
+                    let attrs = dimensionLabelAttributes()
+                    let nsLabel = label as NSString
+                    let labelSize = nsLabel.size(withAttributes: attrs)
+                    nsLabel.draw(
+                        at: CGPoint(x: midX - labelSize.width / 2, y: midY - labelSize.height - 6),
+                        withAttributes: attrs
+                    )
+                }
+            }
+
+            // 3. Area label centered in footprint
+            if drawingData.isClosed,
+               let scale = drawingData.scaleFactor, scale > 0 {
+                let areaSqInches = PolygonMath.realWorldArea(
+                    vertices: positions,
+                    scaleFactor: scale
+                )
+                let areaLabel = DimensionEngine.formatArea(areaSqInches, system: drawingData.config.measurementSystem)
+                let centroid = polygonCentroid(for: positions)
+                let transformedCentroid = transform(centroid)
+                let attrs = dimensionLabelAttributes(fontSize: 18)
+                let nsLabel = areaLabel as NSString
+                let labelSize = nsLabel.size(withAttributes: attrs)
+                nsLabel.draw(
+                    at: CGPoint(
+                        x: transformedCentroid.x - labelSize.width / 2,
+                        y: transformedCentroid.y - labelSize.height / 2
+                    ),
+                    withAttributes: attrs
+                )
+            }
+        }
+
+        return image
+    }
+
+    // MARK: - Composite Overlay on Photo
+
+    /// Composites the deck overlay on top of a site photo with position/scale/rotation transforms.
+    /// - Parameters:
+    ///   - photo: The base site photo
+    ///   - overlay: The pre-rendered transparent deck overlay
+    ///   - offset: Overlay offset in screen points
+    ///   - scale: Overlay scale factor
+    ///   - rotation: Overlay rotation angle
+    ///   - displaySize: The size the photo was displayed at on screen (for coordinate scaling)
+    /// - Returns: Composited image at the photo's original resolution
+    static func compositeOverlayOnPhoto(
+        photo: UIImage,
+        overlay: UIImage,
+        offset: CGSize,
+        scale: CGFloat,
+        rotation: Angle,
+        displaySize: CGSize
+    ) -> UIImage {
+        let photoSize = photo.size
+        let renderer = UIGraphicsImageRenderer(size: photoSize)
+
+        return renderer.image { ctx in
+            let gc = ctx.cgContext
+
+            // Draw photo as base layer
+            photo.draw(in: CGRect(origin: .zero, size: photoSize))
+
+            // Scale from screen coordinates to photo-resolution coordinates
+            let coordScale: CGFloat
+            if displaySize.width > 0 {
+                coordScale = photoSize.width / displaySize.width
+            } else {
+                coordScale = 1.0
+            }
+
+            // Calculate overlay display size in photo coordinates
+            // The overlay was displayed at a size proportional to the display area
+            let overlayDisplayWidth = displaySize.width * 0.6  // overlay takes ~60% of display width
+            let overlayDisplayHeight = overlayDisplayWidth * (overlay.size.height / overlay.size.width)
+            let overlayPhotoWidth = overlayDisplayWidth * coordScale
+            let overlayPhotoHeight = overlayDisplayHeight * coordScale
+
+            // Center position in photo coordinates
+            let centerX = photoSize.width / 2 + offset.width * coordScale
+            let centerY = photoSize.height / 2 + offset.height * coordScale
+
+            // Apply transform: translate to center, rotate, scale
+            gc.saveGState()
+            gc.translateBy(x: centerX, y: centerY)
+            gc.rotate(by: CGFloat(rotation.radians))
+            gc.scaleBy(x: scale, y: scale)
+
+            // Draw overlay centered at origin (which is now the translated center)
+            let drawRect = CGRect(
+                x: -overlayPhotoWidth / 2,
+                y: -overlayPhotoHeight / 2,
+                width: overlayPhotoWidth,
+                height: overlayPhotoHeight
+            )
+            overlay.draw(in: drawRect)
+
+            gc.restoreGState()
+        }
+    }
+
+    // MARK: - Stair Indicator
+
+    private static func drawStairIndicator(gc: CGContext, from p1: CGPoint, to p2: CGPoint) {
+        let dx = p2.x - p1.x
+        let dy = p2.y - p1.y
+        let length = sqrt(dx * dx + dy * dy)
+        guard length > 0 else { return }
+
+        // Perpendicular direction (normalized)
+        let perpX = -dy / length
+        let perpY = dx / length
+        let treadExtent: CGFloat = 8
+
+        // Draw 4 evenly spaced tread lines
+        let treadCount = 4
+        gc.setStrokeColor(UIColor.white.withAlphaComponent(0.7).cgColor)
+        gc.setLineWidth(1.5)
+
+        for i in 1...treadCount {
+            let t = CGFloat(i) / CGFloat(treadCount + 1)
+            let midX = p1.x + dx * t
+            let midY = p1.y + dy * t
+
+            gc.beginPath()
+            gc.move(to: CGPoint(x: midX + perpX * treadExtent, y: midY + perpY * treadExtent))
+            gc.addLine(to: CGPoint(x: midX - perpX * treadExtent, y: midY - perpY * treadExtent))
+            gc.strokePath()
+        }
+    }
+
+    // MARK: - Geometry Helpers
+
+    private static func boundingRect(for points: [CGPoint]) -> CGRect {
+        guard let first = points.first else { return .zero }
+        var minX = first.x, maxX = first.x, minY = first.y, maxY = first.y
+        for p in points.dropFirst() {
+            minX = min(minX, p.x)
+            maxX = max(maxX, p.x)
+            minY = min(minY, p.y)
+            maxY = max(maxY, p.y)
+        }
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    private static func polygonCentroid(for points: [CGPoint]) -> CGPoint {
+        guard !points.isEmpty else { return .zero }
+        let sumX = points.reduce(0.0) { $0 + $1.x }
+        let sumY = points.reduce(0.0) { $0 + $1.y }
+        return CGPoint(x: sumX / CGFloat(points.count), y: sumY / CGFloat(points.count))
+    }
+}
+
+// MARK: - Angle (used by compositor without SwiftUI dependency)
+
+import SwiftUI

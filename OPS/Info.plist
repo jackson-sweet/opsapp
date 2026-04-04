@@ -26,9 +26,9 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>OPS uses your location to suggest nearby addresses when entering client information, making it faster and easier to add accurate address details.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>OPS uses the microphone to transcribe voice notes for activity logging.</string>
+	<string>OPS uses the microphone to transcribe voice notes and speak deck dimensions hands-free while measuring.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>OPS uses speech recognition to convert your voice into text for quick activity logging.</string>
+	<string>OPS uses speech recognition to convert your voice into text for activity logging and deck dimension entry.</string>
 	<key>AWS_ACCESS_KEY_ID</key>
 	<string>$(AWS_ACCESS_KEY_ID)</string>
 	<key>AWS_SECRET_ACCESS_KEY</key>

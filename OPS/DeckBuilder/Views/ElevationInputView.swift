@@ -10,6 +10,8 @@ struct ElevationInputView: View {
     @State private var overallHeightText: String = ""
     @State private var perVertexHeights: [String: String] = [:]
     @FocusState private var focusedField: String?
+    @State private var showingARHeight = false
+    @State private var arHeightTargetVertexId: String?
 
     enum ElevationMode: String {
         case overall = "Level (uniform)"
@@ -51,6 +53,21 @@ struct ElevationInputView: View {
             }
         }
         .presentationDetents([.medium])
+        .fullScreenCover(isPresented: $showingARHeight) {
+            ARHeightMeasureView { heightInches, accuracyPercent in
+                let heightFeet = heightInches / 12.0
+                if let vertexId = arHeightTargetVertexId {
+                    // Per-vertex elevation
+                    perVertexHeights[vertexId] = String(format: "%.1f", heightFeet)
+                    viewModel.setVertexElevation(vertexId, elevation: heightFeet, source: .ar)
+                } else {
+                    // Overall elevation
+                    overallHeightText = String(format: "%.1f", heightFeet)
+                    viewModel.setOverallElevation(heightFeet)
+                }
+                showingARHeight = false
+            }
+        }
         .onAppear {
             if let height = viewModel.drawingData.overallElevation {
                 overallHeightText = String(format: "%.1f", height)
@@ -91,6 +108,23 @@ struct ElevationInputView: View {
             .padding(16)
             .background(OPSStyle.Colors.cardBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+
+            // AR height measurement
+            Button {
+                arHeightTargetVertexId = nil  // nil = overall height
+                showingARHeight = true
+            } label: {
+                HStack {
+                    Image(systemName: "camera.viewfinder")
+                    Text("Record with AR")
+                }
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(OPSStyle.Colors.cardBackground)
+                .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+            }
 
             // Quick presets
             HStack(spacing: 12) {
@@ -140,14 +174,13 @@ struct ElevationInputView: View {
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                    // AR button stub (Phase 4)
                     Button {
-                        // Stub — Phase 4 will implement AR elevation recording
+                        arHeightTargetVertexId = vertex.id
+                        showingARHeight = true
                     } label: {
                         Image(systemName: "camera.viewfinder")
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
-                    .disabled(true)
                 }
                 .padding(12)
                 .background(OPSStyle.Colors.cardBackground)

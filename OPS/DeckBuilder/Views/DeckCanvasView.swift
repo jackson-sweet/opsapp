@@ -26,7 +26,7 @@ struct DeckCanvasView: View {
 
                 // Transformed canvas content
                 canvasContent(size: geometry.size)
-                    .scaleEffect(canvasScale)
+                    .scaleEffect(canvasScale, anchor: .topLeading)
                     .offset(canvasOffset)
 
                 // Selection overlay (marquee rect)
@@ -138,7 +138,7 @@ struct DeckCanvasView: View {
             let cy = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
             context.draw(
                 Text(level.name)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(level.displayColor.swiftUIColor.opacity(0.5)),
                 at: CGPoint(x: cx, y: cy)
             )
@@ -220,7 +220,7 @@ struct DeckCanvasView: View {
         let labelY = (p1.y + p3.y) / 2
         context.draw(
             Text("\(treadCount) treads")
-                .font(.system(size: 10, weight: .semibold))
+                .font(OPSStyle.Typography.miniLabel)
                 .foregroundColor(stairColor),
             at: CGPoint(x: labelX, y: labelY)
         )
@@ -298,7 +298,7 @@ struct DeckCanvasView: View {
         // "Pool" label at center
         context.draw(
             Text("Pool")
-                .font(.system(size: 12, weight: .medium))
+                .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6)),
             at: CGPoint(x: centerX, y: centerY)
         )
@@ -401,19 +401,25 @@ struct DeckCanvasView: View {
 
         // Live dimension label
         let distance = SnapEngine.distance(startVertex.position, currentEnd)
+        let midX = (startVertex.position.x + currentEnd.x) / 2
+        let midY = (startVertex.position.y + currentEnd.y) / 2
+
+        let label: String
         if let scale = viewModel.drawingData.scaleFactor, scale > 0 {
             let inches = distance / scale
-            let label = DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
-            let midX = (startVertex.position.x + currentEnd.x) / 2
-            let midY = (startVertex.position.y + currentEnd.y) / 2
-
-            context.draw(
-                Text(label)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent),
-                at: CGPoint(x: midX, y: midY - 16)
-            )
+            label = DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
+        } else {
+            // No scale set yet — show angle to give the user spatial feedback
+            let angle = SnapEngine.lineAngle(from: startVertex.position, to: currentEnd)
+            label = String(format: "%.0f°", angle)
         }
+
+        context.draw(
+            Text(label)
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryAccent),
+            at: CGPoint(x: midX, y: midY - 16)
+        )
     }
 
     // MARK: - Vertices
@@ -454,7 +460,7 @@ struct DeckCanvasView: View {
             let label = DimensionEngine.formatImperial(elevation * 12) // feet → inches for formatting
             context.draw(
                 Text(label)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(OPSStyle.Typography.miniLabel)
                     .foregroundColor(OPSStyle.Colors.primaryAccent),
                 at: CGPoint(x: vertex.position.x, y: vertex.position.y + radius + 12)
             )
@@ -492,7 +498,7 @@ struct DeckCanvasView: View {
         let labelColor: Color = hasAccuracy ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent
         context.draw(
             Text(label)
-                .font(.system(size: 12, weight: .semibold))
+                .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(labelColor),
             at: CGPoint(x: midX, y: midY - 14)
         )
@@ -506,7 +512,7 @@ struct DeckCanvasView: View {
             )
             context.draw(
                 Text(accLabel)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(OPSStyle.Typography.miniLabel)
                     .foregroundColor(OPSStyle.Colors.warningStatus),
                 at: CGPoint(x: midX, y: midY - 2)
             )
@@ -514,7 +520,7 @@ struct DeckCanvasView: View {
             // AR source but manually verified — show checkmark
             context.draw(
                 Text("AR ✓")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(OPSStyle.Typography.miniLabel)
                     .foregroundColor(OPSStyle.Colors.successStatus),
                 at: CGPoint(x: midX + CGFloat(textSize) / 2 + 14, y: midY - 14)
             )
@@ -549,12 +555,12 @@ struct DeckCanvasView: View {
     @ViewBuilder
     private func dimensionInfoBar(area: Double) -> some View {
         VStack {
-            HStack(spacing: 16) {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
                 Label(
                     DimensionEngine.formatArea(area, system: viewModel.drawingData.config.measurementSystem),
                     systemImage: "square.dashed"
                 )
-                .font(.system(size: 14, weight: .semibold))
+                .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                 if let perimeter = viewModel.totalPerimeter {
@@ -562,12 +568,12 @@ struct DeckCanvasView: View {
                         DimensionEngine.format(perimeter, system: viewModel.drawingData.config.measurementSystem),
                         systemImage: "ruler"
                     )
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .background(OPSStyle.Colors.cardBackground.opacity(0.9))
             .cornerRadius(OPSStyle.Layout.cornerRadius)
 
@@ -704,13 +710,15 @@ struct DeckCanvasView: View {
     private var panGesture: some Gesture {
         DragGesture(minimumDistance: 10)
             .onChanged { value in
-                guard viewModel.activeTool == .none || viewModel.activeTool == .select else { return }
+                // Allow panning unless a draw/lasso/select gesture is actively in progress
+                guard !drawingStarted else { return }
                 canvasOffset = CGSize(
                     width: lastDragValue.width + value.translation.width,
                     height: lastDragValue.height + value.translation.height
                 )
             }
             .onEnded { value in
+                guard !drawingStarted else { return }
                 lastDragValue = canvasOffset
             }
     }

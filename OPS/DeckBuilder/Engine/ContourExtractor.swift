@@ -411,25 +411,124 @@ struct ContourExtractor {
         return patterns
     }
 
-    /// Simplified estimate of internal parallel lines within a rectangle.
-    /// Uses the rectangle's shorter dimension divided by an assumed tread spacing to approximate line count.
+    /// Count internal parallel lines (stair treads) by scanning pixel columns/rows within the rectangle.
+    /// Falls back to a geometric heuristic if pixel data cannot be accessed.
     private static func countInternalLines(in rect: CGRect, image: CGImage) -> Int {
-        // Stair treads are evenly-spaced horizontal lines within the rectangle.
-        // Typical tread spacing in a sketch is roughly 1/15th of the rectangle's shorter side.
-        // Use the shorter dimension as the "run" direction (across treads).
-        let shorterSide = min(rect.width, rect.height)
-        let longerSide = max(rect.width, rect.height)
+        let imageWidth = image.width
+        let imageHeight = image.height
 
-        // Each tread line occupies roughly (longerSide / lineCount) spacing.
-        // Approximate: assume treads are spaced at ~7% of the longer side (empirical for hand-drawn stairs).
-        guard longerSide > 0 else { return 0 }
+        // Clamp rect to image bounds
+        let minX = max(0, Int(rect.origin.x))
+        let minY = max(0, Int(rect.origin.y))
+        let maxX = min(imageWidth - 1, Int(rect.origin.x + rect.width))
+        let maxY = min(imageHeight - 1, Int(rect.origin.y + rect.height))
 
-        let estimatedSpacing = longerSide * 0.07
-        guard estimatedSpacing > 0 else { return 0 }
+        let clampedWidth = maxX - minX + 1
+        let clampedHeight = maxY - minY + 1
+        guard clampedWidth > 0, clampedHeight > 0 else { return 0 }
 
-        // Line count = number of internal divisions along the longer axis.
-        let count = Int(longerSide / estimatedSpacing) - 1
-        // Sanity clamp: stair patterns should have between 2 and 30 lines.
-        return max(0, min(count, 30))
+        // Attempt to access raw pixel data
+        guard let dataProvider = image.dataProvider,
+              let data = dataProvider.data,
+              let bytes = CFDataGetBytePtr(data) else {
+            // Fallback: geometric heuristic
+            let longerSide = max(rect.width, rect.height)
+            guard longerSide > 0 else { return 0 }
+            let estimatedSpacing = longerSide * 0.07
+            guard estimatedSpacing > 0 else { return 0 }
+            let count = Int(longerSide / estimatedSpacing) - 1
+            return max(0, min(count, 30))
+        }
+
+        let bytesPerRow = image.bytesPerRow
+        let bytesPerPixel = image.bitsPerPixel / 8
+        guard bytesPerPixel > 0 else { return 0 }
+
+        // Determine scan direction:
+        // If wider than tall, treads are horizontal lines → project onto the Y axis (scan rows, sum dark pixels per row)
+        // If taller than wide, treads are vertical lines → project onto the X axis (scan columns, sum dark pixels per column)
+        let scanAlongY = rect.width >= rect.height
+        let profileLength = scanAlongY ? clampedHeight : clampedWidth
+
+        guard profileLength > 0 else { return 0 }
+
+        // Build 1D projection profile: for each position along the scan axis,
+        // count the number of dark pixels perpendicular to that axis.
+        var profile = [Int](repeating: 0, count: profileLength)
+
+        if scanAlongY {
+            // Profile along Y: for each row, count dark pixels across all columns
+            for row in 0..<clampedHeight {
+                let y = minY + row
+                var darkCount = 0
+                for col in 0..<clampedWidth {
+                    let x = minX + col
+                    let pixelOffset = y * bytesPerRow + x * bytesPerPixel
+                    // Use first channel (red or grayscale) as luminance proxy
+                    let value = Int(bytes[pixelOffset])
+                    if value < 128 {
+                        darkCount += 1
+                    }
+                }
+                profile[row] = darkCount
+            }
+        } else {
+            // Profile along X: for each column, count dark pixels across all rows
+            for col in 0..<clampedWidth {
+                let x = minX + col
+                var darkCount = 0
+                for row in 0..<clampedHeight {
+                    let y = minY + row
+                    let pixelOffset = y * bytesPerRow + x * bytesPerPixel
+                    let value = Int(bytes[pixelOffset])
+                    if value < 128 {
+                        darkCount += 1
+                    }
+                }
+                profile[col] = darkCount
+            }
+        }
+
+        // Compute mean and standard deviation of the profile
+        let sum = profile.reduce(0, +)
+        let mean = Double(sum) / Double(profileLength)
+
+        var varianceSum = 0.0
+        for value in profile {
+            let diff = Double(value) - mean
+            varianceSum += diff * diff
+        }
+        let stddev = sqrt(varianceSum / Double(profileLength))
+
+        let threshold = mean + 0.5 * stddev
+
+        // Find peaks: positions where value > threshold AND is a local maximum
+        var peaks: [Int] = []
+        for i in 0..<profileLength {
+            let value = Double(profile[i])
+            guard value > threshold else { continue }
+
+            let leftValue = i > 0 ? Double(profile[i - 1]) : 0.0
+            let rightValue = i < profileLength - 1 ? Double(profile[i + 1]) : 0.0
+
+            if value >= leftValue && value >= rightValue {
+                peaks.append(i)
+            }
+        }
+
+        // Merge peaks that are very close together (within 3 pixels)
+        var mergedPeaks: [Int] = []
+        for peak in peaks {
+            if let last = mergedPeaks.last, peak - last <= 3 {
+                // Replace with the one that has the higher profile value
+                if profile[peak] > profile[last] {
+                    mergedPeaks[mergedPeaks.count - 1] = peak
+                }
+            } else {
+                mergedPeaks.append(peak)
+            }
+        }
+
+        return max(0, min(mergedPeaks.count, 30))
     }
 }

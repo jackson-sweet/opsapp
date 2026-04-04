@@ -15,7 +15,9 @@ class ARLineRenderer {
 
     private var vertexEntities: [String: ModelEntity] = [:]
     private var edgeEntities: [String: Entity] = [:]         // contains line + label
+    private var labelEntities: [ModelEntity] = []            // all labels for billboarding
     private var liveLineEntity: Entity?
+    private var liveLabelEntity: ModelEntity?
     private var footprintEntity: ModelEntity?
 
     // MARK: - Colors (from OPSStyle tokens, converted for RealityKit)
@@ -94,6 +96,7 @@ class ARLineRenderer {
             to: to
         )
         group.addChild(labelEntity)
+        labelEntities.append(labelEntity)
 
         rootAnchor.addChild(group)
         edgeEntities[name] = group
@@ -103,6 +106,10 @@ class ARLineRenderer {
     /// Remove an edge (line + label) by name
     func removeEdge(named name: String) {
         if let entity = edgeEntities.removeValue(forKey: name) {
+            // Remove tracked label entities that belong to this edge group
+            labelEntities.removeAll { label in
+                label.parent === entity || entity.children.contains(where: { $0 === label })
+            }
             entity.removeFromParent()
         }
     }
@@ -134,13 +141,14 @@ class ARLineRenderer {
         }
 
         // Dimension label
-        let labelEntity = createLabelEntity(
+        let liveLbl = createLabelEntity(
             text: label,
             position: midpoint(from, to),
             from: from,
             to: to
         )
-        group.addChild(labelEntity)
+        group.addChild(liveLbl)
+        liveLabelEntity = liveLbl
 
         rootAnchor.addChild(group)
         liveLineEntity = group
@@ -154,36 +162,62 @@ class ARLineRenderer {
 
     // MARK: - Footprint Fill
 
-    /// Render a flat filled plane covering the closed polygon
+    /// Render a flat filled polygon using a triangle-fan mesh matching the actual deck shape
     func showFootprintFill(vertices: [SIMD3<Float>]) {
         guard vertices.count >= 3 else { return }
 
         // Remove existing footprint
         footprintEntity?.removeFromParent()
 
-        // Calculate bounding box for the plane
-        let xs = vertices.map { $0.x }
-        let zs = vertices.map { $0.z }
-        let minX = xs.min()!, maxX = xs.max()!
-        let minZ = zs.min()!, maxZ = zs.max()!
-        let avgY = vertices.map { $0.y }.reduce(0, +) / Float(vertices.count)
+        let avgY = vertices.map { $0.y }.reduce(0, +) / Float(vertices.count) - 0.001
 
-        let width = maxX - minX
-        let depth = maxZ - minZ
+        // Build triangle-fan mesh: center vertex + perimeter vertices
+        // Center = centroid of the polygon
+        let centerX = vertices.map { $0.x }.reduce(0, +) / Float(vertices.count)
+        let centerZ = vertices.map { $0.z }.reduce(0, +) / Float(vertices.count)
 
-        let mesh = MeshResource.generatePlane(width: width, depth: depth)
+        // Positions: [center, v0, v1, v2, ..., vN-1]
+        var positions: [SIMD3<Float>] = [SIMD3<Float>(centerX, avgY, centerZ)]
+        for v in vertices {
+            positions.append(SIMD3<Float>(v.x, avgY, v.z))
+        }
+
+        // Triangle-fan indices: for each triangle, (0, i, i+1), wrapping last to first perimeter vertex
+        let n = vertices.count
+        var indices: [UInt32] = []
+        for i in 1...n {
+            let next = (i % n) + 1
+            // Two windings for double-sided visibility
+            indices.append(contentsOf: [0, UInt32(i), UInt32(next)])
+            indices.append(contentsOf: [0, UInt32(next), UInt32(i)])
+        }
+
+        // Normals: all pointing up
+        let normals = [SIMD3<Float>](repeating: SIMD3<Float>(0, 1, 0), count: positions.count)
+
+        var descriptor = MeshDescriptor(name: "footprint")
+        descriptor.positions = MeshBuffer(positions)
+        descriptor.normals = MeshBuffer(normals)
+        descriptor.primitives = .triangles(indices)
+
+        guard let mesh = try? MeshResource.generate(from: [descriptor]) else { return }
         let material = SimpleMaterial(color: footprintFillColor, isMetallic: false)
         let entity = ModelEntity(mesh: mesh, materials: [material])
 
-        // Position at center of bounding box, at average Y
-        entity.position = SIMD3<Float>(
-            (minX + maxX) / 2,
-            avgY - 0.001,  // slightly below vertices to avoid z-fighting
-            (minZ + maxZ) / 2
-        )
-
         rootAnchor.addChild(entity)
         footprintEntity = entity
+    }
+
+    // MARK: - Label Billboarding
+
+    /// Rotate all dimension labels to face the camera position. Call every frame.
+    func updateLabelOrientations(cameraPosition: SIMD3<Float>) {
+        for label in labelEntities {
+            label.look(at: cameraPosition, from: label.position, relativeTo: nil)
+        }
+        if let liveLabel = liveLabelEntity {
+            liveLabel.look(at: cameraPosition, from: liveLabel.position, relativeTo: nil)
+        }
     }
 
     // MARK: - Clear All
@@ -199,9 +233,11 @@ class ARLineRenderer {
             entity.removeFromParent()
         }
         edgeEntities.removeAll()
+        labelEntities.removeAll()
 
         liveLineEntity?.removeFromParent()
         liveLineEntity = nil
+        liveLabelEntity = nil
 
         footprintEntity?.removeFromParent()
         footprintEntity = nil

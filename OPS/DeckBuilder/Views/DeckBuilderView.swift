@@ -10,6 +10,7 @@ struct DeckBuilderView: View {
     @State private var showingTemplatePicker = false
     @State private var showingSketchCapture = false
     @State private var showingARPerimeter = false
+    @State private var hideVerifiedBanner = false
 
     let projectId: String?
     let companyId: String
@@ -235,7 +236,7 @@ struct DeckBuilderView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
             .background(OPSStyle.Colors.warningStatus.opacity(0.15))
-        } else if hasAnyARSource && allVerified {
+        } else if hasAnyARSource && allVerified && !hideVerifiedBanner {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 12, weight: .medium))
@@ -246,6 +247,11 @@ struct DeckBuilderView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
             .background(OPSStyle.Colors.successStatus.opacity(0.1))
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    withAnimation { hideVerifiedBanner = true }
+                }
+            }
         }
     }
 }

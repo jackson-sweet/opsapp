@@ -27,6 +27,8 @@ class ARPerimeterViewModel: ObservableObject {
     @Published var angleSnappingEnabled: Bool = true
     @Published var isEditingVertex: Bool = false
     @Published var editingVertexIndex: Int?
+    @Published var showVertexPopover: Bool = false
+    @Published var popoverVertexIndex: Int?
     @Published var isSplittingEdge: Bool = false
     @Published var splittingEdgeIndex: Int?
 

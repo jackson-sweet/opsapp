@@ -7,6 +7,7 @@ import simd
 
 struct ARHeightMeasureView: View {
     @StateObject private var viewModel = ARHeightViewModel()
+    @Environment(\.dismiss) private var dismiss
     let onComplete: (_ heightInches: Double, _ accuracyPercent: Double) -> Void
 
     var body: some View {
@@ -30,7 +31,7 @@ struct ARHeightMeasureView: View {
     private var heightTopBar: some View {
         HStack {
             Button {
-                // Dismiss without result — caller handles
+                dismiss()
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 18, weight: .semibold))

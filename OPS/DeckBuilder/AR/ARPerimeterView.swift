@@ -1,14 +1,13 @@
 // OPS/OPS/DeckBuilder/AR/ARPerimeterView.swift
 
 import SwiftUI
+import SwiftData
 import ARKit
 import RealityKit
 import simd
 
 struct ARPerimeterView: View {
     @StateObject private var viewModel = ARPerimeterViewModel()
-    @State private var showingVertexPopover = false
-    @State private var selectedVertexIndex: Int?
     @State private var showingDoneConfirmation = false
 
     let onComplete: (DeckDrawingData) -> Void
@@ -26,7 +25,7 @@ struct ARPerimeterView: View {
                 bottomControls
             }
 
-            if showingVertexPopover, let idx = selectedVertexIndex {
+            if viewModel.showVertexPopover, let idx = viewModel.popoverVertexIndex {
                 vertexPopover(index: idx)
             }
         }
@@ -170,6 +169,12 @@ struct ARPerimeterView: View {
         Button {
             if viewModel.isNearFirstVertex {
                 viewModel.closeLoop()
+            } else if viewModel.isSplittingEdge, let edgeIdx = viewModel.splittingEdgeIndex,
+                      let pos = viewModel.currentCrosshairPosition {
+                viewModel.splitEdge(edgeIndex: edgeIdx, at: pos)
+            } else if viewModel.isEditingVertex, let vertexIdx = viewModel.editingVertexIndex,
+                      let pos = viewModel.currentCrosshairPosition {
+                viewModel.repositionVertex(index: vertexIdx, to: pos)
             } else if let pos = viewModel.currentCrosshairPosition {
                 viewModel.recordVertex(worldPosition: pos)
             }
@@ -255,9 +260,9 @@ struct ARPerimeterView: View {
     private func vertexPopover(index: Int) -> some View {
         VStack(spacing: 0) {
             Button {
+                viewModel.showVertexPopover = false
                 viewModel.isEditingVertex = true
                 viewModel.editingVertexIndex = index
-                showingVertexPopover = false
             } label: {
                 HStack {
                     Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
@@ -273,7 +278,8 @@ struct ARPerimeterView: View {
 
             Button(role: .destructive) {
                 viewModel.deleteVertex(index: index)
-                showingVertexPopover = false
+                viewModel.showVertexPopover = false
+                viewModel.popoverVertexIndex = nil
             } label: {
                 HStack {
                     Image(systemName: "trash")
@@ -296,10 +302,11 @@ struct ARPerimeterView: View {
 
 private struct ARAssignmentWheelView: View {
     @ObservedObject var viewModel: ARPerimeterViewModel
+    @Query(filter: #Predicate<Product> { $0.isActive }, sort: \Product.name) private var products: [Product]
     @State private var wheelExpanded = false
     @State private var wheelHighlight: Int?
 
-    private let items: [(String, String)] = [
+    private static let builtInItems: [(String, String)] = [
         ("House", "house"),
         ("Deck", "rectangle"),
         ("Glass", "rectangle.split.3x1"),
@@ -307,6 +314,29 @@ private struct ARAssignmentWheelView: View {
         ("Cable", "cable.connector.horizontal"),
         ("No Rail", "xmark"),
     ]
+
+    /// Built-in items + dynamic linear products from the company catalog
+    private var items: [(String, String)] {
+        var all = Self.builtInItems
+        // Add linear products (unit contains "linear" or "lf" or "foot" or "meter")
+        let linearProducts = products.filter { product in
+            guard let unit = product.unit?.lowercased() else { return false }
+            return unit.contains("linear") || unit.contains("lf") || unit.contains("foot") || unit.contains("meter")
+        }
+        for product in linearProducts.prefix(2) { // cap at 2 to keep wheel usable (max 8 slots)
+            let shortName = String(product.name.prefix(8))
+            all.append((shortName, "shippingbox"))
+        }
+        return all
+    }
+
+    /// Product references for dynamic items (indices offset by built-in count)
+    private var dynamicProducts: [Product] {
+        products.filter { product in
+            guard let unit = product.unit?.lowercased() else { return false }
+            return unit.contains("linear") || unit.contains("lf") || unit.contains("foot") || unit.contains("meter")
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -397,14 +427,29 @@ private struct ARAssignmentWheelView: View {
     }
 
     private func executeAction(_ index: Int) {
-        switch index {
-        case 0: viewModel.activeEdgeType = .houseEdge
-        case 1: viewModel.activeEdgeType = .deckEdge
-        case 2: viewModel.activeRailingConfig = RailingConfig(railingType: .glass, maxPostSpacing: RailingType.glass.defaultMaxPostSpacing)
-        case 3: viewModel.activeRailingConfig = RailingConfig(railingType: .picket, maxPostSpacing: RailingType.picket.defaultMaxPostSpacing)
-        case 4: viewModel.activeRailingConfig = RailingConfig(railingType: .cable, maxPostSpacing: RailingType.cable.defaultMaxPostSpacing)
-        case 5: viewModel.activeRailingConfig = nil
-        default: break
+        let builtInCount = Self.builtInItems.count
+        if index < builtInCount {
+            switch index {
+            case 0: viewModel.activeEdgeType = .houseEdge
+            case 1: viewModel.activeEdgeType = .deckEdge
+            case 2: viewModel.activeRailingConfig = RailingConfig(railingType: .glass, maxPostSpacing: RailingType.glass.defaultMaxPostSpacing)
+            case 3: viewModel.activeRailingConfig = RailingConfig(railingType: .picket, maxPostSpacing: RailingType.picket.defaultMaxPostSpacing)
+            case 4: viewModel.activeRailingConfig = RailingConfig(railingType: .cable, maxPostSpacing: RailingType.cable.defaultMaxPostSpacing)
+            case 5: viewModel.activeRailingConfig = nil
+            default: break
+            }
+        } else {
+            // Dynamic product assignment
+            let productIndex = index - builtInCount
+            let linears = Array(dynamicProducts.prefix(2))
+            guard productIndex < linears.count else { return }
+            let product = linears[productIndex]
+            viewModel.activeAssignment = AssignedItem(
+                productId: product.id,
+                name: product.name,
+                unitType: .linearFoot,
+                unitPrice: product.defaultPrice
+            )
         }
     }
 }
@@ -465,14 +510,16 @@ struct ARViewContainer: UIViewRepresentable {
             guard let arView = arView else { return }
 
             let center = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
+            let cameraTransform = frame.camera.transform
+            let cameraPosition = SIMD3<Float>(cameraTransform.columns.3.x, cameraTransform.columns.3.y, cameraTransform.columns.3.z)
 
             if let position = performRaycast(session: session, arView: arView, center: center, target: .existingPlaneGeometry) {
-                handleHit(position: position)
+                handleHit(position: position, cameraPosition: cameraPosition)
                 return
             }
 
             if let position = performRaycast(session: session, arView: arView, center: center, target: .estimatedPlane) {
-                handleHit(position: position)
+                handleHit(position: position, cameraPosition: cameraPosition)
                 return
             }
 
@@ -491,19 +538,19 @@ struct ARViewContainer: UIViewRepresentable {
             )
         }
 
-        private func handleHit(position: SIMD3<Float>) {
+        private func handleHit(position: SIMD3<Float>, cameraPosition: SIMD3<Float>) {
             let renderer = self.renderer
             Task { @MainActor in
                 self.viewModel.isPlaneDetected = true
                 self.viewModel.updateCrosshairPosition(position)
-                self.updateRendering(crosshairPosition: position, renderer: renderer)
+                self.updateRendering(crosshairPosition: position, cameraPosition: cameraPosition, renderer: renderer)
             }
         }
 
         // MARK: - Rendering Update (MainActor)
 
         @MainActor
-        private func updateRendering(crosshairPosition: SIMD3<Float>, renderer: ARLineRenderer?) {
+        private func updateRendering(crosshairPosition: SIMD3<Float>, cameraPosition: SIMD3<Float>, renderer: ARLineRenderer?) {
             guard let renderer = renderer else { return }
 
             let vCount = viewModel.arVertices.count
@@ -558,6 +605,9 @@ struct ARViewContainer: UIViewRepresentable {
                 renderer.showFootprintFill(vertices: positions)
                 renderedClosed = true
             }
+
+            // Billboard all labels to face the camera every frame
+            renderer.updateLabelOrientations(cameraPosition: cameraPosition)
         }
 
         // MARK: - Tap Handling
@@ -589,12 +639,14 @@ struct ARViewContainer: UIViewRepresentable {
                 let vPos = SIMD3<Float>(Float(vertex.x), Float(vertex.y), Float(vertex.z))
                 if simd_distance(hitPosition, vPos) < vertexHitRadius {
                     if viewModel.isEditingVertex, let editIdx = viewModel.editingVertexIndex {
+                        // Already in reposition mode — record the new position
                         if let crosshair = viewModel.currentCrosshairPosition {
                             viewModel.repositionVertex(index: editIdx, to: crosshair)
                         }
                     } else {
-                        viewModel.editingVertexIndex = index
-                        viewModel.isEditingVertex = true
+                        // Show vertex popover with Reposition / Delete options
+                        viewModel.popoverVertexIndex = index
+                        viewModel.showVertexPopover = true
                     }
                     return
                 }

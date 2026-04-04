@@ -196,6 +196,7 @@ struct DeckDrawingData: Codable {
     var overallElevation: Double?          // simple mode: uniform height
     var scaleFactor: Double?               // canvas points per real-world inch
     var poolDiameter: Double?              // pool deck: diameter in inches (visual overlay only)
+    var photoOverlay: PhotoOverlayState?   // saved overlay positioning for re-editing
 
     // MARK: - Vertex Helpers
 

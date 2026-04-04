@@ -92,9 +92,11 @@ class EstimateViewModel: ObservableObject {
         let dto = CreateLineItemDTO(
             estimateId: estimateId,
             productId: productId,
+            name: nil,
             description: description,
             quantity: quantity,
             unitPrice: unitPrice,
+            unit: nil,
             sortOrder: sortOrder,
             isOptional: isOptional,
             taskTypeId: nil,

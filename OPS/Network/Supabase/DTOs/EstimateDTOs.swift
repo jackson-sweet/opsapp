@@ -133,23 +133,38 @@ struct EstimateLineItemDTO: Codable, Identifiable {
 struct CreateEstimateDTO: Codable {
     let companyId: String
     let opportunityId: String?
+    let projectId: String?
     let clientId: String?
     let title: String
+    let notes: String?
 
     enum CodingKeys: String, CodingKey {
         case companyId     = "company_id"
         case opportunityId = "opportunity_id"
+        case projectId     = "project_id"
         case clientId      = "client_id"
         case title
+        case notes
+    }
+
+    init(companyId: String, opportunityId: String? = nil, projectId: String? = nil, clientId: String? = nil, title: String, notes: String? = nil) {
+        self.companyId = companyId
+        self.opportunityId = opportunityId
+        self.projectId = projectId
+        self.clientId = clientId
+        self.title = title
+        self.notes = notes
     }
 }
 
 struct CreateLineItemDTO: Codable {
     let estimateId: String
     let productId: String?
+    let name: String?
     let description: String
     let quantity: Double
     let unitPrice: Double
+    let unit: String?
     let sortOrder: Int
     let isOptional: Bool?
     let taskTypeId: String?
@@ -158,9 +173,11 @@ struct CreateLineItemDTO: Codable {
     enum CodingKeys: String, CodingKey {
         case estimateId  = "estimate_id"
         case productId   = "product_id"
+        case name
         case description
         case quantity
         case unitPrice   = "unit_price"
+        case unit
         case sortOrder   = "sort_order"
         case isOptional  = "is_optional"
         case taskTypeId  = "task_type_id"

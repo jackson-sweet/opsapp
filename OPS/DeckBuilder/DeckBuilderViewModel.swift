@@ -32,6 +32,17 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var editingEdgeId: String?
     @Published var editingVertexId: String?
 
+    // MARK: - 3D Mode
+
+    @Published var is3DMode: Bool = false
+
+    var can3DMode: Bool {
+        if isMultiLevel {
+            return drawingData.levels.contains { $0.isClosed && $0.vertices.count >= 3 }
+        }
+        return drawingData.vertices.count >= 3 && drawingData.isClosed
+    }
+
     // MARK: - Photo Overlay
 
     @Published var showingPhotoSourcePicker: Bool = false

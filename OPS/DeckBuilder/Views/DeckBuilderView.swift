@@ -12,6 +12,9 @@ struct DeckBuilderView: View {
     @State private var showingARPerimeter = false
     @State private var hideVerifiedBanner = false
     @State private var showingEstimateDetail = false
+    @State private var scene3DCoordinator: DeckScene3DView.Coordinator?
+    @State private var showing3DScreenshotShare = false
+    @State private var screenshotImage: UIImage?
     @StateObject private var estimateVM = EstimateViewModel()
 
     let projectId: String?
@@ -32,68 +35,80 @@ struct DeckBuilderView: View {
             titleBar
 
             // AR accuracy banner
-            arAccuracyBanner
-
-            // Level tab bar (multi-level mode)
-            if viewModel.isMultiLevel || viewModel.drawingData.vertices.count >= 3 {
-                LevelTabBar(viewModel: viewModel)
+            if !viewModel.is3DMode {
+                arAccuracyBanner
             }
 
-            // Canvas + Assignment Wheel overlay + Laser toast
-            ZStack(alignment: .bottomTrailing) {
-                DeckCanvasView(viewModel: viewModel)
+            if viewModel.is3DMode {
+                // 3D perspective view
+                DeckScene3DView(drawingData: viewModel.drawingData)
+                    .onAppear { scene3DCoordinator = DeckScene3DView.Coordinator() }
 
-                // Assignment wheel — visible when any element is selected
-                if !viewModel.selection.isEmpty {
-                    AssignmentWheelView(viewModel: viewModel)
-                        .padding(.trailing, 20)
-                        .padding(.bottom, 20)
-                        .transition(.scale.combined(with: .opacity))
+                CameraPresetBar { preset in
+                    scene3DCoordinator?.setCameraPreset(preset, drawingData: viewModel.drawingData)
+                }
+            } else {
+                // Level tab bar (multi-level mode)
+                if viewModel.isMultiLevel || viewModel.drawingData.vertices.count >= 3 {
+                    LevelTabBar(viewModel: viewModel)
                 }
 
-                // Laser toasts
-                VStack(spacing: 6) {
-                    Spacer()
+                // Canvas + Assignment Wheel overlay + Laser toast
+                ZStack(alignment: .bottomTrailing) {
+                    DeckCanvasView(viewModel: viewModel)
 
-                    // Disconnect / reconnecting toast
-                    if viewModel.showDisconnectToast {
-                        laserToast(
-                            icon: "antenna.radiowaves.left.and.right.slash",
-                            text: viewModel.disconnectToastText,
-                            color: OPSStyle.Colors.errorStatus
-                        )
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    // Assignment wheel — visible when any element is selected
+                    if !viewModel.selection.isEmpty {
+                        AssignmentWheelView(viewModel: viewModel)
+                            .padding(.trailing, 20)
+                            .padding(.bottom, 20)
+                            .transition(.scale.combined(with: .opacity))
                     }
 
-                    // Measurement error toast
-                    if viewModel.showLaserErrorToast {
-                        laserToast(
-                            icon: "exclamationmark.triangle.fill",
-                            text: viewModel.laserErrorText,
-                            color: OPSStyle.Colors.errorStatus
-                        )
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
+                    // Laser toasts
+                    VStack(spacing: 6) {
+                        Spacer()
 
-                    // Buffered measurement toast
-                    if viewModel.showMeasurementToast {
-                        laserToast(
-                            icon: "antenna.radiowaves.left.and.right",
-                            text: viewModel.measurementToastText,
-                            color: OPSStyle.Colors.warningStatus
-                        )
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        // Disconnect / reconnecting toast
+                        if viewModel.showDisconnectToast {
+                            laserToast(
+                                icon: "antenna.radiowaves.left.and.right.slash",
+                                text: viewModel.disconnectToastText,
+                                color: OPSStyle.Colors.errorStatus
+                            )
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+
+                        // Measurement error toast
+                        if viewModel.showLaserErrorToast {
+                            laserToast(
+                                icon: "exclamationmark.triangle.fill",
+                                text: viewModel.laserErrorText,
+                                color: OPSStyle.Colors.errorStatus
+                            )
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+
+                        // Buffered measurement toast
+                        if viewModel.showMeasurementToast {
+                            laserToast(
+                                icon: "antenna.radiowaves.left.and.right",
+                                text: viewModel.measurementToastText,
+                                color: OPSStyle.Colors.warningStatus
+                            )
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                    .animation(.easeInOut(duration: 0.25), value: viewModel.showMeasurementToast)
+                    .animation(.easeInOut(duration: 0.25), value: viewModel.showLaserErrorToast)
+                    .animation(.easeInOut(duration: 0.25), value: viewModel.showDisconnectToast)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-                .animation(.easeInOut(duration: 0.25), value: viewModel.showMeasurementToast)
-                .animation(.easeInOut(duration: 0.25), value: viewModel.showLaserErrorToast)
-                .animation(.easeInOut(duration: 0.25), value: viewModel.showDisconnectToast)
+
+                // Toolbar (hidden in 3D mode)
+                DeckToolbar(viewModel: viewModel)
             }
-
-            // Toolbar
-            DeckToolbar(viewModel: viewModel)
         }
         .background(OPSStyle.Colors.background)
         .sheet(isPresented: $viewModel.showingDimensionInput) {
@@ -225,6 +240,13 @@ struct DeckBuilderView: View {
                     .onDisappear { viewModel.sharePDFData = nil }
             }
         }
+        // 3D screenshot share
+        .sheet(isPresented: $showing3DScreenshotShare) {
+            if let image = screenshotImage {
+                ActivityView(items: [image])
+                    .onDisappear { screenshotImage = nil }
+            }
+        }
         // Estimate detail sheet (opened from toast tap)
         .sheet(isPresented: $showingEstimateDetail) {
             if let estimate = viewModel.createdEstimate {
@@ -296,7 +318,7 @@ struct DeckBuilderView: View {
 
             Spacer()
 
-            // Title
+            // Title + 2D/3D Toggle
             VStack(spacing: 2) {
                 Text(viewModel.deckDesign.title)
                     .font(.system(size: 16, weight: .bold))
@@ -313,72 +335,99 @@ struct DeckBuilderView: View {
                 }
             }
 
+            // 2D/3D toggle
+            Picker("View Mode", selection: $viewModel.is3DMode) {
+                Image(systemName: "square.grid.2x2").tag(false)
+                Image(systemName: "cube").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 80)
+            .disabled(!viewModel.can3DMode)
+
             Spacer()
 
-            // Template picker button
-            Button {
-                showingTemplatePicker = true
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-            }
-
-            // Import menu (stubs for future methods)
-            Menu {
-                Button(action: {}) {
-                    Label("From Template", systemImage: "square.grid.2x2")
-                }
-                .disabled(true)
-
+            if viewModel.is3DMode {
+                // Screenshot button in 3D mode
                 Button {
-                    showingSketchCapture = true
+                    if let screenshot = scene3DCoordinator?.captureScreenshot() {
+                        screenshotImage = screenshot
+                        showing3DScreenshotShare = true
+                    }
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 } label: {
-                    Label("Scan Paper Sketch", systemImage: "doc.text.viewfinder")
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 }
-
+            } else {
+                // Template picker button
                 Button {
-                    showingARPerimeter = true
+                    showingTemplatePicker = true
                 } label: {
-                    Label("Walk Perimeter (AR)", systemImage: "camera.viewfinder")
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 }
 
-                if viewModel.isLaserConnected {
-                    Label("Laser Connected", systemImage: "antenna.radiowaves.left.and.right")
-                } else {
+                // Import menu (stubs for future methods)
+                Menu {
                     Button(action: {}) {
-                        Label("Connect Laser Meter", systemImage: "antenna.radiowaves.left.and.right")
+                        Label("From Template", systemImage: "square.grid.2x2")
                     }
                     .disabled(true)
-                }
-            } label: {
-                Image(systemName: "plus.circle")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-            }
 
-            // Dimension entry for selected edge
-            if viewModel.editingEdgeId != nil {
-                Button {
-                    viewModel.showingDimensionInput = true
+                    Button {
+                        showingSketchCapture = true
+                    } label: {
+                        Label("Scan Paper Sketch", systemImage: "doc.text.viewfinder")
+                    }
+
+                    Button {
+                        showingARPerimeter = true
+                    } label: {
+                        Label("Walk Perimeter (AR)", systemImage: "camera.viewfinder")
+                    }
+
+                    if viewModel.isLaserConnected {
+                        Label("Laser Connected", systemImage: "antenna.radiowaves.left.and.right")
+                    } else {
+                        Button(action: {}) {
+                            Label("Connect Laser Meter", systemImage: "antenna.radiowaves.left.and.right")
+                        }
+                        .disabled(true)
+                    }
                 } label: {
-                    Image(systemName: "ruler")
+                    Image(systemName: "plus.circle")
                         .font(.system(size: 20, weight: .medium))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 }
+
+                // Dimension entry for selected edge
+                if viewModel.editingEdgeId != nil {
+                    Button {
+                        viewModel.showingDimensionInput = true
+                    } label: {
+                        Image(systemName: "ruler")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                    }
+                }
             }
 
             // Elevation entry
-            Button {
-                viewModel.showingElevationInput = true
-            } label: {
-                Image(systemName: "arrow.up.and.down.circle")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            if !viewModel.is3DMode {
+                Button {
+                    viewModel.showingElevationInput = true
+                } label: {
+                    Image(systemName: "arrow.up.and.down.circle")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                }
             }
         }
         .padding(.horizontal, 8)

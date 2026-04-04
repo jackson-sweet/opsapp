@@ -13,6 +13,10 @@ struct DeckCanvasView: View {
     @State private var lastDragValue: CGSize = .zero
     @State private var drawingStarted = false
     @State private var longPressLocation: CGPoint?
+    @State private var hasInitializedOffset = false
+
+    // Canvas workspace: 4800 × 4800 pts ≈ 400' × 400' at ~1pt/inch
+    private let canvasSize: CGFloat = 4800
 
     // Grid
     private let gridSpacing: CGFloat = 20.0
@@ -24,8 +28,9 @@ struct DeckCanvasView: View {
                 OPSStyle.Colors.background
                     .ignoresSafeArea()
 
-                // Transformed canvas content
-                canvasContent(size: geometry.size)
+                // Transformed canvas content — fixed large workspace
+                canvasContent(size: CGSize(width: canvasSize, height: canvasSize))
+                    .frame(width: canvasSize, height: canvasSize)
                     .scaleEffect(canvasScale, anchor: .topLeading)
                     .offset(canvasOffset)
 
@@ -37,12 +42,29 @@ struct DeckCanvasView: View {
                     dimensionInfoBar(area: area)
                 }
             }
+            .clipped()
             .contentShape(Rectangle())
+            .overlay {
+                // Two-finger pan via UIKit (SwiftUI DragGesture can't filter by touch count)
+                TwoFingerPanView(
+                    offset: $canvasOffset,
+                    lastOffset: $lastDragValue,
+                    drawingStarted: drawingStarted
+                )
+            }
             .simultaneousGesture(drawGesture(size: geometry.size))
             .simultaneousGesture(tapGesture(size: geometry.size))
             .simultaneousGesture(longPressGesture(size: geometry.size))
             .simultaneousGesture(pinchGesture)
-            .simultaneousGesture(panGesture)
+            .onAppear {
+                guard !hasInitializedOffset else { return }
+                hasInitializedOffset = true
+                // Start with the center of the canvas visible
+                let offsetX = (geometry.size.width - canvasSize) / 2
+                let offsetY = (geometry.size.height - canvasSize) / 2
+                canvasOffset = CGSize(width: offsetX, height: offsetY)
+                lastDragValue = canvasOffset
+            }
         }
     }
 
@@ -230,20 +252,31 @@ struct DeckCanvasView: View {
 
     private func drawGrid(context: GraphicsContext, size: CGSize) {
         let gridColor = OPSStyle.Colors.cardBackground.resolve(in: EnvironmentValues())
+
+        // Only draw grid lines in the visible region for performance
+        // Visible region in canvas coordinates:
+        let visibleMinX = max(0, -canvasOffset.width / canvasScale)
+        let visibleMinY = max(0, -canvasOffset.height / canvasScale)
+        let viewportW = UIScreen.main.bounds.width / canvasScale
+        let viewportH = UIScreen.main.bounds.height / canvasScale
+        let visibleMaxX = min(size.width, visibleMinX + viewportW + gridSpacing)
+        let visibleMaxY = min(size.height, visibleMinY + viewportH + gridSpacing)
+
+        let startCol = max(0, Int(floor(visibleMinX / gridSpacing)))
+        let endCol = min(Int(size.width / gridSpacing), Int(ceil(visibleMaxX / gridSpacing)))
+        let startRow = max(0, Int(floor(visibleMinY / gridSpacing)))
+        let endRow = min(Int(size.height / gridSpacing), Int(ceil(visibleMaxY / gridSpacing)))
+
         var path = Path()
-
-        let cols = Int(size.width / gridSpacing) + 1
-        let rows = Int(size.height / gridSpacing) + 1
-
-        for col in 0...cols {
+        for col in startCol...endCol {
             let x = CGFloat(col) * gridSpacing
-            path.move(to: CGPoint(x: x, y: 0))
-            path.addLine(to: CGPoint(x: x, y: size.height))
+            path.move(to: CGPoint(x: x, y: visibleMinY))
+            path.addLine(to: CGPoint(x: x, y: visibleMaxY))
         }
-        for row in 0...rows {
+        for row in startRow...endRow {
             let y = CGFloat(row) * gridSpacing
-            path.move(to: CGPoint(x: 0, y: y))
-            path.addLine(to: CGPoint(x: size.width, y: y))
+            path.move(to: CGPoint(x: visibleMinX, y: y))
+            path.addLine(to: CGPoint(x: visibleMaxX, y: y))
         }
 
         context.stroke(
@@ -399,20 +432,51 @@ struct DeckCanvasView: View {
             style: StrokeStyle(lineWidth: 2.0, dash: [8, 4])
         )
 
-        // Live dimension label
+        // Live annotation: dimension + angle
         let distance = SnapEngine.distance(startVertex.position, currentEnd)
+        guard distance > 1 else { return } // skip label for zero-length lines
+
         let midX = (startVertex.position.x + currentEnd.x) / 2
         let midY = (startVertex.position.y + currentEnd.y) / 2
 
-        let label: String
+        // Dimension text (if scale is set)
+        let dimText: String?
         if let scale = viewModel.drawingData.scaleFactor, scale > 0 {
             let inches = distance / scale
-            label = DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
+            dimText = DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
         } else {
-            // No scale set yet — show angle to give the user spatial feedback
-            let angle = SnapEngine.lineAngle(from: startVertex.position, to: currentEnd)
-            label = String(format: "%.0f°", angle)
+            dimText = nil
         }
+
+        // Angle text: relative to connected edge if one exists, otherwise absolute
+        let activeEdges = viewModel.isMultiLevel
+            ? (viewModel.activeLevel?.edges ?? [])
+            : viewModel.drawingData.edges
+        let connectedEdges = activeEdges.filter {
+            $0.startVertexId == fromVertexId || $0.endVertexId == fromVertexId
+        }
+
+        let angleText: String
+        if let prevEdge = connectedEdges.last {
+            // Relative angle to the connected edge
+            let otherVertexId = prevEdge.startVertexId == fromVertexId ? prevEdge.endVertexId : prevEdge.startVertexId
+            if let otherVertex = resolveVertex(byId: otherVertexId) {
+                let prevAngle = SnapEngine.lineAngle(from: startVertex.position, to: otherVertex.position)
+                let newAngle = SnapEngine.lineAngle(from: startVertex.position, to: currentEnd)
+                var relative = newAngle - prevAngle
+                if relative < 0 { relative += 360 }
+                if relative > 180 { relative = 360 - relative }
+                angleText = String(format: "%.0f°", relative)
+            } else {
+                let absolute = SnapEngine.lineAngle(from: startVertex.position, to: currentEnd)
+                angleText = String(format: "%.0f°", absolute)
+            }
+        } else {
+            let absolute = SnapEngine.lineAngle(from: startVertex.position, to: currentEnd)
+            angleText = String(format: "%.0f°", absolute)
+        }
+
+        let label = dimText != nil ? "\(dimText!) · \(angleText)" : angleText
 
         context.draw(
             Text(label)
@@ -707,19 +771,56 @@ struct DeckCanvasView: View {
             }
     }
 
-    private var panGesture: some Gesture {
-        DragGesture(minimumDistance: 10)
-            .onChanged { value in
-                // Allow panning unless a draw/lasso/select gesture is actively in progress
-                guard !drawingStarted else { return }
-                canvasOffset = CGSize(
-                    width: lastDragValue.width + value.translation.width,
-                    height: lastDragValue.height + value.translation.height
+}
+
+// MARK: - Two-Finger Pan (UIKit Gesture Recognizer)
+
+/// UIKit-based two-finger pan gesture. SwiftUI's DragGesture cannot distinguish finger count.
+private struct TwoFingerPanView: UIViewRepresentable {
+    @Binding var offset: CGSize
+    @Binding var lastOffset: CGSize
+    var drawingStarted: Bool
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
+        pan.minimumNumberOfTouches = 2
+        pan.maximumNumberOfTouches = 2
+        view.addGestureRecognizer(pan)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.parent = self
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    class Coordinator: NSObject {
+        var parent: TwoFingerPanView
+
+        init(parent: TwoFingerPanView) {
+            self.parent = parent
+        }
+
+        @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
+            guard !parent.drawingStarted else { return }
+            let translation = gesture.translation(in: gesture.view)
+
+            switch gesture.state {
+            case .changed:
+                parent.offset = CGSize(
+                    width: parent.lastOffset.width + translation.x,
+                    height: parent.lastOffset.height + translation.y
                 )
+            case .ended, .cancelled:
+                parent.lastOffset = parent.offset
+            default:
+                break
             }
-            .onEnded { value in
-                guard !drawingStarted else { return }
-                lastDragValue = canvasOffset
-            }
+        }
     }
 }

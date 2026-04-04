@@ -15,6 +15,7 @@ struct CreationPickerView: View {
     @State private var showingTemplatePicker = false
     @State private var templatePickerInitialTab: Int = 0
     @State private var showingSketchCapture = false
+    @State private var showingARPerimeter = false
 
     var body: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
@@ -64,6 +65,15 @@ struct CreationPickerView: View {
                 ) {
                     showingSketchCapture = true
                 }
+
+                // Walk Perimeter (AR)
+                creationOption(
+                    icon: "camera.viewfinder",
+                    title: "Walk Perimeter (AR)",
+                    subtitle: "Walk the deck, tap at each corner"
+                ) {
+                    showingARPerimeter = true
+                }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
 
@@ -91,6 +101,26 @@ struct CreationPickerView: View {
                 modelContext.insert(design)
                 try? modelContext.save()
                 showingSketchCapture = false
+                onDesignCreated(design)
+                dismiss()
+            }
+        }
+        .fullScreenCover(isPresented: $showingARPerimeter) {
+            ARPerimeterView { drawingData in
+                guard !drawingData.vertices.isEmpty else {
+                    showingARPerimeter = false
+                    return
+                }
+                let design = DeckDesign(
+                    companyId: companyId,
+                    projectId: projectId,
+                    title: "AR Deck Sketch",
+                    drawingDataJSON: drawingData.toJSON(),
+                    createdBy: userId
+                )
+                modelContext.insert(design)
+                try? modelContext.save()
+                showingARPerimeter = false
                 onDesignCreated(design)
                 dismiss()
             }

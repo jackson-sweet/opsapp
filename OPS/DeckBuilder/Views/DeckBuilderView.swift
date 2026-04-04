@@ -9,6 +9,7 @@ struct DeckBuilderView: View {
     @State private var isSaving = false
     @State private var showingTemplatePicker = false
     @State private var showingSketchCapture = false
+    @State private var showingARPerimeter = false
 
     let projectId: String?
     let companyId: String
@@ -87,6 +88,17 @@ struct DeckBuilderView: View {
                 showingSketchCapture = false
             }
         }
+        .fullScreenCover(isPresented: $showingARPerimeter) {
+            ARPerimeterView { drawingData in
+                guard !drawingData.vertices.isEmpty else {
+                    showingARPerimeter = false
+                    return
+                }
+                viewModel.drawingData = drawingData
+                viewModel.save()
+                showingARPerimeter = false
+            }
+        }
         .statusBarHidden(true)
     }
 
@@ -160,10 +172,11 @@ struct DeckBuilderView: View {
                     Label("Scan Paper Sketch", systemImage: "doc.text.viewfinder")
                 }
 
-                Button(action: {}) {
+                Button {
+                    showingARPerimeter = true
+                } label: {
                     Label("Walk Perimeter (AR)", systemImage: "camera.viewfinder")
                 }
-                .disabled(true)
 
                 Button(action: {}) {
                     Label("Connect Laser Meter", systemImage: "antenna.radiowaves.left.and.right")

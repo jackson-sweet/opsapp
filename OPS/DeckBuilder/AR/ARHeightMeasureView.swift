@@ -3,27 +3,105 @@
 import SwiftUI
 import ARKit
 import RealityKit
+import AVFoundation
 import simd
 
 struct ARHeightMeasureView: View {
     @StateObject private var viewModel = ARHeightViewModel()
     @Environment(\.dismiss) private var dismiss
+    @State private var arAvailability: ARAvailabilityStatus = .checking
     let onComplete: (_ heightInches: Double, _ accuracyPercent: Double) -> Void
 
     var body: some View {
         ZStack {
-            ARHeightViewContainer(viewModel: viewModel)
-                .ignoresSafeArea()
+            switch arAvailability {
+            case .checking:
+                Color.black.ignoresSafeArea()
+                ProgressView()
+                    .tint(.white)
 
-            VStack {
-                heightTopBar
-                Spacer()
-                heightCrosshair
-                Spacer()
-                heightBottomControls
+            case .available:
+                ARHeightViewContainer(viewModel: viewModel)
+                    .ignoresSafeArea()
+
+                VStack {
+                    heightTopBar
+                    Spacer()
+                    heightCrosshair
+                    Spacer()
+                    heightBottomControls
+                }
+
+            case .unsupported:
+                arUnavailableView(message: "AR is not available on this device.")
+
+            case .cameradenied:
+                arUnavailableView(message: "Camera access required for AR. Enable in Settings.")
             }
         }
         .statusBarHidden(true)
+        .task { await checkARAvailability() }
+    }
+
+    private func checkARAvailability() async {
+        guard ARWorldTrackingConfiguration.isSupported else {
+            print("[DeckBuilder] AR height: ARWorldTrackingConfiguration not supported")
+            arAvailability = .unsupported
+            return
+        }
+
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        switch status {
+        case .authorized:
+            arAvailability = .available
+        case .notDetermined:
+            let granted = await AVCaptureDevice.requestAccess(for: .video)
+            arAvailability = granted ? .available : .cameradenied
+        default:
+            print("[DeckBuilder] AR height: camera permission denied (\(status.rawValue))")
+            arAvailability = .cameradenied
+        }
+    }
+
+    private func arUnavailableView(message: String) -> some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 20) {
+                Image(systemName: "arkit")
+                    .font(.system(size: 48))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Text(message)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+
+                if arAvailability == .cameradenied {
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Text("Open Settings")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(OPSStyle.Colors.primaryAccent)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    }
+                }
+
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Dismiss")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+            }
+        }
     }
 
     // MARK: - Top Bar
@@ -234,9 +312,32 @@ private struct ARHeightViewContainer: UIViewRepresentable {
     class Coordinator: NSObject, ARSessionDelegate {
         var viewModel: ARHeightViewModel
         weak var arView: ARView?
+        private var backgroundObserver: NSObjectProtocol?
+        private var foregroundObserver: NSObjectProtocol?
 
         init(viewModel: ARHeightViewModel) {
             self.viewModel = viewModel
+            super.init()
+
+            backgroundObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                self?.arView?.session.pause()
+            }
+            foregroundObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                guard let arView = self?.arView else { return }
+                let config = ARWorldTrackingConfiguration()
+                config.planeDetection = [.horizontal]
+                config.environmentTexturing = .automatic
+                arView.session.run(config)
+            }
+        }
+
+        deinit {
+            if let obs = backgroundObserver { NotificationCenter.default.removeObserver(obs) }
+            if let obs = foregroundObserver { NotificationCenter.default.removeObserver(obs) }
         }
 
         func session(_ session: ARSession, didUpdate frame: ARFrame) {
@@ -280,4 +381,13 @@ private struct ARHeightViewContainer: UIViewRepresentable {
             }
         }
     }
+}
+
+// MARK: - AR Availability Status (shared across AR views)
+
+enum ARAvailabilityStatus {
+    case checking
+    case available
+    case unsupported
+    case cameradenied
 }

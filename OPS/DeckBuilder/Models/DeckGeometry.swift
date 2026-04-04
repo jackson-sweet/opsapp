@@ -351,7 +351,39 @@ struct DeckDrawingData: Codable {
 
     static func fromJSON(_ json: String) -> DeckDrawingData? {
         guard let data = json.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(DeckDrawingData.self, from: data)
+        guard var decoded = try? JSONDecoder().decode(DeckDrawingData.self, from: data) else { return nil }
+
+        // Referential integrity: remove edges with orphaned vertex references
+        let vertexIds = Set(decoded.vertices.map { $0.id })
+        let beforeCount = decoded.edges.count
+        decoded.edges.removeAll { edge in
+            let startMissing = !vertexIds.contains(edge.startVertexId)
+            let endMissing = !vertexIds.contains(edge.endVertexId)
+            if startMissing || endMissing {
+                print("[DeckBuilder] fromJSON: removing orphaned edge \(edge.id) (start: \(startMissing), end: \(endMissing))")
+                return true
+            }
+            return false
+        }
+        if decoded.edges.count != beforeCount {
+            print("[DeckBuilder] fromJSON: removed \(beforeCount - decoded.edges.count) orphaned edges")
+        }
+
+        // Same check per level
+        for i in decoded.levels.indices {
+            let levelVertexIds = Set(decoded.levels[i].vertices.map { $0.id })
+            decoded.levels[i].edges.removeAll { edge in
+                !levelVertexIds.contains(edge.startVertexId) || !levelVertexIds.contains(edge.endVertexId)
+            }
+        }
+
+        // Clamp negative scale factor to nil
+        if let scale = decoded.scaleFactor, scale <= 0 {
+            print("[DeckBuilder] fromJSON: clamping invalid scale factor \(scale) to nil")
+            decoded.scaleFactor = nil
+        }
+
+        return decoded
     }
 }
 

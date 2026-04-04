@@ -8,6 +8,10 @@ struct DimensionEngine {
 
     /// Format inches as feet and inches string (e.g., 294 → "24' 6\"")
     static func formatImperial(_ totalInches: Double) -> String {
+        guard totalInches >= 0 else {
+            print("[DeckBuilder] formatImperial: negative value \(totalInches), using absolute")
+            return formatImperial(abs(totalInches))
+        }
         let feet = Int(totalInches) / 12
         let inches = totalInches - Double(feet * 12)
         if inches < 0.5 {
@@ -139,21 +143,27 @@ struct DimensionEngine {
             totalInches = plain * 12.0
         }
 
-        return totalInches > 0 ? totalInches : nil
+        return totalInches >= 0 ? totalInches : nil
     }
 
     private static func parseMetricToInches(_ input: String) -> Double? {
-        let cleaned = input.replacingOccurrences(of: "m", with: "")
-            .replacingOccurrences(of: "cm", with: "")
+        let hasCm = input.contains("cm")
+        let hasM = input.contains("m") && !hasCm  // "m" but not "cm"
+
+        let cleaned = input.replacingOccurrences(of: "cm", with: "")
+            .replacingOccurrences(of: "m", with: "")
             .trimmingCharacters(in: .whitespaces)
 
         guard let value = Double(cleaned) else { return nil }
 
-        if input.contains("cm") {
+        if hasCm {
             return value / 2.54
-        } else {
-            // Assume meters
+        } else if hasM {
             return (value * 100.0) / 2.54
+        } else {
+            // No unit suffix — default to centimeters (more common for deck measurements)
+            print("[DeckBuilder] parseMetric: no unit suffix on '\(input)', defaulting to cm")
+            return value / 2.54
         }
     }
 

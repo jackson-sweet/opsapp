@@ -665,7 +665,9 @@ struct DeckCanvasView: View {
         SpatialTapGesture()
             .onEnded { value in
                 let point = canvasPoint(from: value.location, in: size)
-                viewModel.handleTap(at: point)
+                // Scale hit threshold inversely with zoom for 44pt minimum physical touch target
+                let hitThreshold = max(22.0, 25.0 / canvasScale)
+                viewModel.handleTap(at: point, hitThreshold: hitThreshold)
             }
     }
 
@@ -677,7 +679,8 @@ struct DeckCanvasView: View {
                 case .second(true, let drag):
                     let location = drag?.location ?? .zero
                     let point = canvasPoint(from: location, in: size)
-                    viewModel.handleLongPress(at: point)
+                    let hitThreshold = max(22.0, 25.0 / canvasScale)
+                    viewModel.handleLongPress(at: point, hitThreshold: hitThreshold)
                 default:
                     break
                 }
@@ -687,9 +690,12 @@ struct DeckCanvasView: View {
     private var pinchGesture: some Gesture {
         MagnificationGesture()
             .onChanged { scale in
+                // Disable zoom during active drawing to prevent endpoint jumps
+                if case .idle = viewModel.drawingMode {} else { return }
                 canvasScale = max(0.3, min(5.0, baseScale * scale))
             }
             .onEnded { scale in
+                if case .idle = viewModel.drawingMode {} else { return }
                 baseScale = max(0.3, min(5.0, baseScale * scale))
                 canvasScale = baseScale
             }

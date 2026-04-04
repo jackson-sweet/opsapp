@@ -15,12 +15,42 @@ struct DeckMeshGenerator {
         if vertices.count == 3 { return [(0, 1, 2)] }
 
         var indices = Array(0..<vertices.count)
+
+        // Pre-pass: remove collinear vertices to prevent infinite loop in ear-clipping.
+        // Three consecutive points where cross product ≈ 0 means the middle one is redundant.
+        let collinearThreshold = 1e-6
+        var cleaned = true
+        while cleaned {
+            cleaned = false
+            var i = 0
+            while i < indices.count && indices.count > 3 {
+                let prevIdx = indices[(i - 1 + indices.count) % indices.count]
+                let currIdx = indices[i]
+                let nextIdx = indices[(i + 1) % indices.count]
+                let cross = crossProduct(vertices[prevIdx], vertices[currIdx], vertices[nextIdx])
+                if abs(cross) < collinearThreshold {
+                    print("[DeckBuilder] triangulate: removing collinear vertex at index \(currIdx)")
+                    indices.remove(at: i)
+                    cleaned = true
+                } else {
+                    i += 1
+                }
+            }
+        }
+
+        guard indices.count >= 3 else {
+            print("[DeckBuilder] triangulate: all vertices collinear, cannot triangulate")
+            return []
+        }
+        if indices.count == 3 { return [(indices[0], indices[1], indices[2])] }
+
         var triangles: [(Int, Int, Int)] = []
 
         // Ensure CCW winding
-        let ccw = isCounterClockwise(vertices)
+        let filteredVerts = indices.map { vertices[$0] }
+        let ccw = isCounterClockwise(filteredVerts)
 
-        var maxIterations = vertices.count * vertices.count // safety limit
+        var maxIterations = indices.count * indices.count // safety limit
         while indices.count > 2 && maxIterations > 0 {
             maxIterations -= 1
             var earFound = false

@@ -68,6 +68,10 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var showingShareSheet: Bool = false
     @Published var shareIncludesMaterialList: Bool = false
 
+    // MARK: - Error State
+
+    @Published var saveError: String?
+
     // MARK: - Assignment Wheel
 
     @Published var activeAssignment: AssignedItem?
@@ -326,6 +330,7 @@ class DeckBuilderViewModel: ObservableObject {
 
     func switchToLevel(_ index: Int) {
         guard index < drawingData.levels.count else { return }
+        drawingMode = .idle // Cancel any in-progress drawing to prevent cross-level edges
         activeLevelIndex = index
         selection.clear()
         editingEdgeId = nil
@@ -427,12 +432,11 @@ class DeckBuilderViewModel: ObservableObject {
 
     func endLine(at rawEnd: CGPoint) {
         guard case .drawing(let fromId, _) = drawingMode else { return }
-        guard activeVertex(byId: fromId) != nil else {
+        guard let startVertex = activeVertex(byId: fromId) else {
+            print("[DeckBuilder] endLine: start vertex \(fromId) not found, cancelling line")
             drawingMode = .idle
             return
         }
-
-        let startVertex = activeVertex(byId: fromId)!
         let snapped = SnapEngine.snapEndpoint(
             from: startVertex.position,
             rawEnd: rawEnd,
@@ -482,9 +486,9 @@ class DeckBuilderViewModel: ObservableObject {
 
     // MARK: - Selection
 
-    func handleTap(at point: CGPoint) {
+    func handleTap(at point: CGPoint, hitThreshold: Double = 25.0) {
         // Check vertex first (higher priority, larger hit area)
-        if let vertexId = PolygonMath.findVertexAtPoint(point, vertices: activeVertices) {
+        if let vertexId = PolygonMath.findVertexAtPoint(point, vertices: activeVertices, hitThreshold: hitThreshold) {
             selection.clear()
             selection.toggleVertex(vertexId)
             editingVertexId = vertexId
@@ -493,7 +497,7 @@ class DeckBuilderViewModel: ObservableObject {
         }
 
         // Check edge
-        if let edgeId = PolygonMath.findEdgeAtPoint(point, edges: activeEdges, vertices: activeVertices) {
+        if let edgeId = PolygonMath.findEdgeAtPoint(point, edges: activeEdges, vertices: activeVertices, hitThreshold: hitThreshold * 0.8) {
             selection.clear()
             selection.toggleEdge(edgeId)
             editingEdgeId = edgeId
@@ -518,9 +522,9 @@ class DeckBuilderViewModel: ObservableObject {
         editingVertexId = nil
     }
 
-    func handleLongPress(at point: CGPoint) {
+    func handleLongPress(at point: CGPoint, hitThreshold: Double = 25.0) {
         // Same hit detection as tap, but always shows property sheet
-        handleTap(at: point)
+        handleTap(at: point, hitThreshold: hitThreshold)
         if !selection.isEmpty {
             hapticMedium()
             showingPropertySheet = true
@@ -613,7 +617,11 @@ class DeckBuilderViewModel: ObservableObject {
 
     func updateVertexDrag(to position: CGPoint) {
         guard case .draggingVertex(let vertexId) = drawingMode else { return }
-        var vertex = activeVertex(byId: vertexId) ?? DeckVertex(position: position)
+        guard var vertex = activeVertex(byId: vertexId) else {
+            print("[DeckBuilder] updateVertexDrag: vertex \(vertexId) not found, cancelling drag")
+            drawingMode = .idle
+            return
+        }
         vertex.position = position
         activeUpdateVertex(vertex)
     }
@@ -789,7 +797,12 @@ class DeckBuilderViewModel: ObservableObject {
 
     func save() {
         deckDesign.drawingData = drawingData  // triggers needsSync via setter
-        try? modelContext?.save()
+        do {
+            try modelContext?.save()
+        } catch {
+            print("[DeckBuilder] Save failed: \(error)")
+            saveError = "Save failed — check storage"
+        }
     }
 
     // MARK: - Render + Save Thumbnail

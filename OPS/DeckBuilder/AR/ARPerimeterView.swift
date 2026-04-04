@@ -4,32 +4,106 @@ import SwiftUI
 import SwiftData
 import ARKit
 import RealityKit
+import AVFoundation
 import simd
 
 struct ARPerimeterView: View {
     @StateObject private var viewModel = ARPerimeterViewModel()
     @State private var showingDoneConfirmation = false
+    @State private var arAvailability: ARAvailabilityStatus = .checking
+    @Environment(\.dismiss) private var dismiss
 
     let onComplete: (DeckDrawingData) -> Void
 
     var body: some View {
         ZStack {
-            ARViewContainer(viewModel: viewModel)
-                .ignoresSafeArea()
+            switch arAvailability {
+            case .checking:
+                Color.black.ignoresSafeArea()
+                ProgressView().tint(.white)
 
-            VStack {
-                topBar
-                Spacer()
-                crosshairAndDimension
-                Spacer()
-                bottomControls
-            }
+            case .available:
+                ARViewContainer(viewModel: viewModel)
+                    .ignoresSafeArea()
 
-            if viewModel.showVertexPopover, let idx = viewModel.popoverVertexIndex {
-                vertexPopover(index: idx)
+                VStack {
+                    topBar
+                    Spacer()
+                    crosshairAndDimension
+                    Spacer()
+                    bottomControls
+                }
+
+                if viewModel.showVertexPopover, let idx = viewModel.popoverVertexIndex {
+                    vertexPopover(index: idx)
+                }
+
+            case .unsupported:
+                arUnavailableOverlay(message: "AR is not available on this device.")
+
+            case .cameradenied:
+                arUnavailableOverlay(message: "Camera access required for AR. Enable in Settings.")
             }
         }
         .statusBarHidden(true)
+        .task { await checkARAvailability() }
+    }
+
+    private func checkARAvailability() async {
+        guard ARWorldTrackingConfiguration.isSupported else {
+            print("[DeckBuilder] AR perimeter: ARWorldTrackingConfiguration not supported")
+            arAvailability = .unsupported
+            return
+        }
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        switch status {
+        case .authorized:
+            arAvailability = .available
+        case .notDetermined:
+            let granted = await AVCaptureDevice.requestAccess(for: .video)
+            arAvailability = granted ? .available : .cameradenied
+        default:
+            print("[DeckBuilder] AR perimeter: camera permission denied (\(status.rawValue))")
+            arAvailability = .cameradenied
+        }
+    }
+
+    private func arUnavailableOverlay(message: String) -> some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 20) {
+                Image(systemName: "arkit")
+                    .font(.system(size: 48))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Text(message)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                if arAvailability == .cameradenied {
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Text("Open Settings")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(OPSStyle.Colors.primaryAccent)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    }
+                }
+                Button {
+                    onComplete(DeckDrawingData())
+                } label: {
+                    Text("Dismiss")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+            }
+        }
     }
 
     // MARK: - Top Bar
@@ -499,9 +573,32 @@ struct ARViewContainer: UIViewRepresentable {
         private var renderedVertexCount = 0
         private var renderedEdgeCount = 0
         private var renderedClosed = false
+        private var backgroundObserver: NSObjectProtocol?
+        private var foregroundObserver: NSObjectProtocol?
 
         init(viewModel: ARPerimeterViewModel) {
             self.viewModel = viewModel
+            super.init()
+
+            backgroundObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                self?.arView?.session.pause()
+            }
+            foregroundObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                guard let arView = self?.arView else { return }
+                let config = ARWorldTrackingConfiguration()
+                config.planeDetection = [.horizontal]
+                config.environmentTexturing = .automatic
+                arView.session.run(config)
+            }
+        }
+
+        deinit {
+            if let obs = backgroundObserver { NotificationCenter.default.removeObserver(obs) }
+            if let obs = foregroundObserver { NotificationCenter.default.removeObserver(obs) }
         }
 
         // MARK: - ARSessionDelegate

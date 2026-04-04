@@ -3,12 +3,14 @@
 import SwiftUI
 import ARKit
 import SceneKit
+import AVFoundation
 
 // MARK: - Main View
 
 struct ARVisualizationView: View {
     @StateObject private var viewModel: ARVisualizationViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var arAvailability: ARAvailabilityStatus = .checking
 
     init(drawingData: DeckDrawingData) {
         self._viewModel = StateObject(wrappedValue: ARVisualizationViewModel(drawingData: drawingData))
@@ -16,13 +18,26 @@ struct ARVisualizationView: View {
 
     var body: some View {
         ZStack {
-            ARSceneContainer(viewModel: viewModel)
-                .ignoresSafeArea()
+            switch arAvailability {
+            case .checking:
+                Color.black.ignoresSafeArea()
+                ProgressView().tint(.white)
 
-            VStack {
-                topBar
-                Spacer()
-                bottomStatus
+            case .available:
+                ARSceneContainer(viewModel: viewModel)
+                    .ignoresSafeArea()
+
+                VStack {
+                    topBar
+                    Spacer()
+                    bottomStatus
+                }
+
+            case .unsupported:
+                arUnavailableOverlay(message: "AR is not available on this device.")
+
+            case .cameradenied:
+                arUnavailableOverlay(message: "Camera access required for AR. Enable in Settings.")
             }
         }
         .sheet(isPresented: $viewModel.showingShareSheet) {
@@ -31,6 +46,62 @@ struct ARVisualizationView: View {
             }
         }
         .statusBarHidden(true)
+        .task { await checkARAvailability() }
+    }
+
+    private func checkARAvailability() async {
+        guard ARWorldTrackingConfiguration.isSupported else {
+            print("[DeckBuilder] AR visualization: ARWorldTrackingConfiguration not supported")
+            arAvailability = .unsupported
+            return
+        }
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        switch status {
+        case .authorized:
+            arAvailability = .available
+        case .notDetermined:
+            let granted = await AVCaptureDevice.requestAccess(for: .video)
+            arAvailability = granted ? .available : .cameradenied
+        default:
+            print("[DeckBuilder] AR visualization: camera permission denied (\(status.rawValue))")
+            arAvailability = .cameradenied
+        }
+    }
+
+    private func arUnavailableOverlay(message: String) -> some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 20) {
+                Image(systemName: "arkit")
+                    .font(.system(size: 48))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Text(message)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                if arAvailability == .cameradenied {
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Text("Open Settings")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(OPSStyle.Colors.primaryAccent)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    }
+                }
+                Button { dismiss() } label: {
+                    Text("Dismiss")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+            }
+        }
     }
 
     // MARK: - Top Bar
@@ -194,12 +265,36 @@ struct ARSceneContainer: UIViewRepresentable {
         weak var arView: ARSCNView?
         var previewNode: SCNNode?
         var screenshotObserver: NSObjectProtocol?
+        private var backgroundObserver: NSObjectProtocol?
+        private var foregroundObserver: NSObjectProtocol?
         private var planeDetected = false
         private var dragStarted = false
         private var rotationStarted = false
 
         init(viewModel: ARVisualizationViewModel) {
             self.viewModel = viewModel
+            super.init()
+
+            backgroundObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                self?.arView?.session.pause()
+            }
+            foregroundObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                guard let arView = self?.arView else { return }
+                let config = ARWorldTrackingConfiguration()
+                config.planeDetection = [.horizontal]
+                config.environmentTexturing = .automatic
+                config.isLightEstimationEnabled = true
+                arView.session.run(config)
+            }
+        }
+
+        deinit {
+            if let obs = backgroundObserver { NotificationCenter.default.removeObserver(obs) }
+            if let obs = foregroundObserver { NotificationCenter.default.removeObserver(obs) }
         }
 
         // MARK: - ARSessionDelegate

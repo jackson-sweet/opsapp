@@ -45,6 +45,10 @@ struct DeckTemplateEngine {
         shapeWidthInches: Double,
         shapeHeightInches: Double
     ) -> Double {
+        guard shapeWidthInches > 0, shapeHeightInches > 0 else {
+            print("[DeckBuilder] calculateScale: invalid shape dimensions (w: \(shapeWidthInches), h: \(shapeHeightInches))")
+            return 1.0
+        }
         let availableWidth = Double(canvasWidth - 2 * padding)
         let availableHeight = Double(canvasHeight - 2 * padding)
         let scaleX = availableWidth / shapeWidthInches

@@ -35,6 +35,10 @@ struct PropertySheetView: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .onChange(of: viewModel.activeLevelIndex) { _ in
+            // Dismiss when level switches — edge/vertex references may belong to the previous level
+            dismiss()
+        }
     }
 
     // MARK: - Edge Properties

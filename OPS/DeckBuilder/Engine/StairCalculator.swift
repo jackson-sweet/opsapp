@@ -28,6 +28,15 @@ struct StairCalculator {
         risePerStep: Double = 7.5,
         runPerTread: Double = 10.0
     ) -> StairSpec {
+        guard totalRise > 0, width > 0 else {
+            print("[DeckBuilder] StairCalculator: invalid inputs (rise: \(totalRise), width: \(width))")
+            return StairSpec(
+                treadCount: 0, risePerStep: 0, runPerTread: runPerTread,
+                totalRise: totalRise, totalRun: 0, stringerLength: 0,
+                stringerCount: 0, width: width
+            )
+        }
+
         let treadCount = StairConfig.calculateTreadCount(
             totalRise: totalRise,
             risePerStep: risePerStep

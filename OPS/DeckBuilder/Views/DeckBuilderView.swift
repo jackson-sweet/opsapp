@@ -291,6 +291,31 @@ struct DeckBuilderView: View {
                 .animation(.easeInOut(duration: 0.3), value: viewModel.estimateCreated)
             }
         }
+        // Save error toast
+        .overlay(alignment: .top) {
+            if let error = viewModel.saveError {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(OPSStyle.Colors.warningStatus)
+                    Text(error)
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(OPSStyle.Colors.cardBackground)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                .padding(.top, 60)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                        withAnimation { viewModel.saveError = nil }
+                    }
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: viewModel.saveError)
         .statusBarHidden(true)
     }
 

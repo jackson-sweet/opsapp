@@ -29,7 +29,7 @@ struct AccuracyModel {
         accuracyPercent: Double,
         system: MeasurementSystem = .imperial
     ) -> String {
-        let errorInches = dimensionInches * accuracyPercent / 100.0
+        let errorInches = abs(dimensionInches) * accuracyPercent / 100.0
         switch system {
         case .imperial:
             if errorInches >= 12 {

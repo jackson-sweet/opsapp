@@ -70,6 +70,54 @@ struct PolygonMath {
         return inside
     }
 
+    // MARK: - Self-Intersection Detection
+
+    /// Check if a polygon's edges cross each other (figure-8, bowties, etc.)
+    /// Only checks non-adjacent edge pairs. Returns true if any intersection found.
+    static func isSelfIntersecting(vertices: [CGPoint]) -> Bool {
+        let n = vertices.count
+        guard n >= 4 else { return false } // triangles can't self-intersect
+
+        for i in 0..<n {
+            let a1 = vertices[i]
+            let a2 = vertices[(i + 1) % n]
+
+            // Check against non-adjacent edges (skip i-1 and i+1 which share vertices)
+            for j in (i + 2)..<n {
+                // Skip if j wraps to be adjacent to i
+                if i == 0 && j == n - 1 { continue }
+
+                let b1 = vertices[j]
+                let b2 = vertices[(j + 1) % n]
+
+                if segmentsIntersect(a1, a2, b1, b2) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    /// Test if two line segments (p1→p2) and (p3→p4) properly intersect (cross each other)
+    private static func segmentsIntersect(_ p1: CGPoint, _ p2: CGPoint, _ p3: CGPoint, _ p4: CGPoint) -> Bool {
+        let d1 = direction(p3, p4, p1)
+        let d2 = direction(p3, p4, p2)
+        let d3 = direction(p1, p2, p3)
+        let d4 = direction(p1, p2, p4)
+
+        if ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+           ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0)) {
+            return true
+        }
+        return false
+    }
+
+    /// Cross product of vectors (pi→pk) relative to (pi→pj)
+    private static func direction(_ pi: CGPoint, _ pj: CGPoint, _ pk: CGPoint) -> Double {
+        (Double(pk.x) - Double(pi.x)) * (Double(pj.y) - Double(pi.y)) -
+        (Double(pk.y) - Double(pi.y)) * (Double(pj.x) - Double(pi.x))
+    }
+
     // MARK: - Edge Hit Testing
 
     /// Find the closest point on a line segment to a given point

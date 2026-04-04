@@ -11,6 +11,8 @@ struct DeckBuilderView: View {
     @State private var showingSketchCapture = false
     @State private var showingARPerimeter = false
     @State private var hideVerifiedBanner = false
+    @State private var showingEstimateDetail = false
+    @StateObject private var estimateVM = EstimateViewModel()
 
     let projectId: String?
     let companyId: String
@@ -144,16 +146,24 @@ struct DeckBuilderView: View {
         .sheet(isPresented: $viewModel.showingEstimatePreview) {
             EstimatePreviewSheet(viewModel: viewModel)
         }
+        // Duplicate estimate alert
+        .alert("Estimate Already Exists", isPresented: $viewModel.showingDuplicateAlert) {
+            Button("Create New Version") {
+                Task { await viewModel.generateEstimate() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("An estimate already exists for this deck. Create a new version?")
+        }
         // Share options dialog
         .confirmationDialog("Share Deck Design", isPresented: $viewModel.showingShareOptions) {
             Button("Share Image") {
+                viewModel.shareIncludesMaterialList = false
                 Task { await viewModel.prepareShareImage() }
             }
             Button("Share with Material List") {
-                Task {
-                    await viewModel.prepareShareImage()
-                    // materialSummaryText is included as text alongside the image
-                }
+                viewModel.shareIncludesMaterialList = true
+                Task { await viewModel.prepareShareImage() }
             }
             Button("Export PDF") {
                 Task { await viewModel.prepareSharePDF() }
@@ -163,35 +173,54 @@ struct DeckBuilderView: View {
         // Share sheet (image or PDF)
         .sheet(isPresented: $viewModel.showingShareSheet) {
             if let image = viewModel.shareImage {
-                let text = viewModel.materialSummaryText()
-                ActivityView(items: text.isEmpty ? [image] : [image, text])
-                    .onDisappear {
-                        viewModel.shareImage = nil
-                    }
+                if viewModel.shareIncludesMaterialList {
+                    let text = viewModel.materialSummaryText()
+                    ActivityView(items: [image, text])
+                        .onDisappear { viewModel.shareImage = nil }
+                } else {
+                    ActivityView(items: [image])
+                        .onDisappear { viewModel.shareImage = nil }
+                }
             } else if let pdfData = viewModel.sharePDFData {
                 ActivityView(items: [pdfData])
-                    .onDisappear {
-                        viewModel.sharePDFData = nil
-                    }
+                    .onDisappear { viewModel.sharePDFData = nil }
             }
         }
-        // Estimate created toast
+        // Estimate detail sheet (opened from toast tap)
+        .sheet(isPresented: $showingEstimateDetail) {
+            if let estimate = viewModel.createdEstimate {
+                NavigationStack {
+                    EstimateDetailView(estimate: estimate, viewModel: estimateVM)
+                }
+            }
+        }
+        // Estimate created toast — tappable to navigate
         .overlay(alignment: .bottom) {
             if viewModel.estimateCreated, let number = viewModel.createdEstimateNumber {
-                HStack(spacing: 10) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(OPSStyle.Colors.successStatus)
+                Button {
+                    viewModel.estimateCreated = false
+                    estimateVM.setup(companyId: companyId)
+                    showingEstimateDetail = true
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(OPSStyle.Colors.successStatus)
 
-                    Text("Estimate created \u{2014} \(number)")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        Text("Estimate created \u{2014} \(number)")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .background(OPSStyle.Colors.cardBackground)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 14)
-                .background(OPSStyle.Colors.cardBackground)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
                 .padding(.bottom, 80)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(.easeInOut(duration: 0.3), value: viewModel.estimateCreated)

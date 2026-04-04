@@ -100,7 +100,8 @@ class EstimateViewModel: ObservableObject {
             sortOrder: sortOrder,
             isOptional: isOptional,
             taskTypeId: nil,
-            type: type.rawValue
+            type: type.rawValue,
+            category: nil
         )
         do {
             let created = try await repo.addLineItem(dto)

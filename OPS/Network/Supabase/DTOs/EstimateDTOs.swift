@@ -93,6 +93,7 @@ struct EstimateLineItemDTO: Codable, Identifiable {
     let isOptional: Bool?
     let taskTypeId: String?
     let type: String?
+    let category: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -108,6 +109,7 @@ struct EstimateLineItemDTO: Codable, Identifiable {
         case isOptional  = "is_optional"
         case taskTypeId  = "task_type_id"
         case type
+        case category
     }
 
     func toModel() -> EstimateLineItem {
@@ -169,6 +171,7 @@ struct CreateLineItemDTO: Codable {
     let isOptional: Bool?
     let taskTypeId: String?
     let type: String?
+    let category: String?
 
     enum CodingKeys: String, CodingKey {
         case estimateId  = "estimate_id"
@@ -182,6 +185,7 @@ struct CreateLineItemDTO: Codable {
         case isOptional  = "is_optional"
         case taskTypeId  = "task_type_id"
         case type
+        case category
     }
 }
 

@@ -40,9 +40,13 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var createdEstimateNumber: String?
     @Published var createdEstimateId: String?
     @Published var isGeneratingEstimate: Bool = false
+    @Published var showingDuplicateAlert: Bool = false
+    @Published var existingEstimate: Estimate?
+    @Published var createdEstimate: Estimate?
     @Published var shareImage: UIImage?
     @Published var sharePDFData: Data?
     @Published var showingShareSheet: Bool = false
+    @Published var shareIncludesMaterialList: Bool = false
 
     // MARK: - Assignment Wheel
 
@@ -709,6 +713,21 @@ class DeckBuilderViewModel: ObservableObject {
         drawingData.edges.contains(where: { $0.dimension != nil })
     }
 
+    /// Check if an estimate already exists for this deck design
+    func checkForDuplicateEstimate() async -> Estimate? {
+        guard let projectId = deckDesign.projectId else { return nil }
+        let repo = EstimateRepository(companyId: deckDesign.companyId)
+        do {
+            let dtos = try await repo.fetchAll()
+            return dtos.first(where: {
+                $0.projectId == projectId &&
+                ($0.title ?? "").contains("Deck Estimate")
+            })?.toModel()
+        } catch {
+            return nil
+        }
+    }
+
     func generateEstimate() async {
         guard !isGeneratingEstimate else { return }
         isGeneratingEstimate = true
@@ -719,16 +738,22 @@ class DeckBuilderViewModel: ObservableObject {
 
         let repo = EstimateRepository(companyId: deckDesign.companyId)
 
+        // Resolve clientId and opportunityId from the linked project
+        let (clientId, opportunityId) = resolveProjectContext()
+
         // Build estimate title
-        let title = "Deck Estimate \u{2014} \(deckDesign.title)"
+        let clientName = resolveClientName(clientId: clientId)
+        let titleSuffix = clientName ?? deckDesign.title
+        let title = "Deck Estimate \u{2014} \(titleSuffix)"
 
         // AR accuracy note for internal notes
         let arNote = EstimateGeneratorService.arAccuracyNote(from: drawingData)
 
         let dto = CreateEstimateDTO(
             companyId: deckDesign.companyId,
+            opportunityId: opportunityId,
             projectId: deckDesign.projectId,
-            clientId: nil,
+            clientId: clientId,
             title: title,
             notes: arNote
         )
@@ -749,19 +774,22 @@ class DeckBuilderViewModel: ObservableObject {
                     sortOrder: item.sortOrder,
                     isOptional: item.isOptional,
                     taskTypeId: nil,
-                    type: item.type.rawValue
+                    type: item.type.rawValue,
+                    category: item.category
                 )
                 _ = try await repo.addLineItem(lineDTO)
             }
 
+            // Store for navigation
+            createdEstimate = created.toModel()
             createdEstimateNumber = created.estimateNumber
             createdEstimateId = created.id
             estimateCreated = true
             hapticSuccess()
 
-            // Auto-dismiss success toast after 5 seconds
+            // Auto-dismiss success toast after 8 seconds (field workers need more time)
             Task { @MainActor in
-                try? await Task.sleep(for: .seconds(5))
+                try? await Task.sleep(for: .seconds(8))
                 estimateCreated = false
             }
         } catch {
@@ -770,24 +798,58 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     func prepareShareImage() async {
+        let (clientId, _) = resolveProjectContext()
+        let clientName = resolveClientName(clientId: clientId)
+        let companyName = resolveCompanyName()
+
         guard let image = DeckShareRenderer.renderShareImage(
             drawingData: drawingData,
             title: deckDesign.title,
-            clientName: nil
+            clientName: clientName
         ) else { return }
         shareImage = image
         showingShareSheet = true
     }
 
     func prepareSharePDF() async {
+        let (clientId, _) = resolveProjectContext()
+        let clientName = resolveClientName(clientId: clientId)
+        let companyName = resolveCompanyName()
+
         guard let data = DeckShareRenderer.renderPDF(
             drawingData: drawingData,
             title: deckDesign.title,
-            clientName: nil,
-            companyName: nil
+            clientName: clientName,
+            companyName: companyName
         ) else { return }
         sharePDFData = data
         showingShareSheet = true
+    }
+
+    // MARK: - Context Resolution
+
+    /// Resolve clientId and opportunityId from the linked project via SwiftData
+    private func resolveProjectContext() -> (clientId: String?, opportunityId: String?) {
+        guard let projectId = deckDesign.projectId, let context = modelContext else {
+            return (nil, nil)
+        }
+        let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectId })
+        guard let project = try? context.fetch(descriptor).first else {
+            return (nil, nil)
+        }
+        return (project.clientId, project.opportunityId)
+    }
+
+    /// Resolve client name from clientId via SwiftData
+    private func resolveClientName(clientId: String?) -> String? {
+        guard let clientId, let context = modelContext else { return nil }
+        let descriptor = FetchDescriptor<Client>(predicate: #Predicate { $0.id == clientId })
+        return try? context.fetch(descriptor).first?.name
+    }
+
+    /// Resolve company name from UserDefaults
+    private func resolveCompanyName() -> String? {
+        UserDefaults.standard.string(forKey: "Company Name")
     }
 
     func materialSummaryText() -> String {

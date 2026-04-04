@@ -70,9 +70,16 @@ struct EstimatePreviewSheet: View {
 
                     // Create Estimate button
                     Button {
-                        viewModel.showingEstimatePreview = false
                         Task {
-                            await viewModel.generateEstimate()
+                            // Check for existing estimate before creating
+                            if let existing = await viewModel.checkForDuplicateEstimate() {
+                                viewModel.existingEstimate = existing
+                                viewModel.showingEstimatePreview = false
+                                viewModel.showingDuplicateAlert = true
+                            } else {
+                                viewModel.showingEstimatePreview = false
+                                await viewModel.generateEstimate()
+                            }
                         }
                     } label: {
                         HStack(spacing: 8) {

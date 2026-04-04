@@ -29,6 +29,49 @@ struct DeckToolbar: View {
 
             Spacer()
 
+            // Generate Estimate
+            Button {
+                viewModel.showingEstimatePreview = true
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            } label: {
+                VStack(spacing: 4) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(viewModel.canGenerateEstimate ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+
+                    Text("Estimate")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(viewModel.canGenerateEstimate ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                }
+                .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
+            }
+            .disabled(!viewModel.canGenerateEstimate)
+
+            // Share
+            Button {
+                viewModel.showingShareOptions = true
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                VStack(spacing: 4) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(Color.white)
+
+                    Text("Share")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
+            }
+
+            // BLE laser indicator (only when connected)
+            if viewModel.isLaserConnected {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(OPSStyle.Colors.successStatus)
+                    .frame(width: 28, height: OPSStyle.Layout.touchTargetMin)
+            }
+
             // Undo / Redo
             Button {
                 viewModel.undo()

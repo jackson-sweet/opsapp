@@ -32,7 +32,7 @@ struct DeckBuilderView: View {
             // AR accuracy banner
             arAccuracyBanner
 
-            // Canvas + Assignment Wheel overlay
+            // Canvas + Assignment Wheel overlay + Laser toast
             ZStack(alignment: .bottomTrailing) {
                 DeckCanvasView(viewModel: viewModel)
 
@@ -43,6 +43,46 @@ struct DeckBuilderView: View {
                         .padding(.bottom, 20)
                         .transition(.scale.combined(with: .opacity))
                 }
+
+                // Laser toasts
+                VStack(spacing: 6) {
+                    Spacer()
+
+                    // Disconnect / reconnecting toast
+                    if viewModel.showDisconnectToast {
+                        laserToast(
+                            icon: "antenna.radiowaves.left.and.right.slash",
+                            text: viewModel.disconnectToastText,
+                            color: OPSStyle.Colors.errorStatus
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+
+                    // Measurement error toast
+                    if viewModel.showLaserErrorToast {
+                        laserToast(
+                            icon: "exclamationmark.triangle.fill",
+                            text: viewModel.laserErrorText,
+                            color: OPSStyle.Colors.errorStatus
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+
+                    // Buffered measurement toast
+                    if viewModel.showMeasurementToast {
+                        laserToast(
+                            icon: "antenna.radiowaves.left.and.right",
+                            text: viewModel.measurementToastText,
+                            color: OPSStyle.Colors.warningStatus
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+                .animation(.easeInOut(duration: 0.25), value: viewModel.showMeasurementToast)
+                .animation(.easeInOut(duration: 0.25), value: viewModel.showLaserErrorToast)
+                .animation(.easeInOut(duration: 0.25), value: viewModel.showDisconnectToast)
             }
 
             // Toolbar
@@ -98,6 +138,63 @@ struct DeckBuilderView: View {
                 viewModel.drawingData = drawingData
                 viewModel.save()
                 showingARPerimeter = false
+            }
+        }
+        // Estimate preview sheet
+        .sheet(isPresented: $viewModel.showingEstimatePreview) {
+            EstimatePreviewSheet(viewModel: viewModel)
+        }
+        // Share options dialog
+        .confirmationDialog("Share Deck Design", isPresented: $viewModel.showingShareOptions) {
+            Button("Share Image") {
+                Task { await viewModel.prepareShareImage() }
+            }
+            Button("Share with Material List") {
+                Task {
+                    await viewModel.prepareShareImage()
+                    // materialSummaryText is included as text alongside the image
+                }
+            }
+            Button("Export PDF") {
+                Task { await viewModel.prepareSharePDF() }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        // Share sheet (image or PDF)
+        .sheet(isPresented: $viewModel.showingShareSheet) {
+            if let image = viewModel.shareImage {
+                let text = viewModel.materialSummaryText()
+                ActivityView(items: text.isEmpty ? [image] : [image, text])
+                    .onDisappear {
+                        viewModel.shareImage = nil
+                    }
+            } else if let pdfData = viewModel.sharePDFData {
+                ActivityView(items: [pdfData])
+                    .onDisappear {
+                        viewModel.sharePDFData = nil
+                    }
+            }
+        }
+        // Estimate created toast
+        .overlay(alignment: .bottom) {
+            if viewModel.estimateCreated, let number = viewModel.createdEstimateNumber {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.successStatus)
+
+                    Text("Estimate created \u{2014} \(number)")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .background(OPSStyle.Colors.cardBackground)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                .padding(.bottom, 80)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.3), value: viewModel.estimateCreated)
             }
         }
         .statusBarHidden(true)
@@ -179,10 +276,14 @@ struct DeckBuilderView: View {
                     Label("Walk Perimeter (AR)", systemImage: "camera.viewfinder")
                 }
 
-                Button(action: {}) {
-                    Label("Connect Laser Meter", systemImage: "antenna.radiowaves.left.and.right")
+                if viewModel.isLaserConnected {
+                    Label("Laser Connected", systemImage: "antenna.radiowaves.left.and.right")
+                } else {
+                    Button(action: {}) {
+                        Label("Connect Laser Meter", systemImage: "antenna.radiowaves.left.and.right")
+                    }
+                    .disabled(true)
                 }
-                .disabled(true)
             } label: {
                 Image(systemName: "plus.circle")
                     .font(.system(size: 20, weight: .medium))
@@ -253,5 +354,24 @@ struct DeckBuilderView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Laser Toast Helper
+
+    private func laserToast(icon: String, text: String, color: Color) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(color)
+
+            Text(text)
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(color.opacity(0.15))
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 }

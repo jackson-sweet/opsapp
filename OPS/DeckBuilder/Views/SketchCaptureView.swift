@@ -3,6 +3,10 @@
 import SwiftUI
 import VisionKit
 import UIKit
+import PhotosUI
+import Vision
+import CoreImage
+import CoreImage.CIFilterBuiltins
 
 // MARK: - DocumentScannerView (VisionKit Wrapper)
 
@@ -59,6 +63,140 @@ struct SketchDocumentScannerView: UIViewControllerRepresentable {
     }
 }
 
+// MARK: - PhotoLibraryPicker (PHPicker Wrapper)
+
+/// Wraps `PHPickerViewController` for selecting an existing photo of a hand-drawn sketch.
+/// Configured for single image selection only.
+struct PhotoLibraryPicker: UIViewControllerRepresentable {
+    let onPick: (UIImage) -> Void
+    let onCancel: () -> Void
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration()
+        config.selectionLimit = 1
+        config.filter = .images
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: PhotoLibraryPicker
+
+        init(_ parent: PhotoLibraryPicker) {
+            self.parent = parent
+        }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            guard let result = results.first else {
+                parent.onCancel()
+                return
+            }
+
+            let provider = result.itemProvider
+            guard provider.canLoadObject(ofClass: UIImage.self) else {
+                parent.onCancel()
+                return
+            }
+
+            provider.loadObject(ofClass: UIImage.self) { [weak self] object, error in
+                DispatchQueue.main.async {
+                    if let image = object as? UIImage {
+                        self?.parent.onPick(image)
+                    } else {
+                        self?.parent.onCancel()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Perspective Correction
+
+/// Runs Vision document segmentation on a photo-library image to auto-crop and
+/// perspective-correct the sketch, matching the quality of VNDocumentCamera output.
+private enum SketchPerspectiveCorrector {
+
+    /// Detects a document in the image and applies perspective correction.
+    /// If no document is detected or processing fails, returns the original image unchanged.
+    static func perspectiveCorrect(image: UIImage) async -> UIImage {
+        guard let cgImage = image.cgImage else { return image }
+
+        let request = VNDetectDocumentSegmentationRequest()
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+
+        do {
+            try handler.perform([request])
+        } catch {
+            return image
+        }
+
+        guard let observation = request.results?.first as? VNRectangleObservation else {
+            return image
+        }
+
+        // Convert Vision normalized coordinates to CIImage pixel coordinates
+        let ciImage = CIImage(cgImage: cgImage)
+        let imageWidth = ciImage.extent.width
+        let imageHeight = ciImage.extent.height
+
+        let topLeft = CGPoint(
+            x: observation.topLeft.x * imageWidth,
+            y: observation.topLeft.y * imageHeight
+        )
+        let topRight = CGPoint(
+            x: observation.topRight.x * imageWidth,
+            y: observation.topRight.y * imageHeight
+        )
+        let bottomLeft = CGPoint(
+            x: observation.bottomLeft.x * imageWidth,
+            y: observation.bottomLeft.y * imageHeight
+        )
+        let bottomRight = CGPoint(
+            x: observation.bottomRight.x * imageWidth,
+            y: observation.bottomRight.y * imageHeight
+        )
+
+        // Calculate the output dimensions from the detected quad
+        let outputWidth = max(
+            hypot(topRight.x - topLeft.x, topRight.y - topLeft.y),
+            hypot(bottomRight.x - bottomLeft.x, bottomRight.y - bottomLeft.y)
+        )
+        let outputHeight = max(
+            hypot(topLeft.x - bottomLeft.x, topLeft.y - bottomLeft.y),
+            hypot(topRight.x - bottomRight.x, topRight.y - bottomRight.y)
+        )
+
+        guard let filter = CIFilter(name: "CIPerspectiveCorrection") else {
+            return image
+        }
+
+        filter.setValue(ciImage, forKey: kCIInputImageKey)
+        filter.setValue(CIVector(cgPoint: topLeft), forKey: "inputTopLeft")
+        filter.setValue(CIVector(cgPoint: topRight), forKey: "inputTopRight")
+        filter.setValue(CIVector(cgPoint: bottomLeft), forKey: "inputBottomLeft")
+        filter.setValue(CIVector(cgPoint: bottomRight), forKey: "inputBottomRight")
+
+        guard let outputCIImage = filter.outputImage else {
+            return image
+        }
+
+        let context = CIContext()
+        guard let outputCGImage = context.createCGImage(outputCIImage, from: outputCIImage.extent) else {
+            return image
+        }
+
+        return UIImage(cgImage: outputCGImage, scale: image.scale, orientation: image.imageOrientation)
+    }
+}
+
 // MARK: - ScanProgressBar
 
 /// Custom progress bar matching OPS design system.
@@ -97,10 +235,12 @@ private struct ScanProgressBar: View {
 /// Presented as `.fullScreenCover` from the creation picker.
 ///
 /// Flow:
-/// 1. Opens the VisionKit document scanner (auto-crop + perspective correction)
-/// 2. On capture, runs `SketchScanPipeline` and shows processing progress
-/// 3. On success, presents `SketchCleanupView` for edge cleanup and dimension review
-/// 4. On failure, shows retry/cancel options
+/// 1. Shows a choice screen: "Scan with Camera" or "Choose from Library"
+/// 2. Camera path: opens VisionKit document scanner (auto-crop + perspective correction)
+/// 3. Library path: opens PHPicker, then runs Vision document segmentation for perspective correction
+/// 4. On capture, runs `SketchScanPipeline` and shows processing progress
+/// 5. On success, presents `SketchCleanupView` for edge cleanup and dimension review
+/// 6. On failure, shows retry/cancel options
 struct SketchCaptureView: View {
     // MARK: - Properties
 
@@ -113,9 +253,11 @@ struct SketchCaptureView: View {
 
     @StateObject private var pipeline = SketchScanPipeline()
     @State private var capturedImage: UIImage?
-    @State private var showingScanner = true
+    @State private var showingDocumentScanner = false
+    @State private var showingPhotoPicker = false
     @State private var showingCleanup = false
     @State private var scannerError: String?
+    @State private var isProcessingLibraryImage = false
     @Environment(\.dismiss) private var dismiss
 
     // MARK: - Haptic Generators
@@ -131,8 +273,10 @@ struct SketchCaptureView: View {
             OPSStyle.Colors.background
                 .ignoresSafeArea()
 
-            if showingScanner && capturedImage == nil {
-                scannerLayer
+            if capturedImage == nil && !isProcessingLibraryImage {
+                choiceScreen
+            } else if isProcessingLibraryImage {
+                processingLibraryLayer
             } else if capturedImage != nil && pipeline.stage != .complete && pipeline.stage != .failed {
                 processingLayer
             } else if pipeline.stage == .failed {
@@ -144,13 +288,48 @@ struct SketchCaptureView: View {
         }
         .onChange(of: capturedImage) { _, image in
             guard let image else { return }
-            showingScanner = false
             Task {
                 await pipeline.process(image: image)
             }
         }
         .onChange(of: pipeline.stage) { oldValue, newValue in
             handleStageChange(from: oldValue, to: newValue)
+        }
+        .fullScreenCover(isPresented: $showingDocumentScanner) {
+            SketchDocumentScannerView(
+                onCapture: { image in
+                    showingDocumentScanner = false
+                    capturedImage = image
+                },
+                onCancel: {
+                    showingDocumentScanner = false
+                },
+                onError: { error in
+                    showingDocumentScanner = false
+                    scannerError = error.localizedDescription
+                    self.pipeline.error = error.localizedDescription
+                    self.pipeline.stage = .failed
+                }
+            )
+            .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showingPhotoPicker) {
+            PhotoLibraryPicker(
+                onPick: { image in
+                    showingPhotoPicker = false
+                    isProcessingLibraryImage = true
+                    Task {
+                        let corrected = await SketchPerspectiveCorrector.perspectiveCorrect(image: image)
+                        await MainActor.run {
+                            isProcessingLibraryImage = false
+                            capturedImage = corrected
+                        }
+                    }
+                },
+                onCancel: {
+                    showingPhotoPicker = false
+                }
+            )
         }
         .fullScreenCover(isPresented: $showingCleanup) {
             if let scanResult = pipeline.result {
@@ -168,24 +347,105 @@ struct SketchCaptureView: View {
         }
     }
 
-    // MARK: - Scanner Layer
+    // MARK: - Choice Screen
 
-    /// The VisionKit document camera — full screen.
-    private var scannerLayer: some View {
-        SketchDocumentScannerView(
-            onCapture: { image in
-                capturedImage = image
-            },
-            onCancel: {
-                dismiss()
-            },
-            onError: { error in
-                scannerError = error.localizedDescription
-                self.pipeline.error = error.localizedDescription
-                self.pipeline.stage = .failed
+    /// Two large buttons: "Scan with Camera" and "Choose from Library", plus a Cancel text button.
+    private var choiceScreen: some View {
+        VStack(spacing: 0) {
+            Spacer()
+
+            // Title
+            Text("Scan Paper Sketch")
+                .font(OPSStyle.Typography.heading)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .padding(.bottom, OPSStyle.Layout.spacing5)
+
+            // Buttons
+            VStack(spacing: OPSStyle.Layout.spacing3) {
+                // Scan with Camera
+                Button {
+                    lightImpact.impactOccurred()
+                    showingDocumentScanner = true
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
+                        Text("Scan with Camera")
+                            .font(OPSStyle.Typography.button)
+                    }
+                    .foregroundColor(OPSStyle.Colors.buttonText)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: OPSStyle.Layout.touchTargetStandard)
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                            .fill(OPSStyle.Colors.primaryAccent)
+                    )
+                }
+
+                // Choose from Library
+                Button {
+                    lightImpact.impactOccurred()
+                    showingPhotoPicker = true
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Image(systemName: "photo.on.rectangle")
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
+                        Text("Choose from Library")
+                            .font(OPSStyle.Typography.button)
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: OPSStyle.Layout.touchTargetStandard)
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                            .stroke(OPSStyle.Colors.buttonBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                }
             }
+            .padding(.horizontal, OPSStyle.Layout.spacing4)
+
+            Spacer()
+
+            // Cancel
+            Button {
+                dismiss()
+            } label: {
+                Text("Cancel")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: OPSStyle.Layout.touchTargetStandard)
+            }
+            .padding(.bottom, OPSStyle.Layout.spacing5)
+        }
+    }
+
+    // MARK: - Processing Library Image Layer
+
+    /// Shown while the photo-library image is being perspective-corrected via Vision.
+    private var processingLibraryLayer: some View {
+        VStack(spacing: OPSStyle.Layout.spacing4) {
+            ProgressView()
+                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                .scaleEffect(1.5)
+
+            Text("Preparing image...")
+                .font(OPSStyle.Typography.heading)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+
+            Text("Detecting and correcting sketch perspective")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+        }
+        .padding(OPSStyle.Layout.spacing5)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .fill(OPSStyle.Colors.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
         )
-        .ignoresSafeArea()
     }
 
     // MARK: - Processing Layer
@@ -325,7 +585,7 @@ struct SketchCaptureView: View {
 
     // MARK: - Reset
 
-    /// Resets all state to re-enter the document scanner.
+    /// Resets all state to re-enter the choice screen.
     private func resetForRetry() {
         capturedImage = nil
         scannerError = nil
@@ -333,7 +593,9 @@ struct SketchCaptureView: View {
         pipeline.progress = 0.0
         pipeline.result = nil
         pipeline.error = nil
-        showingScanner = true
+        showingDocumentScanner = false
+        showingPhotoPicker = false
         showingCleanup = false
+        isProcessingLibraryImage = false
     }
 }

@@ -169,11 +169,14 @@ enum ConflictResolution {
 /// Aggregated output of the entire scan pipeline.
 /// Call `toDeckDrawingData(…)` to convert into editable canvas geometry.
 struct SketchScanResult {
+    let sourceImage: CGImage
     let gridResult: GridDetectionResult
     let contourResult: ContourExtractionResult
     let recognizedTexts: [RecognizedText]
     let dimensionAssociations: [DimensionAssociation]
     let scaleResult: ScaleResult?
+    let clientNameCandidate: String?
+    let stairDetections: [(segmentId: String, treadCount: Int)]
     var conflictResolution: ConflictResolution = .useAnnotations
 
     // MARK: - Conversion to DeckDrawingData
@@ -328,11 +331,29 @@ struct SketchScanResult {
     }
 
     /// Build a lookup from segment ID to the nearest stair pattern.
+    /// Combines visual stair patterns from contour detection with OCR-detected stair counts.
     private func buildStairLookup() -> [String: StairPattern] {
         var lookup: [String: StairPattern] = [:]
+        // Visual stair patterns from contour detection
         for pattern in contourResult.stairPatterns {
             if let segId = pattern.nearestSegmentId {
                 lookup[segId] = pattern
+            }
+        }
+        // OCR-detected stair counts (override visual if both exist)
+        for detection in stairDetections {
+            if lookup[detection.segmentId] != nil {
+                // OCR count is more reliable — update the internal line count
+                lookup[detection.segmentId] = StairPattern(
+                    boundingRect: lookup[detection.segmentId]!.boundingRect,
+                    internalLineCount: detection.treadCount
+                )
+            } else {
+                // OCR-only detection with no visual pattern
+                lookup[detection.segmentId] = StairPattern(
+                    boundingRect: .zero,
+                    internalLineCount: detection.treadCount
+                )
             }
         }
         return lookup

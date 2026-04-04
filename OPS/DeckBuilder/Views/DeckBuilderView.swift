@@ -7,6 +7,7 @@ struct DeckBuilderView: View {
     @StateObject private var viewModel: DeckBuilderViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var isSaving = false
+    @State private var showingTemplatePicker = false
 
     let projectId: String?
     let companyId: String
@@ -53,6 +54,19 @@ struct DeckBuilderView: View {
         }
         .sheet(isPresented: $viewModel.showingStairConfig) {
             StairConfigView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $showingTemplatePicker) {
+            TemplatePickerView(
+                initialTab: 0,
+                projectId: viewModel.deckDesign.projectId,
+                companyId: viewModel.deckDesign.companyId,
+                userId: viewModel.deckDesign.createdBy,
+                onDesignCreated: { newDesign in
+                    viewModel.drawingData = newDesign.drawingData
+                    viewModel.save()
+                    showingTemplatePicker = false
+                }
+            )
         }
         .statusBarHidden(true)
     }
@@ -103,6 +117,16 @@ struct DeckBuilderView: View {
             }
 
             Spacer()
+
+            // Template picker button
+            Button {
+                showingTemplatePicker = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            }
 
             // Import menu (stubs for future methods)
             Menu {

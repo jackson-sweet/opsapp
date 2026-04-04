@@ -8,6 +8,7 @@ struct DeckBuilderView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isSaving = false
     @State private var showingTemplatePicker = false
+    @State private var showingSketchCapture = false
 
     let projectId: String?
     let companyId: String
@@ -67,6 +68,21 @@ struct DeckBuilderView: View {
                     showingTemplatePicker = false
                 }
             )
+        }
+        .fullScreenCover(isPresented: $showingSketchCapture) {
+            SketchCaptureView(
+                projectId: viewModel.deckDesign.projectId,
+                companyId: viewModel.deckDesign.companyId,
+                userId: viewModel.deckDesign.createdBy
+            ) { scanResult in
+                let drawingData = scanResult.toDeckDrawingData(
+                    canvasWidth: 600,
+                    canvasHeight: 400
+                )
+                viewModel.drawingData = drawingData
+                viewModel.save()
+                showingSketchCapture = false
+            }
         }
         .statusBarHidden(true)
     }
@@ -135,10 +151,11 @@ struct DeckBuilderView: View {
                 }
                 .disabled(true)
 
-                Button(action: {}) {
+                Button {
+                    showingSketchCapture = true
+                } label: {
                     Label("Scan Paper Sketch", systemImage: "doc.text.viewfinder")
                 }
-                .disabled(true)
 
                 Button(action: {}) {
                     Label("Walk Perimeter (AR)", systemImage: "camera.viewfinder")

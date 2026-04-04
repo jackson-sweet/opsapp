@@ -14,6 +14,7 @@ struct CreationPickerView: View {
 
     @State private var showingTemplatePicker = false
     @State private var templatePickerInitialTab: Int = 0
+    @State private var showingSketchCapture = false
 
     var body: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
@@ -54,12 +55,46 @@ struct CreationPickerView: View {
                     templatePickerInitialTab = 1
                     showingTemplatePicker = true
                 }
+
+                // Scan Paper Sketch
+                creationOption(
+                    icon: "doc.viewfinder",
+                    title: "Scan Paper Sketch",
+                    subtitle: "Photograph a hand-drawn sketch"
+                ) {
+                    showingSketchCapture = true
+                }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
 
             Spacer()
         }
         .background(OPSStyle.Colors.background)
+        .fullScreenCover(isPresented: $showingSketchCapture) {
+            SketchCaptureView(
+                projectId: projectId,
+                companyId: companyId,
+                userId: userId
+            ) { scanResult in
+                // Convert scan result to DeckDrawingData and create design
+                let drawingData = scanResult.toDeckDrawingData(
+                    canvasWidth: 600,
+                    canvasHeight: 400
+                )
+                let design = DeckDesign(
+                    companyId: companyId,
+                    projectId: projectId,
+                    title: scanResult.clientNameCandidate.map { "\($0) Deck" } ?? "Scanned Deck",
+                    drawingDataJSON: drawingData.toJSON(),
+                    createdBy: userId
+                )
+                modelContext.insert(design)
+                try? modelContext.save()
+                showingSketchCapture = false
+                onDesignCreated(design)
+                dismiss()
+            }
+        }
         .sheet(isPresented: $showingTemplatePicker) {
             TemplatePickerView(
                 initialTab: templatePickerInitialTab,

@@ -90,11 +90,11 @@ struct DeckToolbar: View {
                 VStack(spacing: 4) {
                     Image(systemName: "arkit")
                         .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(viewModel.canViewInAR ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                        .foregroundColor(viewModel.canViewInAR ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
 
                     Text("AR")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(viewModel.canViewInAR ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                        .foregroundColor(viewModel.canViewInAR ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                 }
                 .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
             }

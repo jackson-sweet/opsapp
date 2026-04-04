@@ -355,8 +355,37 @@ struct ARSceneContainer: UIViewRepresentable {
 
         func captureScreenshot() {
             guard let arView = arView else { return }
-            let image = arView.snapshot()
-            Task { @MainActor in viewModel.onScreenshotCaptured(image) }
+            let rawSnapshot = arView.snapshot()
+            let watermarked = addWatermark(to: rawSnapshot)
+            Task { @MainActor in viewModel.onScreenshotCaptured(watermarked) }
+        }
+
+        private func addWatermark(to image: UIImage) -> UIImage {
+            let renderer = UIGraphicsImageRenderer(size: image.size)
+            return renderer.image { ctx in
+                image.draw(at: .zero)
+
+                let text = "Powered by OPS"
+                let font = UIFont.systemFont(ofSize: 12, weight: .medium)
+                let shadow = NSShadow()
+                shadow.shadowColor = UIColor.black.withAlphaComponent(0.6)
+                shadow.shadowOffset = CGSize(width: 0, height: 1)
+                shadow.shadowBlurRadius = 2
+
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: font,
+                    .foregroundColor: UIColor.white.withAlphaComponent(0.7),
+                    .shadow: shadow
+                ]
+
+                let textSize = (text as NSString).size(withAttributes: attributes)
+                let margin: CGFloat = 12
+                let origin = CGPoint(
+                    x: image.size.width - textSize.width - margin,
+                    y: image.size.height - textSize.height - margin
+                )
+                (text as NSString).draw(at: origin, withAttributes: attributes)
+            }
         }
 
         // MARK: - UIGestureRecognizerDelegate

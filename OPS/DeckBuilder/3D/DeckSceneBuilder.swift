@@ -55,7 +55,7 @@ struct DeckSceneBuilder {
                 let elevationFeet = level.elevation ?? 2.5
                 let elevationM = Float(elevationFeet) * feetToMeters
                 buildDeckLevel(
-                    scene: scene,
+                    parent: scene.rootNode,
                     vertices2D: metersVerts,
                     edges: level.edges,
                     allVertices: level.vertices,
@@ -67,7 +67,7 @@ struct DeckSceneBuilder {
             }
             // Level connections (stairs between levels)
             for connection in drawingData.levelConnections {
-                buildLevelConnection(scene: scene, connection: connection, drawingData: drawingData, scaleFactor: scaleFactor)
+                buildLevelConnection(parent: scene.rootNode, connection: connection, drawingData: drawingData, scaleFactor: scaleFactor)
             }
         } else if drawingData.isClosed {
             let metersVerts = convertToMeters(vertices: drawingData.orderedPositions, scaleFactor: scaleFactor)
@@ -75,7 +75,7 @@ struct DeckSceneBuilder {
             let elevationFeet = drawingData.overallElevation ?? 2.5
             let elevationM = Float(elevationFeet) * feetToMeters
             buildDeckLevel(
-                scene: scene,
+                parent: scene.rootNode,
                 vertices2D: metersVerts,
                 edges: drawingData.edges,
                 allVertices: drawingData.vertices,
@@ -93,17 +93,86 @@ struct DeckSceneBuilder {
         return scene
     }
 
+    // MARK: - AR Node Variant
+
+    /// Build a deck node for AR placement — geometry only, no camera/lights/ground/wall.
+    /// The AR environment provides its own camera, lighting, and ground.
+    static func buildARNode(from drawingData: DeckDrawingData) -> SCNNode {
+        let rootNode = SCNNode()
+        rootNode.name = "deckARRoot"
+
+        guard let scaleFactor = drawingData.scaleFactor, scaleFactor > 0 else {
+            return rootNode
+        }
+
+        if drawingData.isMultiLevel {
+            for level in drawingData.levels where level.isClosed {
+                let metersVerts = convertToMeters(vertices: level.orderedPositions, scaleFactor: scaleFactor)
+                let elevationFeet = level.elevation ?? 2.5
+                let elevationM = Float(elevationFeet) * feetToMeters
+                buildDeckLevel(
+                    parent: rootNode,
+                    vertices2D: metersVerts,
+                    edges: level.edges,
+                    allVertices: level.vertices,
+                    elevationM: elevationM,
+                    scaleFactor: scaleFactor,
+                    perVertexElevation: level.perVertexElevation,
+                    level: level,
+                    skipHouseWall: true
+                )
+            }
+            for connection in drawingData.levelConnections {
+                buildLevelConnection(parent: rootNode, connection: connection, drawingData: drawingData, scaleFactor: scaleFactor)
+            }
+        } else if drawingData.isClosed {
+            let metersVerts = convertToMeters(vertices: drawingData.orderedPositions, scaleFactor: scaleFactor)
+            let elevationFeet = drawingData.overallElevation ?? 2.5
+            let elevationM = Float(elevationFeet) * feetToMeters
+            buildDeckLevel(
+                parent: rootNode,
+                vertices2D: metersVerts,
+                edges: drawingData.edges,
+                allVertices: drawingData.vertices,
+                elevationM: elevationM,
+                scaleFactor: scaleFactor,
+                perVertexElevation: false,
+                level: nil,
+                skipHouseWall: true
+            )
+        }
+
+        // Shadow-receiving floor — invisible but catches shadows from the deck
+        let shadowFloor = SCNFloor()
+        shadowFloor.reflectivity = 0
+        let shadowMaterial = SCNMaterial()
+        shadowMaterial.colorBufferWriteMask = []
+        shadowMaterial.lightingModel = .constant
+        shadowFloor.firstMaterial = shadowMaterial
+        let floorNode = SCNNode(geometry: shadowFloor)
+        floorNode.name = "shadowFloor"
+        floorNode.position = SCNVector3(0, -0.001, 0)
+        rootNode.addChildNode(floorNode)
+
+        // Center the geometry so the anchor point is at the footprint midpoint.
+        // convertToMeters already centers around (0,0), so the root is already
+        // positioned with the deck centered at the origin. No additional offset needed.
+
+        return rootNode
+    }
+
     // MARK: - Deck Level
 
     private static func buildDeckLevel(
-        scene: SCNScene,
+        parent: SCNNode,
         vertices2D: [CGPoint],  // already in meters (XZ plane)
         edges: [DeckEdge],
         allVertices: [DeckVertex],
         elevationM: Float,
         scaleFactor: Double,
         perVertexElevation: Bool,
-        level: DeckLevel?
+        level: DeckLevel?,
+        skipHouseWall: Bool = false
     ) {
         let deckGroup = SCNNode()
         deckGroup.name = level.map { "deck_\($0.id)" } ?? "deck_main"
@@ -181,7 +250,7 @@ struct DeckSceneBuilder {
             }
 
             // House wall
-            if edge.edgeType == .houseEdge {
+            if !skipHouseWall && edge.edgeType == .houseEdge {
                 buildHouseWall(
                     parent: deckGroup,
                     start: startPos3D,
@@ -191,7 +260,7 @@ struct DeckSceneBuilder {
             }
         }
 
-        scene.rootNode.addChildNode(deckGroup)
+        parent.addChildNode(deckGroup)
     }
 
     // MARK: - Railing
@@ -594,7 +663,7 @@ struct DeckSceneBuilder {
     // MARK: - Level Connections
 
     private static func buildLevelConnection(
-        scene: SCNScene,
+        parent: SCNNode,
         connection: LevelConnection,
         drawingData: DeckDrawingData,
         scaleFactor: Double
@@ -717,7 +786,7 @@ struct DeckSceneBuilder {
             )
         }
 
-        scene.rootNode.addChildNode(connectionGroup)
+        parent.addChildNode(connectionGroup)
     }
 
     // MARK: - House Wall

@@ -142,6 +142,36 @@ struct DeckBuilderView: View {
                 showingARPerimeter = false
             }
         }
+        // Photo source picker
+        .sheet(isPresented: $viewModel.showingPhotoSourcePicker) {
+            PhotoSourcePickerView(
+                projectId: viewModel.deckDesign.projectId,
+                onPhotoSelected: { photo in
+                    viewModel.selectedSitePhoto = photo
+                    viewModel.showingPhotoSourcePicker = false
+                    viewModel.showingPhotoOverlayEditor = true
+                }
+            )
+        }
+        // Photo overlay editor
+        .fullScreenCover(isPresented: $viewModel.showingPhotoOverlayEditor) {
+            if let photo = viewModel.selectedSitePhoto {
+                PhotoOverlayEditorView(
+                    sitePhoto: photo,
+                    drawingData: viewModel.drawingData,
+                    projectId: viewModel.deckDesign.projectId,
+                    companyId: viewModel.deckDesign.companyId,
+                    userId: viewModel.deckDesign.createdBy,
+                    onSave: { state in
+                        viewModel.savePhotoOverlayState(state)
+                        viewModel.showingPhotoOverlayEditor = false
+                    },
+                    onDismiss: {
+                        viewModel.showingPhotoOverlayEditor = false
+                    }
+                )
+            }
+        }
         // Estimate preview sheet
         .sheet(isPresented: $viewModel.showingEstimatePreview) {
             EstimatePreviewSheet(viewModel: viewModel)

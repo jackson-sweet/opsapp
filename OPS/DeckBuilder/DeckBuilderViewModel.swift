@@ -32,6 +32,12 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var editingEdgeId: String?
     @Published var editingVertexId: String?
 
+    // MARK: - Photo Overlay
+
+    @Published var showingPhotoSourcePicker: Bool = false
+    @Published var showingPhotoOverlayEditor: Bool = false
+    @Published var selectedSitePhoto: UIImage?
+
     // MARK: - Estimate & Share
 
     @Published var showingEstimatePreview: Bool = false
@@ -854,6 +860,18 @@ class DeckBuilderViewModel: ObservableObject {
 
     func materialSummaryText() -> String {
         EstimateGeneratorService.materialSummary(from: drawingData)
+    }
+
+    // MARK: - Photo Overlay
+
+    var canShowOverlay: Bool {
+        drawingData.vertices.count >= 3 && drawingData.isClosed
+    }
+
+    func savePhotoOverlayState(_ state: PhotoOverlayState) {
+        pushUndo("save overlay")
+        drawingData.photoOverlay = state
+        save()
     }
 
     // MARK: - Helpers

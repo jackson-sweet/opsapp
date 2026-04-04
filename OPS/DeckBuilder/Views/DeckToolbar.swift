@@ -64,6 +64,24 @@ struct DeckToolbar: View {
                 .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
             }
 
+            // Photo Overlay
+            Button {
+                viewModel.showingPhotoSourcePicker = true
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                VStack(spacing: 4) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(viewModel.canShowOverlay ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+
+                    Text("Overlay")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(viewModel.canShowOverlay ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                }
+                .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
+            }
+            .disabled(!viewModel.canShowOverlay)
+
             // BLE laser indicator (only when connected)
             if viewModel.isLaserConnected {
                 Image(systemName: "antenna.radiowaves.left.and.right")

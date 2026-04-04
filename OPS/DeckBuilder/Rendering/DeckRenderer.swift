@@ -22,11 +22,13 @@ struct DeckRenderer {
             gc.setFillColor(UIColor.white.cgColor)
             gc.fill(CGRect(origin: .zero, size: size))
 
-            // Calculate bounds to fit drawing in image
-            let positions = drawingData.orderedPositions
-            guard !positions.isEmpty else { return }
+            // Calculate bounds from all vertices (multi-level or single)
+            let allPositions = drawingData.isMultiLevel
+                ? drawingData.levels.flatMap { $0.orderedPositions }
+                : drawingData.orderedPositions
+            guard !allPositions.isEmpty else { return }
 
-            let bounds = boundingRect(for: positions)
+            let bounds = boundingRect(for: allPositions)
             let padding: CGFloat = 60
             let availableSize = CGSize(
                 width: size.width - padding * 2,
@@ -46,63 +48,117 @@ struct DeckRenderer {
                 CGPoint(x: point.x * fitScale + offsetX, y: point.y * fitScale + offsetY)
             }
 
-            // Draw footprint fill
-            if drawingData.isClosed && positions.count >= 3 {
-                gc.setFillColor(UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: 0.1).cgColor)
-                gc.beginPath()
-                gc.move(to: transform(positions[0]))
-                for i in 1..<positions.count {
-                    gc.addLine(to: transform(positions[i]))
-                }
-                gc.closePath()
-                gc.fillPath()
-            }
+            if drawingData.isMultiLevel {
+                // Multi-level: render each level
+                for level in drawingData.levels {
+                    let positions = level.orderedPositions
+                    let c = level.displayColor.fillColor
 
-            // Draw edges
-            gc.setStrokeColor(UIColor(red: 40/255, green: 40/255, blue: 40/255, alpha: 1).cgColor)
-            gc.setLineWidth(2.0)
-            for edge in drawingData.edges {
-                guard let start = drawingData.vertex(byId: edge.startVertexId),
-                      let end = drawingData.vertex(byId: edge.endVertexId) else { continue }
-                let p1 = transform(start.position)
-                let p2 = transform(end.position)
-                gc.beginPath()
-                gc.move(to: p1)
-                gc.addLine(to: p2)
-                gc.strokePath()
+                    // Footprint fill
+                    if level.isClosed && positions.count >= 3 {
+                        gc.setFillColor(UIColor(red: c.r, green: c.g, blue: c.b, alpha: 0.1).cgColor)
+                        gc.beginPath()
+                        gc.move(to: transform(positions[0]))
+                        for i in 1..<positions.count { gc.addLine(to: transform(positions[i])) }
+                        gc.closePath()
+                        gc.fillPath()
+                    }
 
-                // Draw dimension label at midpoint
-                if let dim = edge.dimension {
-                    let midX = (p1.x + p2.x) / 2
-                    let midY = (p1.y + p2.y) / 2
-                    let label = DimensionEngine.format(dim, system: drawingData.config.measurementSystem)
-                    let attrs: [NSAttributedString.Key: Any] = [
-                        .font: UIFont.systemFont(ofSize: 12, weight: .medium),
-                        .foregroundColor: UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: 1)
-                    ]
-                    let nsLabel = label as NSString
-                    let labelSize = nsLabel.size(withAttributes: attrs)
-                    nsLabel.draw(at: CGPoint(x: midX - labelSize.width / 2, y: midY - labelSize.height - 4), withAttributes: attrs)
-                }
-
-                // Draw railing indicator
-                if edge.railingConfig != nil {
-                    gc.setStrokeColor(UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: 0.6).cgColor)
-                    gc.setLineWidth(4.0)
-                    gc.beginPath()
-                    gc.move(to: p1)
-                    gc.addLine(to: p2)
-                    gc.strokePath()
+                    // Edges
+                    gc.setStrokeColor(UIColor(red: c.r, green: c.g, blue: c.b, alpha: 0.8).cgColor)
                     gc.setLineWidth(2.0)
-                    gc.setStrokeColor(UIColor(red: 40/255, green: 40/255, blue: 40/255, alpha: 1).cgColor)
-                }
-            }
+                    for edge in level.edges {
+                        guard let start = level.vertex(byId: edge.startVertexId),
+                              let end = level.vertex(byId: edge.endVertexId) else { continue }
+                        let p1 = transform(start.position)
+                        let p2 = transform(end.position)
+                        gc.beginPath(); gc.move(to: p1); gc.addLine(to: p2); gc.strokePath()
 
-            // Draw vertices
-            gc.setFillColor(UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: 1).cgColor)
-            for vertex in drawingData.vertices {
-                let p = transform(vertex.position)
-                gc.fillEllipse(in: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8))
+                        if let dim = edge.dimension {
+                            let midX = (p1.x + p2.x) / 2
+                            let midY = (p1.y + p2.y) / 2
+                            let label = DimensionEngine.format(dim, system: drawingData.config.measurementSystem)
+                            let attrs: [NSAttributedString.Key: Any] = [
+                                .font: UIFont.systemFont(ofSize: 12, weight: .medium),
+                                .foregroundColor: UIColor(red: c.r, green: c.g, blue: c.b, alpha: 1)
+                            ]
+                            (label as NSString).draw(
+                                at: CGPoint(x: midX - (label as NSString).size(withAttributes: attrs).width / 2,
+                                            y: midY - (label as NSString).size(withAttributes: attrs).height - 4),
+                                withAttributes: attrs
+                            )
+                        }
+                    }
+
+                    // Vertices
+                    gc.setFillColor(UIColor(red: c.r, green: c.g, blue: c.b, alpha: 1).cgColor)
+                    for vertex in level.vertices {
+                        let p = transform(vertex.position)
+                        gc.fillEllipse(in: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8))
+                    }
+
+                    // Level name label at centroid
+                    if positions.count >= 3 {
+                        let cx = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
+                        let cy = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
+                        let tp = transform(CGPoint(x: cx, y: cy))
+                        let nameAttrs: [NSAttributedString.Key: Any] = [
+                            .font: UIFont.systemFont(ofSize: 14, weight: .semibold),
+                            .foregroundColor: UIColor(red: c.r, green: c.g, blue: c.b, alpha: 0.8)
+                        ]
+                        let nsName = level.name as NSString
+                        let nameSize = nsName.size(withAttributes: nameAttrs)
+                        nsName.draw(at: CGPoint(x: tp.x - nameSize.width / 2, y: tp.y - nameSize.height / 2), withAttributes: nameAttrs)
+                    }
+                }
+            } else {
+                // Single-level rendering (existing behavior)
+                let positions = drawingData.orderedPositions
+                if drawingData.isClosed && positions.count >= 3 {
+                    gc.setFillColor(UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: 0.1).cgColor)
+                    gc.beginPath()
+                    gc.move(to: transform(positions[0]))
+                    for i in 1..<positions.count { gc.addLine(to: transform(positions[i])) }
+                    gc.closePath()
+                    gc.fillPath()
+                }
+
+                gc.setStrokeColor(UIColor(red: 40/255, green: 40/255, blue: 40/255, alpha: 1).cgColor)
+                gc.setLineWidth(2.0)
+                for edge in drawingData.edges {
+                    guard let start = drawingData.vertex(byId: edge.startVertexId),
+                          let end = drawingData.vertex(byId: edge.endVertexId) else { continue }
+                    let p1 = transform(start.position)
+                    let p2 = transform(end.position)
+                    gc.beginPath(); gc.move(to: p1); gc.addLine(to: p2); gc.strokePath()
+
+                    if let dim = edge.dimension {
+                        let midX = (p1.x + p2.x) / 2
+                        let midY = (p1.y + p2.y) / 2
+                        let label = DimensionEngine.format(dim, system: drawingData.config.measurementSystem)
+                        let attrs: [NSAttributedString.Key: Any] = [
+                            .font: UIFont.systemFont(ofSize: 12, weight: .medium),
+                            .foregroundColor: UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: 1)
+                        ]
+                        let nsLabel = label as NSString
+                        let labelSize = nsLabel.size(withAttributes: attrs)
+                        nsLabel.draw(at: CGPoint(x: midX - labelSize.width / 2, y: midY - labelSize.height - 4), withAttributes: attrs)
+                    }
+
+                    if edge.railingConfig != nil {
+                        gc.setStrokeColor(UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: 0.6).cgColor)
+                        gc.setLineWidth(4.0)
+                        gc.beginPath(); gc.move(to: p1); gc.addLine(to: p2); gc.strokePath()
+                        gc.setLineWidth(2.0)
+                        gc.setStrokeColor(UIColor(red: 40/255, green: 40/255, blue: 40/255, alpha: 1).cgColor)
+                    }
+                }
+
+                gc.setFillColor(UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: 1).cgColor)
+                for vertex in drawingData.vertices {
+                    let p = transform(vertex.position)
+                    gc.fillEllipse(in: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8))
+                }
             }
         }
         return image

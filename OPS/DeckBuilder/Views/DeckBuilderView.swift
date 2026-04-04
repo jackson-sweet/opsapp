@@ -34,6 +34,11 @@ struct DeckBuilderView: View {
             // AR accuracy banner
             arAccuracyBanner
 
+            // Level tab bar (multi-level mode)
+            if viewModel.isMultiLevel || viewModel.drawingData.vertices.count >= 3 {
+                LevelTabBar(viewModel: viewModel)
+            }
+
             // Canvas + Assignment Wheel overlay + Laser toast
             ZStack(alignment: .bottomTrailing) {
                 DeckCanvasView(viewModel: viewModel)
@@ -102,6 +107,9 @@ struct DeckBuilderView: View {
         }
         .sheet(isPresented: $viewModel.showingStairConfig) {
             StairConfigView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.showingLevelConnectionSheet) {
+            LevelConnectionSheet(viewModel: viewModel)
         }
         .sheet(isPresented: $showingTemplatePicker) {
             TemplatePickerView(

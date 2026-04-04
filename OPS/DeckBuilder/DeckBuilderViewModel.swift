@@ -73,6 +73,116 @@ class DeckBuilderViewModel: ObservableObject {
     private var errorTimer: Timer?
     private var disconnectTimer: Timer?
 
+    // MARK: - Multi-Level State
+
+    @Published var activeLevelIndex: Int = 0
+    @Published var showingLevelConnectionSheet: Bool = false
+
+    // MARK: - Multi-Level Computed
+
+    var activeLevel: DeckLevel? {
+        guard drawingData.isMultiLevel, activeLevelIndex < drawingData.levels.count else { return nil }
+        return drawingData.levels[activeLevelIndex]
+    }
+
+    var isMultiLevel: Bool { drawingData.isMultiLevel }
+    var levelCount: Int { drawingData.levels.count }
+    var canAddLevel: Bool { !drawingData.isMultiLevel || drawingData.levels.count < 3 }
+    var canConnectLevels: Bool {
+        drawingData.levels.count >= 2 &&
+        drawingData.levels.filter({ $0.isClosed }).count >= 2 &&
+        drawingData.levels.contains(where: { $0.elevation != nil })
+    }
+
+    // MARK: - Active Level Routing
+
+    /// Vertices for the currently active drawing context
+    private var activeVertices: [DeckVertex] {
+        get {
+            if isMultiLevel, let level = activeLevel { return level.vertices }
+            return drawingData.vertices
+        }
+        set {
+            if isMultiLevel, activeLevelIndex < drawingData.levels.count {
+                drawingData.levels[activeLevelIndex].vertices = newValue
+            } else {
+                drawingData.vertices = newValue
+            }
+        }
+    }
+
+    /// Edges for the currently active drawing context
+    private var activeEdges: [DeckEdge] {
+        get {
+            if isMultiLevel, let level = activeLevel { return level.edges }
+            return drawingData.edges
+        }
+        set {
+            if isMultiLevel, activeLevelIndex < drawingData.levels.count {
+                drawingData.levels[activeLevelIndex].edges = newValue
+            } else {
+                drawingData.edges = newValue
+            }
+        }
+    }
+
+    /// Footprint for the currently active drawing context
+    private var activeFootprint: DeckFootprint {
+        get {
+            if isMultiLevel, let level = activeLevel { return level.footprint }
+            return drawingData.footprint
+        }
+        set {
+            if isMultiLevel, activeLevelIndex < drawingData.levels.count {
+                drawingData.levels[activeLevelIndex].footprint = newValue
+            } else {
+                drawingData.footprint = newValue
+            }
+        }
+    }
+
+    /// Look up a vertex in the active context
+    private func activeVertex(byId id: String) -> DeckVertex? {
+        if isMultiLevel, let level = activeLevel { return level.vertex(byId: id) }
+        return drawingData.vertex(byId: id)
+    }
+
+    /// Update a vertex in the active context
+    private func activeUpdateVertex(_ vertex: DeckVertex) {
+        if isMultiLevel, activeLevelIndex < drawingData.levels.count {
+            drawingData.levels[activeLevelIndex].updateVertex(vertex)
+        } else {
+            drawingData.updateVertex(vertex)
+        }
+    }
+
+    /// Look up an edge in the active context
+    private func activeEdge(byId id: String) -> DeckEdge? {
+        if isMultiLevel, let level = activeLevel { return level.edge(byId: id) }
+        return drawingData.edge(byId: id)
+    }
+
+    /// Update an edge in the active context
+    private func activeUpdateEdge(_ edge: DeckEdge) {
+        if isMultiLevel, activeLevelIndex < drawingData.levels.count {
+            drawingData.levels[activeLevelIndex].updateEdge(edge)
+        } else {
+            drawingData.updateEdge(edge)
+        }
+    }
+
+    /// Ordered positions for the active context
+    private var activeOrderedPositions: [CGPoint] {
+        if isMultiLevel, let level = activeLevel { return level.orderedPositions }
+        return drawingData.orderedPositions
+    }
+
+    /// Whether the active context polygon is closed
+    private var activeIsClosed: Bool {
+        if isMultiLevel, let level = activeLevel { return level.isClosed }
+        return drawingData.isClosed
+    }
+
     // MARK: - Undo/Redo
 
     private var undoStack: [DrawingSnapshot] = []
@@ -84,10 +194,18 @@ class DeckBuilderViewModel: ObservableObject {
 
     // MARK: - Computed
 
-    var isClosed: Bool { drawingData.isClosed }
+    var isClosed: Bool { activeIsClosed }
 
     var totalArea: Double? {
-        guard isClosed, let scale = drawingData.scaleFactor, scale > 0 else { return nil }
+        guard let scale = drawingData.scaleFactor, scale > 0 else { return nil }
+        if isMultiLevel {
+            let closedLevels = drawingData.levels.filter { $0.isClosed }
+            guard !closedLevels.isEmpty else { return nil }
+            return closedLevels.reduce(0) { total, level in
+                total + PolygonMath.realWorldArea(vertices: level.orderedPositions, scaleFactor: scale)
+            }
+        }
+        guard isClosed else { return nil }
         return PolygonMath.realWorldArea(
             vertices: drawingData.orderedPositions,
             scaleFactor: scale
@@ -95,7 +213,15 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     var totalPerimeter: Double? {
-        guard drawingData.edges.count > 0, let scale = drawingData.scaleFactor, scale > 0 else { return nil }
+        guard let scale = drawingData.scaleFactor, scale > 0 else { return nil }
+        if isMultiLevel {
+            let totalPts = drawingData.levels.reduce(0.0) { total, level in
+                total + PolygonMath.perimeter(vertices: level.orderedPositions)
+            }
+            guard totalPts > 0 else { return nil }
+            return totalPts / scale
+        }
+        guard activeEdges.count > 0 else { return nil }
         return PolygonMath.perimeter(vertices: drawingData.orderedPositions) / scale
     }
 
@@ -134,6 +260,110 @@ class DeckBuilderViewModel: ObservableObject {
         save()
     }
 
+    // MARK: - Level Management
+
+    func addLevel() {
+        if !drawingData.isMultiLevel {
+            pushUndo("convert to multi-level")
+            drawingData.migrateToMultiLevel()
+        }
+        guard drawingData.levels.count < 3 else { return }
+
+        pushUndo("add level")
+        let usedColors = drawingData.levels.map { $0.displayColor }
+        let newLevel = DeckLevel(
+            name: "Level \(drawingData.levels.count + 1)",
+            displayColor: LevelColor.nextAvailable(excluding: usedColors),
+            sortOrder: drawingData.levels.count
+        )
+        drawingData.levels.append(newLevel)
+        activeLevelIndex = drawingData.levels.count - 1
+        selection.clear()
+        hapticMedium()
+        save()
+    }
+
+    func deleteLevel(at index: Int) -> Bool {
+        guard drawingData.isMultiLevel, index < drawingData.levels.count else { return false }
+        let levelId = drawingData.levels[index].id
+
+        // Check for connections — cannot delete level with active connections
+        if drawingData.levelConnections.contains(where: { $0.upperLevelId == levelId || $0.lowerLevelId == levelId }) {
+            return false
+        }
+
+        pushUndo("delete level")
+        drawingData.levels.remove(at: index)
+
+        if activeLevelIndex >= drawingData.levels.count {
+            activeLevelIndex = max(0, drawingData.levels.count - 1)
+        }
+        selection.clear()
+        hapticMedium()
+        save()
+        return true
+    }
+
+    func renameLevel(at index: Int, to name: String) {
+        guard index < drawingData.levels.count else { return }
+        drawingData.levels[index].name = name
+        save()
+    }
+
+    func switchToLevel(_ index: Int) {
+        guard index < drawingData.levels.count else { return }
+        activeLevelIndex = index
+        selection.clear()
+        editingEdgeId = nil
+        editingVertexId = nil
+        hapticLight()
+    }
+
+    func setLevelElevation(at index: Int, elevation: Double) {
+        guard index < drawingData.levels.count else { return }
+        pushUndo("set level elevation")
+        drawingData.levels[index].elevation = elevation
+
+        // Auto-recalculate any connections involving this level
+        let levelId = drawingData.levels[index].id
+        for i in drawingData.levelConnections.indices {
+            let conn = drawingData.levelConnections[i]
+            if conn.upperLevelId == levelId || conn.lowerLevelId == levelId {
+                if let diff = drawingData.elevationDifference(upperLevelId: conn.upperLevelId, lowerLevelId: conn.lowerLevelId) {
+                    drawingData.levelConnections[i].stairConfig.treadCount = StairConfig.calculateTreadCount(totalRise: diff)
+                }
+            }
+        }
+        save()
+    }
+
+    func connectLevels(upperLevelId: String, lowerLevelId: String, upperEdgeId: String, stairWidth: Double) {
+        guard let diff = drawingData.elevationDifference(upperLevelId: upperLevelId, lowerLevelId: lowerLevelId) else { return }
+
+        pushUndo("connect levels")
+        let treadCount = StairConfig.calculateTreadCount(totalRise: diff)
+        let stairConfig = StairConfig(
+            width: stairWidth,
+            treadCount: treadCount
+        )
+        let connection = LevelConnection(
+            upperLevelId: upperLevelId,
+            lowerLevelId: lowerLevelId,
+            upperEdgeId: upperEdgeId,
+            stairConfig: stairConfig
+        )
+        drawingData.levelConnections.append(connection)
+        hapticSuccess()
+        save()
+    }
+
+    func removeConnection(_ connectionId: String) {
+        pushUndo("remove connection")
+        drawingData.levelConnections.removeAll { $0.id == connectionId }
+        hapticMedium()
+        save()
+    }
+
     // MARK: - Drawing Operations
 
     func beginLine(from position: CGPoint) {
@@ -143,11 +373,11 @@ class DeckBuilderViewModel: ObservableObject {
         // Check if near an existing vertex (magnetic snap)
         if let snapId = SnapEngine.findSnapTarget(
             point: position,
-            vertices: drawingData.vertices,
+            vertices: activeVertices,
             snapRadius: drawingData.config.endpointSnapRadius
         ) {
             existingVertexId = snapId
-            snappedPosition = drawingData.vertex(byId: snapId)?.position ?? position
+            snappedPosition = activeVertex(byId: snapId)?.position ?? position
         } else {
             existingVertexId = nil
             snappedPosition = position
@@ -160,7 +390,7 @@ class DeckBuilderViewModel: ObservableObject {
             let vertex = DeckVertex(position: snappedPosition)
             vertexId = vertex.id
             pushUndo("begin line")
-            drawingData.vertices.append(vertex)
+            activeVertices.append(vertex)
         }
 
         drawingMode = .drawing(fromVertexId: vertexId, currentEnd: snappedPosition)
@@ -168,7 +398,7 @@ class DeckBuilderViewModel: ObservableObject {
 
     func updateLine(to rawEnd: CGPoint) {
         guard case .drawing(let fromId, _) = drawingMode else { return }
-        guard let startVertex = drawingData.vertex(byId: fromId) else { return }
+        guard let startVertex = activeVertex(byId: fromId) else { return }
 
         let snapped = SnapEngine.snapEndpoint(
             from: startVertex.position,
@@ -183,12 +413,12 @@ class DeckBuilderViewModel: ObservableObject {
 
     func endLine(at rawEnd: CGPoint) {
         guard case .drawing(let fromId, _) = drawingMode else { return }
-        guard drawingData.vertex(byId: fromId) != nil else {
+        guard activeVertex(byId: fromId) != nil else {
             drawingMode = .idle
             return
         }
 
-        let startVertex = drawingData.vertex(byId: fromId)!
+        let startVertex = activeVertex(byId: fromId)!
         let snapped = SnapEngine.snapEndpoint(
             from: startVertex.position,
             rawEnd: rawEnd,
@@ -201,7 +431,7 @@ class DeckBuilderViewModel: ObservableObject {
         let endVertexId: String
         if let snapId = SnapEngine.findSnapTarget(
             point: snapped,
-            vertices: drawingData.vertices,
+            vertices: activeVertices,
             snapRadius: drawingData.config.endpointSnapRadius,
             excludeVertexIds: [fromId]
         ) {
@@ -209,7 +439,7 @@ class DeckBuilderViewModel: ObservableObject {
         } else {
             let newVertex = DeckVertex(position: snapped)
             endVertexId = newVertex.id
-            drawingData.vertices.append(newVertex)
+            activeVertices.append(newVertex)
         }
 
         // Create the edge
@@ -222,11 +452,11 @@ class DeckBuilderViewModel: ObservableObject {
         }
 
         pushUndo("draw line")
-        drawingData.edges.append(edge)
+        activeEdges.append(edge)
 
         // Check if we closed the polygon
-        if drawingData.isClosed {
-            drawingData.footprint.isClosed = true
+        if activeIsClosed {
+            activeFootprint.isClosed = true
             hapticSuccess() // polygon closed — key moment
         } else {
             hapticMedium() // line committed
@@ -240,7 +470,7 @@ class DeckBuilderViewModel: ObservableObject {
 
     func handleTap(at point: CGPoint) {
         // Check vertex first (higher priority, larger hit area)
-        if let vertexId = PolygonMath.findVertexAtPoint(point, vertices: drawingData.vertices) {
+        if let vertexId = PolygonMath.findVertexAtPoint(point, vertices: activeVertices) {
             selection.clear()
             selection.toggleVertex(vertexId)
             editingVertexId = vertexId
@@ -249,7 +479,7 @@ class DeckBuilderViewModel: ObservableObject {
         }
 
         // Check edge
-        if let edgeId = PolygonMath.findEdgeAtPoint(point, edges: drawingData.edges, vertices: drawingData.vertices) {
+        if let edgeId = PolygonMath.findEdgeAtPoint(point, edges: activeEdges, vertices: activeVertices) {
             selection.clear()
             selection.toggleEdge(edgeId)
             editingEdgeId = edgeId
@@ -261,7 +491,7 @@ class DeckBuilderViewModel: ObservableObject {
         }
 
         // Check area
-        if drawingData.isClosed && PolygonMath.pointInPolygon(point, vertices: drawingData.orderedPositions) {
+        if activeIsClosed && PolygonMath.pointInPolygon(point, vertices: activeOrderedPositions) {
             selection.clear()
             selection.selectedFootprint = true
             hapticLight()
@@ -305,14 +535,14 @@ class DeckBuilderViewModel: ObservableObject {
         selection.clear()
 
         // Select all vertices inside the rectangle
-        for vertex in drawingData.vertices {
+        for vertex in activeVertices {
             if rect.contains(vertex.position) {
                 selection.selectedVertexIds.insert(vertex.id)
             }
         }
 
         // Select all edges where both endpoints are inside
-        for edge in drawingData.edges {
+        for edge in activeEdges {
             if selection.selectedVertexIds.contains(edge.startVertexId) &&
                selection.selectedVertexIds.contains(edge.endVertexId) {
                 selection.selectedEdgeIds.insert(edge.id)
@@ -343,14 +573,14 @@ class DeckBuilderViewModel: ObservableObject {
         selection.clear()
 
         // Select all vertices inside the lasso polygon
-        for vertex in drawingData.vertices {
+        for vertex in activeVertices {
             if PolygonMath.pointInPolygon(vertex.position, vertices: points) {
                 selection.selectedVertexIds.insert(vertex.id)
             }
         }
 
         // Select all edges where both endpoints are inside
-        for edge in drawingData.edges {
+        for edge in activeEdges {
             if selection.selectedVertexIds.contains(edge.startVertexId) &&
                selection.selectedVertexIds.contains(edge.endVertexId) {
                 selection.selectedEdgeIds.insert(edge.id)
@@ -369,9 +599,9 @@ class DeckBuilderViewModel: ObservableObject {
 
     func updateVertexDrag(to position: CGPoint) {
         guard case .draggingVertex(let vertexId) = drawingMode else { return }
-        var vertex = drawingData.vertex(byId: vertexId) ?? DeckVertex(position: position)
+        var vertex = activeVertex(byId: vertexId) ?? DeckVertex(position: position)
         vertex.position = position
-        drawingData.updateVertex(vertex)
+        activeUpdateVertex(vertex)
     }
 
     func endVertexDrag() {
@@ -382,7 +612,7 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Dimension Entry
 
     func setEdgeDimension(_ edgeId: String, inches: Double, source: DimensionSource = .manual) {
-        guard var edge = drawingData.edge(byId: edgeId) else { return }
+        guard var edge = activeEdge(byId: edgeId) else { return }
         pushUndo("set dimension")
         edge.dimension = inches
         edge.dimensionSource = source
@@ -390,12 +620,12 @@ class DeckBuilderViewModel: ObservableObject {
         if source == .manual || source == .laser {
             edge.accuracyPercent = nil
         }
-        drawingData.updateEdge(edge)
+        activeUpdateEdge(edge)
 
         // If this is the first manual dimension on a closed shape, offer scale auto-fill
-        if drawingData.isClosed && drawingData.scaleFactor == nil {
-            if let start = drawingData.vertex(byId: edge.startVertexId),
-               let end = drawingData.vertex(byId: edge.endVertexId) {
+        if activeIsClosed && drawingData.scaleFactor == nil {
+            if let start = activeVertex(byId: edge.startVertexId),
+               let end = activeVertex(byId: edge.endVertexId) {
                 let canvasLength = SnapEngine.distance(start.position, end.position)
                 if let scale = DimensionEngine.calculateScaleFactor(canvasLength: canvasLength, realWorldInches: inches) {
                     drawingData.scaleFactor = scale
@@ -409,37 +639,37 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Edge Properties
 
     func setEdgeType(_ edgeId: String, type: EdgeType) {
-        guard var edge = drawingData.edge(byId: edgeId) else { return }
+        guard var edge = activeEdge(byId: edgeId) else { return }
         pushUndo("set edge type")
         edge.edgeType = type
-        drawingData.updateEdge(edge)
+        activeUpdateEdge(edge)
         save()
     }
 
     func setRailing(_ edgeId: String, config: RailingConfig?) {
-        guard var edge = drawingData.edge(byId: edgeId) else { return }
+        guard var edge = activeEdge(byId: edgeId) else { return }
         pushUndo("set railing")
         edge.railingConfig = config
-        drawingData.updateEdge(edge)
+        activeUpdateEdge(edge)
         save()
     }
 
     func setStairs(_ edgeId: String, config: StairConfig?) {
-        guard var edge = drawingData.edge(byId: edgeId) else { return }
+        guard var edge = activeEdge(byId: edgeId) else { return }
         pushUndo("set stairs")
         edge.stairConfig = config
-        drawingData.updateEdge(edge)
+        activeUpdateEdge(edge)
         save()
     }
 
     // MARK: - Vertex Properties
 
     func setVertexElevation(_ vertexId: String, elevation: Double, source: ElevationSource = .manual) {
-        guard var vertex = drawingData.vertex(byId: vertexId) else { return }
+        guard var vertex = activeVertex(byId: vertexId) else { return }
         pushUndo("set elevation")
         vertex.elevation = elevation
         vertex.elevationSource = source
-        drawingData.updateVertex(vertex)
+        activeUpdateVertex(vertex)
         save()
     }
 
@@ -453,23 +683,27 @@ class DeckBuilderViewModel: ObservableObject {
 
     func assignItemToFootprint(_ item: AssignedItem) {
         pushUndo("assign footprint item")
-        drawingData.footprint.assignedItems.append(item)
+        var fp = activeFootprint
+        fp.assignedItems.append(item)
+        activeFootprint = fp
         save()
     }
 
     func removeFootprintItem(_ itemId: String) {
         pushUndo("remove footprint item")
-        drawingData.footprint.assignedItems.removeAll { $0.id == itemId }
+        var fp = activeFootprint
+        fp.assignedItems.removeAll { $0.id == itemId }
+        activeFootprint = fp
         save()
     }
 
     // MARK: - Edge Item Assignment
 
     func assignItemToEdge(_ edgeId: String, item: AssignedItem) {
-        guard var edge = drawingData.edge(byId: edgeId) else { return }
+        guard var edge = activeEdge(byId: edgeId) else { return }
         pushUndo("assign edge item")
         edge.assignedItems.append(item)
-        drawingData.updateEdge(edge)
+        activeUpdateEdge(edge)
         save()
     }
 
@@ -478,11 +712,11 @@ class DeckBuilderViewModel: ObservableObject {
     func assignItemToSelectedEdges(_ item: AssignedItem) {
         pushUndo("batch assign")
         for edgeId in selection.selectedEdgeIds {
-            guard var edge = drawingData.edge(byId: edgeId) else { continue }
+            guard var edge = activeEdge(byId: edgeId) else { continue }
             // Replace existing items of same unit type
             edge.assignedItems.removeAll { $0.unitType == item.unitType }
             edge.assignedItems.append(item)
-            drawingData.updateEdge(edge)
+            activeUpdateEdge(edge)
         }
         save()
     }
@@ -500,13 +734,19 @@ class DeckBuilderViewModel: ObservableObject {
 
     func deleteSelectedEdges() {
         pushUndo("delete edges")
+        var edges = activeEdges
         for edgeId in selection.selectedEdgeIds {
-            drawingData.edges.removeAll { $0.id == edgeId }
+            edges.removeAll { $0.id == edgeId }
         }
+        activeEdges = edges
         // Remove orphaned vertices (vertices with no edges)
-        let connectedVertexIds = Set(drawingData.edges.flatMap { [$0.startVertexId, $0.endVertexId] })
-        drawingData.vertices.removeAll { !connectedVertexIds.contains($0.id) }
-        drawingData.footprint.isClosed = drawingData.isClosed
+        let connectedVertexIds = Set(activeEdges.flatMap { [$0.startVertexId, $0.endVertexId] })
+        var verts = activeVertices
+        verts.removeAll { !connectedVertexIds.contains($0.id) }
+        activeVertices = verts
+        var fp = activeFootprint
+        fp.isClosed = activeIsClosed
+        activeFootprint = fp
         selection.clear()
         hapticMedium()
         save()
@@ -514,12 +754,18 @@ class DeckBuilderViewModel: ObservableObject {
 
     func deleteSelectedVertices() {
         pushUndo("delete vertices")
+        var edges = activeEdges
+        var verts = activeVertices
         for vertexId in selection.selectedVertexIds {
             // Remove all edges connected to this vertex
-            drawingData.edges.removeAll { $0.startVertexId == vertexId || $0.endVertexId == vertexId }
-            drawingData.vertices.removeAll { $0.id == vertexId }
+            edges.removeAll { $0.startVertexId == vertexId || $0.endVertexId == vertexId }
+            verts.removeAll { $0.id == vertexId }
         }
-        drawingData.footprint.isClosed = drawingData.isClosed
+        activeEdges = edges
+        activeVertices = verts
+        var fp = activeFootprint
+        fp.isClosed = activeIsClosed
+        activeFootprint = fp
         selection.clear()
         hapticMedium()
         save()
@@ -716,7 +962,7 @@ class DeckBuilderViewModel: ObservableObject {
 
     var canGenerateEstimate: Bool {
         EstimateGeneratorService.hasAssignments(drawingData) &&
-        drawingData.edges.contains(where: { $0.dimension != nil })
+        drawingData.allEdges.contains(where: { $0.dimension != nil })
     }
 
     /// Check if an estimate already exists for this deck design
@@ -865,7 +1111,10 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Photo Overlay
 
     var canShowOverlay: Bool {
-        drawingData.vertices.count >= 3 && drawingData.isClosed
+        if isMultiLevel {
+            return drawingData.levels.contains { $0.isClosed && $0.vertices.count >= 3 }
+        }
+        return drawingData.vertices.count >= 3 && drawingData.isClosed
     }
 
     func savePhotoOverlayState(_ state: PhotoOverlayState) {

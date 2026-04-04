@@ -54,38 +54,176 @@ struct DeckCanvasView: View {
             // Draw grid
             drawGrid(context: context, size: canvasSize)
 
-            // Draw footprint fill (closed polygon)
-            if viewModel.isClosed {
-                drawFootprint(context: context)
-            }
-
-            // Draw pool cutout overlay (dashed circle, visual only)
-            if let poolDiameter = viewModel.drawingData.poolDiameter,
-               let scale = viewModel.drawingData.scaleFactor, scale > 0 {
-                drawPoolOverlay(context: context, diameterInches: poolDiameter, scaleFactor: scale)
-            }
-
-            // Draw edges
-            for edge in viewModel.drawingData.edges {
-                drawEdge(context: context, edge: edge)
-            }
-
-            // Draw active drawing line
-            if case .drawing(let fromId, let currentEnd) = viewModel.drawingMode {
-                drawActiveLine(context: context, fromVertexId: fromId, currentEnd: currentEnd)
-            }
-
-            // Draw vertices
-            for vertex in viewModel.drawingData.vertices {
-                drawVertex(context: context, vertex: vertex)
-            }
-
-            // Draw dimension labels
-            for edge in viewModel.drawingData.edges {
-                drawDimensionLabel(context: context, edge: edge)
+            if viewModel.isMultiLevel {
+                // Multi-level rendering: inactive → connections → active
+                for (index, level) in viewModel.drawingData.levels.enumerated() {
+                    if index != viewModel.activeLevelIndex {
+                        drawInactiveLevel(context: context, level: level)
+                    }
+                }
+                for connection in viewModel.drawingData.levelConnections {
+                    drawLevelConnection(context: context, connection: connection)
+                }
+                if let activeLevel = viewModel.activeLevel {
+                    drawLevelFootprint(context: context, level: activeLevel, isActive: true)
+                    for edge in activeLevel.edges {
+                        drawEdge(context: context, edge: edge, vertexLookup: activeLevel.vertex(byId:))
+                    }
+                    if case .drawing(let fromId, let currentEnd) = viewModel.drawingMode {
+                        drawActiveLine(context: context, fromVertexId: fromId, currentEnd: currentEnd)
+                    }
+                    for vertex in activeLevel.vertices {
+                        drawVertex(context: context, vertex: vertex)
+                    }
+                    for edge in activeLevel.edges {
+                        drawDimensionLabel(context: context, edge: edge, vertexLookup: activeLevel.vertex(byId:))
+                    }
+                }
+            } else {
+                // Single-level rendering (existing behavior)
+                if viewModel.isClosed {
+                    drawFootprint(context: context)
+                }
+                if let poolDiameter = viewModel.drawingData.poolDiameter,
+                   let scale = viewModel.drawingData.scaleFactor, scale > 0 {
+                    drawPoolOverlay(context: context, diameterInches: poolDiameter, scaleFactor: scale)
+                }
+                for edge in viewModel.drawingData.edges {
+                    drawEdge(context: context, edge: edge, vertexLookup: viewModel.drawingData.vertex(byId:))
+                }
+                if case .drawing(let fromId, let currentEnd) = viewModel.drawingMode {
+                    drawActiveLine(context: context, fromVertexId: fromId, currentEnd: currentEnd)
+                }
+                for vertex in viewModel.drawingData.vertices {
+                    drawVertex(context: context, vertex: vertex)
+                }
+                for edge in viewModel.drawingData.edges {
+                    drawDimensionLabel(context: context, edge: edge, vertexLookup: viewModel.drawingData.vertex(byId:))
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Multi-Level: Inactive Level
+
+    private func drawInactiveLevel(context: GraphicsContext, level: DeckLevel) {
+        let positions = level.orderedPositions
+        guard positions.count >= 3 else { return }
+
+        // Footprint fill at 15% opacity with level color
+        if level.isClosed {
+            var fillPath = Path()
+            fillPath.move(to: positions[0])
+            for i in 1..<positions.count {
+                fillPath.addLine(to: positions[i])
+            }
+            fillPath.closeSubpath()
+            context.fill(fillPath, with: .color(level.displayColor.swiftUIColor.opacity(0.15)))
+        }
+
+        // Edges at 30% opacity
+        for edge in level.edges {
+            guard let start = level.vertex(byId: edge.startVertexId),
+                  let end = level.vertex(byId: edge.endVertexId) else { continue }
+            var edgePath = Path()
+            edgePath.move(to: start.position)
+            edgePath.addLine(to: end.position)
+            context.stroke(edgePath, with: .color(level.displayColor.swiftUIColor.opacity(0.3)), lineWidth: 1.5)
+        }
+
+        // Level name at centroid
+        if positions.count >= 3 {
+            let cx = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
+            let cy = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
+            context.draw(
+                Text(level.name)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(level.displayColor.swiftUIColor.opacity(0.5)),
+                at: CGPoint(x: cx, y: cy)
+            )
+        }
+    }
+
+    // MARK: - Multi-Level: Active Level Footprint
+
+    private func drawLevelFootprint(context: GraphicsContext, level: DeckLevel, isActive: Bool) {
+        guard level.isClosed else { return }
+        let positions = level.orderedPositions
+        guard positions.count >= 3 else { return }
+
+        var path = Path()
+        path.move(to: positions[0])
+        for i in 1..<positions.count {
+            path.addLine(to: positions[i])
+        }
+        path.closeSubpath()
+
+        let isSelected = viewModel.selection.selectedFootprint
+        let fillOpacity = isSelected ? 0.2 : 0.1
+        context.fill(path, with: .color(level.displayColor.swiftUIColor.opacity(fillOpacity)))
+    }
+
+    // MARK: - Multi-Level: Connection Stairs
+
+    private func drawLevelConnection(context: GraphicsContext, connection: LevelConnection) {
+        // Find the upper edge to position stairs
+        guard let upperLevel = viewModel.drawingData.level(byId: connection.upperLevelId),
+              let edge = upperLevel.edge(byId: connection.upperEdgeId),
+              let start = upperLevel.vertex(byId: edge.startVertexId),
+              let end = upperLevel.vertex(byId: edge.endVertexId) else { return }
+
+        let dx = end.position.x - start.position.x
+        let dy = end.position.y - start.position.y
+        let edgeLength = sqrt(dx * dx + dy * dy)
+        guard edgeLength > 0 else { return }
+
+        // Perpendicular direction for stair depth
+        let perpX = -dy / edgeLength
+        let perpY = dx / edgeLength
+        let stairDepth: CGFloat = 30.0 // visual depth in canvas points
+
+        // Stair rectangle along the edge
+        let p1 = start.position
+        let p2 = end.position
+        let p3 = CGPoint(x: p2.x + perpX * stairDepth, y: p2.y + perpY * stairDepth)
+        let p4 = CGPoint(x: p1.x + perpX * stairDepth, y: p1.y + perpY * stairDepth)
+
+        // Hatched fill
+        var stairPath = Path()
+        stairPath.move(to: p1)
+        stairPath.addLine(to: p2)
+        stairPath.addLine(to: p3)
+        stairPath.addLine(to: p4)
+        stairPath.closeSubpath()
+
+        let stairColor = LevelColor.amber.swiftUIColor
+        context.fill(stairPath, with: .color(stairColor.opacity(0.15)))
+        context.stroke(stairPath, with: .color(stairColor.opacity(0.6)), lineWidth: 1.5)
+
+        // Hatch lines (perpendicular lines across the stair rectangle)
+        let treadCount = connection.stairConfig.treadCount ?? 5
+        let normalX = dx / edgeLength
+        let normalY = dy / edgeLength
+        for i in 1..<min(treadCount, 20) {
+            let t = CGFloat(i) / CGFloat(treadCount)
+            let lineStart = CGPoint(x: p1.x + dx * t, y: p1.y + dy * t)
+            let lineEnd = CGPoint(x: lineStart.x + perpX * stairDepth, y: lineStart.y + perpY * stairDepth)
+            var hatchPath = Path()
+            hatchPath.move(to: lineStart)
+            hatchPath.addLine(to: lineEnd)
+            context.stroke(hatchPath, with: .color(stairColor.opacity(0.4)), lineWidth: 1.0)
+        }
+
+        // Label
+        let labelX = (p1.x + p3.x) / 2
+        let labelY = (p1.y + p3.y) / 2
+        context.draw(
+            Text("\(treadCount) treads")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(stairColor),
+            at: CGPoint(x: labelX, y: labelY)
+        )
     }
 
     // MARK: - Grid
@@ -168,9 +306,9 @@ struct DeckCanvasView: View {
 
     // MARK: - Edges
 
-    private func drawEdge(context: GraphicsContext, edge: DeckEdge) {
-        guard let start = viewModel.drawingData.vertex(byId: edge.startVertexId),
-              let end = viewModel.drawingData.vertex(byId: edge.endVertexId) else { return }
+    private func drawEdge(context: GraphicsContext, edge: DeckEdge, vertexLookup: (String) -> DeckVertex?) {
+        guard let start = vertexLookup(edge.startVertexId),
+              let end = vertexLookup(edge.endVertexId) else { return }
 
         var path = Path()
         path.move(to: start.position)
@@ -249,7 +387,7 @@ struct DeckCanvasView: View {
     // MARK: - Active Drawing Line
 
     private func drawActiveLine(context: GraphicsContext, fromVertexId: String, currentEnd: CGPoint) {
-        guard let startVertex = viewModel.drawingData.vertex(byId: fromVertexId) else { return }
+        guard let startVertex = resolveVertex(byId: fromVertexId) else { return }
 
         var path = Path()
         path.move(to: startVertex.position)
@@ -325,10 +463,10 @@ struct DeckCanvasView: View {
 
     // MARK: - Dimension Labels
 
-    private func drawDimensionLabel(context: GraphicsContext, edge: DeckEdge) {
+    private func drawDimensionLabel(context: GraphicsContext, edge: DeckEdge, vertexLookup: (String) -> DeckVertex?) {
         guard let dim = edge.dimension,
-              let start = viewModel.drawingData.vertex(byId: edge.startVertexId),
-              let end = viewModel.drawingData.vertex(byId: edge.endVertexId) else { return }
+              let start = vertexLookup(edge.startVertexId),
+              let end = vertexLookup(edge.endVertexId) else { return }
 
         let midX = (start.position.x + end.position.x) / 2
         let midY = (start.position.y + end.position.y) / 2
@@ -436,6 +574,19 @@ struct DeckCanvasView: View {
             Spacer()
         }
         .padding(.top, 8)
+    }
+
+    // MARK: - Vertex Resolution
+
+    /// Resolve a vertex across all levels or top-level data
+    private func resolveVertex(byId id: String) -> DeckVertex? {
+        if viewModel.isMultiLevel {
+            for level in viewModel.drawingData.levels {
+                if let v = level.vertex(byId: id) { return v }
+            }
+            return nil
+        }
+        return viewModel.drawingData.vertex(byId: id)
     }
 
     // MARK: - Gestures

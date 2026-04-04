@@ -229,15 +229,18 @@ struct DeckShareRenderer {
         in rect: CGRect,
         context gc: CGContext
     ) {
-        let positions = drawingData.orderedPositions
-        guard !positions.isEmpty else { return }
+        // Collect all positions for bounding box
+        let allPositions = drawingData.isMultiLevel
+            ? drawingData.levels.flatMap { $0.orderedPositions }
+            : drawingData.orderedPositions
+        guard !allPositions.isEmpty else { return }
 
-        let bounds = boundingRect(for: positions)
+        let bounds = boundingRect(for: allPositions)
         guard bounds.width > 0, bounds.height > 0 else { return }
 
         let scaleX = rect.width / bounds.width
         let scaleY = rect.height / bounds.height
-        let fitScale = min(scaleX, scaleY) * 0.85 // 85% fill for breathing room
+        let fitScale = min(scaleX, scaleY) * 0.85
 
         let drawingWidth = bounds.width * fitScale
         let drawingHeight = bounds.height * fitScale
@@ -248,111 +251,121 @@ struct DeckShareRenderer {
             CGPoint(x: point.x * fitScale + offsetX, y: point.y * fitScale + offsetY)
         }
 
-        // Footprint fill
-        if drawingData.isClosed && positions.count >= 3 {
-            gc.setFillColor(fillColor.cgColor)
-            gc.beginPath()
-            gc.move(to: transform(positions[0]))
-            for i in 1..<positions.count {
-                gc.addLine(to: transform(positions[i]))
-            }
-            gc.closePath()
-            gc.fillPath()
-        }
-
-        // Edges
-        for edge in drawingData.edges {
-            guard let start = drawingData.vertex(byId: edge.startVertexId),
-                  let end = drawingData.vertex(byId: edge.endVertexId) else { continue }
-            let p1 = transform(start.position)
-            let p2 = transform(end.position)
-
-            // Railing indicator (thicker colored line underneath)
-            if edge.railingConfig != nil {
-                gc.setStrokeColor(accentColor.withAlphaComponent(0.4).cgColor)
-                gc.setLineWidth(6.0)
+        // Helper to render one level's geometry
+        func renderLevelGeometry(vertices: [DeckVertex], edges: [DeckEdge], positions: [CGPoint], levelColor: UIColor?, isClosed: Bool, levelName: String?) {
+            // Footprint fill
+            if isClosed && positions.count >= 3 {
+                let fill = levelColor?.withAlphaComponent(0.08) ?? fillColor
+                gc.setFillColor(fill.cgColor)
                 gc.beginPath()
-                gc.move(to: p1)
-                gc.addLine(to: p2)
-                gc.strokePath()
+                gc.move(to: transform(positions[0]))
+                for i in 1..<positions.count { gc.addLine(to: transform(positions[i])) }
+                gc.closePath()
+                gc.fillPath()
             }
 
-            // Stair indicator (dashed line)
-            if edge.stairConfig != nil {
-                gc.setStrokeColor(UIColor(red: 180/255, green: 130/255, blue: 80/255, alpha: 0.5).cgColor)
-                gc.setLineWidth(4.0)
-                gc.setLineDash(phase: 0, lengths: [6, 4])
-                gc.beginPath()
-                gc.move(to: p1)
-                gc.addLine(to: p2)
-                gc.strokePath()
-                gc.setLineDash(phase: 0, lengths: [])
+            // Edges
+            for edge in edges {
+                guard let start = vertices.first(where: { $0.id == edge.startVertexId }),
+                      let end = vertices.first(where: { $0.id == edge.endVertexId }) else { continue }
+                let p1 = transform(start.position)
+                let p2 = transform(end.position)
+
+                if edge.railingConfig != nil {
+                    gc.setStrokeColor((levelColor ?? accentColor).withAlphaComponent(0.4).cgColor)
+                    gc.setLineWidth(6.0)
+                    gc.beginPath(); gc.move(to: p1); gc.addLine(to: p2); gc.strokePath()
+                }
+                if edge.stairConfig != nil {
+                    gc.setStrokeColor(UIColor(red: 180/255, green: 130/255, blue: 80/255, alpha: 0.5).cgColor)
+                    gc.setLineWidth(4.0)
+                    gc.setLineDash(phase: 0, lengths: [6, 4])
+                    gc.beginPath(); gc.move(to: p1); gc.addLine(to: p2); gc.strokePath()
+                    gc.setLineDash(phase: 0, lengths: [])
+                }
+
+                gc.setStrokeColor(darkText.cgColor)
+                gc.setLineWidth(2.0)
+                gc.beginPath(); gc.move(to: p1); gc.addLine(to: p2); gc.strokePath()
+
+                if let dim = edge.dimension {
+                    let midX = (p1.x + p2.x) / 2
+                    let midY = (p1.y + p2.y) / 2
+                    let label = DimensionEngine.format(dim, system: drawingData.config.measurementSystem)
+                    let fontSize: CGFloat = rect.width > 600 ? 18 : 11
+                    let attrs: [NSAttributedString.Key: Any] = [
+                        .font: UIFont.systemFont(ofSize: fontSize, weight: .semibold),
+                        .foregroundColor: levelColor ?? accentColor
+                    ]
+                    let nsLabel = label as NSString
+                    let labelSize = nsLabel.size(withAttributes: attrs)
+                    let pillRect = CGRect(x: midX - labelSize.width / 2 - 4, y: midY - labelSize.height - 6,
+                                          width: labelSize.width + 8, height: labelSize.height + 4)
+                    gc.setFillColor(UIColor.white.withAlphaComponent(0.9).cgColor)
+                    gc.fill(pillRect)
+                    nsLabel.draw(at: CGPoint(x: midX - labelSize.width / 2, y: midY - labelSize.height - 4), withAttributes: attrs)
+                }
             }
 
-            // Main edge line
-            gc.setStrokeColor(darkText.cgColor)
-            gc.setLineWidth(2.0)
-            gc.beginPath()
-            gc.move(to: p1)
-            gc.addLine(to: p2)
-            gc.strokePath()
-
-            // Dimension label
-            if let dim = edge.dimension {
-                let midX = (p1.x + p2.x) / 2
-                let midY = (p1.y + p2.y) / 2
-                let label = DimensionEngine.format(dim, system: drawingData.config.measurementSystem)
-                let fontSize: CGFloat = rect.width > 600 ? 18 : 11
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: fontSize, weight: .semibold),
-                    .foregroundColor: accentColor
-                ]
-                let nsLabel = label as NSString
-                let labelSize = nsLabel.size(withAttributes: attrs)
-
-                // White background pill behind label
-                let pillRect = CGRect(
-                    x: midX - labelSize.width / 2 - 4,
-                    y: midY - labelSize.height - 6,
-                    width: labelSize.width + 8,
-                    height: labelSize.height + 4
-                )
-                gc.setFillColor(UIColor.white.withAlphaComponent(0.9).cgColor)
-                gc.fill(pillRect)
-
-                nsLabel.draw(
-                    at: CGPoint(x: midX - labelSize.width / 2, y: midY - labelSize.height - 4),
-                    withAttributes: attrs
-                )
-            }
-        }
-
-        // Vertices
-        gc.setFillColor(accentColor.cgColor)
-        for vertex in drawingData.vertices {
-            let p = transform(vertex.position)
+            // Vertices
+            gc.setFillColor((levelColor ?? accentColor).cgColor)
             let dotSize: CGFloat = rect.width > 600 ? 10 : 6
-            gc.fillEllipse(in: CGRect(x: p.x - dotSize / 2, y: p.y - dotSize / 2, width: dotSize, height: dotSize))
+            for vertex in vertices {
+                let p = transform(vertex.position)
+                gc.fillEllipse(in: CGRect(x: p.x - dotSize / 2, y: p.y - dotSize / 2, width: dotSize, height: dotSize))
+            }
+
+            // Level name label at centroid (multi-level only)
+            if let name = levelName, positions.count >= 3 {
+                let cx = positions.map { transform($0).x }.reduce(0, +) / CGFloat(positions.count)
+                let cy = positions.map { transform($0).y }.reduce(0, +) / CGFloat(positions.count)
+                let nameFont: CGFloat = rect.width > 600 ? 20 : 12
+                let nameAttrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: nameFont, weight: .bold),
+                    .foregroundColor: (levelColor ?? accentColor).withAlphaComponent(0.6)
+                ]
+                let nsName = name as NSString
+                let nameSize = nsName.size(withAttributes: nameAttrs)
+                nsName.draw(at: CGPoint(x: cx - nameSize.width / 2, y: cy - nameSize.height / 2), withAttributes: nameAttrs)
+            }
         }
 
-        // Area label in center
-        if drawingData.isClosed {
-            let areaSqFt = EstimateGeneratorService.calculateAreaSqFt(drawingData: drawingData)
-            if areaSqFt > 0 {
-                let centerX = positions.map { transform($0).x }.reduce(0, +) / CGFloat(positions.count)
-                let centerY = positions.map { transform($0).y }.reduce(0, +) / CGFloat(positions.count)
-                let areaLabel = "\(Int(areaSqFt.rounded())) sq ft"
-                let fontSize: CGFloat = rect.width > 600 ? 24 : 14
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: fontSize, weight: .bold),
-                    .foregroundColor: accentColor.withAlphaComponent(0.6)
-                ]
-                let nsLabel = areaLabel as NSString
-                let labelSize = nsLabel.size(withAttributes: attrs)
-                nsLabel.draw(
-                    at: CGPoint(x: centerX - labelSize.width / 2, y: centerY - labelSize.height / 2),
-                    withAttributes: attrs
+        if drawingData.isMultiLevel {
+            for level in drawingData.levels {
+                let c = level.displayColor.fillColor
+                let uiColor = UIColor(red: c.r, green: c.g, blue: c.b, alpha: 1)
+                renderLevelGeometry(
+                    vertices: level.vertices, edges: level.edges,
+                    positions: level.orderedPositions,
+                    levelColor: uiColor, isClosed: level.isClosed,
+                    levelName: level.name
                 )
+            }
+        } else {
+            renderLevelGeometry(
+                vertices: drawingData.vertices, edges: drawingData.edges,
+                positions: drawingData.orderedPositions,
+                levelColor: nil, isClosed: drawingData.isClosed,
+                levelName: nil
+            )
+
+            // Area label in center (single-level only)
+            if drawingData.isClosed {
+                let areaSqFt = EstimateGeneratorService.calculateAreaSqFt(drawingData: drawingData)
+                if areaSqFt > 0 {
+                    let positions = drawingData.orderedPositions
+                    let centerX = positions.map { transform($0).x }.reduce(0, +) / CGFloat(positions.count)
+                    let centerY = positions.map { transform($0).y }.reduce(0, +) / CGFloat(positions.count)
+                    let areaLabel = "\(Int(areaSqFt.rounded())) sq ft"
+                    let fontSize: CGFloat = rect.width > 600 ? 24 : 14
+                    let attrs: [NSAttributedString.Key: Any] = [
+                        .font: UIFont.systemFont(ofSize: fontSize, weight: .bold),
+                        .foregroundColor: accentColor.withAlphaComponent(0.6)
+                    ]
+                    let nsLabel = areaLabel as NSString
+                    let labelSize = nsLabel.size(withAttributes: attrs)
+                    nsLabel.draw(at: CGPoint(x: centerX - labelSize.width / 2, y: centerY - labelSize.height / 2), withAttributes: attrs)
+                }
             }
         }
     }
@@ -365,7 +378,7 @@ struct DeckShareRenderer {
         context gc: CGContext
     ) {
         let grouped = Dictionary(grouping: lineItems, by: { $0.category })
-        let categoryOrder = ["Surface", "Substructure", "Railing", "Stairs", "Other"]
+        let categoryOrder = ["Surface", "Substructure", "Railing", "Stairs", "Connecting Stairs", "Other"]
 
         var y = rect.origin.y
         let rowHeight: CGFloat = 44

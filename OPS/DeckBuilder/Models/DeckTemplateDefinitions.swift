@@ -33,7 +33,7 @@ enum DeckTemplateType: String, CaseIterable, Identifiable {
         case .rectangle, .frontPorch, .freestanding: return 2
         case .poolDeck: return 3
         case .lShape, .wraparound, .tShape: return 4
-        case .multiLevel: return 2
+        case .multiLevel: return 4
         }
     }
 
@@ -67,8 +67,10 @@ enum DeckTemplateType: String, CaseIterable, Identifiable {
             ]
         case .multiLevel:
             return [
-                DimensionLabel(letter: "A", name: "Length", color: .green),
-                DimensionLabel(letter: "B", name: "Depth", color: .orange),
+                DimensionLabel(letter: "A", name: "Upper Length", color: .green),
+                DimensionLabel(letter: "B", name: "Upper Depth", color: .orange),
+                DimensionLabel(letter: "C", name: "Lower Length", color: .blue),
+                DimensionLabel(letter: "D", name: "Lower Depth", color: .red),
             ]
         case .poolDeck:
             return [

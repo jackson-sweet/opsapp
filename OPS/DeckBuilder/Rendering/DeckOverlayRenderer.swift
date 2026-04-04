@@ -47,10 +47,12 @@ struct DeckOverlayRenderer {
         fillOpacity: Double,
         size: CGSize = CGSize(width: 1000, height: 1000)
     ) -> UIImage? {
-        let positions = drawingData.orderedPositions
-        guard !positions.isEmpty else { return nil }
+        let allPositions = drawingData.isMultiLevel
+            ? drawingData.levels.flatMap { $0.orderedPositions }
+            : drawingData.orderedPositions
+        guard !allPositions.isEmpty else { return nil }
 
-        let bounds = boundingRect(for: positions)
+        let bounds = boundingRect(for: allPositions)
         guard bounds.width > 0, bounds.height > 0 else { return nil }
 
         let padding: CGFloat = 80
@@ -70,69 +72,48 @@ struct DeckOverlayRenderer {
             CGPoint(x: point.x * fitScale + offsetX, y: point.y * fitScale + offsetY)
         }
 
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let image = renderer.image { ctx in
-            let gc = ctx.cgContext
-
-            // Transparent background (no fill)
-
-            // 1. Footprint fill at user-adjustable opacity
-            if drawingData.isClosed && positions.count >= 3 {
-                let fillColor = UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: CGFloat(fillOpacity))
+        // Helper to render one level's overlay
+        func renderLevelOverlay(gc: CGContext, vertices: [DeckVertex], edges: [DeckEdge], positions: [CGPoint], isClosed: Bool, fillColor: UIColor) {
+            // Footprint fill
+            if isClosed && positions.count >= 3 {
                 gc.setFillColor(fillColor.cgColor)
                 gc.beginPath()
                 gc.move(to: transform(positions[0]))
-                for i in 1..<positions.count {
-                    gc.addLine(to: transform(positions[i]))
-                }
+                for i in 1..<positions.count { gc.addLine(to: transform(positions[i])) }
                 gc.closePath()
                 gc.fillPath()
             }
 
-            // 2. Draw edges
-            for edge in drawingData.edges {
-                guard let start = drawingData.vertex(byId: edge.startVertexId),
-                      let end = drawingData.vertex(byId: edge.endVertexId) else { continue }
+            // Edges
+            for edge in edges {
+                guard let start = vertices.first(where: { $0.id == edge.startVertexId }),
+                      let end = vertices.first(where: { $0.id == edge.endVertexId }) else { continue }
                 let p1 = transform(start.position)
                 let p2 = transform(end.position)
 
-                // House edges: dashed white line
                 if edge.edgeType == .houseEdge {
                     gc.setStrokeColor(UIColor.white.cgColor)
                     gc.setLineWidth(2.0)
                     gc.setLineDash(phase: 0, lengths: [8, 4])
-                    gc.beginPath()
-                    gc.move(to: p1)
-                    gc.addLine(to: p2)
-                    gc.strokePath()
+                    gc.beginPath(); gc.move(to: p1); gc.addLine(to: p2); gc.strokePath()
                     gc.setLineDash(phase: 0, lengths: [])
                     continue
                 }
 
-                // Railing edges: thicker colored stroke underneath
                 if let railingConfig = edge.railingConfig {
                     gc.setStrokeColor(railingColor(for: railingConfig.railingType).cgColor)
                     gc.setLineWidth(4.0)
-                    gc.beginPath()
-                    gc.move(to: p1)
-                    gc.addLine(to: p2)
-                    gc.strokePath()
+                    gc.beginPath(); gc.move(to: p1); gc.addLine(to: p2); gc.strokePath()
                 }
 
-                // Stair edges: perpendicular tread lines
                 if edge.stairConfig != nil {
                     drawStairIndicator(gc: gc, from: p1, to: p2)
                 }
 
-                // Standard edge line: white, 2pt
                 gc.setStrokeColor(UIColor.white.cgColor)
                 gc.setLineWidth(2.0)
-                gc.beginPath()
-                gc.move(to: p1)
-                gc.addLine(to: p2)
-                gc.strokePath()
+                gc.beginPath(); gc.move(to: p1); gc.addLine(to: p2); gc.strokePath()
 
-                // Dimension label at midpoint
                 if let dim = edge.dimension {
                     let midX = (p1.x + p2.x) / 2
                     let midY = (p1.y + p2.y) / 2
@@ -140,33 +121,50 @@ struct DeckOverlayRenderer {
                     let attrs = dimensionLabelAttributes()
                     let nsLabel = label as NSString
                     let labelSize = nsLabel.size(withAttributes: attrs)
-                    nsLabel.draw(
-                        at: CGPoint(x: midX - labelSize.width / 2, y: midY - labelSize.height - 6),
-                        withAttributes: attrs
-                    )
+                    nsLabel.draw(at: CGPoint(x: midX - labelSize.width / 2, y: midY - labelSize.height - 6), withAttributes: attrs)
                 }
             }
+        }
 
-            // 3. Area label centered in footprint
-            if drawingData.isClosed,
-               let scale = drawingData.scaleFactor, scale > 0 {
-                let areaSqInches = PolygonMath.realWorldArea(
-                    vertices: positions,
-                    scaleFactor: scale
-                )
-                let areaLabel = DimensionEngine.formatArea(areaSqInches, system: drawingData.config.measurementSystem)
-                let centroid = polygonCentroid(for: positions)
-                let transformedCentroid = transform(centroid)
-                let attrs = dimensionLabelAttributes(fontSize: 18)
-                let nsLabel = areaLabel as NSString
-                let labelSize = nsLabel.size(withAttributes: attrs)
-                nsLabel.draw(
-                    at: CGPoint(
-                        x: transformedCentroid.x - labelSize.width / 2,
-                        y: transformedCentroid.y - labelSize.height / 2
-                    ),
-                    withAttributes: attrs
-                )
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { ctx in
+            let gc = ctx.cgContext
+
+            if drawingData.isMultiLevel {
+                for level in drawingData.levels {
+                    let c = level.displayColor.fillColor
+                    let fill = UIColor(red: c.r, green: c.g, blue: c.b, alpha: CGFloat(fillOpacity))
+                    renderLevelOverlay(gc: gc, vertices: level.vertices, edges: level.edges,
+                                       positions: level.orderedPositions, isClosed: level.isClosed, fillColor: fill)
+
+                    // Level name label
+                    let positions = level.orderedPositions
+                    if positions.count >= 3 {
+                        let centroid = polygonCentroid(for: positions)
+                        let tc = transform(centroid)
+                        let attrs = dimensionLabelAttributes(fontSize: 16)
+                        let nsName = level.name as NSString
+                        let nameSize = nsName.size(withAttributes: attrs)
+                        nsName.draw(at: CGPoint(x: tc.x - nameSize.width / 2, y: tc.y - nameSize.height / 2), withAttributes: attrs)
+                    }
+                }
+            } else {
+                let positions = drawingData.orderedPositions
+                let fill = UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: CGFloat(fillOpacity))
+                renderLevelOverlay(gc: gc, vertices: drawingData.vertices, edges: drawingData.edges,
+                                   positions: positions, isClosed: drawingData.isClosed, fillColor: fill)
+
+                // Area label centered in footprint
+                if drawingData.isClosed, let scale = drawingData.scaleFactor, scale > 0 {
+                    let areaSqInches = PolygonMath.realWorldArea(vertices: positions, scaleFactor: scale)
+                    let areaLabel = DimensionEngine.formatArea(areaSqInches, system: drawingData.config.measurementSystem)
+                    let centroid = polygonCentroid(for: positions)
+                    let tc = transform(centroid)
+                    let attrs = dimensionLabelAttributes(fontSize: 18)
+                    let nsLabel = areaLabel as NSString
+                    let labelSize = nsLabel.size(withAttributes: attrs)
+                    nsLabel.draw(at: CGPoint(x: tc.x - labelSize.width / 2, y: tc.y - labelSize.height / 2), withAttributes: attrs)
+                }
             }
         }
 

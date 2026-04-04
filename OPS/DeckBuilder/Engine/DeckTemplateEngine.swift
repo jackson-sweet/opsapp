@@ -33,7 +33,7 @@ struct DeckTemplateEngine {
         case .tShape:
             return generateTShape(a: dimensions[0], b: dimensions[1], c: dimensions[2], d: dimensions[3], config: config)
         case .multiLevel:
-            return generateMultiLevel(a: dimensions[0], b: dimensions[1], config: config)
+            return generateMultiLevel(a: dimensions[0], b: dimensions[1], c: dimensions[2], d: dimensions[3], config: config)
         case .poolDeck:
             return generatePoolDeck(length: dimensions[0], depth: dimensions[1], poolDiameter: dimensions[2], config: config)
         }
@@ -307,11 +307,70 @@ struct DeckTemplateEngine {
     private static func generateMultiLevel(
         a: Double,
         b: Double,
+        c: Double,
+        d: Double,
         config: DrawingConfig
     ) -> DeckDrawingData {
-        // Multi-level true geometry is Phase 8 scope.
-        // For template purposes, generate the upper rectangle.
-        return generateRectangle(length: a, depth: b, hasHouseEdge: true, config: config)
+        // Generate actual 2-level geometry: upper deck (A×B) and lower deck (C×D)
+        // Upper level positioned at top of canvas, lower level below with a gap
+
+        let totalHeight = b + d + 24.0 // 24" gap between levels for stairs visual
+        let totalWidth = max(a, c)
+
+        let scale = calculateScale(shapeWidthInches: totalWidth, shapeHeightInches: totalHeight)
+        let offset = calculateOffset(shapeWidthInches: totalWidth, shapeHeightInches: totalHeight, scaleFactor: scale)
+
+        // Center each level horizontally
+        let upperOffsetX = (totalWidth - a) / 2
+        let lowerOffsetX = (totalWidth - c) / 2
+        let lowerTopY = b + 24.0
+
+        // Build upper level
+        var upperLevel = DeckLevel(name: "Upper Deck", displayColor: .blue, sortOrder: 0)
+        let uv0 = DeckVertex(position: toCanvas(xInches: upperOffsetX, yInches: 0, scaleFactor: scale, offset: offset))
+        let uv1 = DeckVertex(position: toCanvas(xInches: upperOffsetX + a, yInches: 0, scaleFactor: scale, offset: offset))
+        let uv2 = DeckVertex(position: toCanvas(xInches: upperOffsetX + a, yInches: b, scaleFactor: scale, offset: offset))
+        let uv3 = DeckVertex(position: toCanvas(xInches: upperOffsetX, yInches: b, scaleFactor: scale, offset: offset))
+        upperLevel.vertices = [uv0, uv1, uv2, uv3]
+
+        var ue0 = DeckEdge(startVertexId: uv0.id, endVertexId: uv1.id); ue0.dimension = a; ue0.edgeType = .houseEdge
+        var ue1 = DeckEdge(startVertexId: uv1.id, endVertexId: uv2.id); ue1.dimension = b
+        var ue2 = DeckEdge(startVertexId: uv2.id, endVertexId: uv3.id); ue2.dimension = a
+        var ue3 = DeckEdge(startVertexId: uv3.id, endVertexId: uv0.id); ue3.dimension = b
+        upperLevel.edges = [ue0, ue1, ue2, ue3]
+        upperLevel.footprint = DeckFootprint(isClosed: true)
+
+        // Build lower level
+        var lowerLevel = DeckLevel(name: "Lower Deck", displayColor: .green, sortOrder: 1)
+        let lv0 = DeckVertex(position: toCanvas(xInches: lowerOffsetX, yInches: lowerTopY, scaleFactor: scale, offset: offset))
+        let lv1 = DeckVertex(position: toCanvas(xInches: lowerOffsetX + c, yInches: lowerTopY, scaleFactor: scale, offset: offset))
+        let lv2 = DeckVertex(position: toCanvas(xInches: lowerOffsetX + c, yInches: lowerTopY + d, scaleFactor: scale, offset: offset))
+        let lv3 = DeckVertex(position: toCanvas(xInches: lowerOffsetX, yInches: lowerTopY + d, scaleFactor: scale, offset: offset))
+        lowerLevel.vertices = [lv0, lv1, lv2, lv3]
+
+        var le0 = DeckEdge(startVertexId: lv0.id, endVertexId: lv1.id); le0.dimension = c
+        var le1 = DeckEdge(startVertexId: lv1.id, endVertexId: lv2.id); le1.dimension = d
+        var le2 = DeckEdge(startVertexId: lv2.id, endVertexId: lv3.id); le2.dimension = c
+        var le3 = DeckEdge(startVertexId: lv3.id, endVertexId: lv0.id); le3.dimension = d
+        lowerLevel.edges = [le0, le1, le2, le3]
+        lowerLevel.footprint = DeckFootprint(isClosed: true)
+
+        // Build connection (stairs from upper bottom edge to lower top edge)
+        // Elevations are nil — user sets them after creation
+        let connection = LevelConnection(
+            upperLevelId: upperLevel.id,
+            lowerLevelId: lowerLevel.id,
+            upperEdgeId: ue2.id, // bottom edge of upper level
+            lowerEdgeId: le0.id, // top edge of lower level
+            stairConfig: StairConfig(width: 48) // 4' default, treadCount computed when elevations set
+        )
+
+        var data = DeckDrawingData()
+        data.levels = [upperLevel, lowerLevel]
+        data.levelConnections = [connection]
+        data.config = config
+        data.scaleFactor = scale
+        return data
     }
 
     // MARK: - Pool Deck

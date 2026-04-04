@@ -198,6 +198,11 @@ struct DeckDrawingData: Codable {
     var poolDiameter: Double?              // pool deck: diameter in inches (visual overlay only)
     var photoOverlay: PhotoOverlayState?   // saved overlay positioning for re-editing
 
+    // MARK: - Multi-Level
+
+    var levels: [DeckLevel] = []
+    var levelConnections: [LevelConnection] = []
+
     // MARK: - Vertex Helpers
 
     func vertex(byId id: String) -> DeckVertex? {
@@ -269,6 +274,67 @@ struct DeckDrawingData: Codable {
     /// Ordered vertex positions for rendering
     var orderedPositions: [CGPoint] {
         vertices.map { $0.position }
+    }
+
+    // MARK: - Multi-Level Helpers
+
+    /// Whether this drawing uses multi-level mode
+    var isMultiLevel: Bool {
+        !levels.isEmpty
+    }
+
+    /// The active geometry source — levels if multi-level, top-level fields if single
+    var allVertices: [DeckVertex] {
+        isMultiLevel ? levels.flatMap { $0.vertices } : vertices
+    }
+
+    var allEdges: [DeckEdge] {
+        isMultiLevel ? levels.flatMap { $0.edges } : edges
+    }
+
+    /// Total area across all levels in square inches
+    func totalRealWorldArea(scaleFactor: Double) -> Double {
+        if isMultiLevel {
+            return levels.reduce(0) { total, level in
+                total + PolygonMath.realWorldArea(vertices: level.orderedPositions, scaleFactor: scaleFactor)
+            }
+        }
+        return PolygonMath.realWorldArea(vertices: orderedPositions, scaleFactor: scaleFactor)
+    }
+
+    /// Get a level by ID
+    func level(byId id: String) -> DeckLevel? {
+        levels.first { $0.id == id }
+    }
+
+    /// Update a level in place
+    mutating func updateLevel(_ level: DeckLevel) {
+        if let index = levels.firstIndex(where: { $0.id == level.id }) {
+            levels[index] = level
+        }
+    }
+
+    /// Elevation difference between two levels in inches
+    func elevationDifference(upperLevelId: String, lowerLevelId: String) -> Double? {
+        guard let upper = level(byId: upperLevelId)?.elevation,
+              let lower = level(byId: lowerLevelId)?.elevation else { return nil }
+        return (upper - lower) * 12.0  // feet to inches
+    }
+
+    /// Migrate single-level data to multi-level (called when adding a second level)
+    mutating func migrateToMultiLevel() {
+        guard !isMultiLevel, vertices.count >= 3 else { return }
+        var firstLevel = DeckLevel(
+            name: "Level 1",
+            displayColor: .blue,
+            sortOrder: 0
+        )
+        firstLevel.vertices = vertices
+        firstLevel.edges = edges
+        firstLevel.footprint = footprint
+        firstLevel.elevation = overallElevation
+        levels = [firstLevel]
+        // Keep top-level fields for backward compat but levels takes precedence
     }
 
     // MARK: - Serialization

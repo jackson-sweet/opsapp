@@ -59,6 +59,12 @@ struct DeckCanvasView: View {
                 drawFootprint(context: context)
             }
 
+            // Draw pool cutout overlay (dashed circle, visual only)
+            if let poolDiameter = viewModel.drawingData.poolDiameter,
+               let scale = viewModel.drawingData.scaleFactor, scale > 0 {
+                drawPoolOverlay(context: context, diameterInches: poolDiameter, scaleFactor: scale)
+            }
+
             // Draw edges
             for edge in viewModel.drawingData.edges {
                 drawEdge(context: context, edge: edge)
@@ -125,6 +131,39 @@ struct DeckCanvasView: View {
         let isSelected = viewModel.selection.selectedFootprint
         let fillOpacity = isSelected ? 0.2 : 0.1
         context.fill(path, with: .color(OPSStyle.Colors.primaryAccent.opacity(fillOpacity)))
+    }
+
+    // MARK: - Pool Overlay
+
+    private func drawPoolOverlay(context: GraphicsContext, diameterInches: Double, scaleFactor: Double) {
+        let positions = viewModel.drawingData.orderedPositions
+        guard positions.count >= 3 else { return }
+
+        // Center of the footprint
+        let centerX = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
+        let centerY = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
+        let radiusPts = CGFloat(diameterInches * scaleFactor) / 2
+
+        let circleRect = CGRect(
+            x: centerX - radiusPts,
+            y: centerY - radiusPts,
+            width: radiusPts * 2,
+            height: radiusPts * 2
+        )
+
+        context.stroke(
+            Path(ellipseIn: circleRect),
+            with: .color(OPSStyle.Colors.primaryAccent.opacity(0.4)),
+            style: StrokeStyle(lineWidth: 1.5, dash: [8, 4])
+        )
+
+        // "Pool" label at center
+        context.draw(
+            Text("Pool")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6)),
+            at: CGPoint(x: centerX, y: centerY)
+        )
     }
 
     // MARK: - Edges

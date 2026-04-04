@@ -194,6 +194,7 @@ struct DeckDrawingData: Codable {
     var config: DrawingConfig = DrawingConfig()
     var overallElevation: Double?          // simple mode: uniform height
     var scaleFactor: Double?               // canvas points per real-world inch
+    var poolDiameter: Double?              // pool deck: diameter in inches (visual overlay only)
 
     // MARK: - Vertex Helpers
 

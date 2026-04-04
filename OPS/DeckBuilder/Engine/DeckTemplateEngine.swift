@@ -33,7 +33,7 @@ struct DeckTemplateEngine {
         case .tShape:
             return generateTShape(a: dimensions[0], b: dimensions[1], c: dimensions[2], d: dimensions[3], config: config)
         case .multiLevel:
-            return generateMultiLevel(a: dimensions[0], b: dimensions[1], c: dimensions[2], d: dimensions[3], config: config)
+            return generateMultiLevel(a: dimensions[0], b: dimensions[1], config: config)
         case .poolDeck:
             return generatePoolDeck(length: dimensions[0], depth: dimensions[1], poolDiameter: dimensions[2], config: config)
         }
@@ -307,8 +307,6 @@ struct DeckTemplateEngine {
     private static func generateMultiLevel(
         a: Double,
         b: Double,
-        c: Double,
-        d: Double,
         config: DrawingConfig
     ) -> DeckDrawingData {
         // Multi-level true geometry is Phase 8 scope.
@@ -325,7 +323,9 @@ struct DeckTemplateEngine {
         config: DrawingConfig
     ) -> DeckDrawingData {
         // Rectangle with pool cutout as informational overlay (not geometric)
-        return generateRectangle(length: length, depth: depth, hasHouseEdge: false, config: config)
+        var data = generateRectangle(length: length, depth: depth, hasHouseEdge: false, config: config)
+        data.poolDiameter = poolDiameter
+        return data
     }
 
     // MARK: - Copy from Existing Design

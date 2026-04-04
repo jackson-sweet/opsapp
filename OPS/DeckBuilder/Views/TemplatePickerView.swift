@@ -16,9 +16,7 @@ struct TemplatePickerView: View {
     @State private var selectedTab: Int
     @State private var selectedTemplate: DeckTemplateType?
     @State private var showingDimensionInput = false
-
-    // Recents query
-    @Query private var recentDesigns: [DeckDesign]
+    @State private var recentDesigns: [DeckDesign] = []
 
     init(
         initialTab: Int,
@@ -33,15 +31,6 @@ struct TemplatePickerView: View {
         self.userId = userId
         self.onDesignCreated = onDesignCreated
         self._selectedTab = State(initialValue: initialTab)
-
-        // Query recent designs for this company, not deleted, newest first
-        let cid = companyId
-        self._recentDesigns = Query(
-            filter: #Predicate<DeckDesign> {
-                $0.companyId == cid && $0.deletedAt == nil
-            },
-            sort: [SortDescriptor(\DeckDesign.createdAt, order: .reverse)]
-        )
     }
 
     var body: some View {
@@ -65,6 +54,7 @@ struct TemplatePickerView: View {
             }
         }
         .background(OPSStyle.Colors.background)
+        .onAppear { loadRecentDesigns() }
         .sheet(isPresented: $showingDimensionInput) {
             if let template = selectedTemplate {
                 TemplateDimensionInputView(templateType: template) { dimensions in
@@ -164,7 +154,7 @@ struct TemplatePickerView: View {
                 emptyRecentsState
             } else {
                 LazyVStack(spacing: OPSStyle.Layout.spacing2) {
-                    ForEach(Array(recentDesigns.prefix(20))) { design in
+                    ForEach(recentDesigns) { design in
                         recentRow(design)
                     }
                 }
@@ -292,7 +282,7 @@ struct TemplatePickerView: View {
 
         let design = DeckDesign(
             companyId: companyId,
-            projectId: projectId,
+            projectId: nil,
             title: "Copy of \(original.title)",
             createdBy: userId
         )
@@ -302,6 +292,20 @@ struct TemplatePickerView: View {
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         onDesignCreated(design)
+    }
+
+    // MARK: - Data Loading
+
+    private func loadRecentDesigns() {
+        let cid = companyId
+        var descriptor = FetchDescriptor<DeckDesign>(
+            predicate: #Predicate<DeckDesign> {
+                $0.companyId == cid && $0.deletedAt == nil
+            },
+            sortBy: [SortDescriptor(\DeckDesign.createdAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 20
+        recentDesigns = (try? modelContext.fetch(descriptor)) ?? []
     }
 
     // MARK: - Helpers

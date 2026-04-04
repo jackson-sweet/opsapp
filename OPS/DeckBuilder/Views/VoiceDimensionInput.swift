@@ -190,6 +190,19 @@ class VoiceDimensionInput: ObservableObject {
             result = result.replacingOccurrences(of: "\\b\(word)\\b", with: digit, options: .regularExpression)
         }
 
+        // Handle "hundred" multiplier: "2 hundred" → "200", bare "hundred" → "100"
+        let hundredCompoundPattern = #"(\d+)\s*hundred"#
+        if let hundredRegex = try? NSRegularExpression(pattern: hundredCompoundPattern) {
+            let nsResult = result as NSString
+            let hundredMatches = hundredRegex.matches(in: result, range: NSRange(location: 0, length: nsResult.length))
+            for match in hundredMatches.reversed() {
+                let numStr = nsResult.substring(with: match.range(at: 1))
+                let multiplied = String((Int(numStr) ?? 1) * 100)
+                result = (result as NSString).replacingCharacters(in: match.range, with: multiplied)
+            }
+        }
+        result = result.replacingOccurrences(of: "\\bhundred\\b", with: "100", options: .regularExpression)
+
         // Unit words to symbols
         result = result.replacingOccurrences(of: "feet", with: "'")
         result = result.replacingOccurrences(of: "foot", with: "'")

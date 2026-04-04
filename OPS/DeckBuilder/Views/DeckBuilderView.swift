@@ -27,6 +27,9 @@ struct DeckBuilderView: View {
             // Title bar
             titleBar
 
+            // AR accuracy banner
+            arAccuracyBanner
+
             // Canvas + Assignment Wheel overlay
             ZStack(alignment: .bottomTrailing) {
                 DeckCanvasView(viewModel: viewModel)
@@ -198,5 +201,38 @@ struct DeckBuilderView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(OPSStyle.Colors.cardBackground)
+    }
+
+    // MARK: - AR Accuracy Banner
+
+    @ViewBuilder
+    private var arAccuracyBanner: some View {
+        let hasAREdges = viewModel.drawingData.edges.contains { $0.accuracyPercent != nil }
+        let allVerified = AccuracyModel.allEdgesVerified(viewModel.drawingData)
+        let hasAnyARSource = viewModel.drawingData.edges.contains { $0.dimensionSource == .ar }
+
+        if hasAREdges {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12, weight: .medium))
+                Text("AR Estimate — refine with tape or laser for material ordering")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundColor(OPSStyle.Colors.warningStatus)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(OPSStyle.Colors.warningStatus.opacity(0.15))
+        } else if hasAnyARSource && allVerified {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 12, weight: .medium))
+                Text("All dimensions verified")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundColor(OPSStyle.Colors.successStatus)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(OPSStyle.Colors.successStatus.opacity(0.1))
+        }
     }
 }

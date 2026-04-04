@@ -188,9 +188,14 @@ struct DeckCanvasView: View {
         }
 
         // Main edge line
-        let edgeColor: Color = edge.edgeType == .houseEdge
-            ? OPSStyle.Colors.secondaryText
-            : Color.white
+        let edgeColor: Color
+        if edge.accuracyPercent != nil {
+            edgeColor = OPSStyle.Colors.warningStatus.opacity(0.8)
+        } else if edge.edgeType == .houseEdge {
+            edgeColor = OPSStyle.Colors.secondaryText
+        } else {
+            edgeColor = Color.white
+        }
 
         context.stroke(
             path,
@@ -328,6 +333,7 @@ struct DeckCanvasView: View {
         let midX = (start.position.x + end.position.x) / 2
         let midY = (start.position.y + end.position.y) / 2
         let label = DimensionEngine.format(dim, system: viewModel.drawingData.config.measurementSystem)
+        let hasAccuracy = edge.accuracyPercent != nil
 
         // Background pill
         let textSize = label.count * 8 + 16
@@ -337,25 +343,42 @@ struct DeckCanvasView: View {
             width: CGFloat(textSize),
             height: 20
         )
+        let pillColor: Color = hasAccuracy
+            ? OPSStyle.Colors.warningStatus.opacity(0.15)
+            : OPSStyle.Colors.cardBackground.opacity(0.9)
         context.fill(
             Path(roundedRect: pillRect, cornerRadius: 4),
-            with: .color(OPSStyle.Colors.cardBackground.opacity(0.9))
+            with: .color(pillColor)
         )
 
+        let labelColor: Color = hasAccuracy ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent
         context.draw(
             Text(label)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(OPSStyle.Colors.primaryAccent),
+                .foregroundColor(labelColor),
             at: CGPoint(x: midX, y: midY - 14)
         )
 
-        // Source badge
-        if edge.dimensionSource == .ar {
+        // Accuracy badge below dimension label
+        if let accuracy = edge.accuracyPercent {
+            let accLabel = AccuracyModel.formatAccuracy(
+                dimensionInches: dim,
+                accuracyPercent: accuracy,
+                system: viewModel.drawingData.config.measurementSystem
+            )
             context.draw(
-                Text("AR")
-                    .font(.system(size: 8, weight: .bold))
+                Text(accLabel)
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundColor(OPSStyle.Colors.warningStatus),
-                at: CGPoint(x: midX + CGFloat(textSize) / 2 + 10, y: midY - 14)
+                at: CGPoint(x: midX, y: midY - 2)
+            )
+        } else if edge.dimensionSource == .ar {
+            // AR source but manually verified — show checkmark
+            context.draw(
+                Text("AR ✓")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(OPSStyle.Colors.successStatus),
+                at: CGPoint(x: midX + CGFloat(textSize) / 2 + 14, y: midY - 14)
             )
         }
     }

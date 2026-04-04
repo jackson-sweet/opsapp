@@ -344,6 +344,10 @@ class DeckBuilderViewModel: ObservableObject {
         pushUndo("set dimension")
         edge.dimension = inches
         edge.dimensionSource = source
+        // Manual or laser override clears AR accuracy badge
+        if source == .manual || source == .laser {
+            edge.accuracyPercent = nil
+        }
         drawingData.updateEdge(edge)
 
         // If this is the first manual dimension on a closed shape, offer scale auto-fill

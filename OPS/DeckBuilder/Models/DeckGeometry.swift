@@ -56,6 +56,7 @@ struct DeckEdge: Identifiable, Codable, Equatable {
     var railingConfig: RailingConfig?
     var stairConfig: StairConfig?
     var assignedItems: [AssignedItem] = []
+    var accuracyPercent: Double?    // e.g., 3.0 means ±3%. nil = manually verified / no AR
 
     init(
         id: String = UUID().uuidString,

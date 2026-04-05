@@ -545,7 +545,7 @@ struct DeckCanvasView: View {
     }
 }
 
-// MARK: - UIKit Gesture Handler (Pinch + Two-Finger Pan)
+// MARK: - UIKit Gesture Handler (Unified Pinch + Pan)
 
 /// Transparent view that forwards all raw touches to the responder chain (SwiftUI)
 /// while still letting its own gesture recognizers evaluate multi-touch gestures.
@@ -568,6 +568,10 @@ private class GesturePassthroughView: UIView {
     }
 }
 
+/// Single UIPinchGestureRecognizer handles both zoom AND pan — exactly like Photos.
+/// The pinch recognizer fires for any two-finger movement. We track the midpoint
+/// delta each frame for panning, and the scale delta for zooming. No separate pan
+/// gesture, so there's zero conflict.
 private struct CanvasGestureView: UIViewRepresentable {
     @Binding var scale: CGFloat
     @Binding var offset: CGSize
@@ -580,75 +584,63 @@ private struct CanvasGestureView: UIViewRepresentable {
         let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePinch(_:)))
         pinch.cancelsTouchesInView = false
         pinch.delaysTouchesBegan = false
-        pinch.delegate = context.coordinator
-
-        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
-        pan.minimumNumberOfTouches = 2
-        pan.maximumNumberOfTouches = 2
-        pan.cancelsTouchesInView = false
-        pan.delaysTouchesBegan = false
-        pan.delegate = context.coordinator
-
         view.addGestureRecognizer(pinch)
-        view.addGestureRecognizer(pan)
         return view
     }
 
     func updateUIView(_ uiView: GesturePassthroughView, context: Context) {
-        // Keep coordinator bindings fresh across SwiftUI re-renders
         context.coordinator.scaleBinding = $scale
         context.coordinator.offsetBinding = $offset
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(scale: $scale, offset: $offset) }
 
-    class Coordinator: NSObject, UIGestureRecognizerDelegate {
+    class Coordinator: NSObject {
         var scaleBinding: Binding<CGFloat>
         var offsetBinding: Binding<CGSize>
         private var baseScale: CGFloat = 1.0
-        private var panStart: CGSize = .zero
+        private var lastMidpoint: CGPoint = .zero
 
         init(scale: Binding<CGFloat>, offset: Binding<CGSize>) {
             self.scaleBinding = scale
             self.offsetBinding = offset
         }
 
-        func gestureRecognizer(_ g: UIGestureRecognizer,
-                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
-
         @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
-            let currentScale = scaleBinding.wrappedValue
-            guard currentScale > 0 else { return }
+            guard let view = gesture.view else { return }
+            let mid = gesture.location(in: view)
 
             switch gesture.state {
             case .began:
-                baseScale = currentScale
-            case .changed:
-                let newScale = max(0.15, min(8.0, baseScale * gesture.scale))
-                let mid = gesture.location(in: gesture.view)
-                let ratio = newScale / currentScale
-                let currentOffset = offsetBinding.wrappedValue
+                baseScale = scaleBinding.wrappedValue
+                lastMidpoint = mid
 
-                offsetBinding.wrappedValue = CGSize(
-                    width: mid.x - ratio * (mid.x - currentOffset.width),
-                    height: mid.y - ratio * (mid.y - currentOffset.height)
-                )
+            case .changed:
+                let currentScale = scaleBinding.wrappedValue
+                guard currentScale > 0 else { return }
+
+                // 1. Pan: midpoint delta since last frame
+                let dx = mid.x - lastMidpoint.x
+                let dy = mid.y - lastMidpoint.y
+                lastMidpoint = mid
+
+                var newOffset = offsetBinding.wrappedValue
+                newOffset.width += dx
+                newOffset.height += dy
+
+                // 2. Zoom: scale change anchored at current midpoint
+                let newScale = max(0.15, min(8.0, baseScale * gesture.scale))
+                if abs(newScale - currentScale) > 0.001 {
+                    let ratio = newScale / currentScale
+                    newOffset.width = mid.x - ratio * (mid.x - newOffset.width)
+                    newOffset.height = mid.y - ratio * (mid.y - newOffset.height)
+                }
+
+                offsetBinding.wrappedValue = newOffset
                 scaleBinding.wrappedValue = newScale
+
             case .ended, .cancelled:
                 baseScale = scaleBinding.wrappedValue
-            default: break
-            }
-        }
-
-        @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
-            switch gesture.state {
-            case .began:
-                panStart = offsetBinding.wrappedValue
-            case .changed:
-                let t = gesture.translation(in: gesture.view)
-                offsetBinding.wrappedValue = CGSize(width: panStart.width + t.x, height: panStart.height + t.y)
-            case .ended, .cancelled:
-                panStart = offsetBinding.wrappedValue
             default: break
             }
         }

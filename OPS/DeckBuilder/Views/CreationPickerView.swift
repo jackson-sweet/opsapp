@@ -180,10 +180,20 @@ struct CreationPickerView: View {
     // MARK: - Actions
 
     private func createBlankDesign() -> DeckDesign {
+        // Auto-assign title from project context if available
+        let title: String
+        if let projectId = projectId, let project = try? modelContext.fetch(
+            FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectId })
+        ).first {
+            title = "\(project.title) — Deck"
+        } else {
+            title = "Untitled Deck"
+        }
+
         let design = DeckDesign(
             companyId: companyId,
             projectId: projectId,
-            title: "Untitled Deck",
+            title: title,
             createdBy: userId
         )
         modelContext.insert(design)

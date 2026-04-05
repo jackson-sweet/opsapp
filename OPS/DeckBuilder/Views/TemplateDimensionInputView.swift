@@ -101,6 +101,8 @@ struct TemplateDimensionInputView: View {
 
             // Mic button
             Button {
+                // Dismiss keyboard before activating mic
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                 withAnimation(OPSStyle.Animation.spring) {
                     if voiceInput.isListening {
                         voiceInput.stopListening()
@@ -137,15 +139,22 @@ struct TemplateDimensionInputView: View {
         let padding: CGFloat = 30
         let available = CGSize(width: size.width - padding * 2, height: size.height - padding * 2)
 
-        // Get the vertex pattern in normalized [0..1] space
+        // Get the vertex pattern — may have varying aspect ratio based on typed dimensions
         let (verts, edgeLabels) = templateNormalizedShape()
         guard !verts.isEmpty else { return }
 
-        // Scale + offset to fit
+        // Find bounding box of the normalized shape and scale to fit uniformly
+        let xs = verts.map(\.x), ys = verts.map(\.y)
+        let shapeW = max((xs.max() ?? 1) - (xs.min() ?? 0), 0.01)
+        let shapeH = max((ys.max() ?? 1) - (ys.min() ?? 0), 0.01)
+        let fitScale = min(available.width / shapeW, available.height / shapeH)
+        let offsetX = padding + (available.width - shapeW * fitScale) / 2
+        let offsetY = padding + (available.height - shapeH * fitScale) / 2
+
         let points = verts.map { v in
             CGPoint(
-                x: v.x * available.width + padding,
-                y: v.y * available.height + padding
+                x: v.x * fitScale + offsetX,
+                y: v.y * fitScale + offsetY
             )
         }
 
@@ -201,51 +210,75 @@ struct TemplateDimensionInputView: View {
         }
     }
 
-    /// Returns normalized vertex positions (0..1 range) and edge labels for diagram rendering
+    /// Returns normalized vertex positions (0..1 range) and edge labels for diagram rendering.
+    /// Positions scale proportionally based on entered dimensions for live feedback.
     private func templateNormalizedShape() -> (vertices: [CGPoint], labels: [DimensionLabel]) {
+        let dims = parsedInches.map { $0 ?? 1.0 } // fall back to 1.0 for empty fields
+
         switch templateType {
         case .rectangle, .frontPorch, .freestanding:
+            let a = max(dims[safe: 0] ?? 1, 0.1)  // length
+            let b = max(dims[safe: 1] ?? 1, 0.1)  // depth
+            let r = b / a  // aspect ratio
             return (
-                [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 1, y: 0.6), CGPoint(x: 0, y: 0.6)],
+                [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 1, y: r), CGPoint(x: 0, y: r)],
                 labels
             )
 
         case .lShape:
+            let a = max(dims[safe: 0] ?? 1, 0.1)
+            let b = max(dims[safe: 1] ?? 1, 0.1)
+            let c = max(dims[safe: 2] ?? 1, 0.1)
+            let d = max(dims[safe: 3] ?? 1, 0.1)
+            let rB = b / a, rC = c / a, rD = d / a
             return (
                 [
                     CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0),
-                    CGPoint(x: 1, y: 0.3), CGPoint(x: 0.55, y: 0.3),
-                    CGPoint(x: 0.55, y: 0.8), CGPoint(x: 0, y: 0.8),
+                    CGPoint(x: 1, y: rB), CGPoint(x: rC, y: rB),
+                    CGPoint(x: rC, y: rB + rD), CGPoint(x: 0, y: rB + rD),
                 ],
                 labels
             )
 
         case .wraparound:
+            let a = max(dims[safe: 0] ?? 1, 0.1)
+            let b = max(dims[safe: 1] ?? 1, 0.1)
+            let c = max(dims[safe: 2] ?? 1, 0.1)
+            let d = max(dims[safe: 3] ?? 1, 0.1)
+            let rB = b / a, rC = c / a, rD = d / a
             return (
                 [
                     CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0),
-                    CGPoint(x: 1, y: 0.8), CGPoint(x: 0.4, y: 0.8),
-                    CGPoint(x: 0.4, y: 0.3), CGPoint(x: 0, y: 0.3),
+                    CGPoint(x: 1, y: rB + rD), CGPoint(x: rC, y: rB + rD),
+                    CGPoint(x: rC, y: rB), CGPoint(x: 0, y: rB),
                 ],
                 labels
             )
 
         case .tShape:
+            let a = max(dims[safe: 0] ?? 1, 0.1)
+            let b = max(dims[safe: 1] ?? 1, 0.1)
+            let c = max(dims[safe: 2] ?? 1, 0.1)
+            let d = max(dims[safe: 3] ?? 1, 0.1)
+            let rB = b / a, rC = c / a, rD = d / a
+            let inset = (1.0 - rC) / 2  // center the stem
             return (
                 [
                     CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0),
-                    CGPoint(x: 1, y: 0.25), CGPoint(x: 0.7, y: 0.25),
-                    CGPoint(x: 0.7, y: 0.85), CGPoint(x: 0.3, y: 0.85),
-                    CGPoint(x: 0.3, y: 0.25), CGPoint(x: 0, y: 0.25),
+                    CGPoint(x: 1, y: rB), CGPoint(x: inset + rC, y: rB),
+                    CGPoint(x: inset + rC, y: rB + rD), CGPoint(x: inset, y: rB + rD),
+                    CGPoint(x: inset, y: rB), CGPoint(x: 0, y: rB),
                 ],
                 labels
             )
 
         case .multiLevel:
-            // Show as rectangle (upper level) for diagram
+            let a = max(dims[safe: 0] ?? 1, 0.1)
+            let b = max(dims[safe: 1] ?? 1, 0.1)
+            let r = b / a
             return (
-                [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 1, y: 0.6), CGPoint(x: 0, y: 0.6)],
-                [labels[0], labels[1]] // Only A, B for the visible rectangle
+                [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 1, y: r), CGPoint(x: 0, y: r)],
+                [labels[0], labels[1]]
             )
 
         case .poolDeck:

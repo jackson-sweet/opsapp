@@ -15,7 +15,16 @@ struct DeckCanvasView: View {
 
     // 4800 × 4800 pt workspace ≈ 400' × 400'
     private let canvasSize: CGFloat = 4800
-    private let gridSpacing: CGFloat = 20.0
+
+    /// Grid spacing matches the snap increment at the current scale.
+    /// Falls back to 20pt when no scale is set.
+    private var gridSpacing: CGFloat {
+        let snapInches = viewModel.drawingData.config.lengthSnapIncrement
+        guard let scale = viewModel.drawingData.scaleFactor, scale > 0 else { return 20.0 }
+        let spacing = CGFloat(snapInches * scale)
+        // Clamp: too-dense grids destroy performance, too-sparse are useless
+        return max(8, min(80, spacing))
+    }
 
     var body: some View {
         GeometryReader { geometry in

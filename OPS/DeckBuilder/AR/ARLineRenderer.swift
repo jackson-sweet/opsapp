@@ -284,7 +284,8 @@ class ARLineRenderer {
         return entity
     }
 
-    /// Create a billboard text label that won't mirror when facing the camera.
+    /// Create a billboard text label. Uses a parent entity for positioning so the
+    /// text mesh offset is in local space and survives billboard rotation.
     private func createBillboardLabel(
         text: String,
         position: SIMD3<Float>,
@@ -300,14 +301,18 @@ class ARLineRenderer {
             lineBreakMode: .byClipping
         )
         let material = SimpleMaterial(color: color, isMetallic: false)
-        let entity = ModelEntity(mesh: mesh, materials: [material])
+        let textEntity = ModelEntity(mesh: mesh, materials: [material])
 
-        // Center the text horizontally
-        let bounds = entity.visualBounds(relativeTo: nil)
-        let textWidth = bounds.extents.x
-        entity.position = SIMD3<Float>(position.x - textWidth / 2, position.y, position.z)
+        // Center the text mesh in its local space (before billboard rotation)
+        let bounds = textEntity.visualBounds(relativeTo: nil)
+        textEntity.position = SIMD3<Float>(-bounds.extents.x / 2, 0, 0)
 
-        return entity
+        // Wrap in a pivot entity at the world position — billboard rotates the pivot
+        let pivot = ModelEntity()
+        pivot.position = position
+        pivot.addChild(textEntity)
+
+        return pivot
     }
 
     private func midpoint(_ a: SIMD3<Float>, _ b: SIMD3<Float>) -> SIMD3<Float> {

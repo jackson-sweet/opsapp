@@ -58,7 +58,7 @@ class ARPerimeterViewModel: ObservableObject {
 
     // MARK: - Constants
 
-    private let closeLoopRadius: Float = 0.5           // meters — arm's length, not auto-trigger distance
+    private let closeLoopRadius: Float = 0.1           // meters ≈ 4" — tight snap, deliberate close only
     private let metersToInches: Double = 39.3701
     private let angleSnapIncrement: Double = 15.0     // degrees
     private let angleSnapTolerance: Double = 7.5      // degrees within which to snap
@@ -188,18 +188,34 @@ class ARPerimeterViewModel: ObservableObject {
     /// Update the current crosshair position from the AR raycast result
     /// - Parameter position: World-space position of the raycast hit
     func updateCrosshairPosition(_ position: SIMD3<Float>) {
-        currentCrosshairPosition = position
-
         guard !isClosed else {
+            currentCrosshairPosition = position
             liveDimensionLabel = ""
             return
         }
 
-        // Update live dimension label
+        // Apply real-time snapping so the crosshair shows the snapped position
+        var snappedPosition = position
+        if angleSnappingEnabled, let lastVertex = arVertices.last {
+            let lastPos = simd3(lastVertex)
+            if arVertices.count >= 2 {
+                let priorPos = simd3(arVertices[arVertices.count - 2])
+                let result = snapAngleInWorldSpace(
+                    newPosition: position, previousPosition: lastPos, priorPosition: priorPos)
+                snappedPosition = result.position
+            } else {
+                let result = snapAngleToCardinal(newPosition: position, fromPosition: lastPos)
+                snappedPosition = result.position
+            }
+        }
+
+        currentCrosshairPosition = snappedPosition
+
+        // Live dimension label from the snapped position
         if let lastVertex = arVertices.last {
             let lastPos = simd3(lastVertex)
-            let dx = Double(position.x - lastPos.x)
-            let dz = Double(position.z - lastPos.z)
+            let dx = Double(snappedPosition.x - lastPos.x)
+            let dz = Double(snappedPosition.z - lastPos.z)
             let distanceMeters = sqrt(dx * dx + dz * dz)
             let distanceInches = distanceMeters * metersToInches
             let accuracy = AccuracyModel.estimateAccuracy(distanceMeters: distanceMeters)
@@ -213,7 +229,7 @@ class ARPerimeterViewModel: ObservableObject {
         // Check proximity to first vertex for close-loop
         if arVertices.count >= 3, let first = arVertices.first {
             let firstPos = simd3(first)
-            let distance = simd_distance(position, firstPos)
+            let distance = simd_distance(snappedPosition, firstPos)
             isNearFirstVertex = distance < closeLoopRadius
         } else {
             isNearFirstVertex = false
@@ -412,6 +428,12 @@ class ARPerimeterViewModel: ObservableObject {
         // Remove vertex
         arVertices.remove(at: index)
 
+        // Reset closed state — polygon is no longer closed after vertex removal
+        if isClosed {
+            isClosed = false
+            isNearFirstVertex = false
+        }
+
         isEditingVertex = false
         editingVertexIndex = nil
         lightImpact.impactOccurred()
@@ -420,7 +442,7 @@ class ARPerimeterViewModel: ObservableObject {
     // MARK: - Convert to DeckDrawingData
 
     /// Convert the AR walk result to a DeckDrawingData for the 2D canvas
-    func toDrawingData(canvasWidth: CGFloat = 600, canvasHeight: CGFloat = 400) -> DeckDrawingData {
+    func toDrawingData(canvasWidth: CGFloat = 4800, canvasHeight: CGFloat = 4800) -> DeckDrawingData {
         ARCoordinateConverter.convert(
             arVertices: arVertices,
             arEdges: arEdges,

@@ -38,19 +38,34 @@ struct ARCoordinateConverter {
         arVertices: [ARVertex],
         arEdges: [AREdge],
         isClosed: Bool,
-        canvasWidth: CGFloat = 600,
-        canvasHeight: CGFloat = 400,
+        canvasWidth: CGFloat = 4800,
+        canvasHeight: CGFloat = 4800,
         padding: CGFloat = 40
     ) -> DeckDrawingData {
         guard !arVertices.isEmpty else { return DeckDrawingData() }
 
-        // Project 3D to 2D (XZ plane, ignore Y)
-        // Convert meters to inches for dimensions
         let metersToInches = 39.3701
 
-        // Calculate bounding box in meters
-        let xs = arVertices.map { $0.x }
-        let zs = arVertices.map { $0.z }
+        // Step 1: Find the best rotation to align the longest edge with the X axis
+        let rotationAngle = bestAlignmentAngle(vertices: arVertices, edges: arEdges)
+
+        // Step 2: Rotate all vertices around their centroid
+        let cx = arVertices.map { $0.x }.reduce(0, +) / Double(arVertices.count)
+        let cz = arVertices.map { $0.z }.reduce(0, +) / Double(arVertices.count)
+        let cosR = cos(rotationAngle), sinR = sin(rotationAngle)
+
+        struct RotatedPoint { let x: Double; let z: Double; let arId: String }
+        let rotated: [RotatedPoint] = arVertices.map { v in
+            let dx = v.x - cx, dz = v.z - cz
+            return RotatedPoint(
+                x: dx * cosR - dz * sinR,
+                z: dx * sinR + dz * cosR,
+                arId: v.id
+            )
+        }
+
+        // Step 3: Bounding box of rotated points
+        let xs = rotated.map { $0.x }, zs = rotated.map { $0.z }
         let minX = xs.min()!, maxX = xs.max()!
         let minZ = zs.min()!, maxZ = zs.max()!
         let widthMeters = maxX - minX
@@ -61,27 +76,32 @@ struct ARCoordinateConverter {
         let widthInches = max(widthMeters, 0.01) * metersToInches
         let heightInches = max(heightMeters, 0.01) * metersToInches
 
-        // Calculate scale to fit in canvas
-        let availW = Double(canvasWidth - 2 * padding)
-        let availH = Double(canvasHeight - 2 * padding)
+        // Scale to fit ~60% of canvas (centered)
+        let availW = Double(canvasWidth) * 0.6
+        let availH = Double(canvasHeight) * 0.6
         let scaleFactor = min(availW / widthInches, availH / heightInches)
 
-        let offsetX = (Double(canvasWidth) - widthInches * scaleFactor) / 2
-        let offsetY = (Double(canvasHeight) - heightInches * scaleFactor) / 2
+        // Center of mass at center of canvas
+        let canvasCenterX = Double(canvasWidth) / 2
+        let canvasCenterY = Double(canvasHeight) / 2
+        let shapeCenterXInches = ((minX + maxX) / 2 - minX) * metersToInches
+        let shapeCenterZInches = ((minZ + maxZ) / 2 - minZ) * metersToInches
+        let offsetX = canvasCenterX - shapeCenterXInches * scaleFactor
+        let offsetY = canvasCenterY - shapeCenterZInches * scaleFactor
 
-        // Build deck vertices
+        // Build deck vertices — snap origin vertex to nearest grid point
         var deckVertices: [DeckVertex] = []
-        var vertexIdMap: [String: String] = [:] // AR vertex ID → deck vertex ID
+        var vertexIdMap: [String: String] = [:]
 
-        for arV in arVertices {
-            let xInches = (arV.x - minX) * metersToInches
-            let zInches = (arV.z - minZ) * metersToInches
+        for rp in rotated {
+            let xInches = (rp.x - minX) * metersToInches
+            let zInches = (rp.z - minZ) * metersToInches
             let canvasPos = CGPoint(
                 x: xInches * scaleFactor + offsetX,
                 y: zInches * scaleFactor + offsetY
             )
             let vertex = DeckVertex(position: canvasPos)
-            vertexIdMap[arV.id] = vertex.id
+            vertexIdMap[rp.arId] = vertex.id
             deckVertices.append(vertex)
         }
 
@@ -107,6 +127,35 @@ struct ARCoordinateConverter {
         data.scaleFactor = scaleFactor
         data.footprint = DeckFootprint(isClosed: isClosed)
         return data
+    }
+
+    // MARK: - Auto-Rotation Alignment
+
+    /// Find the rotation angle that best aligns the drawing's edges with the canvas axes.
+    /// Returns the angle (radians) to rotate around the centroid so the longest edge
+    /// is closest to horizontal (X axis).
+    private static func bestAlignmentAngle(vertices: [ARVertex], edges: [AREdge]) -> Double {
+        guard !edges.isEmpty else { return 0 }
+
+        // Find the longest edge
+        var longestLength = 0.0
+        var longestAngle = 0.0
+
+        for edge in edges {
+            guard let start = vertices.first(where: { $0.id == edge.startVertexId }),
+                  let end = vertices.first(where: { $0.id == edge.endVertexId }) else { continue }
+            let dx = end.x - start.x
+            let dz = end.z - start.z
+            let length = sqrt(dx * dx + dz * dz)
+            if length > longestLength {
+                longestLength = length
+                longestAngle = atan2(dz, dx)
+            }
+        }
+
+        // Snap to nearest 90° alignment — we want edges parallel to X or Y axis
+        let snapped = (longestAngle / (.pi / 2)).rounded() * (.pi / 2)
+        return -(longestAngle - snapped)
     }
 
     /// Convert two AR height points to elevation in inches

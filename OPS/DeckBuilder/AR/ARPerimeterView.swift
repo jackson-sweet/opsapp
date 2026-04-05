@@ -178,17 +178,22 @@ struct ARPerimeterView: View {
     private var snapToggle: some View {
         Button {
             viewModel.angleSnappingEnabled.toggle()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: "angle")
-                    .font(.system(size: 14, weight: .medium))
-                Text(viewModel.angleSnappingEnabled ? "ON" : "OFF")
-                    .font(.system(size: 12, weight: .bold))
+                Image(systemName: viewModel.angleSnappingEnabled ? "lock.fill" : "lock.open")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                Text("SNAP")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
             }
-            .foregroundColor(viewModel.angleSnappingEnabled ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .foregroundColor(viewModel.angleSnappingEnabled ? Color.white : Color.white.opacity(0.4))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(Color.black.opacity(0.4))
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(viewModel.angleSnappingEnabled ? Color.white.opacity(0.3) : Color.clear, lineWidth: 1)
+            )
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
     }

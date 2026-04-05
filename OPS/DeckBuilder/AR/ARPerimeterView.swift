@@ -281,81 +281,65 @@ struct ARPerimeterView: View {
     // MARK: - Bottom Controls
 
     private var bottomControls: some View {
-        VStack(spacing: 12) {
-            // Current assignment label
-            if let label = viewModel.currentAssignmentLabel {
-                Text(label.uppercased())
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(Color.white.opacity(0.6))
-            }
+        VStack(spacing: 0) {
+            // Floating label above trigger — current mode/assignment
+            Text(triggerLabel.uppercased())
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundColor(Color.white.opacity(0.7))
+                .padding(.bottom, 10)
 
             HStack(alignment: .bottom) {
                 rightControls
 
                 Spacer()
-                mainActionButton
+
+                // Camera-style circular trigger with integrated wheel
+                ARTriggerButton(viewModel: viewModel) {
+                    if viewModel.isNearFirstVertex {
+                        viewModel.closeLoop()
+                    } else if viewModel.isSplittingEdge, let edgeIdx = viewModel.splittingEdgeIndex,
+                              let pos = viewModel.currentCrosshairPosition {
+                        viewModel.splitEdge(edgeIndex: edgeIdx, at: pos)
+                    } else if viewModel.isEditingVertex, let vertexIdx = viewModel.editingVertexIndex,
+                              let pos = viewModel.currentCrosshairPosition {
+                        viewModel.repositionVertex(index: vertexIdx, to: pos)
+                    } else if let pos = viewModel.currentCrosshairPosition {
+                        viewModel.recordVertex(worldPosition: pos)
+                    }
+                }
+                .disabled(!viewModel.isPlaneDetected || viewModel.isClosed)
+                .opacity(viewModel.isClosed ? 0.4 : 1.0)
+
                 Spacer()
 
-                // Assignment wheel — bottom-center-right, not off-screen
-                ARAssignmentWheelView(viewModel: viewModel)
-                    .frame(width: 60, height: 60)
+                // Undo button (symmetry with right controls)
+                if !viewModel.arVertices.isEmpty && !viewModel.isClosed {
+                    Button {
+                        viewModel.undoLastVertex()
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.white)
+                            .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
+                            .background(Color.black.opacity(0.4))
+                            .clipShape(Circle())
+                    }
+                } else {
+                    Color.clear.frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
+                }
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.bottom, OPSStyle.Layout.spacing5)
     }
 
-    private var mainActionButton: some View {
-        Button {
-            if viewModel.isNearFirstVertex {
-                viewModel.closeLoop()
-            } else if viewModel.isSplittingEdge, let edgeIdx = viewModel.splittingEdgeIndex,
-                      let pos = viewModel.currentCrosshairPosition {
-                viewModel.splitEdge(edgeIndex: edgeIdx, at: pos)
-            } else if viewModel.isEditingVertex, let vertexIdx = viewModel.editingVertexIndex,
-                      let pos = viewModel.currentCrosshairPosition {
-                viewModel.repositionVertex(index: vertexIdx, to: pos)
-            } else if let pos = viewModel.currentCrosshairPosition {
-                viewModel.recordVertex(worldPosition: pos)
-            }
-        } label: {
-            mainActionButtonLabel
-        }
-        .disabled(!viewModel.isPlaneDetected || viewModel.isClosed)
-        .opacity(viewModel.isClosed ? 0.4 : 1.0)
-    }
-
-    private var mainActionButtonLabel: some View {
-        VStack(spacing: 4) {
-            Text(buttonTitle)
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(.white)
-
-            if viewModel.arVertices.isEmpty {
-                Text("Aim at first corner")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white.opacity(0.7))
-            }
-        }
-        .frame(minWidth: 180)
-        .padding(.vertical, 16)
-        .background(buttonColor)
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-    }
-
-    private var buttonTitle: String {
-        if !viewModel.isPlaneDetected { return "Scanning..." }
-        if viewModel.isClosed { return "Loop Closed" }
-        if viewModel.isNearFirstVertex { return "Close Loop" }
-        if viewModel.isSplittingEdge { return "Record Split" }
-        if viewModel.isEditingVertex { return "Record Position" }
-        return "Record Vertex"
-    }
-
-    private var buttonColor: Color {
-        if !viewModel.isPlaneDetected { return OPSStyle.Colors.tertiaryText }
-        if viewModel.isNearFirstVertex { return OPSStyle.Colors.successStatus }
-        return OPSStyle.Colors.primaryAccent
+    private var triggerLabel: String {
+        if !viewModel.isPlaneDetected { return "scanning" }
+        if viewModel.isClosed { return "loop closed" }
+        if viewModel.isNearFirstVertex { return "close loop" }
+        if let label = viewModel.currentAssignmentLabel { return label }
+        return "vertex"
     }
 
     private var rightControls: some View {
@@ -440,11 +424,14 @@ struct ARPerimeterView: View {
 
 // MARK: - AR Assignment Wheel (Extracted View)
 
-private struct ARAssignmentWheelView: View {
+/// Camera-style circular trigger with integrated assignment wheel.
+/// Tap = fire action. Long-press = expand radial wheel. Drag to select, release to confirm.
+private struct ARTriggerButton: View {
     @ObservedObject var viewModel: ARPerimeterViewModel
     @Query(filter: #Predicate<Product> { $0.isActive }, sort: \Product.name) private var products: [Product]
     @State private var wheelExpanded = false
     @State private var wheelHighlight: Int?
+    let action: () -> Void
 
     private static let builtInItems: [(String, String)] = [
         ("House", "house"),
@@ -455,22 +442,18 @@ private struct ARAssignmentWheelView: View {
         ("No Rail", "xmark"),
     ]
 
-    /// Built-in items + dynamic linear products from the company catalog
     private var items: [(String, String)] {
         var all = Self.builtInItems
-        // Add linear products (unit contains "linear" or "lf" or "foot" or "meter")
         let linearProducts = products.filter { product in
             guard let unit = product.unit?.lowercased() else { return false }
             return unit.contains("linear") || unit.contains("lf") || unit.contains("foot") || unit.contains("meter")
         }
-        for product in linearProducts.prefix(2) { // cap at 2 to keep wheel usable (max 8 slots)
-            let shortName = String(product.name.prefix(8))
-            all.append((shortName, "shippingbox"))
+        for product in linearProducts.prefix(2) {
+            all.append((String(product.name.prefix(8)), "shippingbox"))
         }
         return all
     }
 
-    /// Product references for dynamic items (indices offset by built-in count)
     private var dynamicProducts: [Product] {
         products.filter { product in
             guard let unit = product.unit?.lowercased() else { return false }
@@ -478,20 +461,41 @@ private struct ARAssignmentWheelView: View {
         }
     }
 
+    private let triggerSize: CGFloat = 72
+    private let wheelRadius: CGFloat = 90
+
     var body: some View {
         ZStack {
+            // Radial wheel slots (visible when expanded)
             if wheelExpanded {
-                wheelSlots
+                ForEach(0..<items.count, id: \.self) { index in
+                    wheelSlot(index: index)
+                }
             }
-            centerButton
-        }
-        .animation(OPSStyle.Animation.spring, value: wheelExpanded)
-    }
 
-    private var wheelSlots: some View {
-        ForEach(0..<items.count, id: \.self) { index in
-            wheelSlot(index: index)
+            // Outer ring — camera trigger aesthetic
+            Circle()
+                .stroke(Color.white.opacity(0.6), lineWidth: 3)
+                .frame(width: triggerSize, height: triggerSize)
+
+            // Inner fill — pulses on tap
+            Circle()
+                .fill(Color.white.opacity(wheelExpanded ? 0.15 : 0.1))
+                .frame(width: triggerSize - 8, height: triggerSize - 8)
+
+            // Center dot
+            Circle()
+                .fill(Color.white)
+                .frame(width: 8, height: 8)
         }
+        .frame(width: triggerSize, height: triggerSize)
+        .contentShape(Circle())
+        .onTapGesture {
+            action()
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        }
+        .gesture(wheelDragGesture)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: wheelExpanded)
     }
 
     private func wheelSlot(index: Int) -> some View {
@@ -501,35 +505,16 @@ private struct ARAssignmentWheelView: View {
 
         return VStack(spacing: 2) {
             Image(systemName: item.1)
-                .font(.system(size: isHighlighted ? 18 : 14, weight: .medium))
-                .foregroundColor(isHighlighted ? OPSStyle.Colors.primaryAccent : .white)
-            Text(item.0)
-                .font(.system(size: 8, weight: .semibold))
-                .foregroundColor(isHighlighted ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                .font(.system(size: isHighlighted ? 16 : 12, weight: .semibold))
+                .foregroundColor(isHighlighted ? Color.white : Color.white.opacity(0.7))
+            Text(item.0.uppercased())
+                .font(.system(size: 7, weight: .bold, design: .monospaced))
+                .foregroundColor(isHighlighted ? Color.white : Color.white.opacity(0.5))
         }
-        .frame(width: 50, height: 50)
-        .background(
-            Circle().fill(isHighlighted ? OPSStyle.Colors.primaryAccent.opacity(0.2) : Color.black.opacity(0.6))
-        )
-        .offset(x: cos(angle) * 80, y: sin(angle) * 80)
-    }
-
-    private var centerButton: some View {
-        Circle()
-            .fill(Color.black.opacity(0.5))
-            .frame(width: 50, height: 50)
-            .overlay(
-                Image(systemName: wheelExpanded ? "xmark" : "circle.grid.2x2")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.white)
-            )
-            .onTapGesture {
-                withAnimation(OPSStyle.Animation.spring) {
-                    wheelExpanded.toggle()
-                    wheelHighlight = nil
-                }
-            }
-            .gesture(wheelDragGesture)
+        .frame(width: 48, height: 48)
+        .background(Circle().fill(isHighlighted ? Color.white.opacity(0.2) : Color.black.opacity(0.6)))
+        .overlay(Circle().stroke(isHighlighted ? Color.white.opacity(0.4) : Color.clear, lineWidth: 1))
+        .offset(x: cos(angle) * wheelRadius, y: sin(angle) * wheelRadius)
     }
 
     private var wheelDragGesture: some Gesture {
@@ -537,17 +522,25 @@ private struct ARAssignmentWheelView: View {
             .sequenced(before: DragGesture(minimumDistance: 0))
             .onChanged { value in
                 if case .second(true, let drag) = value {
-                    if !wheelExpanded { wheelExpanded = true }
+                    if !wheelExpanded {
+                        wheelExpanded = true
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                    }
                     if let drag = drag {
+                        let oldHighlight = wheelHighlight
                         updateHighlight(drag: drag)
+                        if wheelHighlight != oldHighlight && wheelHighlight != nil {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
                     }
                 }
             }
             .onEnded { _ in
                 if let idx = wheelHighlight, idx < items.count {
                     executeAction(idx)
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
-                withAnimation(OPSStyle.Animation.spring) {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                     wheelExpanded = false
                     wheelHighlight = nil
                 }
@@ -555,10 +548,11 @@ private struct ARAssignmentWheelView: View {
     }
 
     private func updateHighlight(drag: DragGesture.Value) {
-        let dx = Double(drag.location.x - 25)
-        let dy = Double(drag.location.y - 25)
+        let center = triggerSize / 2
+        let dx = Double(drag.location.x - center)
+        let dy = Double(drag.location.y - center)
         let dist = sqrt(dx * dx + dy * dy)
-        guard dist > 20 else { wheelHighlight = nil; return }
+        guard dist > 25 else { wheelHighlight = nil; return }
         var angle = atan2(dy, dx) + .pi / 2
         if angle < 0 { angle += 2 * .pi }
         if angle > 2 * .pi { angle -= 2 * .pi }
@@ -579,16 +573,13 @@ private struct ARAssignmentWheelView: View {
             default: break
             }
         } else {
-            // Dynamic product assignment
             let productIndex = index - builtInCount
             let linears = Array(dynamicProducts.prefix(2))
             guard productIndex < linears.count else { return }
             let product = linears[productIndex]
             viewModel.activeAssignment = AssignedItem(
-                productId: product.id,
-                name: product.name,
-                unitType: .linearFoot,
-                unitPrice: product.defaultPrice
+                productId: product.id, name: product.name,
+                unitType: .linearFoot, unitPrice: product.defaultPrice
             )
         }
     }

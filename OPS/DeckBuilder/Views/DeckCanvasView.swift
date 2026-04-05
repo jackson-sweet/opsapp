@@ -55,7 +55,8 @@ struct DeckCanvasView: View {
                 )
             }
             // SwiftUI gestures — single-finger drawing, tap, long-press
-            .simultaneousGesture(drawGesture(size: geometry.size))
+            .simultaneousGesture(viewModel.activeTool == .draw ? drawGesture(size: geometry.size) : nil)
+            .simultaneousGesture(viewModel.activeTool == .select || viewModel.activeTool == .lasso ? selectionDragGesture(size: geometry.size) : nil)
             .simultaneousGesture(tapGesture(size: geometry.size))
             .simultaneousGesture(longPressGesture(size: geometry.size))
             .onAppear {
@@ -161,7 +162,28 @@ struct DeckCanvasView: View {
         path.closeSubpath()
 
         let isSelected = viewModel.selection.selectedFootprint
-        context.fill(path, with: .color(Color.white.opacity(isSelected ? 0.08 : 0.03)))
+        let hasAssignment = !viewModel.drawingData.footprint.assignedItems.isEmpty
+
+        // Fill — use task type color if assigned, else subtle white
+        if hasAssignment {
+            context.fill(path, with: .color(OPSStyle.Colors.primaryAccent.opacity(isSelected ? 0.15 : 0.08)))
+        } else {
+            context.fill(path, with: .color(Color.white.opacity(isSelected ? 0.08 : 0.03)))
+        }
+
+        // Surface material label at centroid
+        if let firstItem = viewModel.drawingData.footprint.assignedItems.first {
+            let cx = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
+            let cy = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
+            let label = firstItem.name
+            let pillW = CGFloat(label.count) * 7 + 16
+            let pillH: CGFloat = 20
+            let pillRect = CGRect(x: cx - pillW / 2, y: cy - pillH / 2, width: pillW, height: pillH)
+            context.fill(Path(roundedRect: pillRect, cornerRadius: 4),
+                         with: .color(OPSStyle.Colors.cardBackground.opacity(0.9)))
+            context.draw(Text(label).font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundColor(OPSStyle.Colors.primaryAccent), at: CGPoint(x: cx, y: cy))
+        }
     }
 
     // MARK: - Pool Overlay
@@ -605,6 +627,37 @@ struct DeckCanvasView: View {
                     case .none: break
                     }
                 default: break
+                }
+                drawingStarted = false
+            }
+    }
+
+    // MARK: - Selection Drag Gesture (immediate one-finger drag, no long press)
+
+    private func selectionDragGesture(size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 5)
+            .onChanged { value in
+                let point = canvasPoint(from: value.location, in: size)
+                let startPoint = canvasPoint(from: value.startLocation, in: size)
+                if !drawingStarted {
+                    drawingStarted = true
+                    if viewModel.activeTool == .select {
+                        viewModel.beginMarquee(at: startPoint)
+                    } else {
+                        viewModel.beginLasso(at: startPoint)
+                    }
+                }
+                if viewModel.activeTool == .select {
+                    viewModel.updateMarquee(to: point)
+                } else {
+                    viewModel.updateLasso(to: point)
+                }
+            }
+            .onEnded { _ in
+                if viewModel.activeTool == .select {
+                    viewModel.endMarquee()
+                } else {
+                    viewModel.endLasso()
                 }
                 drawingStarted = false
             }

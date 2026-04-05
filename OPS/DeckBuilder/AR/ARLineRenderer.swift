@@ -4,7 +4,8 @@ import Foundation
 import RealityKit
 import UIKit
 
-/// Renders lines, vertex dots, dimension labels, and footprint fill in AR 3D space using RealityKit entities.
+/// Renders lines, vertex markers, dimension labels, and footprint fill in AR 3D space.
+/// Visual style: tactical/military HUD — thin lines, monospace labels, clean geometry.
 class ARLineRenderer {
 
     // MARK: - Root Entity
@@ -13,28 +14,32 @@ class ARLineRenderer {
 
     // MARK: - Entity Tracking
 
-    private var vertexEntities: [String: ModelEntity] = [:]
-    private var edgeEntities: [String: Entity] = [:]         // contains line + label
-    private var labelEntities: [ModelEntity] = []            // all labels for billboarding
+    private var vertexEntities: [String: Entity] = [:]
+    private var edgeEntities: [String: Entity] = [:]
+    private var labelEntities: [ModelEntity] = []
     private var liveLineEntity: Entity?
     private var liveLabelEntity: ModelEntity?
     private var footprintEntity: ModelEntity?
 
-    // MARK: - Colors (from OPSStyle tokens, converted for RealityKit)
+    // MARK: - Colors — white default, no arbitrary blue
 
-    private let vertexPlacedColor: UIColor = UIColor(red: 0.65, green: 0.78, blue: 0.46, alpha: 1.0)   // successStatus green
-    private let vertexFirstColor: UIColor = UIColor(red: 0.349, green: 0.471, blue: 0.58, alpha: 1.0)   // primaryAccent blue-gray
-    private let edgeLockedColor: UIColor = UIColor.white
-    private let edgeLiveColor: UIColor = UIColor(red: 0.349, green: 0.471, blue: 0.58, alpha: 0.5)      // primaryAccent 50%
-    private let footprintFillColor: UIColor = UIColor(red: 0.349, green: 0.471, blue: 0.58, alpha: 0.15) // primaryAccent 15%
+    private let edgeDefaultColor: UIColor = UIColor.white
+    private let edgeLiveColor: UIColor = UIColor.white.withAlphaComponent(0.4)
+    private let houseEdgeColor: UIColor = UIColor(white: 0.6, alpha: 1.0)
     private let labelColor: UIColor = UIColor.white
+    private let footprintFillColor: UIColor = UIColor.white.withAlphaComponent(0.06)
+
+    // Vertex: tactical diamond/crosshair, not colored spheres
+    private let vertexColor: UIColor = UIColor.white
+    private let vertexFirstColor: UIColor = UIColor.white // same — no arbitrary blue for first vertex
 
     // MARK: - Geometry Constants
 
-    private let vertexRadius: Float = 0.03       // 3cm — fist-sized from standing distance
-    private let edgeWidth: Float = 0.01          // 1cm wide
-    private let edgeHeight: Float = 0.005        // 0.5cm tall
-    private let labelTextSize: CGFloat = 0.04    // 4cm text height in world space
+    private let vertexSize: Float = 0.025           // 2.5cm — small tactical marker
+    private let edgeWidth: Float = 0.008            // 0.8cm — thinner lines
+    private let edgeHeight: Float = 0.003           // 0.3cm
+    private let labelTextSize: CGFloat = 0.035      // 3.5cm in world space
+    private let materialLabelSize: CGFloat = 0.025  // smaller, below dimension
 
     // MARK: - Init
 
@@ -44,26 +49,37 @@ class ARLineRenderer {
 
     // MARK: - Vertex Operations
 
-    /// Add a vertex sphere at the given world position
-    /// - Parameters:
-    ///   - position: World-space position (SIMD3<Float>)
-    ///   - isFirst: Whether this is the first vertex (close-loop target — colored blue)
-    /// - Returns: A unique name for the vertex entity
+    /// Add a tactical vertex marker (diamond shape) at the given world position
     @discardableResult
     func addVertex(at position: SIMD3<Float>, isFirst: Bool) -> String {
         let name = "vertex_\(UUID().uuidString)"
-        let mesh = MeshResource.generateSphere(radius: vertexRadius)
-        let color = isFirst ? vertexFirstColor : vertexPlacedColor
-        let material = SimpleMaterial(color: color, isMetallic: false)
-        let entity = ModelEntity(mesh: mesh, materials: [material])
-        entity.name = name
-        entity.position = position
-        rootAnchor.addChild(entity)
-        vertexEntities[name] = entity
+        let group = Entity()
+        group.name = name
+        group.position = position
+
+        // Diamond marker: rotated cube
+        let mesh = MeshResource.generateBox(width: vertexSize, height: vertexSize * 0.3, depth: vertexSize)
+        let material = SimpleMaterial(color: vertexColor, isMetallic: true)
+        let diamond = ModelEntity(mesh: mesh, materials: [material])
+        diamond.transform.rotation = simd_quatf(angle: .pi / 4, axis: SIMD3<Float>(0, 1, 0))
+        group.addChild(diamond)
+
+        // Thin cross lines through the diamond (tactical crosshair at vertex)
+        let armLength: Float = vertexSize * 1.2
+        let armThickness: Float = 0.002
+        let hMesh = MeshResource.generateBox(width: armLength, height: armThickness, depth: armThickness)
+        let vMesh = MeshResource.generateBox(width: armThickness, height: armThickness, depth: armLength)
+        let armMaterial = SimpleMaterial(color: UIColor.white.withAlphaComponent(0.5), isMetallic: false)
+        let hArm = ModelEntity(mesh: hMesh, materials: [armMaterial])
+        let vArm = ModelEntity(mesh: vMesh, materials: [armMaterial])
+        group.addChild(hArm)
+        group.addChild(vArm)
+
+        rootAnchor.addChild(group)
+        vertexEntities[name] = group
         return name
     }
 
-    /// Remove a vertex sphere by name
     func removeVertex(named name: String) {
         if let entity = vertexEntities.removeValue(forKey: name) {
             entity.removeFromParent()
@@ -72,41 +88,62 @@ class ARLineRenderer {
 
     // MARK: - Locked Edge Operations
 
-    /// Add a solid locked edge between two world positions with a dimension label
+    /// Add a locked edge with dimension label above and optional material label below.
     /// - Parameters:
-    ///   - from: Start position in world space
-    ///   - to: End position in world space
-    ///   - label: Dimension label text (e.g., "~16' 4\" ±6\"")
-    /// - Returns: A unique name for the edge entity group
+    ///   - from/to: world positions
+    ///   - dimensionLabel: text above the line (e.g., "~16' 4\"")
+    ///   - materialLabel: text below the line (e.g., "GLASS RAILING"), nil if no assignment
+    ///   - edgeColor: UIColor for the line — white default, task color if assigned
     @discardableResult
-    func addLockedEdge(from: SIMD3<Float>, to: SIMD3<Float>, label: String) -> String {
+    func addLockedEdge(
+        from: SIMD3<Float>,
+        to: SIMD3<Float>,
+        dimensionLabel: String,
+        materialLabel: String? = nil,
+        edgeColor: UIColor? = nil
+    ) -> String {
         let name = "edge_\(UUID().uuidString)"
         let group = Entity()
         group.name = name
 
-        // Line box between the two points
-        let lineEntity = createLineEntity(from: from, to: to, color: edgeLockedColor, alpha: 1.0)
+        let color = edgeColor ?? edgeDefaultColor
+        let lineEntity = createLineEntity(from: from, to: to, color: color, alpha: 1.0)
         group.addChild(lineEntity)
 
-        // Dimension label at midpoint
-        let labelEntity = createLabelEntity(
-            text: label,
-            position: midpoint(from, to),
-            from: from,
-            to: to
+        // Dimension label — ABOVE the line
+        let dimLabel = createBillboardLabel(
+            text: dimensionLabel,
+            position: midpoint(from, to) + SIMD3<Float>(0, 0.07, 0),
+            fontSize: labelTextSize
         )
-        group.addChild(labelEntity)
-        labelEntities.append(labelEntity)
+        group.addChild(dimLabel)
+        labelEntities.append(dimLabel)
+
+        // Material label — BELOW the line (smaller, dimmer)
+        if let matText = materialLabel {
+            let matLabel = createBillboardLabel(
+                text: matText,
+                position: midpoint(from, to) + SIMD3<Float>(0, 0.03, 0),
+                fontSize: materialLabelSize,
+                color: UIColor.white.withAlphaComponent(0.5)
+            )
+            group.addChild(matLabel)
+            labelEntities.append(matLabel)
+        }
 
         rootAnchor.addChild(group)
         edgeEntities[name] = group
         return name
     }
 
-    /// Remove an edge (line + label) by name
+    /// Legacy compatibility — single label
+    @discardableResult
+    func addLockedEdge(from: SIMD3<Float>, to: SIMD3<Float>, label: String) -> String {
+        addLockedEdge(from: from, to: to, dimensionLabel: label)
+    }
+
     func removeEdge(named name: String) {
         if let entity = edgeEntities.removeValue(forKey: name) {
-            // Remove tracked label entities that belong to this edge group
             labelEntities.removeAll { label in
                 label.parent === entity || entity.children.contains(where: { $0 === label })
             }
@@ -116,36 +153,36 @@ class ARLineRenderer {
 
     // MARK: - Live Line Operations
 
-    /// Update or create the live preview line from the last vertex to the crosshair position
     func updateLiveLine(from: SIMD3<Float>, to: SIMD3<Float>, label: String) {
-        // Remove existing live line
         liveLineEntity?.removeFromParent()
 
         let group = Entity()
         group.name = "live_line"
 
-        // Semi-transparent dashed line (approximated with two short segments with gaps)
+        // Dashed line segments
         let distance = simd_distance(from, to)
-        let segmentLength: Float = 0.15  // 15cm segments
-        let gapLength: Float = 0.08      // 8cm gaps
-        let direction = simd_normalize(to - from)
+        let segmentLength: Float = 0.12
+        let gapLength: Float = 0.06
+        let direction = distance > 0.001 ? simd_normalize(to - from) : SIMD3<Float>(0, 0, 1)
 
-        var currentDistance: Float = 0
-        while currentDistance < distance {
-            let segEnd = min(currentDistance + segmentLength, distance)
-            let segFrom = from + direction * currentDistance
-            let segTo = from + direction * segEnd
-            let segment = createLineEntity(from: segFrom, to: segTo, color: edgeLiveColor, alpha: 0.6)
+        var d: Float = 0
+        while d < distance {
+            let segEnd = min(d + segmentLength, distance)
+            let segment = createLineEntity(
+                from: from + direction * d,
+                to: from + direction * segEnd,
+                color: edgeLiveColor,
+                alpha: 0.5
+            )
             group.addChild(segment)
-            currentDistance = segEnd + gapLength
+            d = segEnd + gapLength
         }
 
-        // Dimension label
-        let liveLbl = createLabelEntity(
+        // Dimension label above
+        let liveLbl = createBillboardLabel(
             text: label,
-            position: midpoint(from, to),
-            from: from,
-            to: to
+            position: midpoint(from, to) + SIMD3<Float>(0, 0.07, 0),
+            fontSize: labelTextSize
         )
         group.addChild(liveLbl)
         liveLabelEntity = liveLbl
@@ -154,7 +191,6 @@ class ARLineRenderer {
         liveLineEntity = group
     }
 
-    /// Remove the live preview line
     func removeLiveLine() {
         liveLineEntity?.removeFromParent()
         liveLineEntity = nil
@@ -162,39 +198,26 @@ class ARLineRenderer {
 
     // MARK: - Footprint Fill
 
-    /// Render a flat filled polygon using a triangle-fan mesh matching the actual deck shape
     func showFootprintFill(vertices: [SIMD3<Float>]) {
         guard vertices.count >= 3 else { return }
-
-        // Remove existing footprint
         footprintEntity?.removeFromParent()
 
         let avgY = vertices.map { $0.y }.reduce(0, +) / Float(vertices.count) - 0.001
-
-        // Build triangle-fan mesh: center vertex + perimeter vertices
-        // Center = centroid of the polygon
         let centerX = vertices.map { $0.x }.reduce(0, +) / Float(vertices.count)
         let centerZ = vertices.map { $0.z }.reduce(0, +) / Float(vertices.count)
 
-        // Positions: [center, v0, v1, v2, ..., vN-1]
         var positions: [SIMD3<Float>] = [SIMD3<Float>(centerX, avgY, centerZ)]
-        for v in vertices {
-            positions.append(SIMD3<Float>(v.x, avgY, v.z))
-        }
+        for v in vertices { positions.append(SIMD3<Float>(v.x, avgY, v.z)) }
 
-        // Triangle-fan indices: for each triangle, (0, i, i+1), wrapping last to first perimeter vertex
         let n = vertices.count
         var indices: [UInt32] = []
         for i in 1...n {
             let next = (i % n) + 1
-            // Two windings for double-sided visibility
             indices.append(contentsOf: [0, UInt32(i), UInt32(next)])
             indices.append(contentsOf: [0, UInt32(next), UInt32(i)])
         }
 
-        // Normals: all pointing up
         let normals = [SIMD3<Float>](repeating: SIMD3<Float>(0, 1, 0), count: positions.count)
-
         var descriptor = MeshDescriptor(name: "footprint")
         descriptor.positions = MeshBuffer(positions)
         descriptor.normals = MeshBuffer(normals)
@@ -203,98 +226,90 @@ class ARLineRenderer {
         guard let mesh = try? MeshResource.generate(from: [descriptor]) else { return }
         let material = SimpleMaterial(color: footprintFillColor, isMetallic: false)
         let entity = ModelEntity(mesh: mesh, materials: [material])
-
         rootAnchor.addChild(entity)
         footprintEntity = entity
     }
 
     // MARK: - Label Billboarding
 
-    /// Rotate all dimension labels to face the camera position. Call every frame.
     func updateLabelOrientations(cameraPosition: SIMD3<Float>) {
         for label in labelEntities {
-            label.look(at: cameraPosition, from: label.position, relativeTo: nil)
+            billboardToCamera(entity: label, cameraPosition: cameraPosition)
         }
         if let liveLabel = liveLabelEntity {
-            liveLabel.look(at: cameraPosition, from: liveLabel.position, relativeTo: nil)
+            billboardToCamera(entity: liveLabel, cameraPosition: cameraPosition)
         }
+    }
+
+    /// Billboard that faces camera but stays upright (no mirroring).
+    /// The standard look(at:) produces mirrored text because RealityKit text
+    /// faces +Z but look(at:) orients -Z toward the target.
+    private func billboardToCamera(entity: ModelEntity, cameraPosition: SIMD3<Float>) {
+        let toCamera = cameraPosition - entity.position
+        let angle = atan2(toCamera.x, toCamera.z)
+        // Rotate around Y axis to face camera, + PI to flip text forward
+        entity.orientation = simd_quatf(angle: angle + .pi, axis: SIMD3<Float>(0, 1, 0))
     }
 
     // MARK: - Clear All
 
-    /// Remove all rendered entities
     func clearAll() {
-        for (_, entity) in vertexEntities {
-            entity.removeFromParent()
-        }
+        for (_, entity) in vertexEntities { entity.removeFromParent() }
         vertexEntities.removeAll()
-
-        for (_, entity) in edgeEntities {
-            entity.removeFromParent()
-        }
+        for (_, entity) in edgeEntities { entity.removeFromParent() }
         edgeEntities.removeAll()
         labelEntities.removeAll()
-
         liveLineEntity?.removeFromParent()
         liveLineEntity = nil
         liveLabelEntity = nil
-
         footprintEntity?.removeFromParent()
         footprintEntity = nil
     }
 
     // MARK: - Private Helpers
 
-    /// Create a thin box entity representing a line segment between two points
     private func createLineEntity(from: SIMD3<Float>, to: SIMD3<Float>, color: UIColor, alpha: Float) -> ModelEntity {
         let length = simd_distance(from, to)
-        guard length > 0.001 else {
-            return ModelEntity()
-        }
+        guard length > 0.001 else { return ModelEntity() }
 
         let mesh = MeshResource.generateBox(width: edgeWidth, height: edgeHeight, depth: length)
         var material = SimpleMaterial(color: color.withAlphaComponent(CGFloat(alpha)), isMetallic: false)
-        material.roughness = .float(0.8)
+        material.roughness = .float(0.9)
         let entity = ModelEntity(mesh: mesh, materials: [material])
-
-        // Position at midpoint
         entity.position = midpoint(from, to)
 
-        // Rotate to point from → to
         let direction = simd_normalize(to - from)
-        // Default box extends along Z axis, so we orient from Z-forward to our direction
         let forward = SIMD3<Float>(0, 0, 1)
-        let rotation = simd_quatf(from: forward, to: direction)
-        entity.orientation = rotation
-
+        entity.orientation = simd_quatf(from: forward, to: direction)
         return entity
     }
 
-    /// Create a text entity for a dimension label
-    private func createLabelEntity(text: String, position: SIMD3<Float>, from: SIMD3<Float>, to: SIMD3<Float>) -> ModelEntity {
+    /// Create a billboard text label that won't mirror when facing the camera.
+    private func createBillboardLabel(
+        text: String,
+        position: SIMD3<Float>,
+        fontSize: CGFloat,
+        color: UIColor = .white
+    ) -> ModelEntity {
         let mesh = MeshResource.generateText(
             text,
             extrusionDepth: 0.001,
-            font: .systemFont(ofSize: labelTextSize, weight: .semibold),
+            font: .monospacedSystemFont(ofSize: fontSize, weight: .semibold),
             containerFrame: .zero,
             alignment: .center,
             lineBreakMode: .byClipping
         )
-        let material = SimpleMaterial(color: labelColor, isMetallic: false)
+        let material = SimpleMaterial(color: color, isMetallic: false)
         let entity = ModelEntity(mesh: mesh, materials: [material])
 
-        // Position above the line midpoint
-        entity.position = SIMD3<Float>(position.x, position.y + 0.08, position.z)
-
-        // Compute text width from bounds so we can center it
+        // Center the text horizontally
         let bounds = entity.visualBounds(relativeTo: nil)
         let textWidth = bounds.extents.x
-        entity.position.x -= textWidth / 2
+        entity.position = SIMD3<Float>(position.x - textWidth / 2, position.y, position.z)
 
         return entity
     }
 
-    /// Midpoint between two SIMD3 positions
     private func midpoint(_ a: SIMD3<Float>, _ b: SIMD3<Float>) -> SIMD3<Float> {
         (a + b) / 2
     }

@@ -58,7 +58,7 @@ class ARPerimeterViewModel: ObservableObject {
 
     // MARK: - Constants
 
-    private let closeLoopRadius: Float = 1.5          // meters — snap radius for close loop
+    private let closeLoopRadius: Float = 0.5           // meters — arm's length, not auto-trigger distance
     private let metersToInches: Double = 39.3701
     private let angleSnapIncrement: Double = 15.0     // degrees
     private let angleSnapTolerance: Double = 7.5      // degrees within which to snap

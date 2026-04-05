@@ -210,8 +210,21 @@ struct ARPerimeterView: View {
                         .shadow(color: .black, radius: 3, y: 1)
                 }
 
-                // Tactical crosshair
-                tacticalCrosshair
+                // Tactical crosshair + close loop indicator
+                ZStack {
+                    tacticalCrosshair
+
+                    if viewModel.isNearFirstVertex && !viewModel.isClosed {
+                        // Close loop ring around crosshair
+                        Circle()
+                            .stroke(OPSStyle.Colors.successStatus, lineWidth: 2)
+                            .frame(width: 64, height: 64)
+                        Text("CLOSE")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .foregroundColor(OPSStyle.Colors.successStatus)
+                            .offset(y: 40)
+                    }
+                }
 
                 // Status
                 if !viewModel.isPlaneDetected {
@@ -336,10 +349,10 @@ struct ARPerimeterView: View {
 
     private var triggerLabel: String {
         if !viewModel.isPlaneDetected { return "scanning" }
-        if viewModel.isClosed { return "loop closed" }
-        if viewModel.isNearFirstVertex { return "close loop" }
+        if viewModel.isClosed { return "done" }
         if let label = viewModel.currentAssignmentLabel { return label }
-        return "vertex"
+        if viewModel.arVertices.isEmpty { return "place vertex" }
+        return "edge · vertex"
     }
 
     private var rightControls: some View {
@@ -749,7 +762,30 @@ struct ARViewContainer: UIViewRepresentable {
                     let dimInches = edge.distanceMeters * 39.3701
                     let dimLabel = "~" + DimensionEngine.formatImperial(dimInches)
                     let accLabel = AccuracyModel.formatAccuracy(dimensionInches: dimInches, accuracyPercent: edge.accuracyPercent)
-                    let name = renderer.addLockedEdge(from: from, to: to, label: "\(dimLabel) \(accLabel)")
+
+                    // Material label — show assignment or edge type below dimension
+                    let materialLabel: String?
+                    if let railing = edge.railingConfig {
+                        materialLabel = railing.railingType.displayName.uppercased()
+                    } else if edge.edgeType == .houseEdge {
+                        materialLabel = "HOUSE"
+                    } else if let item = edge.assignedItems.first {
+                        materialLabel = item.name.uppercased()
+                    } else {
+                        materialLabel = nil
+                    }
+
+                    // Edge color — white default, gray for house edges
+                    let edgeColor: UIColor? = edge.edgeType == .houseEdge
+                        ? UIColor(white: 0.6, alpha: 1.0)
+                        : nil // nil = white default
+
+                    let name = renderer.addLockedEdge(
+                        from: from, to: to,
+                        dimensionLabel: "\(dimLabel) \(accLabel)",
+                        materialLabel: materialLabel,
+                        edgeColor: edgeColor
+                    )
                     viewModel.edgeEntityNames.append(name)
                 }
                 renderedEdgeCount = eCount

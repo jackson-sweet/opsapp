@@ -267,17 +267,17 @@ struct DeckBuilderView: View {
                     estimateVM.setup(companyId: companyId)
                     showingEstimateDetail = true
                 } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 16, weight: .medium))
+                    HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                        Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             .foregroundColor(OPSStyle.Colors.successStatus)
 
                         Text("Estimate created \u{2014} \(number)")
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
 
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .semibold))
+                        Image(systemName: OPSStyle.Icons.chevronRight)
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                     .padding(.horizontal, 20)
@@ -322,7 +322,7 @@ struct DeckBuilderView: View {
     // MARK: - Title Bar
 
     private var titleBar: some View {
-        HStack {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             // Close button
             Button {
                 guard !isSaving else { return }
@@ -337,9 +337,9 @@ struct DeckBuilderView: View {
                         .tint(.white)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 } else {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
+                    Image(systemName: OPSStyle.Icons.xmark)
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 }
             }
@@ -347,19 +347,20 @@ struct DeckBuilderView: View {
 
             Spacer()
 
-            // Title + 2D/3D Toggle
+            // Title + save status
             VStack(spacing: 2) {
                 Text(viewModel.deckDesign.title)
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.white)
+                    .font(OPSStyle.Typography.bodyEmphasis)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .lineLimit(1)
 
                 if viewModel.deckDesign.needsSync {
                     Text("Unsaved changes")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(OPSStyle.Typography.microLabel)
                         .foregroundColor(OPSStyle.Colors.warningStatus)
                 } else {
                     Text("Saved")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(OPSStyle.Typography.microLabel)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
@@ -368,7 +369,7 @@ struct DeckBuilderView: View {
             Picker("View Mode", selection: Binding(
                 get: { viewModel.is3DMode },
                 set: { newValue in
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    withAnimation(OPSStyle.Animation.standard) {
                         viewModel.is3DMode = newValue
                     }
                 }
@@ -382,6 +383,25 @@ struct DeckBuilderView: View {
 
             Spacer()
 
+            // Undo / Redo (top-right, always accessible)
+            if !viewModel.is3DMode {
+                Button { viewModel.undo() } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
+                        .foregroundColor(viewModel.canUndo ? Color.white : OPSStyle.Colors.tertiaryText)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                }
+                .disabled(!viewModel.canUndo)
+
+                Button { viewModel.redo() } label: {
+                    Image(systemName: "arrow.uturn.forward")
+                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
+                        .foregroundColor(viewModel.canRedo ? Color.white : OPSStyle.Colors.tertiaryText)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                }
+                .disabled(!viewModel.canRedo)
+            }
+
             if viewModel.is3DMode {
                 // Screenshot button in 3D mode
                 Button {
@@ -392,27 +412,18 @@ struct DeckBuilderView: View {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 } label: {
                     Image(systemName: "camera.fill")
-                        .font(.system(size: 18, weight: .medium))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 }
             } else {
-                // Template picker button
-                Button {
-                    showingTemplatePicker = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                }
-
-                // Import menu (stubs for future methods)
+                // Import / creation menu (consolidated)
                 Menu {
-                    Button(action: {}) {
+                    Button {
+                        showingTemplatePicker = true
+                    } label: {
                         Label("From Template", systemImage: "square.grid.2x2")
                     }
-                    .disabled(true)
 
                     Button {
                         showingSketchCapture = true
@@ -426,6 +437,8 @@ struct DeckBuilderView: View {
                         Label("Walk Perimeter (AR)", systemImage: "camera.viewfinder")
                     }
 
+                    Divider()
+
                     if viewModel.isLaserConnected {
                         Label("Laser Connected", systemImage: "antenna.radiowaves.left.and.right")
                     } else {
@@ -436,7 +449,7 @@ struct DeckBuilderView: View {
                     }
                 } label: {
                     Image(systemName: "plus.circle")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 }
@@ -447,27 +460,25 @@ struct DeckBuilderView: View {
                         viewModel.showingDimensionInput = true
                     } label: {
                         Image(systemName: "ruler")
-                            .font(.system(size: 20, weight: .medium))
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                     }
                 }
-            }
 
-            // Elevation entry
-            if !viewModel.is3DMode {
+                // Elevation entry
                 Button {
                     viewModel.showingElevationInput = true
                 } label: {
                     Image(systemName: "arrow.up.and.down.circle")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 }
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
         .background(OPSStyle.Colors.cardBackground)
     }
 
@@ -480,26 +491,26 @@ struct DeckBuilderView: View {
         let hasAnyARSource = viewModel.drawingData.edges.contains { $0.dimensionSource == .ar }
 
         if hasAREdges {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 12, weight: .medium))
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                 Text("AR Estimate — refine with tape or laser for material ordering")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(OPSStyle.Typography.smallCaption)
             }
             .foregroundColor(OPSStyle.Colors.warningStatus)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .background(OPSStyle.Colors.warningStatus.opacity(0.15))
         } else if hasAnyARSource && allVerified && !hideVerifiedBanner {
-            HStack(spacing: 8) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 12, weight: .medium))
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                 Text("All dimensions verified")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(OPSStyle.Typography.smallCaption)
             }
             .foregroundColor(OPSStyle.Colors.successStatus)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .background(OPSStyle.Colors.successStatus.opacity(0.1))
             .onAppear {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
@@ -512,17 +523,17 @@ struct DeckBuilderView: View {
     // MARK: - Laser Toast Helper
 
     private func laserToast(icon: String, text: String, color: Color) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(color)
 
             Text(text)
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .frame(maxWidth: .infinity)
         .background(color.opacity(0.15))
         .cornerRadius(OPSStyle.Layout.cornerRadius)

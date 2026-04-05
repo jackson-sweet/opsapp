@@ -5,6 +5,7 @@ import SwiftData
 import ARKit
 import RealityKit
 import AVFoundation
+import CoreLocation
 import simd
 
 struct ARPerimeterView: View {
@@ -47,6 +48,18 @@ struct ARPerimeterView: View {
         }
         .statusBarHidden(true)
         .task { await checkARAvailability() }
+        .alert("Different Address Detected",
+               isPresented: $viewModel.showAddressPrompt) {
+            Button("Keep Current", role: .cancel) {}
+            Button("Use Detected") {
+                // Pass detected address to the onComplete handler via drawingData metadata
+                // The parent view can update the project address
+            }
+        } message: {
+            if let addr = viewModel.detectedAddress {
+                Text("AR detected: \(addr)\n\nUpdate the project address?")
+            }
+        }
     }
 
     private func checkARAvailability() async {
@@ -182,58 +195,111 @@ struct ARPerimeterView: View {
 
     // MARK: - Crosshair & Live Dimension
 
+    // MARK: - Tactical HUD Overlay
+
     private var crosshairAndDimension: some View {
-        VStack(spacing: 8) {
-            liveDimensionBadge
-            crosshairIcon
-            scanningIndicator
+        ZStack {
+            tacticalCornerBrackets
+
+            VStack(spacing: 12) {
+                // Dimension readout
+                if !viewModel.liveDimensionLabel.isEmpty {
+                    Text(viewModel.liveDimensionLabel)
+                        .font(.system(size: 20, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .shadow(color: .black, radius: 3, y: 1)
+                }
+
+                // Tactical crosshair
+                tacticalCrosshair
+
+                // Status
+                if !viewModel.isPlaneDetected {
+                    HStack(spacing: 6) {
+                        ProgressView().tint(OPSStyle.Colors.warningStatus).scaleEffect(0.7)
+                        Text("SCANNING")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(OPSStyle.Colors.warningStatus)
+                    }
+                } else {
+                    Text("\(viewModel.arVertices.count) PTS")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(Color.white.opacity(0.5))
+                }
+            }
         }
     }
 
-    @ViewBuilder
-    private var liveDimensionBadge: some View {
-        if !viewModel.liveDimensionLabel.isEmpty {
-            Text(viewModel.liveDimensionLabel)
-                .font(.system(size: 18, weight: .bold, design: .monospaced))
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.black.opacity(0.5))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+    private var tacticalCrosshair: some View {
+        Canvas { context, size in
+            let cx = size.width / 2, cy = size.height / 2
+            let gap: CGFloat = 6, arm: CGFloat = 16
+            var path = Path()
+            path.move(to: CGPoint(x: cx, y: cy - gap - arm))
+            path.addLine(to: CGPoint(x: cx, y: cy - gap))
+            path.move(to: CGPoint(x: cx, y: cy + gap))
+            path.addLine(to: CGPoint(x: cx, y: cy + gap + arm))
+            path.move(to: CGPoint(x: cx - gap - arm, y: cy))
+            path.addLine(to: CGPoint(x: cx - gap, y: cy))
+            path.move(to: CGPoint(x: cx + gap, y: cy))
+            path.addLine(to: CGPoint(x: cx + gap + arm, y: cy))
+            context.stroke(path, with: .color(Color.white.opacity(0.9)),
+                           style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+            let r: CGFloat = 2
+            context.fill(Path(ellipseIn: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)),
+                         with: .color(Color.white))
         }
+        .frame(width: 56, height: 56)
+        .shadow(color: .black.opacity(0.4), radius: 2)
     }
 
-    private var crosshairIcon: some View {
-        Image(systemName: "plus")
-            .font(.system(size: 24, weight: .medium))
-            .foregroundColor(.white)
-            .shadow(color: .black.opacity(0.5), radius: 2)
-    }
-
-    @ViewBuilder
-    private var scanningIndicator: some View {
-        if !viewModel.isPlaneDetected {
-            Text("Scanning surface...")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(OPSStyle.Colors.warningStatus)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.black.opacity(0.5))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+    private var tacticalCornerBrackets: some View {
+        GeometryReader { geo in
+            Canvas { context, _ in
+                let w = geo.size.width, h = geo.size.height
+                let arm: CGFloat = 24, inset: CGFloat = 20
+                var path = Path()
+                path.move(to: CGPoint(x: inset, y: inset + arm))
+                path.addLine(to: CGPoint(x: inset, y: inset))
+                path.addLine(to: CGPoint(x: inset + arm, y: inset))
+                path.move(to: CGPoint(x: w - inset - arm, y: inset))
+                path.addLine(to: CGPoint(x: w - inset, y: inset))
+                path.addLine(to: CGPoint(x: w - inset, y: inset + arm))
+                path.move(to: CGPoint(x: inset, y: h - inset - arm))
+                path.addLine(to: CGPoint(x: inset, y: h - inset))
+                path.addLine(to: CGPoint(x: inset + arm, y: h - inset))
+                path.move(to: CGPoint(x: w - inset - arm, y: h - inset))
+                path.addLine(to: CGPoint(x: w - inset, y: h - inset))
+                path.addLine(to: CGPoint(x: w - inset, y: h - inset - arm))
+                context.stroke(path, with: .color(Color.white.opacity(0.2)),
+                               style: StrokeStyle(lineWidth: 1, lineCap: .round))
+            }
         }
+        .allowsHitTesting(false)
     }
 
     // MARK: - Bottom Controls
 
     private var bottomControls: some View {
-        HStack(alignment: .bottom) {
-            ARAssignmentWheelView(viewModel: viewModel)
-                .frame(width: 60, height: 60)
+        VStack(spacing: 12) {
+            // Current assignment label
+            if let label = viewModel.currentAssignmentLabel {
+                Text(label.uppercased())
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(Color.white.opacity(0.6))
+            }
 
-            Spacer()
-            mainActionButton
-            Spacer()
-            rightControls
+            HStack(alignment: .bottom) {
+                rightControls
+
+                Spacer()
+                mainActionButton
+                Spacer()
+
+                // Assignment wheel — bottom-center-right, not off-screen
+                ARAssignmentWheelView(viewModel: viewModel)
+                    .frame(width: 60, height: 60)
+            }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.bottom, OPSStyle.Layout.spacing5)
@@ -575,10 +641,14 @@ struct ARViewContainer: UIViewRepresentable {
         private var renderedClosed = false
         private var backgroundObserver: NSObjectProtocol?
         private var foregroundObserver: NSObjectProtocol?
+        private let locationManager = CLLocationManager()
+        private var hasTriggeredGeocode = false
 
         init(viewModel: ARPerimeterViewModel) {
             self.viewModel = viewModel
             super.init()
+            locationManager.desiredAccuracy = kCLLocationAccuracyBest
+            locationManager.requestWhenInUseAuthorization()
 
             backgroundObserver = NotificationCenter.default.addObserver(
                 forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
@@ -641,6 +711,12 @@ struct ARViewContainer: UIViewRepresentable {
                 self.viewModel.isPlaneDetected = true
                 self.viewModel.updateCrosshairPosition(position)
                 self.updateRendering(crosshairPosition: position, cameraPosition: cameraPosition, renderer: renderer)
+
+                // Trigger reverse geocode once when plane first detected
+                if !self.hasTriggeredGeocode, let loc = self.locationManager.location {
+                    self.hasTriggeredGeocode = true
+                    self.viewModel.detectAddress(latitude: loc.coordinate.latitude, longitude: loc.coordinate.longitude)
+                }
             }
         }
 

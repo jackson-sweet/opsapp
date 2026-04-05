@@ -352,20 +352,25 @@ struct TemplateDimensionInputView: View {
 
     private var voiceOverlay: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
-            // Pulsing mic indicator
+            // Audio waveform visualization
+            VoiceWaveformView(isListening: voiceInput.isListening)
+                .frame(height: 40)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+
+            // Mic icon
             Image(systemName: "mic.fill")
-                .font(.system(size: 32))
+                .font(.system(size: 28))
                 .foregroundColor(OPSStyle.Colors.warningStatus)
                 .symbolEffect(.pulse, isActive: voiceInput.isListening)
 
             if !voiceInput.recognizedText.isEmpty {
                 Text(voiceInput.recognizedText)
-                    .font(OPSStyle.Typography.body)
+                    .font(.system(size: 16, weight: .semibold, design: .monospaced))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
             } else {
-                Text("Speak dimensions: \"A twenty-four feet, B fifteen feet\"")
+                Text("Speak: \"A twenty-four feet, B fifteen feet\"")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .multilineTextAlignment(.center)
@@ -374,7 +379,7 @@ struct TemplateDimensionInputView: View {
             if let error = voiceInput.error {
                 Text(error)
                     .font(OPSStyle.Typography.caption)
-                    .foregroundColor(Color.red)
+                    .foregroundColor(OPSStyle.Colors.errorStatus)
             }
 
             Button {

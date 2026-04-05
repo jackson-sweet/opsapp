@@ -7,169 +7,268 @@ struct DeckToolbar: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Drawing tools
-            toolButton(
-                icon: "pencil.and.outline",
-                label: "Draw",
-                tool: .draw
-            )
-
-            toolButton(
-                icon: "rectangle.dashed",
-                label: "Select",
-                tool: .select
-            )
-
-            toolButton(
-                icon: "lasso",
-                label: "Lasso",
-                tool: .lasso
-            )
-
-            Spacer()
-
-            // Generate Estimate
-            Button {
-                viewModel.showingEstimatePreview = true
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            } label: {
-                VStack(spacing: 4) {
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(viewModel.canGenerateEstimate ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
-
-                    Text("Estimate")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(viewModel.canGenerateEstimate ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
-                }
-                .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
-            }
-            .disabled(!viewModel.canGenerateEstimate)
-
-            // Share
-            Button {
-                viewModel.showingShareOptions = true
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                VStack(spacing: 4) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(Color.white)
-
-                    Text("Share")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-                .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
-            }
-
-            // Photo Overlay
-            Button {
-                viewModel.showingPhotoSourcePicker = true
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                VStack(spacing: 4) {
-                    Image(systemName: "photo.on.rectangle.angled")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(viewModel.canShowOverlay ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
-
-                    Text("Overlay")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(viewModel.canShowOverlay ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
-                }
-                .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
-            }
-            .disabled(!viewModel.canShowOverlay)
-
-            // View in AR
-            Button {
-                viewModel.showingARVisualization = true
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            } label: {
-                VStack(spacing: 4) {
-                    Image(systemName: "arkit")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(viewModel.canViewInAR ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-
-                    Text("AR")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(viewModel.canViewInAR ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                }
-                .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
-            }
-            .disabled(!viewModel.canViewInAR)
-
-            // BLE laser indicator (only when connected)
-            if viewModel.isLaserConnected {
-                Image(systemName: "antenna.radiowaves.left.and.right")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(OPSStyle.Colors.successStatus)
-                    .frame(width: 28, height: OPSStyle.Layout.touchTargetMin)
-            }
-
-            // Undo / Redo
-            Button {
-                viewModel.undo()
-            } label: {
-                Image(systemName: "arrow.uturn.backward")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(viewModel.canUndo ? Color.white : OPSStyle.Colors.secondaryText)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-            }
-            .disabled(!viewModel.canUndo)
-
-            Button {
-                viewModel.redo()
-            } label: {
-                Image(systemName: "arrow.uturn.forward")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(viewModel.canRedo ? Color.white : OPSStyle.Colors.secondaryText)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-            }
-            .disabled(!viewModel.canRedo)
-
-            // Delete (when selection active)
-            if !viewModel.selection.isEmpty {
-                Button {
-                    if viewModel.selection.hasEdges {
-                        viewModel.deleteSelectedEdges()
-                    } else if viewModel.selection.hasVertices {
-                        viewModel.deleteSelectedVertices()
-                    }
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(OPSStyle.Colors.errorStatus)
-                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                }
+        VStack(spacing: 0) {
+            // Context-sensitive action bar — changes based on what's selected
+            if viewModel.selection.hasVertices {
+                vertexTools
+            } else if viewModel.selection.hasEdges {
+                edgeTools
+            } else if viewModel.selection.selectedFootprint {
+                footprintTools
+            } else {
+                defaultTools
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
         .background(OPSStyle.Colors.cardBackground)
     }
 
-    @ViewBuilder
+    // MARK: - Default Tools (no selection)
+
+    private var defaultTools: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                toolButton(icon: "pencil.and.outline", label: "Draw", tool: .draw)
+                toolButton(icon: "rectangle.dashed", label: "Select", tool: .select)
+                toolButton(icon: "lasso", label: "Lasso", tool: .lasso)
+
+                toolDivider
+
+                labeledButton(icon: "doc.text", label: "Estimate",
+                              tint: viewModel.canGenerateEstimate ? Color.white : OPSStyle.Colors.tertiaryText,
+                              enabled: viewModel.canGenerateEstimate) {
+                    viewModel.showingEstimatePreview = true
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                }
+
+                labeledButton(icon: "square.and.arrow.up", label: "Share",
+                              tint: Color.white, enabled: true) {
+                    viewModel.showingShareOptions = true
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+
+                labeledButton(icon: "photo.on.rectangle.angled", label: "Overlay",
+                              tint: viewModel.canShowOverlay ? Color.white : OPSStyle.Colors.tertiaryText,
+                              enabled: viewModel.canShowOverlay) {
+                    viewModel.showingPhotoSourcePicker = true
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+
+                labeledButton(icon: "arkit", label: "AR",
+                              tint: viewModel.canViewInAR ? Color.white : OPSStyle.Colors.tertiaryText,
+                              enabled: viewModel.canViewInAR) {
+                    viewModel.showingARVisualization = true
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                }
+
+                if viewModel.isLaserConnected {
+                    Image(systemName: "antenna.radiowaves.left.and.right")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        .foregroundColor(OPSStyle.Colors.successStatus)
+                        .frame(width: 28, height: OPSStyle.Layout.touchTargetMin)
+                }
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+        }
+    }
+
+    // MARK: - Vertex Tools (vertex selected)
+
+    private var vertexTools: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            contextLabel("Vertex")
+
+            toolDivider
+
+            actionButton(icon: "arrow.up.and.down.circle", label: "Elevation") {
+                viewModel.showingElevationInput = true
+            }
+
+            actionButton(icon: "info.circle", label: "Properties") {
+                viewModel.showingPropertySheet = true
+            }
+
+            Spacer()
+
+            actionButton(icon: "trash", label: "Delete", tint: OPSStyle.Colors.errorStatus) {
+                viewModel.deleteSelectedVertices()
+            }
+
+            clearSelectionButton
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+    }
+
+    // MARK: - Edge Tools (edge selected)
+
+    private var edgeTools: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                contextLabel("Edge")
+
+                toolDivider
+
+                actionButton(icon: "ruler", label: "Dimension") {
+                    viewModel.showingDimensionInput = true
+                }
+
+                actionButton(icon: "fence", label: "Railing") {
+                    viewModel.showingPropertySheet = true
+                }
+
+                actionButton(icon: "stairs", label: "Stairs") {
+                    viewModel.showingStairConfig = true
+                }
+
+                actionButton(icon: "building.2", label: "Type") {
+                    viewModel.showingPropertySheet = true
+                }
+
+                actionButton(icon: "info.circle", label: "Properties") {
+                    viewModel.showingPropertySheet = true
+                }
+
+                Spacer()
+
+                actionButton(icon: "trash", label: "Delete", tint: OPSStyle.Colors.errorStatus) {
+                    viewModel.deleteSelectedEdges()
+                }
+
+                clearSelectionButton
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+        }
+    }
+
+    // MARK: - Footprint Tools (area selected)
+
+    private var footprintTools: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            contextLabel("Surface")
+
+            toolDivider
+
+            actionButton(icon: "square.grid.3x3", label: "Material") {
+                viewModel.showingAssignmentWheel = true
+            }
+
+            actionButton(icon: "arrow.up.and.down.circle", label: "Elevation") {
+                viewModel.showingElevationInput = true
+            }
+
+            actionButton(icon: "info.circle", label: "Properties") {
+                viewModel.showingPropertySheet = true
+            }
+
+            Spacer()
+
+            clearSelectionButton
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+    }
+
+    // MARK: - Context Label
+
+    private func contextLabel(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .foregroundColor(OPSStyle.Colors.primaryAccent)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(OPSStyle.Colors.primaryAccent.opacity(0.12))
+            .cornerRadius(4)
+    }
+
+    // MARK: - Clear Selection Button
+
+    private var clearSelectionButton: some View {
+        Button {
+            viewModel.selection.clear()
+            viewModel.editingEdgeId = nil
+            viewModel.editingVertexId = nil
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: OPSStyle.Layout.IconSize.md))
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+        }
+    }
+
+    // MARK: - Drawing Tool Button
+
     private func toolButton(icon: String, label: String, tool: DrawingTool) -> some View {
         let isActive = viewModel.activeTool == tool
-
-        Button {
+        return Button {
             viewModel.activeTool = tool
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: 3) {
                 Image(systemName: icon)
-                    .font(.system(size: 20, weight: isActive ? .bold : .medium))
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: isActive ? .bold : .medium))
                     .foregroundColor(isActive ? OPSStyle.Colors.primaryAccent : Color.white)
-
                 Text(label)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(OPSStyle.Typography.miniLabel)
                     .foregroundColor(isActive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
             }
             .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
-            .background(isActive ? OPSStyle.Colors.primaryAccent.opacity(0.15) : Color.clear)
+            .background(isActive ? OPSStyle.Colors.primaryAccent.opacity(0.12) : Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
+    }
+
+    // MARK: - Context Action Button
+
+    private func actionButton(
+        icon: String, label: String,
+        tint: Color = Color.white,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: {
+            action()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }) {
+            VStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
+                    .foregroundColor(tint)
+                Text(label)
+                    .font(OPSStyle.Typography.miniLabel)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+            .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
+        }
+    }
+
+    // MARK: - Labeled Feature Button
+
+    private func labeledButton(
+        icon: String, label: String,
+        tint: Color, enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
+                    .foregroundColor(tint)
+                Text(label)
+                    .font(OPSStyle.Typography.miniLabel)
+                    .foregroundColor(tint == Color.white ? OPSStyle.Colors.secondaryText : tint)
+            }
+            .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
+        }
+        .disabled(!enabled)
+    }
+
+    // MARK: - Helpers
+
+    private var toolDivider: some View {
+        Rectangle()
+            .fill(OPSStyle.Colors.separator)
+            .frame(width: 1, height: 32)
     }
 }

@@ -4,6 +4,7 @@ import Foundation
 import SwiftUI
 import Combine
 import UIKit
+import CoreLocation
 import simd
 
 @MainActor
@@ -37,6 +38,18 @@ class ARPerimeterViewModel: ObservableObject {
     @Published var activeAssignment: AssignedItem?
     @Published var activeEdgeType: EdgeType = .deckEdge
     @Published var activeRailingConfig: RailingConfig?
+
+    var currentAssignmentLabel: String? {
+        if activeEdgeType == .houseEdge { return "House Edge" }
+        if let railing = activeRailingConfig { return railing.railingType.displayName }
+        if let item = activeAssignment { return item.name }
+        return nil
+    }
+
+    // MARK: - AR Address Detection
+
+    @Published var detectedAddress: String?
+    @Published var showAddressPrompt: Bool = false
 
     // MARK: - 3D Entity Names (for renderer cleanup)
 
@@ -491,5 +504,27 @@ class ARPerimeterViewModel: ObservableObject {
     /// Convert ARVertex to SIMD3<Float> for distance checks
     private func simd3(_ vertex: ARCoordinateConverter.ARVertex) -> SIMD3<Float> {
         SIMD3<Float>(Float(vertex.x), Float(vertex.y), Float(vertex.z))
+    }
+
+    // MARK: - Address Detection (Reverse Geocoding)
+
+    /// Call once when the AR session detects a plane and has a valid device location.
+    /// Uses CLGeocoder to reverse-geocode the device's GPS position.
+    func detectAddress(latitude: Double, longitude: Double) {
+        let geocoder = CLGeocoder()
+        let location = CLLocation(latitude: latitude, longitude: longitude)
+        geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
+            guard let self = self, let placemark = placemarks?.first else {
+                if let error = error {
+                    print("[DeckBuilder] Reverse geocode failed: \(error.localizedDescription)")
+                }
+                return
+            }
+            let parts = [placemark.subThoroughfare, placemark.thoroughfare, placemark.locality, placemark.administrativeArea]
+            let address = parts.compactMap { $0 }.joined(separator: " ")
+            Task { @MainActor in
+                self.detectedAddress = address
+            }
+        }
     }
 }

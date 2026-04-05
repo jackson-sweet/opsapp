@@ -455,15 +455,29 @@ struct DeckCanvasView: View {
         context.draw(Text(label).font(.system(size: 11, weight: .medium, design: .monospaced))
             .foregroundColor(labelColor), at: CGPoint(x: labelX, y: labelY))
 
+        // Secondary label below dimension: accuracy OR material/type
+        var secondaryLabel: String?
+        var secondaryColor: Color = OPSStyle.Colors.secondaryText
+
         if let accuracy = edge.accuracyPercent {
-            let accLabel = AccuracyModel.formatAccuracy(dimensionInches: dim, accuracyPercent: accuracy,
-                                                         system: viewModel.drawingData.config.measurementSystem)
-            context.draw(Text(accLabel).font(OPSStyle.Typography.miniLabel)
-                .foregroundColor(OPSStyle.Colors.warningStatus), at: CGPoint(x: labelX, y: labelY + 12))
+            secondaryLabel = AccuracyModel.formatAccuracy(dimensionInches: dim, accuracyPercent: accuracy,
+                                                           system: viewModel.drawingData.config.measurementSystem)
+            secondaryColor = OPSStyle.Colors.warningStatus
+        } else if let railing = edge.railingConfig {
+            secondaryLabel = railing.railingType.displayName.uppercased()
+        } else if edge.edgeType == .houseEdge {
+            secondaryLabel = "HOUSE"
+        } else if let item = edge.assignedItems.first {
+            secondaryLabel = item.name.uppercased()
         } else if edge.dimensionSource == .ar {
-            context.draw(Text("AR").font(OPSStyle.Typography.miniLabel)
-                .foregroundColor(OPSStyle.Colors.successStatus.opacity(0.6)),
-                         at: CGPoint(x: labelX + pillW / 2 + 12, y: labelY))
+            secondaryLabel = "AR"
+            secondaryColor = OPSStyle.Colors.successStatus.opacity(0.6)
+        }
+
+        if let secText = secondaryLabel {
+            context.draw(Text(secText)
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundColor(secondaryColor), at: CGPoint(x: labelX, y: labelY + 12))
         }
     }
 

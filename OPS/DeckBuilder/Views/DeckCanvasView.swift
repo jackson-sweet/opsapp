@@ -52,10 +52,7 @@ struct DeckCanvasView: View {
             .onAppear {
                 guard !hasInitializedOffset else { return }
                 hasInitializedOffset = true
-                canvasOffset = CGSize(
-                    width: (geometry.size.width - canvasSize) / 2,
-                    height: (geometry.size.height - canvasSize) / 2
-                )
+                centerViewportOnGeometry(viewportSize: geometry.size)
             }
         }
     }
@@ -126,6 +123,8 @@ struct DeckCanvasView: View {
         let endCol = min(Int(size.width / gridSpacing), Int(ceil(visMaxX / gridSpacing)))
         let startRow = max(0, Int(floor(visMinY / gridSpacing)))
         let endRow = min(Int(size.height / gridSpacing), Int(ceil(visMaxY / gridSpacing)))
+
+        guard startCol <= endCol, startRow <= endRow else { return }
 
         var path = Path()
         for col in startCol...endCol {
@@ -265,10 +264,37 @@ struct DeckCanvasView: View {
             context.stroke(path, with: .color(OPSStyle.Colors.primaryAccent.opacity(0.35)), lineWidth: 6)
         }
 
+        // House edge — diagonal 45° hatch on the house side (architectural wall convention)
+        if edge.edgeType == .houseEdge {
+            drawHouseHatch(context: context, start: start.position, end: end.position)
+        }
+
         // Stair indicator
         if edge.stairConfig != nil {
             drawStairIndicator(context: context, start: start.position, end: end.position, edge: edge)
         }
+    }
+
+    /// Architectural wall hatch: short 45° lines on the interior side of a house edge
+    private func drawHouseHatch(context: GraphicsContext, start: CGPoint, end: CGPoint) {
+        let dx = end.x - start.x, dy = end.y - start.y
+        let len = sqrt(dx * dx + dy * dy)
+        guard len > 4 else { return }
+        let nx = dx / len, ny = dy / len  // unit direction along edge
+        let perpX = -ny, perpY = nx       // perpendicular (into house)
+        let spacing: CGFloat = 8
+        let hatchLen: CGFloat = 6
+        let count = Int(len / spacing)
+        var hatchPath = Path()
+        for i in 1...count {
+            let t = CGFloat(i) * spacing
+            let bx = start.x + nx * t
+            let by = start.y + ny * t
+            hatchPath.move(to: CGPoint(x: bx, y: by))
+            hatchPath.addLine(to: CGPoint(x: bx + (perpX - nx) * hatchLen * 0.7,
+                                          y: by + (perpY - ny) * hatchLen * 0.7))
+        }
+        context.stroke(hatchPath, with: .color(OPSStyle.Colors.secondaryText.opacity(0.35)), lineWidth: 1)
     }
 
     private func drawStairIndicator(context: GraphicsContext, start: CGPoint, end: CGPoint, edge: DeckEdge) {
@@ -464,6 +490,43 @@ struct DeckCanvasView: View {
         return viewModel.drawingData.vertex(byId: id)
     }
 
+    // MARK: - Viewport Centering
+
+    /// Center the viewport on existing geometry, or on the canvas center if no geometry.
+    private func centerViewportOnGeometry(viewportSize: CGSize) {
+        let allVerts = viewModel.drawingData.allVertices
+        guard !allVerts.isEmpty else {
+            // No geometry — center on canvas midpoint
+            canvasOffset = CGSize(
+                width: (viewportSize.width - canvasSize) / 2,
+                height: (viewportSize.height - canvasSize) / 2
+            )
+            return
+        }
+
+        // Bounding box of all vertices
+        let xs = allVerts.map { $0.position.x }
+        let ys = allVerts.map { $0.position.y }
+        let minX = xs.min()!, maxX = xs.max()!
+        let minY = ys.min()!, maxY = ys.max()!
+        let geoCenterX = (minX + maxX) / 2
+        let geoCenterY = (minY + maxY) / 2
+
+        // Fit geometry with padding — scale so shape fills ~60% of viewport
+        let geoW = max(maxX - minX, 1)
+        let geoH = max(maxY - minY, 1)
+        let fitScaleX = (viewportSize.width * 0.6) / geoW
+        let fitScaleY = (viewportSize.height * 0.6) / geoH
+        let fitScale = max(0.15, min(8.0, min(fitScaleX, fitScaleY)))
+        canvasScale = fitScale
+
+        // Offset so geometry center maps to viewport center
+        canvasOffset = CGSize(
+            width: viewportSize.width / 2 - geoCenterX * fitScale,
+            height: viewportSize.height / 2 - geoCenterY * fitScale
+        )
+    }
+
     // MARK: - Coordinate Conversion
 
     private func canvasPoint(from location: CGPoint, in size: CGSize) -> CGPoint {
@@ -486,8 +549,24 @@ struct DeckCanvasView: View {
                     let startPoint = canvasPoint(from: drag.startLocation, in: size)
                     switch viewModel.activeTool {
                     case .draw:
-                        if !drawingStarted { drawingStarted = true; viewModel.beginLine(from: startPoint) }
-                        viewModel.updateLine(to: point)
+                        if !drawingStarted {
+                            drawingStarted = true
+                            // Vertex drag takes priority: if drag starts on/near a selected vertex, move it
+                            let hitR = max(22.0, 25.0 / canvasScale)
+                            if let vertexId = PolygonMath.findVertexAtPoint(startPoint,
+                                    vertices: viewModel.isMultiLevel ? (viewModel.activeLevel?.vertices ?? []) : viewModel.drawingData.vertices,
+                                    hitThreshold: hitR),
+                               viewModel.selection.selectedVertexIds.contains(vertexId) {
+                                viewModel.beginVertexDrag(vertexId)
+                            } else {
+                                viewModel.beginLine(from: startPoint)
+                            }
+                        }
+                        if case .draggingVertex = viewModel.drawingMode {
+                            viewModel.updateVertexDrag(to: point)
+                        } else {
+                            viewModel.updateLine(to: point)
+                        }
                     case .select:
                         if !drawingStarted { drawingStarted = true; viewModel.beginMarquee(at: startPoint) }
                         viewModel.updateMarquee(to: point)
@@ -505,7 +584,12 @@ struct DeckCanvasView: View {
                     guard let drag = drag, drawingStarted else { break }
                     let point = canvasPoint(from: drag.location, in: size)
                     switch viewModel.activeTool {
-                    case .draw: viewModel.endLine(at: point)
+                    case .draw:
+                        if case .draggingVertex = viewModel.drawingMode {
+                            viewModel.endVertexDrag()
+                        } else {
+                            viewModel.endLine(at: point)
+                        }
                     case .select: viewModel.endMarquee()
                     case .lasso: viewModel.endLasso()
                     case .none: break

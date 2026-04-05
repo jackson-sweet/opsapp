@@ -547,23 +547,46 @@ struct DeckCanvasView: View {
 
 // MARK: - UIKit Gesture Handler (Pinch + Two-Finger Pan)
 
-/// Handles pinch-to-zoom and two-finger pan via UIKit gesture recognizers.
-/// SwiftUI gestures cannot distinguish touch count or provide anchor-point zoom.
+/// Transparent view that forwards all raw touches to the responder chain (SwiftUI)
+/// while still letting its own gesture recognizers evaluate multi-touch gestures.
+private class GesturePassthroughView: UIView {
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesBegan(touches, with: event)
+        next?.touchesBegan(touches, with: event)
+    }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesMoved(touches, with: event)
+        next?.touchesMoved(touches, with: event)
+    }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesEnded(touches, with: event)
+        next?.touchesEnded(touches, with: event)
+    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesCancelled(touches, with: event)
+        next?.touchesCancelled(touches, with: event)
+    }
+}
+
 private struct CanvasGestureView: UIViewRepresentable {
     @Binding var scale: CGFloat
     @Binding var offset: CGSize
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
+    func makeUIView(context: Context) -> GesturePassthroughView {
+        let view = GesturePassthroughView()
         view.backgroundColor = .clear
+        view.isMultipleTouchEnabled = true
 
         let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePinch(_:)))
+        pinch.cancelsTouchesInView = false
+        pinch.delaysTouchesBegan = false
+        pinch.delegate = context.coordinator
+
         let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
         pan.minimumNumberOfTouches = 2
         pan.maximumNumberOfTouches = 2
-
-        // Allow simultaneous pinch + pan
-        pinch.delegate = context.coordinator
+        pan.cancelsTouchesInView = false
+        pan.delaysTouchesBegan = false
         pan.delegate = context.coordinator
 
         view.addGestureRecognizer(pinch)
@@ -571,38 +594,48 @@ private struct CanvasGestureView: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {}
+    func updateUIView(_ uiView: GesturePassthroughView, context: Context) {
+        // Keep coordinator bindings fresh across SwiftUI re-renders
+        context.coordinator.scaleBinding = $scale
+        context.coordinator.offsetBinding = $offset
+    }
 
-    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+    func makeCoordinator() -> Coordinator { Coordinator(scale: $scale, offset: $offset) }
 
     class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        var parent: CanvasGestureView
+        var scaleBinding: Binding<CGFloat>
+        var offsetBinding: Binding<CGSize>
         private var baseScale: CGFloat = 1.0
         private var panStart: CGSize = .zero
 
-        init(parent: CanvasGestureView) { self.parent = parent }
+        init(scale: Binding<CGFloat>, offset: Binding<CGSize>) {
+            self.scaleBinding = scale
+            self.offsetBinding = offset
+        }
 
         func gestureRecognizer(_ g: UIGestureRecognizer,
                                shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
 
         @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+            let currentScale = scaleBinding.wrappedValue
+            guard currentScale > 0 else { return }
+
             switch gesture.state {
             case .began:
-                baseScale = parent.scale
+                baseScale = currentScale
             case .changed:
                 let newScale = max(0.15, min(8.0, baseScale * gesture.scale))
-
-                // Zoom toward the pinch midpoint
                 let mid = gesture.location(in: gesture.view)
-                let ratio = newScale / parent.scale
+                let ratio = newScale / currentScale
+                let currentOffset = offsetBinding.wrappedValue
 
-                let newOffsetX = mid.x - ratio * (mid.x - parent.offset.width)
-                let newOffsetY = mid.y - ratio * (mid.y - parent.offset.height)
-
-                parent.scale = newScale
-                parent.offset = CGSize(width: newOffsetX, height: newOffsetY)
+                offsetBinding.wrappedValue = CGSize(
+                    width: mid.x - ratio * (mid.x - currentOffset.width),
+                    height: mid.y - ratio * (mid.y - currentOffset.height)
+                )
+                scaleBinding.wrappedValue = newScale
             case .ended, .cancelled:
-                baseScale = parent.scale
+                baseScale = scaleBinding.wrappedValue
             default: break
             }
         }
@@ -610,12 +643,12 @@ private struct CanvasGestureView: UIViewRepresentable {
         @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
             switch gesture.state {
             case .began:
-                panStart = parent.offset
+                panStart = offsetBinding.wrappedValue
             case .changed:
                 let t = gesture.translation(in: gesture.view)
-                parent.offset = CGSize(width: panStart.width + t.x, height: panStart.height + t.y)
+                offsetBinding.wrappedValue = CGSize(width: panStart.width + t.x, height: panStart.height + t.y)
             case .ended, .cancelled:
-                panStart = parent.offset
+                panStart = offsetBinding.wrappedValue
             default: break
             }
         }

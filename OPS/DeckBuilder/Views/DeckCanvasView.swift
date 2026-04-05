@@ -1,83 +1,72 @@
 // OPS/OPS/DeckBuilder/Views/DeckCanvasView.swift
 
 import SwiftUI
+import UIKit
 
 struct DeckCanvasView: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
 
-    // MARK: - Gesture State
+    // MARK: - Transform State (driven by UIKit gestures)
 
     @State private var canvasScale: CGFloat = 1.0
-    @State private var baseScale: CGFloat = 1.0
     @State private var canvasOffset: CGSize = .zero
-    @State private var lastDragValue: CGSize = .zero
     @State private var drawingStarted = false
-    @State private var longPressLocation: CGPoint?
     @State private var hasInitializedOffset = false
 
-    // Canvas workspace: 4800 × 4800 pts ≈ 400' × 400' at ~1pt/inch
+    // 4800 × 4800 pt workspace ≈ 400' × 400'
     private let canvasSize: CGFloat = 4800
-
-    // Grid
     private let gridSpacing: CGFloat = 20.0
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Background
-                OPSStyle.Colors.background
-                    .ignoresSafeArea()
+                OPSStyle.Colors.background.ignoresSafeArea()
 
-                // Transformed canvas content — fixed large workspace
-                canvasContent(size: CGSize(width: canvasSize, height: canvasSize))
+                // Canvas content — large fixed workspace, transformed by scale + offset
+                canvasContent
                     .frame(width: canvasSize, height: canvasSize)
                     .scaleEffect(canvasScale, anchor: .topLeading)
                     .offset(canvasOffset)
 
-                // Selection overlay (marquee rect)
+                // Selection overlays (screen space)
                 selectionOverlay
 
-                // Dimension info bar at top
+                // Top info bar
                 if viewModel.isClosed, let area = viewModel.totalArea {
                     dimensionInfoBar(area: area)
                 }
             }
             .clipped()
             .contentShape(Rectangle())
+            // UIKit gesture layer — handles pinch + two-finger pan
             .overlay {
-                // Two-finger pan via UIKit (SwiftUI DragGesture can't filter by touch count)
-                TwoFingerPanView(
-                    offset: $canvasOffset,
-                    lastOffset: $lastDragValue,
-                    drawingStarted: drawingStarted
+                CanvasGestureView(
+                    scale: $canvasScale,
+                    offset: $canvasOffset
                 )
             }
+            // SwiftUI gestures — single-finger drawing, tap, long-press
             .simultaneousGesture(drawGesture(size: geometry.size))
             .simultaneousGesture(tapGesture(size: geometry.size))
             .simultaneousGesture(longPressGesture(size: geometry.size))
-            .simultaneousGesture(pinchGesture)
             .onAppear {
                 guard !hasInitializedOffset else { return }
                 hasInitializedOffset = true
-                // Start with the center of the canvas visible
-                let offsetX = (geometry.size.width - canvasSize) / 2
-                let offsetY = (geometry.size.height - canvasSize) / 2
-                canvasOffset = CGSize(width: offsetX, height: offsetY)
-                lastDragValue = canvasOffset
+                canvasOffset = CGSize(
+                    width: (geometry.size.width - canvasSize) / 2,
+                    height: (geometry.size.height - canvasSize) / 2
+                )
             }
         }
     }
 
     // MARK: - Canvas Content
 
-    @ViewBuilder
-    private func canvasContent(size: CGSize) -> some View {
-        Canvas { context, canvasSize in
-            // Draw grid
-            drawGrid(context: context, size: canvasSize)
+    private var canvasContent: some View {
+        Canvas { context, size in
+            drawGrid(context: context, size: size)
 
             if viewModel.isMultiLevel {
-                // Multi-level rendering: inactive → connections → active
                 for (index, level) in viewModel.drawingData.levels.enumerated() {
                     if index != viewModel.activeLevelIndex {
                         drawInactiveLevel(context: context, level: level)
@@ -87,7 +76,7 @@ struct DeckCanvasView: View {
                     drawLevelConnection(context: context, connection: connection)
                 }
                 if let activeLevel = viewModel.activeLevel {
-                    drawLevelFootprint(context: context, level: activeLevel, isActive: true)
+                    drawLevelFootprint(context: context, level: activeLevel)
                     for edge in activeLevel.edges {
                         drawEdge(context: context, edge: edge, vertexLookup: activeLevel.vertex(byId:))
                     }
@@ -102,10 +91,7 @@ struct DeckCanvasView: View {
                     }
                 }
             } else {
-                // Single-level rendering (existing behavior)
-                if viewModel.isClosed {
-                    drawFootprint(context: context)
-                }
+                if viewModel.isClosed { drawFootprint(context: context) }
                 if let poolDiameter = viewModel.drawingData.poolDiameter,
                    let scale = viewModel.drawingData.scaleFactor, scale > 0 {
                     drawPoolOverlay(context: context, diameterInches: poolDiameter, scaleFactor: scale)
@@ -124,166 +110,35 @@ struct DeckCanvasView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Multi-Level: Inactive Level
-
-    private func drawInactiveLevel(context: GraphicsContext, level: DeckLevel) {
-        let positions = level.orderedPositions
-        guard positions.count >= 3 else { return }
-
-        // Footprint fill at 15% opacity with level color
-        if level.isClosed {
-            var fillPath = Path()
-            fillPath.move(to: positions[0])
-            for i in 1..<positions.count {
-                fillPath.addLine(to: positions[i])
-            }
-            fillPath.closeSubpath()
-            context.fill(fillPath, with: .color(level.displayColor.swiftUIColor.opacity(0.15)))
-        }
-
-        // Edges at 30% opacity
-        for edge in level.edges {
-            guard let start = level.vertex(byId: edge.startVertexId),
-                  let end = level.vertex(byId: edge.endVertexId) else { continue }
-            var edgePath = Path()
-            edgePath.move(to: start.position)
-            edgePath.addLine(to: end.position)
-            context.stroke(edgePath, with: .color(level.displayColor.swiftUIColor.opacity(0.3)), lineWidth: 1.5)
-        }
-
-        // Level name at centroid
-        if positions.count >= 3 {
-            let cx = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
-            let cy = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
-            context.draw(
-                Text(level.name)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(level.displayColor.swiftUIColor.opacity(0.5)),
-                at: CGPoint(x: cx, y: cy)
-            )
-        }
-    }
-
-    // MARK: - Multi-Level: Active Level Footprint
-
-    private func drawLevelFootprint(context: GraphicsContext, level: DeckLevel, isActive: Bool) {
-        guard level.isClosed else { return }
-        let positions = level.orderedPositions
-        guard positions.count >= 3 else { return }
-
-        var path = Path()
-        path.move(to: positions[0])
-        for i in 1..<positions.count {
-            path.addLine(to: positions[i])
-        }
-        path.closeSubpath()
-
-        let isSelected = viewModel.selection.selectedFootprint
-        let fillOpacity = isSelected ? 0.2 : 0.1
-        context.fill(path, with: .color(level.displayColor.swiftUIColor.opacity(fillOpacity)))
-    }
-
-    // MARK: - Multi-Level: Connection Stairs
-
-    private func drawLevelConnection(context: GraphicsContext, connection: LevelConnection) {
-        // Find the upper edge to position stairs
-        guard let upperLevel = viewModel.drawingData.level(byId: connection.upperLevelId),
-              let edge = upperLevel.edge(byId: connection.upperEdgeId),
-              let start = upperLevel.vertex(byId: edge.startVertexId),
-              let end = upperLevel.vertex(byId: edge.endVertexId) else { return }
-
-        let dx = end.position.x - start.position.x
-        let dy = end.position.y - start.position.y
-        let edgeLength = sqrt(dx * dx + dy * dy)
-        guard edgeLength > 0 else { return }
-
-        // Perpendicular direction for stair depth
-        let perpX = -dy / edgeLength
-        let perpY = dx / edgeLength
-        let stairDepth: CGFloat = 30.0 // visual depth in canvas points
-
-        // Stair rectangle along the edge
-        let p1 = start.position
-        let p2 = end.position
-        let p3 = CGPoint(x: p2.x + perpX * stairDepth, y: p2.y + perpY * stairDepth)
-        let p4 = CGPoint(x: p1.x + perpX * stairDepth, y: p1.y + perpY * stairDepth)
-
-        // Hatched fill
-        var stairPath = Path()
-        stairPath.move(to: p1)
-        stairPath.addLine(to: p2)
-        stairPath.addLine(to: p3)
-        stairPath.addLine(to: p4)
-        stairPath.closeSubpath()
-
-        let stairColor = LevelColor.amber.swiftUIColor
-        context.fill(stairPath, with: .color(stairColor.opacity(0.15)))
-        context.stroke(stairPath, with: .color(stairColor.opacity(0.6)), lineWidth: 1.5)
-
-        // Hatch lines (perpendicular lines across the stair rectangle)
-        let treadCount = connection.stairConfig.treadCount ?? 5
-        let normalX = dx / edgeLength
-        let normalY = dy / edgeLength
-        for i in 1..<min(treadCount, 20) {
-            let t = CGFloat(i) / CGFloat(treadCount)
-            let lineStart = CGPoint(x: p1.x + dx * t, y: p1.y + dy * t)
-            let lineEnd = CGPoint(x: lineStart.x + perpX * stairDepth, y: lineStart.y + perpY * stairDepth)
-            var hatchPath = Path()
-            hatchPath.move(to: lineStart)
-            hatchPath.addLine(to: lineEnd)
-            context.stroke(hatchPath, with: .color(stairColor.opacity(0.4)), lineWidth: 1.0)
-        }
-
-        // Label
-        let labelX = (p1.x + p3.x) / 2
-        let labelY = (p1.y + p3.y) / 2
-        context.draw(
-            Text("\(treadCount) treads")
-                .font(OPSStyle.Typography.miniLabel)
-                .foregroundColor(stairColor),
-            at: CGPoint(x: labelX, y: labelY)
-        )
-    }
-
-    // MARK: - Grid
+    // MARK: - Grid (visible region only)
 
     private func drawGrid(context: GraphicsContext, size: CGSize) {
-        let gridColor = OPSStyle.Colors.cardBackground.resolve(in: EnvironmentValues())
+        let visMinX = max(0, -canvasOffset.width / canvasScale)
+        let visMinY = max(0, -canvasOffset.height / canvasScale)
+        let vpW = UIScreen.main.bounds.width / canvasScale
+        let vpH = UIScreen.main.bounds.height / canvasScale
+        let visMaxX = min(size.width, visMinX + vpW + gridSpacing)
+        let visMaxY = min(size.height, visMinY + vpH + gridSpacing)
 
-        // Only draw grid lines in the visible region for performance
-        // Visible region in canvas coordinates:
-        let visibleMinX = max(0, -canvasOffset.width / canvasScale)
-        let visibleMinY = max(0, -canvasOffset.height / canvasScale)
-        let viewportW = UIScreen.main.bounds.width / canvasScale
-        let viewportH = UIScreen.main.bounds.height / canvasScale
-        let visibleMaxX = min(size.width, visibleMinX + viewportW + gridSpacing)
-        let visibleMaxY = min(size.height, visibleMinY + viewportH + gridSpacing)
-
-        let startCol = max(0, Int(floor(visibleMinX / gridSpacing)))
-        let endCol = min(Int(size.width / gridSpacing), Int(ceil(visibleMaxX / gridSpacing)))
-        let startRow = max(0, Int(floor(visibleMinY / gridSpacing)))
-        let endRow = min(Int(size.height / gridSpacing), Int(ceil(visibleMaxY / gridSpacing)))
+        let startCol = max(0, Int(floor(visMinX / gridSpacing)))
+        let endCol = min(Int(size.width / gridSpacing), Int(ceil(visMaxX / gridSpacing)))
+        let startRow = max(0, Int(floor(visMinY / gridSpacing)))
+        let endRow = min(Int(size.height / gridSpacing), Int(ceil(visMaxY / gridSpacing)))
 
         var path = Path()
         for col in startCol...endCol {
             let x = CGFloat(col) * gridSpacing
-            path.move(to: CGPoint(x: x, y: visibleMinY))
-            path.addLine(to: CGPoint(x: x, y: visibleMaxY))
+            path.move(to: CGPoint(x: x, y: visMinY))
+            path.addLine(to: CGPoint(x: x, y: visMaxY))
         }
         for row in startRow...endRow {
             let y = CGFloat(row) * gridSpacing
-            path.move(to: CGPoint(x: visibleMinX, y: y))
-            path.addLine(to: CGPoint(x: visibleMaxX, y: y))
+            path.move(to: CGPoint(x: visMinX, y: y))
+            path.addLine(to: CGPoint(x: visMaxX, y: y))
         }
-
-        context.stroke(
-            path,
-            with: .color(Color(red: Double(gridColor.red), green: Double(gridColor.green), blue: Double(gridColor.blue)).opacity(0.3)),
-            lineWidth: 0.5
-        )
+        context.stroke(path, with: .color(Color.white.opacity(0.04)), lineWidth: 0.5)
     }
 
     // MARK: - Footprint
@@ -291,17 +146,13 @@ struct DeckCanvasView: View {
     private func drawFootprint(context: GraphicsContext) {
         let positions = viewModel.drawingData.orderedPositions
         guard positions.count >= 3 else { return }
-
         var path = Path()
         path.move(to: positions[0])
-        for i in 1..<positions.count {
-            path.addLine(to: positions[i])
-        }
+        for i in 1..<positions.count { path.addLine(to: positions[i]) }
         path.closeSubpath()
 
         let isSelected = viewModel.selection.selectedFootprint
-        let fillOpacity = isSelected ? 0.2 : 0.1
-        context.fill(path, with: .color(OPSStyle.Colors.primaryAccent.opacity(fillOpacity)))
+        context.fill(path, with: .color(Color.white.opacity(isSelected ? 0.08 : 0.03)))
     }
 
     // MARK: - Pool Overlay
@@ -309,32 +160,82 @@ struct DeckCanvasView: View {
     private func drawPoolOverlay(context: GraphicsContext, diameterInches: Double, scaleFactor: Double) {
         let positions = viewModel.drawingData.orderedPositions
         guard positions.count >= 3 else { return }
+        let cx = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
+        let cy = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
+        let r = CGFloat(diameterInches * scaleFactor) / 2
+        let rect = CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)
+        context.stroke(Path(ellipseIn: rect), with: .color(Color.white.opacity(0.25)),
+                        style: StrokeStyle(lineWidth: 1.5, dash: [8, 4]))
+        context.draw(Text("Pool").font(OPSStyle.Typography.smallCaption)
+            .foregroundColor(Color.white.opacity(0.35)), at: CGPoint(x: cx, y: cy))
+    }
 
-        // Center of the footprint
-        let centerX = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
-        let centerY = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
-        let radiusPts = CGFloat(diameterInches * scaleFactor) / 2
+    // MARK: - Multi-Level Inactive
 
-        let circleRect = CGRect(
-            x: centerX - radiusPts,
-            y: centerY - radiusPts,
-            width: radiusPts * 2,
-            height: radiusPts * 2
-        )
+    private func drawInactiveLevel(context: GraphicsContext, level: DeckLevel) {
+        let positions = level.orderedPositions
+        guard positions.count >= 3 else { return }
+        if level.isClosed {
+            var p = Path(); p.move(to: positions[0])
+            for i in 1..<positions.count { p.addLine(to: positions[i]) }
+            p.closeSubpath()
+            context.fill(p, with: .color(level.displayColor.swiftUIColor.opacity(0.08)))
+        }
+        for edge in level.edges {
+            guard let s = level.vertex(byId: edge.startVertexId),
+                  let e = level.vertex(byId: edge.endVertexId) else { continue }
+            var ep = Path(); ep.move(to: s.position); ep.addLine(to: e.position)
+            context.stroke(ep, with: .color(level.displayColor.swiftUIColor.opacity(0.2)), lineWidth: 1.5)
+        }
+        let cx = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
+        let cy = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
+        context.draw(Text(level.name).font(OPSStyle.Typography.smallCaption)
+            .foregroundColor(level.displayColor.swiftUIColor.opacity(0.4)), at: CGPoint(x: cx, y: cy))
+    }
 
-        context.stroke(
-            Path(ellipseIn: circleRect),
-            with: .color(OPSStyle.Colors.primaryAccent.opacity(0.4)),
-            style: StrokeStyle(lineWidth: 1.5, dash: [8, 4])
-        )
+    // MARK: - Multi-Level Active Footprint
 
-        // "Pool" label at center
-        context.draw(
-            Text("Pool")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.primaryAccent.opacity(0.6)),
-            at: CGPoint(x: centerX, y: centerY)
-        )
+    private func drawLevelFootprint(context: GraphicsContext, level: DeckLevel) {
+        guard level.isClosed else { return }
+        let positions = level.orderedPositions
+        guard positions.count >= 3 else { return }
+        var path = Path(); path.move(to: positions[0])
+        for i in 1..<positions.count { path.addLine(to: positions[i]) }
+        path.closeSubpath()
+        let isSelected = viewModel.selection.selectedFootprint
+        context.fill(path, with: .color(level.displayColor.swiftUIColor.opacity(isSelected ? 0.12 : 0.06)))
+    }
+
+    // MARK: - Level Connection
+
+    private func drawLevelConnection(context: GraphicsContext, connection: LevelConnection) {
+        guard let upperLevel = viewModel.drawingData.level(byId: connection.upperLevelId),
+              let edge = upperLevel.edge(byId: connection.upperEdgeId),
+              let start = upperLevel.vertex(byId: edge.startVertexId),
+              let end = upperLevel.vertex(byId: edge.endVertexId) else { return }
+        let dx = end.position.x - start.position.x
+        let dy = end.position.y - start.position.y
+        let len = sqrt(dx * dx + dy * dy)
+        guard len > 0 else { return }
+        let perpX = -dy / len, perpY = dx / len
+        let depth: CGFloat = 30
+        let p1 = start.position, p2 = end.position
+        let p3 = CGPoint(x: p2.x + perpX * depth, y: p2.y + perpY * depth)
+        let p4 = CGPoint(x: p1.x + perpX * depth, y: p1.y + perpY * depth)
+        var sp = Path(); sp.move(to: p1); sp.addLine(to: p2); sp.addLine(to: p3); sp.addLine(to: p4); sp.closeSubpath()
+        context.fill(sp, with: .color(OPSStyle.Colors.warningStatus.opacity(0.08)))
+        context.stroke(sp, with: .color(OPSStyle.Colors.warningStatus.opacity(0.4)), lineWidth: 1.5)
+        let tc = connection.stairConfig.treadCount ?? 5
+        for i in 1..<min(tc, 20) {
+            let t = CGFloat(i) / CGFloat(tc)
+            let ls = CGPoint(x: p1.x + dx * t, y: p1.y + dy * t)
+            let le = CGPoint(x: ls.x + perpX * depth, y: ls.y + perpY * depth)
+            var hp = Path(); hp.move(to: ls); hp.addLine(to: le)
+            context.stroke(hp, with: .color(OPSStyle.Colors.warningStatus.opacity(0.25)), lineWidth: 1.0)
+        }
+        let lx = (p1.x + p3.x) / 2, ly = (p1.y + p3.y) / 2
+        context.draw(Text("\(tc) treads").font(OPSStyle.Typography.miniLabel)
+            .foregroundColor(OPSStyle.Colors.warningStatus.opacity(0.6)), at: CGPoint(x: lx, y: ly))
     }
 
     // MARK: - Edges
@@ -342,45 +243,26 @@ struct DeckCanvasView: View {
     private func drawEdge(context: GraphicsContext, edge: DeckEdge, vertexLookup: (String) -> DeckVertex?) {
         guard let start = vertexLookup(edge.startVertexId),
               let end = vertexLookup(edge.endVertexId) else { return }
-
-        var path = Path()
-        path.move(to: start.position)
-        path.addLine(to: end.position)
-
+        var path = Path(); path.move(to: start.position); path.addLine(to: end.position)
         let isSelected = viewModel.selection.selectedEdgeIds.contains(edge.id)
 
-        // Railing indicator (thicker line behind)
+        // Railing indicator (subtle thicker line behind)
         if edge.railingConfig != nil {
-            context.stroke(
-                path,
-                with: .color(OPSStyle.Colors.primaryAccent.opacity(0.5)),
-                lineWidth: isSelected ? 6.0 : 4.0
-            )
+            context.stroke(path, with: .color(Color.white.opacity(0.15)), lineWidth: isSelected ? 6 : 4)
         }
 
-        // Main edge line
-        let edgeColor: Color
-        if edge.accuracyPercent != nil {
-            edgeColor = OPSStyle.Colors.warningStatus.opacity(0.8)
-        } else if edge.edgeType == .houseEdge {
-            edgeColor = OPSStyle.Colors.secondaryText
+        // Main edge line — white, clean
+        let lineColor: Color
+        if edge.edgeType == .houseEdge {
+            lineColor = OPSStyle.Colors.secondaryText.opacity(0.6)
         } else {
-            edgeColor = Color.white
+            lineColor = Color.white.opacity(isSelected ? 1.0 : 0.8)
         }
+        context.stroke(path, with: .color(lineColor), style: StrokeStyle(lineWidth: isSelected ? 2.5 : 1.5))
 
-        context.stroke(
-            path,
-            with: .color(edgeColor),
-            style: StrokeStyle(lineWidth: isSelected ? 3.0 : 2.0)
-        )
-
-        // Selection glow
+        // Selection glow — the ONE place accent color earns its presence
         if isSelected {
-            context.stroke(
-                path,
-                with: .color(OPSStyle.Colors.primaryAccent.opacity(0.4)),
-                lineWidth: 6.0
-            )
+            context.stroke(path, with: .color(OPSStyle.Colors.primaryAccent.opacity(0.35)), lineWidth: 6)
         }
 
         // Stair indicator
@@ -390,30 +272,19 @@ struct DeckCanvasView: View {
     }
 
     private func drawStairIndicator(context: GraphicsContext, start: CGPoint, end: CGPoint, edge: DeckEdge) {
-        guard let stairConfig = edge.stairConfig, let treadCount = stairConfig.treadCount, treadCount > 0 else { return }
-
-        let dx = end.x - start.x
-        let dy = end.y - start.y
-        let length = sqrt(dx * dx + dy * dy)
-        guard length > 0 else { return }
-
-        // Perpendicular direction (for tread lines)
-        let perpX = -dy / length * 8.0
-        let perpY = dx / length * 8.0
-
-        let stairWidth = min(stairConfig.width, length)
-        let stairFraction = stairWidth / length
-
-        for i in 0..<min(treadCount, 20) { // cap visual treads
-            let t = CGFloat(i) / CGFloat(treadCount) * stairFraction
-            let cx = start.x + dx * t
-            let cy = start.y + dy * t
-
-            var treadPath = Path()
-            treadPath.move(to: CGPoint(x: cx - perpX, y: cy - perpY))
-            treadPath.addLine(to: CGPoint(x: cx + perpX, y: cy + perpY))
-
-            context.stroke(treadPath, with: .color(OPSStyle.Colors.primaryAccent.opacity(0.4)), lineWidth: 1.0)
+        guard let config = edge.stairConfig, let tc = config.treadCount, tc > 0 else { return }
+        let dx = end.x - start.x, dy = end.y - start.y
+        let len = sqrt(dx * dx + dy * dy)
+        guard len > 0 else { return }
+        let perpX = -dy / len * 8, perpY = dx / len * 8
+        let fraction = min(config.width, len) / len
+        for i in 0..<min(tc, 20) {
+            let t = CGFloat(i) / CGFloat(tc) * fraction
+            let cx = start.x + dx * t, cy = start.y + dy * t
+            var tp = Path()
+            tp.move(to: CGPoint(x: cx - perpX, y: cy - perpY))
+            tp.addLine(to: CGPoint(x: cx + perpX, y: cy + perpY))
+            context.stroke(tp, with: .color(Color.white.opacity(0.2)), lineWidth: 1)
         }
     }
 
@@ -421,113 +292,75 @@ struct DeckCanvasView: View {
 
     private func drawActiveLine(context: GraphicsContext, fromVertexId: String, currentEnd: CGPoint) {
         guard let startVertex = resolveVertex(byId: fromVertexId) else { return }
+        var path = Path(); path.move(to: startVertex.position); path.addLine(to: currentEnd)
+        context.stroke(path, with: .color(Color.white.opacity(0.6)),
+                        style: StrokeStyle(lineWidth: 1.5, dash: [8, 4]))
 
-        var path = Path()
-        path.move(to: startVertex.position)
-        path.addLine(to: currentEnd)
-
-        context.stroke(
-            path,
-            with: .color(OPSStyle.Colors.primaryAccent),
-            style: StrokeStyle(lineWidth: 2.0, dash: [8, 4])
-        )
-
-        // Live annotation: dimension + angle
         let distance = SnapEngine.distance(startVertex.position, currentEnd)
-        guard distance > 1 else { return } // skip label for zero-length lines
+        guard distance > 1 else { return }
 
-        let midX = (startVertex.position.x + currentEnd.x) / 2
-        let midY = (startVertex.position.y + currentEnd.y) / 2
-
-        // Dimension text — always show length. Use real scale if set, else 1pt = 1"
+        // Dimension — always show length
         let scale = viewModel.drawingData.scaleFactor ?? 1.0
         let inches = distance / max(scale, 0.001)
         let dimText = DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
 
-        // Angle text: relative to connected edge if one exists, otherwise absolute
-        let activeEdges = viewModel.isMultiLevel
-            ? (viewModel.activeLevel?.edges ?? [])
-            : viewModel.drawingData.edges
-        let connectedEdges = activeEdges.filter {
-            $0.startVertexId == fromVertexId || $0.endVertexId == fromVertexId
-        }
-
+        // Angle — relative if extending from existing edge, else absolute
+        let edges = viewModel.isMultiLevel ? (viewModel.activeLevel?.edges ?? []) : viewModel.drawingData.edges
+        let connected = edges.filter { $0.startVertexId == fromVertexId || $0.endVertexId == fromVertexId }
         let angleText: String
-        if let prevEdge = connectedEdges.last {
-            // Relative angle to the connected edge
-            let otherVertexId = prevEdge.startVertexId == fromVertexId ? prevEdge.endVertexId : prevEdge.startVertexId
-            if let otherVertex = resolveVertex(byId: otherVertexId) {
-                let prevAngle = SnapEngine.lineAngle(from: startVertex.position, to: otherVertex.position)
-                let newAngle = SnapEngine.lineAngle(from: startVertex.position, to: currentEnd)
-                var relative = newAngle - prevAngle
-                if relative < 0 { relative += 360 }
-                if relative > 180 { relative = 360 - relative }
-                angleText = String(format: "%.0f°", relative)
+        if let prev = connected.last {
+            let otherId = prev.startVertexId == fromVertexId ? prev.endVertexId : prev.startVertexId
+            if let other = resolveVertex(byId: otherId) {
+                let prevA = SnapEngine.lineAngle(from: startVertex.position, to: other.position)
+                let newA = SnapEngine.lineAngle(from: startVertex.position, to: currentEnd)
+                var rel = newA - prevA; if rel < 0 { rel += 360 }; if rel > 180 { rel = 360 - rel }
+                angleText = String(format: "%.0f\u{00B0}", rel)
             } else {
-                let absolute = SnapEngine.lineAngle(from: startVertex.position, to: currentEnd)
-                angleText = String(format: "%.0f°", absolute)
+                angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startVertex.position, to: currentEnd))
             }
         } else {
-            let absolute = SnapEngine.lineAngle(from: startVertex.position, to: currentEnd)
-            angleText = String(format: "%.0f°", absolute)
+            angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startVertex.position, to: currentEnd))
         }
 
-        let label = "\(dimText) · \(angleText)"
+        let label = "\(dimText)  \(angleText)"
+        let midX = (startVertex.position.x + currentEnd.x) / 2
+        let midY = (startVertex.position.y + currentEnd.y) / 2
 
-        context.draw(
-            Text(label)
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.primaryAccent),
-            at: CGPoint(x: midX, y: midY - 16)
-        )
+        // Dark pill background
+        let pillW: CGFloat = CGFloat(label.count) * 7.5 + 20
+        let pillH: CGFloat = 22
+        let pillRect = CGRect(x: midX - pillW / 2, y: midY - 30 - pillH / 2, width: pillW, height: pillH)
+        context.fill(Path(roundedRect: pillRect, cornerRadius: 4),
+                     with: .color(OPSStyle.Colors.cardBackground.opacity(0.95)))
+        context.stroke(Path(roundedRect: pillRect, cornerRadius: 4),
+                       with: .color(Color.white.opacity(0.1)), lineWidth: 0.5)
+        context.draw(Text(label).font(.system(size: 11, weight: .semibold, design: .monospaced))
+            .foregroundColor(Color.white), at: CGPoint(x: midX, y: midY - 30))
     }
 
     // MARK: - Vertices
 
     private func drawVertex(context: GraphicsContext, vertex: DeckVertex) {
         let isSelected = viewModel.selection.selectedVertexIds.contains(vertex.id)
-        let radius: CGFloat = isSelected ? 8.0 : 6.0
+        let r: CGFloat = isSelected ? 7 : 5
 
-        // Selection ring
         if isSelected {
-            let ringRect = CGRect(
-                x: vertex.position.x - radius - 4,
-                y: vertex.position.y - radius - 4,
-                width: (radius + 4) * 2,
-                height: (radius + 4) * 2
-            )
-            context.stroke(
-                Path(ellipseIn: ringRect),
-                with: .color(OPSStyle.Colors.primaryAccent),
-                lineWidth: 2.0
-            )
+            let ring = CGRect(x: vertex.position.x - r - 3, y: vertex.position.y - r - 3,
+                              width: (r + 3) * 2, height: (r + 3) * 2)
+            context.stroke(Path(ellipseIn: ring), with: .color(OPSStyle.Colors.primaryAccent.opacity(0.6)), lineWidth: 1.5)
         }
 
-        // Vertex dot
-        let dotRect = CGRect(
-            x: vertex.position.x - radius,
-            y: vertex.position.y - radius,
-            width: radius * 2,
-            height: radius * 2
-        )
-        context.fill(
-            Path(ellipseIn: dotRect),
-            with: .color(isSelected ? OPSStyle.Colors.primaryAccent : Color.white)
-        )
+        let dot = CGRect(x: vertex.position.x - r, y: vertex.position.y - r, width: r * 2, height: r * 2)
+        context.fill(Path(ellipseIn: dot), with: .color(isSelected ? OPSStyle.Colors.primaryAccent : Color.white))
 
-        // Elevation badge
         if let elevation = vertex.elevation {
-            let label = DimensionEngine.formatImperial(elevation * 12) // feet → inches for formatting
-            context.draw(
-                Text(label)
-                    .font(OPSStyle.Typography.miniLabel)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent),
-                at: CGPoint(x: vertex.position.x, y: vertex.position.y + radius + 12)
-            )
+            let label = DimensionEngine.formatImperial(elevation * 12)
+            context.draw(Text(label).font(OPSStyle.Typography.miniLabel)
+                .foregroundColor(OPSStyle.Colors.secondaryText), at: CGPoint(x: vertex.position.x, y: vertex.position.y + r + 12))
         }
     }
 
-    // MARK: - Dimension Labels
+    // MARK: - Dimension Labels (offset from line with dark pill)
 
     private func drawDimensionLabel(context: GraphicsContext, edge: DeckEdge, vertexLookup: (String) -> DeckVertex?) {
         guard let dim = edge.dimension,
@@ -539,51 +372,40 @@ struct DeckCanvasView: View {
         let label = DimensionEngine.format(dim, system: viewModel.drawingData.config.measurementSystem)
         let hasAccuracy = edge.accuracyPercent != nil
 
-        // Background pill
-        let textSize = label.count * 8 + 16
-        let pillRect = CGRect(
-            x: midX - CGFloat(textSize) / 2,
-            y: midY - 24,
-            width: CGFloat(textSize),
-            height: 20
-        )
+        // Offset label perpendicular to the edge so it doesn't sit on the line
+        let dx = end.position.x - start.position.x
+        let dy = end.position.y - start.position.y
+        let len = sqrt(dx * dx + dy * dy)
+        let offsetDist: CGFloat = 18
+        let perpX = len > 0 ? (-dy / len) * offsetDist : 0
+        let perpY = len > 0 ? (dx / len) * offsetDist : -offsetDist
+        let labelX = midX + perpX
+        let labelY = midY + perpY
+
+        // Dark pill background
+        let pillW = CGFloat(label.count) * 7.5 + 16
+        let pillH: CGFloat = 20
+        let pillRect = CGRect(x: labelX - pillW / 2, y: labelY - pillH / 2, width: pillW, height: pillH)
         let pillColor: Color = hasAccuracy
             ? OPSStyle.Colors.warningStatus.opacity(0.15)
-            : OPSStyle.Colors.cardBackground.opacity(0.9)
-        context.fill(
-            Path(roundedRect: pillRect, cornerRadius: 4),
-            with: .color(pillColor)
-        )
+            : OPSStyle.Colors.cardBackground.opacity(0.95)
+        context.fill(Path(roundedRect: pillRect, cornerRadius: 4), with: .color(pillColor))
+        context.stroke(Path(roundedRect: pillRect, cornerRadius: 4),
+                       with: .color(Color.white.opacity(0.08)), lineWidth: 0.5)
 
-        let labelColor: Color = hasAccuracy ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent
-        context.draw(
-            Text(label)
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(labelColor),
-            at: CGPoint(x: midX, y: midY - 14)
-        )
+        let labelColor: Color = hasAccuracy ? OPSStyle.Colors.warningStatus : Color.white
+        context.draw(Text(label).font(.system(size: 11, weight: .medium, design: .monospaced))
+            .foregroundColor(labelColor), at: CGPoint(x: labelX, y: labelY))
 
-        // Accuracy badge below dimension label
         if let accuracy = edge.accuracyPercent {
-            let accLabel = AccuracyModel.formatAccuracy(
-                dimensionInches: dim,
-                accuracyPercent: accuracy,
-                system: viewModel.drawingData.config.measurementSystem
-            )
-            context.draw(
-                Text(accLabel)
-                    .font(OPSStyle.Typography.miniLabel)
-                    .foregroundColor(OPSStyle.Colors.warningStatus),
-                at: CGPoint(x: midX, y: midY - 2)
-            )
+            let accLabel = AccuracyModel.formatAccuracy(dimensionInches: dim, accuracyPercent: accuracy,
+                                                         system: viewModel.drawingData.config.measurementSystem)
+            context.draw(Text(accLabel).font(OPSStyle.Typography.miniLabel)
+                .foregroundColor(OPSStyle.Colors.warningStatus), at: CGPoint(x: labelX, y: labelY + 12))
         } else if edge.dimensionSource == .ar {
-            // AR source but manually verified — show checkmark
-            context.draw(
-                Text("AR ✓")
-                    .font(OPSStyle.Typography.miniLabel)
-                    .foregroundColor(OPSStyle.Colors.successStatus),
-                at: CGPoint(x: midX + CGFloat(textSize) / 2 + 14, y: midY - 14)
-            )
+            context.draw(Text("AR").font(OPSStyle.Typography.miniLabel)
+                .foregroundColor(OPSStyle.Colors.successStatus.opacity(0.6)),
+                         at: CGPoint(x: labelX + pillW / 2 + 12, y: labelY))
         }
     }
 
@@ -593,20 +415,14 @@ struct DeckCanvasView: View {
     private var selectionOverlay: some View {
         if case .selecting(let rect) = viewModel.drawingMode {
             Rectangle()
-                .stroke(OPSStyle.Colors.primaryAccent, style: StrokeStyle(lineWidth: 1.0, dash: [4, 4]))
-                .background(OPSStyle.Colors.primaryAccent.opacity(0.05))
+                .stroke(Color.white.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                .background(Color.white.opacity(0.03))
                 .frame(width: rect.width, height: rect.height)
                 .position(x: rect.midX, y: rect.midY)
         }
-
         if case .lassoing(let points) = viewModel.drawingMode, points.count >= 2 {
-            Path { path in
-                path.move(to: points[0])
-                for i in 1..<points.count {
-                    path.addLine(to: points[i])
-                }
-            }
-            .stroke(OPSStyle.Colors.primaryAccent, style: StrokeStyle(lineWidth: 1.5, dash: [6, 3]))
+            Path { p in p.move(to: points[0]); for i in 1..<points.count { p.addLine(to: points[i]) } }
+                .stroke(Color.white.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [6, 3]))
         }
     }
 
@@ -616,35 +432,28 @@ struct DeckCanvasView: View {
     private func dimensionInfoBar(area: Double) -> some View {
         VStack {
             HStack(spacing: OPSStyle.Layout.spacing3) {
-                Label(
-                    DimensionEngine.formatArea(area, system: viewModel.drawingData.config.measurementSystem),
-                    systemImage: "square.dashed"
-                )
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-
-                if let perimeter = viewModel.totalPerimeter {
-                    Label(
-                        DimensionEngine.format(perimeter, system: viewModel.drawingData.config.measurementSystem),
-                        systemImage: "ruler"
-                    )
+                Label(DimensionEngine.formatArea(area, system: viewModel.drawingData.config.measurementSystem),
+                      systemImage: "square.dashed")
                     .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .foregroundColor(Color.white)
+                if let perimeter = viewModel.totalPerimeter {
+                    Label(DimensionEngine.format(perimeter, system: viewModel.drawingData.config.measurementSystem),
+                          systemImage: "ruler")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2)
             .background(OPSStyle.Colors.cardBackground.opacity(0.9))
             .cornerRadius(OPSStyle.Layout.cornerRadius)
-
             Spacer()
         }
         .padding(.top, 8)
     }
 
-    // MARK: - Vertex Resolution
+    // MARK: - Helpers
 
-    /// Resolve a vertex across all levels or top-level data
     private func resolveVertex(byId id: String) -> DeckVertex? {
         if viewModel.isMultiLevel {
             for level in viewModel.drawingData.levels {
@@ -655,15 +464,16 @@ struct DeckCanvasView: View {
         return viewModel.drawingData.vertex(byId: id)
     }
 
-    // MARK: - Gestures
+    // MARK: - Coordinate Conversion
 
     private func canvasPoint(from location: CGPoint, in size: CGSize) -> CGPoint {
-        // Inverse transform: remove offset and scale
         CGPoint(
             x: (location.x - canvasOffset.width) / canvasScale,
             y: (location.y - canvasOffset.height) / canvasScale
         )
     }
+
+    // MARK: - Drawing Gesture (single-finger: long-press 0.2s → drag)
 
     private func drawGesture(size: CGSize) -> some Gesture {
         LongPressGesture(minimumDuration: 0.2)
@@ -674,34 +484,19 @@ struct DeckCanvasView: View {
                     guard let drag = drag else { return }
                     let point = canvasPoint(from: drag.location, in: size)
                     let startPoint = canvasPoint(from: drag.startLocation, in: size)
-
                     switch viewModel.activeTool {
                     case .draw:
-                        if !drawingStarted {
-                            drawingStarted = true
-                            viewModel.beginLine(from: startPoint)
-                        }
+                        if !drawingStarted { drawingStarted = true; viewModel.beginLine(from: startPoint) }
                         viewModel.updateLine(to: point)
-
                     case .select:
-                        if !drawingStarted {
-                            drawingStarted = true
-                            viewModel.beginMarquee(at: startPoint)
-                        }
+                        if !drawingStarted { drawingStarted = true; viewModel.beginMarquee(at: startPoint) }
                         viewModel.updateMarquee(to: point)
-
                     case .lasso:
-                        if !drawingStarted {
-                            drawingStarted = true
-                            viewModel.beginLasso(at: startPoint)
-                        }
+                        if !drawingStarted { drawingStarted = true; viewModel.beginLasso(at: startPoint) }
                         viewModel.updateLasso(to: point)
-
-                    case .none:
-                        break
+                    case .none: break
                     }
-                default:
-                    break
+                default: break
                 }
             }
             .onEnded { value in
@@ -709,33 +504,30 @@ struct DeckCanvasView: View {
                 case .second(true, let drag):
                     guard let drag = drag, drawingStarted else { break }
                     let point = canvasPoint(from: drag.location, in: size)
-
                     switch viewModel.activeTool {
-                    case .draw:
-                        viewModel.endLine(at: point)
-                    case .select:
-                        viewModel.endMarquee()
-                    case .lasso:
-                        viewModel.endLasso()
-                    case .none:
-                        break
+                    case .draw: viewModel.endLine(at: point)
+                    case .select: viewModel.endMarquee()
+                    case .lasso: viewModel.endLasso()
+                    case .none: break
                     }
-                default:
-                    break
+                default: break
                 }
                 drawingStarted = false
             }
     }
 
+    // MARK: - Tap Gesture
+
     private func tapGesture(size: CGSize) -> some Gesture {
         SpatialTapGesture()
             .onEnded { value in
                 let point = canvasPoint(from: value.location, in: size)
-                // Scale hit threshold inversely with zoom for 44pt minimum physical touch target
                 let hitThreshold = max(22.0, 25.0 / canvasScale)
                 viewModel.handleTap(at: point, hitThreshold: hitThreshold)
             }
     }
+
+    // MARK: - Long Press Gesture
 
     private func longPressGesture(size: CGSize) -> some Gesture {
         LongPressGesture(minimumDuration: 0.5)
@@ -743,79 +535,88 @@ struct DeckCanvasView: View {
             .onEnded { value in
                 switch value {
                 case .second(true, let drag):
-                    let location = drag?.location ?? .zero
-                    let point = canvasPoint(from: location, in: size)
+                    let loc = drag?.location ?? .zero
+                    let point = canvasPoint(from: loc, in: size)
                     let hitThreshold = max(22.0, 25.0 / canvasScale)
                     viewModel.handleLongPress(at: point, hitThreshold: hitThreshold)
-                default:
-                    break
+                default: break
                 }
             }
     }
-
-    private var pinchGesture: some Gesture {
-        MagnificationGesture()
-            .onChanged { scale in
-                // Disable zoom during active drawing to prevent endpoint jumps
-                if case .idle = viewModel.drawingMode {} else { return }
-                canvasScale = max(0.3, min(5.0, baseScale * scale))
-            }
-            .onEnded { scale in
-                if case .idle = viewModel.drawingMode {} else { return }
-                baseScale = max(0.3, min(5.0, baseScale * scale))
-                canvasScale = baseScale
-            }
-    }
-
 }
 
-// MARK: - Two-Finger Pan (UIKit Gesture Recognizer)
+// MARK: - UIKit Gesture Handler (Pinch + Two-Finger Pan)
 
-/// UIKit-based two-finger pan gesture. SwiftUI's DragGesture cannot distinguish finger count.
-private struct TwoFingerPanView: UIViewRepresentable {
+/// Handles pinch-to-zoom and two-finger pan via UIKit gesture recognizers.
+/// SwiftUI gestures cannot distinguish touch count or provide anchor-point zoom.
+private struct CanvasGestureView: UIViewRepresentable {
+    @Binding var scale: CGFloat
     @Binding var offset: CGSize
-    @Binding var lastOffset: CGSize
-    var drawingStarted: Bool
 
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
         view.backgroundColor = .clear
+
+        let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePinch(_:)))
         let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
         pan.minimumNumberOfTouches = 2
         pan.maximumNumberOfTouches = 2
+
+        // Allow simultaneous pinch + pan
+        pinch.delegate = context.coordinator
+        pan.delegate = context.coordinator
+
+        view.addGestureRecognizer(pinch)
         view.addGestureRecognizer(pan)
         return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.parent = self
-    }
+    func updateUIView(_ uiView: UIView, context: Context) {}
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
-    class Coordinator: NSObject {
-        var parent: TwoFingerPanView
+    class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var parent: CanvasGestureView
+        private var baseScale: CGFloat = 1.0
+        private var panStart: CGSize = .zero
 
-        init(parent: TwoFingerPanView) {
-            self.parent = parent
+        init(parent: CanvasGestureView) { self.parent = parent }
+
+        func gestureRecognizer(_ g: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
+        @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+            switch gesture.state {
+            case .began:
+                baseScale = parent.scale
+            case .changed:
+                let newScale = max(0.15, min(8.0, baseScale * gesture.scale))
+
+                // Zoom toward the pinch midpoint
+                let mid = gesture.location(in: gesture.view)
+                let ratio = newScale / parent.scale
+
+                let newOffsetX = mid.x - ratio * (mid.x - parent.offset.width)
+                let newOffsetY = mid.y - ratio * (mid.y - parent.offset.height)
+
+                parent.scale = newScale
+                parent.offset = CGSize(width: newOffsetX, height: newOffsetY)
+            case .ended, .cancelled:
+                baseScale = parent.scale
+            default: break
+            }
         }
 
         @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
-            guard !parent.drawingStarted else { return }
-            let translation = gesture.translation(in: gesture.view)
-
             switch gesture.state {
+            case .began:
+                panStart = parent.offset
             case .changed:
-                parent.offset = CGSize(
-                    width: parent.lastOffset.width + translation.x,
-                    height: parent.lastOffset.height + translation.y
-                )
+                let t = gesture.translation(in: gesture.view)
+                parent.offset = CGSize(width: panStart.width + t.x, height: panStart.height + t.y)
             case .ended, .cancelled:
-                parent.lastOffset = parent.offset
-            default:
-                break
+                panStart = parent.offset
+            default: break
             }
         }
     }

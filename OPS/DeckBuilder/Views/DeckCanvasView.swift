@@ -616,6 +616,10 @@ private struct CanvasGestureView: UIViewRepresentable {
                 lastMidpoint = mid
 
             case .changed:
+                // When one finger lifts, numberOfTouches drops to 1 and the
+                // midpoint jumps to the remaining finger — causes a huge pan spike.
+                guard gesture.numberOfTouches >= 2 else { return }
+
                 let currentScale = scaleBinding.wrappedValue
                 guard currentScale > 0 else { return }
 

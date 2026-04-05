@@ -135,18 +135,19 @@ struct DeckCanvasView: View {
 
         guard startCol <= endCol, startRow <= endRow else { return }
 
-        var path = Path()
+        // Dots at grid intersections — not lines
+        let dotRadius: CGFloat = 1.0
+        let dotColor = Color.white.opacity(0.12)
+        var dotPath = Path()
         for col in startCol...endCol {
             let x = CGFloat(col) * gridSpacing
-            path.move(to: CGPoint(x: x, y: visMinY))
-            path.addLine(to: CGPoint(x: x, y: visMaxY))
+            for row in startRow...endRow {
+                let y = CGFloat(row) * gridSpacing
+                dotPath.addEllipse(in: CGRect(x: x - dotRadius, y: y - dotRadius,
+                                              width: dotRadius * 2, height: dotRadius * 2))
+            }
         }
-        for row in startRow...endRow {
-            let y = CGFloat(row) * gridSpacing
-            path.move(to: CGPoint(x: visMinX, y: y))
-            path.addLine(to: CGPoint(x: visMaxX, y: y))
-        }
-        context.stroke(path, with: .color(Color.white.opacity(0.04)), lineWidth: 0.5)
+        context.fill(dotPath, with: .color(dotColor))
     }
 
     // MARK: - Footprint

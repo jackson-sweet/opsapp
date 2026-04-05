@@ -399,7 +399,8 @@ class DeckBuilderViewModel: ObservableObject {
             snappedPosition = activeVertex(byId: snapId)?.position ?? position
         } else {
             existingVertexId = nil
-            snappedPosition = position
+            // Snap new vertex to the nearest grid intersection
+            snappedPosition = SnapEngine.snapToGrid(position, gridSpacing: lengthSnapInCanvasPoints())
         }
 
         let vertexId: String
@@ -455,7 +456,9 @@ class DeckBuilderViewModel: ObservableObject {
         ) {
             endVertexId = snapId
         } else {
-            let newVertex = DeckVertex(position: snapped)
+            // Snap new endpoint to nearest grid intersection
+            let gridSnapped = SnapEngine.snapToGrid(snapped, gridSpacing: lengthSnapInCanvasPoints())
+            let newVertex = DeckVertex(position: gridSnapped)
             endVertexId = newVertex.id
             activeVertices.append(newVertex)
         }
@@ -622,7 +625,7 @@ class DeckBuilderViewModel: ObservableObject {
             drawingMode = .idle
             return
         }
-        vertex.position = position
+        vertex.position = SnapEngine.snapToGrid(position, gridSpacing: lengthSnapInCanvasPoints())
         activeUpdateVertex(vertex)
     }
 

@@ -92,6 +92,18 @@ struct SnapEngine {
         return sqrt(dx * dx + dy * dy)
     }
 
+    // MARK: - Grid Snap
+
+    /// Snap a point to the nearest grid intersection.
+    /// Grid spacing is in canvas points (same as lengthIncrement in canvas points).
+    static func snapToGrid(_ point: CGPoint, gridSpacing: Double) -> CGPoint {
+        guard gridSpacing > 0 else { return point }
+        return CGPoint(
+            x: (Double(point.x) / gridSpacing).rounded() * gridSpacing,
+            y: (Double(point.y) / gridSpacing).rounded() * gridSpacing
+        )
+    }
+
     // MARK: - Length Conversion
 
     /// Convert real-world inches to canvas points using scale factor

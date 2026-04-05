@@ -33,6 +33,12 @@ struct DeckToolbar: View {
 
                 toolDivider
 
+                actionButton(icon: "arrow.up.and.down.circle", label: "Height") {
+                    viewModel.showingElevationInput = true
+                }
+
+                toolDivider
+
                 labeledButton(icon: "doc.text", label: "Estimate",
                               tint: viewModel.canGenerateEstimate ? Color.white : OPSStyle.Colors.tertiaryText,
                               enabled: viewModel.canGenerateEstimate) {

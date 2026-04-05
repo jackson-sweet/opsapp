@@ -322,8 +322,8 @@ struct DeckBuilderView: View {
     // MARK: - Title Bar
 
     private var titleBar: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
-            // Close button
+        HStack(spacing: 8) {
+            // Close
             Button {
                 guard !isSaving else { return }
                 isSaving = true
@@ -345,25 +345,19 @@ struct DeckBuilderView: View {
             }
             .disabled(isSaving)
 
-            Spacer()
-
-            // Title + save status
-            VStack(spacing: 2) {
+            // Title + save status — takes all available space
+            VStack(alignment: .leading, spacing: 1) {
                 Text(viewModel.deckDesign.title)
                     .font(OPSStyle.Typography.bodyEmphasis)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
+                    .truncationMode(.tail)
 
-                if viewModel.deckDesign.needsSync {
-                    Text("Unsaved changes")
-                        .font(OPSStyle.Typography.microLabel)
-                        .foregroundColor(OPSStyle.Colors.warningStatus)
-                } else {
-                    Text("Saved")
-                        .font(OPSStyle.Typography.microLabel)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
+                Text(viewModel.deckDesign.needsSync ? "Unsaved changes" : "Saved")
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(viewModel.deckDesign.needsSync ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.secondaryText)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             // 2D/3D toggle
             Picker("View Mode", selection: Binding(
@@ -381,9 +375,7 @@ struct DeckBuilderView: View {
             .frame(width: 80)
             .disabled(!viewModel.can3DMode)
 
-            Spacer()
-
-            // Undo / Redo (top-right, always accessible)
+            // Undo / Redo
             if !viewModel.is3DMode {
                 Button { viewModel.undo() } label: {
                     Image(systemName: "arrow.uturn.backward")
@@ -402,8 +394,8 @@ struct DeckBuilderView: View {
                 .disabled(!viewModel.canRedo)
             }
 
+            // Right-most buttons
             if viewModel.is3DMode {
-                // Screenshot button in 3D mode
                 Button {
                     if let screenshot = scene3DController.captureScreenshot() {
                         screenshotImage = screenshot
@@ -417,28 +409,18 @@ struct DeckBuilderView: View {
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 }
             } else {
-                // Import / creation menu (consolidated)
+                // Import menu
                 Menu {
-                    Button {
-                        showingTemplatePicker = true
-                    } label: {
+                    Button { showingTemplatePicker = true } label: {
                         Label("From Template", systemImage: "square.grid.2x2")
                     }
-
-                    Button {
-                        showingSketchCapture = true
-                    } label: {
+                    Button { showingSketchCapture = true } label: {
                         Label("Scan Paper Sketch", systemImage: "doc.text.viewfinder")
                     }
-
-                    Button {
-                        showingARPerimeter = true
-                    } label: {
+                    Button { showingARPerimeter = true } label: {
                         Label("Walk Perimeter (AR)", systemImage: "camera.viewfinder")
                     }
-
                     Divider()
-
                     if viewModel.isLaserConnected {
                         Label("Laser Connected", systemImage: "antenna.radiowaves.left.and.right")
                     } else {
@@ -449,28 +431,6 @@ struct DeckBuilderView: View {
                     }
                 } label: {
                     Image(systemName: "plus.circle")
-                        .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                }
-
-                // Dimension entry for selected edge
-                if viewModel.editingEdgeId != nil {
-                    Button {
-                        viewModel.showingDimensionInput = true
-                    } label: {
-                        Image(systemName: "ruler")
-                            .font(.system(size: OPSStyle.Layout.IconSize.md))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                    }
-                }
-
-                // Elevation entry
-                Button {
-                    viewModel.showingElevationInput = true
-                } label: {
-                    Image(systemName: "arrow.up.and.down.circle")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)

@@ -31,16 +31,11 @@ struct DeckBuilderView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Title bar
-            titleBar
-
-            // AR accuracy banner
-            if !viewModel.is3DMode {
-                arAccuracyBanner
-            }
-
             if viewModel.is3DMode {
-                // 3D perspective view
+                // 3D mode: title bar is solid (not floating)
+                titleBar
+                    .background(OPSStyle.Colors.cardBackground)
+
                 DeckScene3DView(drawingData: viewModel.drawingData, controller: scene3DController)
                     .transition(.opacity)
 
@@ -49,14 +44,11 @@ struct DeckBuilderView: View {
                 }
                 .transition(.opacity)
             } else {
-                // Level tab bar (multi-level mode)
-                if viewModel.isMultiLevel || viewModel.drawingData.vertices.count >= 3 {
-                    LevelTabBar(viewModel: viewModel)
-                }
-
-                // Canvas + Assignment Wheel overlay + Laser toast
-                ZStack(alignment: .bottomTrailing) {
-                    DeckCanvasView(viewModel: viewModel)
+                // 2D mode: canvas fills screen, title bar floats on top
+                ZStack(alignment: .top) {
+                    // Full-bleed canvas
+                    ZStack(alignment: .bottomTrailing) {
+                        DeckCanvasView(viewModel: viewModel)
 
                     // Assignment wheel — visible when any element is selected
                     if !viewModel.selection.isEmpty {
@@ -105,9 +97,27 @@ struct DeckBuilderView: View {
                     .animation(.easeInOut(duration: 0.25), value: viewModel.showMeasurementToast)
                     .animation(.easeInOut(duration: 0.25), value: viewModel.showLaserErrorToast)
                     .animation(.easeInOut(duration: 0.25), value: viewModel.showDisconnectToast)
-                }
+                    } // end canvas ZStack (bottomTrailing)
 
-                // Toolbar (hidden in 3D mode)
+                    // Floating title bar — glass pill over the canvas
+                    VStack(spacing: 0) {
+                        titleBar
+                            .background(.ultraThinMaterial)
+
+                        // AR accuracy banner
+                        arAccuracyBanner
+
+                        // Level tab bar
+                        if viewModel.isMultiLevel || viewModel.drawingData.vertices.count >= 3 {
+                            LevelTabBar(viewModel: viewModel)
+                        }
+
+                        Spacer()
+                    }
+                    .allowsHitTesting(true)
+                } // end ZStack (top-aligned, floating title over canvas)
+
+                // Toolbar — below the canvas
                 DeckToolbar(viewModel: viewModel)
             }
         }
@@ -439,7 +449,6 @@ struct DeckBuilderView: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing2)
         .padding(.vertical, OPSStyle.Layout.spacing1)
-        .background(OPSStyle.Colors.cardBackground)
     }
 
     // MARK: - AR Accuracy Banner

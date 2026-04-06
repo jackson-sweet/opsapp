@@ -18,6 +18,10 @@ struct CreationPickerView: View {
     @State private var showingARPerimeter = false
 
     var body: some View {
+        // Defense-in-depth: if feature is disabled, dismiss immediately
+        if !PermissionStore.shared.isFeatureEnabled("deck_builder") {
+            Color.clear.onAppear { dismiss() }
+        } else {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Text("New Deck Design")
                 .font(OPSStyle.Typography.heading)
@@ -138,6 +142,7 @@ struct CreationPickerView: View {
                 }
             )
         }
+        } // else: feature enabled
     }
 
     // MARK: - Option Row

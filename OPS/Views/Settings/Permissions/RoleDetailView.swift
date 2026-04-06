@@ -48,6 +48,10 @@ enum PermissionRegistry {
         PermissionDefinition(id: "settings.billing", label: "Billing Settings", category: "Settings"),
         // Job Board
         PermissionDefinition(id: "job_board.manage_sections", label: "Manage Sections", category: "Job Board"),
+        // Deck Builder
+        PermissionDefinition(id: "deck_builder.view", label: "View Designs", category: "Deck Builder"),
+        PermissionDefinition(id: "deck_builder.create", label: "Create Designs", category: "Deck Builder"),
+        PermissionDefinition(id: "deck_builder.edit", label: "Edit Designs", category: "Deck Builder"),
     ]
 
     static var categories: [String] {
@@ -94,6 +98,7 @@ enum PermissionRegistry {
     static let categoryFeatureFlag: [String: String] = [
         "Pipeline": "pipeline",
         "Estimates": "estimates",
+        "Deck Builder": "deck_builder",
     ]
 
     /// Returns the feature flag slug gating a category, or nil if ungated.
@@ -114,6 +119,7 @@ enum PermissionRegistry {
         case "Team": return OPSStyle.Icons.crew
         case "Settings": return "gearshape.fill"
         case "Job Board": return "rectangle.stack.fill"
+        case "Deck Builder": return "ruler.fill"
         default: return "lock.fill"
         }
     }

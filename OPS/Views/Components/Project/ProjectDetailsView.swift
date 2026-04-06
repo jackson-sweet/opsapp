@@ -35,6 +35,7 @@ struct ProjectDetailsView: View {
     @State private var showingCameraBatch = false
     @State private var showingDeckCreationPicker = false
     @State private var deckDesignToOpen: DeckDesign?
+    @ObservedObject private var permissionStore = PermissionStore.shared
     @State private var isNoteComposing = false
     @State private var showingTaskPicker = false
     @State private var taskDetailTask: ProjectTask? = nil
@@ -362,7 +363,7 @@ struct ProjectDetailsView: View {
                         onReschedule: { viewModel.showingTaskScheduler = true },
                         onContact: { viewModel.showingClientContact = true },
                         onAddTask: { viewModel.showingAddTaskSheet = true },
-                        onDeckDesign: { showingDeckCreationPicker = true }
+                        onDeckDesign: permissionStore.isFeatureEnabled("deck_builder") ? { showingDeckCreationPicker = true } : nil
                     )
                     .padding(.bottom, 16)
                     .transition(.move(edge: .bottom).combined(with: .opacity))

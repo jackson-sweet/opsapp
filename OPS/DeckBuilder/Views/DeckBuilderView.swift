@@ -327,6 +327,12 @@ struct DeckBuilderView: View {
         }
         .animation(.easeInOut(duration: 0.3), value: viewModel.saveError)
         .statusBarHidden(true)
+        .onAppear {
+            // Defense-in-depth: prevent deep-link or programmatic access bypassing UI gate
+            if !PermissionStore.shared.isFeatureEnabled("deck_builder") {
+                dismiss()
+            }
+        }
     }
 
     // MARK: - Title Bar
@@ -385,8 +391,8 @@ struct DeckBuilderView: View {
             .frame(width: 80)
             .disabled(!viewModel.can3DMode)
 
-            // Undo / Redo
-            if !viewModel.is3DMode {
+            // Undo / Redo — edit permission required
+            if !viewModel.is3DMode && PermissionStore.shared.can("deck_builder.edit") {
                 Button { viewModel.undo() } label: {
                     Image(systemName: "arrow.uturn.backward")
                         .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
@@ -418,8 +424,8 @@ struct DeckBuilderView: View {
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 }
-            } else {
-                // Import menu
+            } else if PermissionStore.shared.can("deck_builder.edit") {
+                // Import menu — edit permission required
                 Menu {
                     Button { showingTemplatePicker = true } label: {
                         Label("From Template", systemImage: "square.grid.2x2")

@@ -51,6 +51,11 @@ enum FeatureFlagService {
             "portal.view",
             "documents.view",
             "documents.manage_templates"
+        ],
+        "deck_builder": [
+            "deck_builder.view",
+            "deck_builder.create",
+            "deck_builder.edit"
         ]
     ]
 

@@ -5,15 +5,31 @@ import UIKit
 
 struct DeckToolbar: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
+    private let permissionStore = PermissionStore.shared
+
+    /// True when user has view-only access (no create or edit permission)
+    private var isViewOnly: Bool {
+        !permissionStore.can("deck_builder.edit") && !permissionStore.can("deck_builder.create")
+    }
+
+    /// True when user can generate estimates
+    private var canCreate: Bool {
+        permissionStore.can("deck_builder.create")
+    }
+
+    /// True when user can draw/edit the deck design
+    private var canEdit: Bool {
+        permissionStore.can("deck_builder.edit")
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             // Context-sensitive action bar — changes based on what's selected
-            if viewModel.selection.hasVertices {
+            if canEdit, viewModel.selection.hasVertices {
                 vertexTools
-            } else if viewModel.selection.hasEdges {
+            } else if canEdit, viewModel.selection.hasEdges {
                 edgeTools
-            } else if viewModel.selection.selectedFootprint {
+            } else if canEdit, viewModel.selection.selectedFootprint {
                 footprintTools
             } else {
                 defaultTools
@@ -27,23 +43,38 @@ struct DeckToolbar: View {
     private var defaultTools: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                toolButton(icon: "pencil.and.outline", label: "Draw", tool: .draw)
-                toolButton(icon: "rectangle.dashed", label: "Select", tool: .select)
-                toolButton(icon: "lasso", label: "Lasso", tool: .lasso)
+                if isViewOnly {
+                    // View Only badge — no drawing tools
+                    Text("VIEW ONLY")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(OPSStyle.Colors.secondaryText.opacity(0.12))
+                        .cornerRadius(4)
+                } else if canEdit {
+                    toolButton(icon: "pencil.and.outline", label: "Draw", tool: .draw)
+                    toolButton(icon: "rectangle.dashed", label: "Select", tool: .select)
+                    toolButton(icon: "lasso", label: "Lasso", tool: .lasso)
 
-                toolDivider
+                    toolDivider
 
-                actionButton(icon: "arrow.up.and.down.circle", label: "Height") {
-                    viewModel.showingElevationInput = true
+                    actionButton(icon: "arrow.up.and.down.circle", label: "Height") {
+                        viewModel.showingElevationInput = true
+                    }
                 }
 
-                toolDivider
+                if !isViewOnly {
+                    toolDivider
+                }
 
-                labeledButton(icon: "doc.text", label: "Estimate",
-                              tint: viewModel.canGenerateEstimate ? Color.white : OPSStyle.Colors.tertiaryText,
-                              enabled: viewModel.canGenerateEstimate) {
-                    viewModel.showingEstimatePreview = true
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                if canCreate {
+                    labeledButton(icon: "doc.text", label: "Estimate",
+                                  tint: viewModel.canGenerateEstimate ? Color.white : OPSStyle.Colors.tertiaryText,
+                                  enabled: viewModel.canGenerateEstimate) {
+                        viewModel.showingEstimatePreview = true
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    }
                 }
 
                 labeledButton(icon: "square.and.arrow.up", label: "Share",

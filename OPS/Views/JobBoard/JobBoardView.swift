@@ -23,6 +23,7 @@ struct JobBoardView: View {
     @State private var showingProjectFilterSheet = false
     @State private var showingTaskFilterSheet = false
     @State private var activeOnly = false
+    @State private var assignedToMe = false
 
     // Payment review state
     @State private var showPaymentReview: Bool = false
@@ -177,8 +178,8 @@ struct JobBoardView: View {
                             .allowsHitTesting(!(tutorialMode && tutorialPhase == .dragToAccepted))
                     }
 
-                    // Action row: filter + active toggle (project sections only)
-                    if !tutorialMode && (selectedSection == .projects || selectedSection == .myProjects) {
+                    // Action row: filter + active toggle + assigned to me
+                    if !tutorialMode && (selectedSection == .projects || selectedSection == .myProjects || selectedSection == .tasks || selectedSection == .kanban) {
                         HStack(spacing: 12) {
                             Button(action: {
                                 showingProjectFilterSheet = true
@@ -215,6 +216,24 @@ struct JobBoardView: View {
                                     )
                             }
 
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.2)) { assignedToMe.toggle() }
+                            }) {
+                                Text("ASSIGNED TO ME")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(assignedToMe ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .fill(assignedToMe ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(assignedToMe ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    )
+                            }
+
                             Spacer()
                         }
                         .padding(.horizontal, 16)
@@ -231,7 +250,8 @@ struct JobBoardView: View {
                                 searchText: searchText,
                                 showingFilters: $showingFilters,
                                 showingFilterSheet: $showingProjectFilterSheet,
-                                activeOnly: activeOnly
+                                activeOnly: activeOnly,
+                                assignedToMe: assignedToMe
                             )
                             .padding(.horizontal, 16)
                         } else {
@@ -243,7 +263,8 @@ struct JobBoardView: View {
                                     searchText: searchText,
                                     showingFilters: $showingFilters,
                                     showingFilterSheet: $showingProjectFilterSheet,
-                                    activeOnly: activeOnly
+                                    activeOnly: activeOnly,
+                                    assignedToMe: assignedToMe
                                 )
                                 .padding(.horizontal, 16)
                             case .projects:
@@ -251,18 +272,20 @@ struct JobBoardView: View {
                                     searchText: searchText,
                                     showingFilters: $showingFilters,
                                     showingFilterSheet: $showingProjectFilterSheet,
-                                    activeOnly: activeOnly
+                                    activeOnly: activeOnly,
+                                    assignedToMe: assignedToMe
                                 )
                                 .padding(.horizontal, 16)
                             case .tasks:
                                 JobBoardTasksView(
                                     searchText: searchText,
                                     showingFilters: $showingFilters,
-                                    showingFilterSheet: $showingTaskFilterSheet
+                                    showingFilterSheet: $showingTaskFilterSheet,
+                                    assignedToMe: assignedToMe
                                 )
                                 .padding(.horizontal, 16)
                             case .kanban:
-                                JobBoardKanbanView()
+                                JobBoardKanbanView(assignedToMe: assignedToMe)
                             }
                         }
                     }
@@ -339,11 +362,15 @@ struct JobBoardView: View {
                 )
                 .environmentObject(appState)
                 .environmentObject(permissionStore)
+                .wizardBannerIfAvailable(stateManager: wizardStateManager)
+                .wizardOverlayIfAvailable(stateManager: wizardStateManager)
             }
             .sheet(isPresented: $showTaskReview) {
                 TaskCompletionReviewView(tasks: reviewableTasks)
                     .environmentObject(appState)
                     .environmentObject(permissionStore)
+                    .wizardBannerIfAvailable(stateManager: wizardStateManager)
+                    .wizardOverlayIfAvailable(stateManager: wizardStateManager)
             }
             .sheet(isPresented: $showUnscheduledReview) {
                 UnscheduledTaskReviewView(tasks: unscheduledTasks)
@@ -649,6 +676,7 @@ struct JobBoardTasksView: View {
     @State private var showingTaskTypeDetails = false
     @State private var showingCompletedSheet = false
     @State private var showingCancelledSheet = false
+    var assignedToMe: Bool = false
 
     private var allTasks: [ProjectTask] {
         let projects = dataController.getAllProjects()
@@ -696,6 +724,13 @@ struct JobBoardTasksView: View {
                 return false
             }
             return true
+        }
+
+        // Quick filter: assigned to me
+        if assignedToMe, let userId = dataController.currentUser?.id {
+            filtered = filtered.filter { task in
+                task.getTeamMemberIds().contains(userId)
+            }
         }
 
         // Filter by status
@@ -951,7 +986,7 @@ struct JobBoardTasksView: View {
     }
 
     private var hasActiveFilters: Bool {
-        !selectedStatuses.isEmpty || !selectedTaskTypeIds.isEmpty || !selectedTeamMemberIds.isEmpty
+        !selectedStatuses.isEmpty || !selectedTaskTypeIds.isEmpty || !selectedTeamMemberIds.isEmpty || assignedToMe
     }
 
     private func updateFilterVisibility() {

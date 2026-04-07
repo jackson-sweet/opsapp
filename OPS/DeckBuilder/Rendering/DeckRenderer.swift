@@ -52,7 +52,16 @@ struct DeckRenderer {
                 // Multi-level: render each level
                 for level in drawingData.levels {
                     let positions = level.orderedPositions
-                    let c = level.displayColor.fillColor
+                    let c: (r: CGFloat, g: CGFloat, b: CGFloat) = {
+                        if let hex = level.footprint.assignedItems.first?.taskTypeColor, !hex.isEmpty {
+                            let uiColor = UIColor(hex: hex)
+                            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0
+                            uiColor.getRed(&r, green: &g, blue: &b, alpha: nil)
+                            return (r, g, b)
+                        }
+                        let lc = level.displayColor.fillColor
+                        return (lc.r, lc.g, lc.b)
+                    }()
 
                     // Footprint fill
                     if level.isClosed && positions.count >= 3 {
@@ -119,8 +128,13 @@ struct DeckRenderer {
             } else {
                 // Single-level rendering (existing behavior)
                 let positions = drawingData.orderedPositions
+                let singleLevelColor: UIColor = {
+                    if let hex = drawingData.footprint.assignedItems.first?.taskTypeColor,
+                       !hex.isEmpty { return UIColor(hex: hex) }
+                    return UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: 1)
+                }()
                 if drawingData.isClosed && positions.count >= 3 {
-                    gc.setFillColor(UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: 0.1).cgColor)
+                    gc.setFillColor(singleLevelColor.withAlphaComponent(0.1).cgColor)
                     gc.beginPath()
                     gc.move(to: transform(positions[0]))
                     for i in 1..<positions.count { gc.addLine(to: transform(positions[i])) }
@@ -128,13 +142,21 @@ struct DeckRenderer {
                     gc.fillPath()
                 }
 
-                gc.setStrokeColor(UIColor(red: 40/255, green: 40/255, blue: 40/255, alpha: 1).cgColor)
                 gc.setLineWidth(2.0)
                 for edge in drawingData.edges {
                     guard let start = drawingData.vertex(byId: edge.startVertexId),
                           let end = drawingData.vertex(byId: edge.endVertexId) else { continue }
                     let p1 = transform(start.position)
                     let p2 = transform(end.position)
+
+                    // Edge color: task type color from assigned items, or railing items, or default
+                    let edgeColor: UIColor = {
+                        if let hex = edge.assignedItems.first?.taskTypeColor, !hex.isEmpty { return UIColor(hex: hex) }
+                        if let hex = edge.railingConfig?.assignedItems.first?.taskTypeColor, !hex.isEmpty { return UIColor(hex: hex) }
+                        return UIColor(red: 40/255, green: 40/255, blue: 40/255, alpha: 1)
+                    }()
+
+                    gc.setStrokeColor(edgeColor.cgColor)
                     gc.beginPath(); gc.move(to: p1); gc.addLine(to: p2); gc.strokePath()
 
                     if let dim = edge.dimension {
@@ -143,7 +165,7 @@ struct DeckRenderer {
                         let label = DimensionEngine.format(dim, system: drawingData.config.measurementSystem)
                         let attrs: [NSAttributedString.Key: Any] = [
                             .font: UIFont.systemFont(ofSize: 12, weight: .medium),
-                            .foregroundColor: UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: 1)
+                            .foregroundColor: singleLevelColor
                         ]
                         let nsLabel = label as NSString
                         let labelSize = nsLabel.size(withAttributes: attrs)
@@ -151,15 +173,18 @@ struct DeckRenderer {
                     }
 
                     if edge.railingConfig != nil {
-                        gc.setStrokeColor(UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: 0.6).cgColor)
+                        let railColor: UIColor = {
+                            if let hex = edge.railingConfig?.assignedItems.first?.taskTypeColor, !hex.isEmpty { return UIColor(hex: hex) }
+                            return singleLevelColor
+                        }()
+                        gc.setStrokeColor(railColor.withAlphaComponent(0.6).cgColor)
                         gc.setLineWidth(4.0)
                         gc.beginPath(); gc.move(to: p1); gc.addLine(to: p2); gc.strokePath()
                         gc.setLineWidth(2.0)
-                        gc.setStrokeColor(UIColor(red: 40/255, green: 40/255, blue: 40/255, alpha: 1).cgColor)
                     }
                 }
 
-                gc.setFillColor(UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: 1).cgColor)
+                gc.setFillColor(singleLevelColor.cgColor)
                 for vertex in drawingData.vertices {
                     let p = transform(vertex.position)
                     gc.fillEllipse(in: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8))

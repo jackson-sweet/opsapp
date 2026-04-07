@@ -101,7 +101,12 @@ struct DeckOverlayRenderer {
                 }
 
                 if let railingConfig = edge.railingConfig {
-                    gc.setStrokeColor(railingColor(for: railingConfig.railingType).cgColor)
+                    let railColor: UIColor = {
+                        if let hex = railingConfig.assignedItems.first?.taskTypeColor,
+                           !hex.isEmpty { return UIColor(hex: hex) }
+                        return railingColor(for: railingConfig.railingType)
+                    }()
+                    gc.setStrokeColor(railColor.cgColor)
                     gc.setLineWidth(4.0)
                     gc.beginPath(); gc.move(to: p1); gc.addLine(to: p2); gc.strokePath()
                 }
@@ -132,8 +137,12 @@ struct DeckOverlayRenderer {
 
             if drawingData.isMultiLevel {
                 for level in drawingData.levels {
-                    let c = level.displayColor.fillColor
-                    let fill = UIColor(red: c.r, green: c.g, blue: c.b, alpha: CGFloat(fillOpacity))
+                    let fill: UIColor = {
+                        if let hex = level.footprint.assignedItems.first?.taskTypeColor,
+                           !hex.isEmpty { return UIColor(hex: hex).withAlphaComponent(CGFloat(fillOpacity)) }
+                        let c = level.displayColor.fillColor
+                        return UIColor(red: c.r, green: c.g, blue: c.b, alpha: CGFloat(fillOpacity))
+                    }()
                     renderLevelOverlay(gc: gc, vertices: level.vertices, edges: level.edges,
                                        positions: level.orderedPositions, isClosed: level.isClosed, fillColor: fill)
 
@@ -155,7 +164,11 @@ struct DeckOverlayRenderer {
                 }
             } else {
                 let positions = drawingData.orderedPositions
-                let fill = UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: CGFloat(fillOpacity))
+                let fill: UIColor = {
+                    if let hex = drawingData.footprint.assignedItems.first?.taskTypeColor,
+                       !hex.isEmpty { return UIColor(hex: hex).withAlphaComponent(CGFloat(fillOpacity)) }
+                    return UIColor(red: 89/255, green: 119/255, blue: 148/255, alpha: CGFloat(fillOpacity))
+                }()
                 renderLevelOverlay(gc: gc, vertices: drawingData.vertices, edges: drawingData.edges,
                                    positions: positions, isClosed: drawingData.isClosed, fillColor: fill)
 

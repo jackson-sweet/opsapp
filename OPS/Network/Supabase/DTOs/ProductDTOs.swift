@@ -66,6 +66,7 @@ struct CreateProductDTO: Codable {
     let unit: String?
     let type: String?
     let isTaxable: Bool
+    let taskTypeId: String?
 
     enum CodingKeys: String, CodingKey {
         case companyId   = "company_id"
@@ -76,6 +77,7 @@ struct CreateProductDTO: Codable {
         case unit
         case type
         case isTaxable   = "is_taxable"
+        case taskTypeId  = "task_type_id"
     }
 }
 
@@ -87,6 +89,7 @@ struct UpdateProductDTO: Codable {
     var unit: String?
     var type: String?
     var isTaxable: Bool?
+    var taskTypeId: String?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -96,5 +99,6 @@ struct UpdateProductDTO: Codable {
         case unit
         case type
         case isTaxable   = "is_taxable"
+        case taskTypeId  = "task_type_id"
     }
 }

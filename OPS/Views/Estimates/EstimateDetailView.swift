@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct EstimateDetailView: View {
     var estimate: Estimate
@@ -15,9 +16,25 @@ struct EstimateDetailView: View {
     @State private var showConvertOptions = false
     @State private var showProgressInvoice = false
     @State private var showOverflowMenu = false
+    @State private var showBreakdown = false
+    @Query(sort: \TaskType.displayOrder) private var taskTypes: [TaskType]
 
     private var lineItems: [EstimateLineItem] {
         viewModel.lineItems(for: estimate.id)
+    }
+
+    private var parentItems: [EstimateLineItem] {
+        lineItems.filter { $0.parentLineItemId == nil }
+    }
+
+    private func childItems(for parentId: String) -> [EstimateLineItem] {
+        lineItems.filter { $0.parentLineItemId == parentId }
+    }
+
+    private func taskTypeColor(for taskTypeId: String?) -> Color? {
+        guard let id = taskTypeId else { return nil }
+        guard let tt = taskTypes.first(where: { $0.id == id && $0.deletedAt == nil }) else { return nil }
+        return Color(hex: tt.color)
     }
 
     var body: some View {
@@ -155,10 +172,27 @@ struct EstimateDetailView: View {
 
     private var lineItemsSection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text("LINE ITEMS")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
+            HStack {
+                Text("LINE ITEMS")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Spacer()
+                if lineItems.contains(where: { $0.parentLineItemId != nil }) {
+                    Button {
+                        withAnimation(OPSStyle.Animation.spring) { showBreakdown.toggle() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(showBreakdown ? "BUNDLED" : "BREAKDOWN")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            Image(systemName: showBreakdown ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
+                                .font(.system(size: 12))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
 
             if lineItems.isEmpty {
                 Text("No line items")
@@ -168,9 +202,17 @@ struct EstimateDetailView: View {
                     .padding(.vertical, OPSStyle.Layout.spacing4)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(lineItems) { item in
-                        lineItemRow(item)
-                        if item.id != lineItems.last?.id {
+                    ForEach(Array(parentItems.enumerated()), id: \.element.id) { index, item in
+                        parentLineItemRow(item)
+
+                        if showBreakdown {
+                            let children = childItems(for: item.id)
+                            ForEach(children) { child in
+                                childLineItemRow(child)
+                            }
+                        }
+
+                        if index < parentItems.count - 1 {
                             Divider().background(OPSStyle.Colors.cardBorder)
                         }
                     }
@@ -187,9 +229,12 @@ struct EstimateDetailView: View {
         .padding(.top, OPSStyle.Layout.spacing3)
     }
 
-    private func lineItemRow(_ item: EstimateLineItem) -> some View {
+    private func parentLineItemRow(_ item: EstimateLineItem) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
+                Circle()
+                    .fill(taskTypeColor(for: item.taskTypeId) ?? OPSStyle.Colors.tertiaryText.opacity(0.3))
+                    .frame(width: 10, height: 10)
                 Text(item.name)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -203,9 +248,12 @@ struct EstimateDetailView: View {
                 Text(item.type.rawValue.uppercased())
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Text("[\(formatQuantity(item.quantity))\(item.unit ?? "") · \(item.unitPrice, format: .currency(code: "USD"))/\(item.unit ?? "ea")]")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                let children = childItems(for: item.id)
+                if !children.isEmpty {
+                    Text("[\(children.count) items]")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
                 if item.optional {
                     Text("[OPTIONAL]")
                         .font(OPSStyle.Typography.smallCaption)
@@ -215,6 +263,31 @@ struct EstimateDetailView: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)
+    }
+
+    private func childLineItemRow(_ item: EstimateLineItem) -> some View {
+        HStack {
+            Rectangle()
+                .fill(taskTypeColor(for: item.taskTypeId) ?? OPSStyle.Colors.tertiaryText.opacity(0.2))
+                .frame(width: 2)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.name)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineLimit(1)
+                Text("\(formatQuantity(item.quantity)) \(item.unit ?? "") · \(item.unitPrice, format: .currency(code: "USD"))")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            Spacer()
+            Text(item.lineTotal, format: .currency(code: "USD").precision(.fractionLength(0)))
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+        }
+        .padding(.leading, OPSStyle.Layout.spacing3 + 14)
+        .padding(.trailing, OPSStyle.Layout.spacing3)
+        .padding(.vertical, 4)
+        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.3))
     }
 
     private func formatQuantity(_ qty: Double) -> String {

@@ -131,7 +131,8 @@ struct ProductPickerSheet: View {
                 quantity: 1,
                 unitPrice: product.defaultPrice,
                 isOptional: false,
-                productId: product.id
+                productId: product.id,
+                taskTypeId: product.taskTypeId
             )
             if viewModel.error == nil { dismiss() }
         }

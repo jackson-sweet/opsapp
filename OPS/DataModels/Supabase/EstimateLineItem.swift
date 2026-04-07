@@ -25,6 +25,7 @@ class EstimateLineItem: Identifiable {
     var lineTotal: Double
     var displayOrder: Int
     var taskTypeId: String?
+    var parentLineItemId: String?
     var createdAt: Date
 
     init(

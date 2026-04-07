@@ -8,6 +8,7 @@ struct DeckBuilderView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isSaving = false
     @State private var showingTemplatePicker = false
+    @State private var showingTemplateReplaceConfirm = false
     @State private var showingSketchCapture = false
     @State private var showingARPerimeter = false
     @State private var hideVerifiedBanner = false
@@ -15,7 +16,9 @@ struct DeckBuilderView: View {
     @StateObject private var scene3DController = Scene3DController()
     @State private var showing3DScreenshotShare = false
     @State private var screenshotImage: UIImage?
+    @State private var editingTitleText: String = ""
     @StateObject private var estimateVM = EstimateViewModel()
+    @Query(sort: \TaskType.displayOrder) private var taskTypes: [TaskType]
 
     let projectId: String?
     let companyId: String
@@ -91,15 +94,26 @@ struct DeckBuilderView: View {
                             )
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
+
+                        // Material assignment confirmation toast
+                        if viewModel.showAssignmentToast {
+                            laserToast(
+                                icon: "checkmark.circle.fill",
+                                text: viewModel.assignmentToastText,
+                                color: OPSStyle.Colors.primaryAccent
+                            )
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
                     }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
                     .animation(.easeInOut(duration: 0.25), value: viewModel.showMeasurementToast)
                     .animation(.easeInOut(duration: 0.25), value: viewModel.showLaserErrorToast)
                     .animation(.easeInOut(duration: 0.25), value: viewModel.showDisconnectToast)
+                    .animation(.easeInOut(duration: 0.25), value: viewModel.showAssignmentToast)
                     } // end canvas ZStack (bottomTrailing)
 
-                    // Floating title bar — glass pill over the canvas
+                    // Floating title bar — compact header over the canvas
                     VStack(spacing: 0) {
                         titleBar
                             .background(.ultraThinMaterial)
@@ -112,6 +126,15 @@ struct DeckBuilderView: View {
                             LevelTabBar(viewModel: viewModel)
                         }
 
+                        Spacer()
+                    }
+                    .allowsHitTesting(true)
+
+                    // Floating title — left-aligned, below header, gradient bg
+                    VStack {
+                        floatingTitlePill
+                            .padding(.top, 56) // below header bar
+                            .padding(.leading, 16)
                         Spacer()
                     }
                     .allowsHitTesting(true)
@@ -133,6 +156,9 @@ struct DeckBuilderView: View {
         }
         .sheet(isPresented: $viewModel.showingStairConfig) {
             StairConfigView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.showingMaterialPicker) {
+            MaterialPickerSheet(viewModel: viewModel)
         }
         .sheet(isPresented: $viewModel.showingLevelConnectionSheet) {
             LevelConnectionSheet(viewModel: viewModel)
@@ -215,6 +241,14 @@ struct DeckBuilderView: View {
             EstimatePreviewSheet(viewModel: viewModel)
         }
         // Duplicate estimate alert
+        .alert("Replace Current Drawing?", isPresented: $showingTemplateReplaceConfirm) {
+            Button("Replace", role: .destructive) {
+                showingTemplatePicker = true
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will replace your current drawing with a template.")
+        }
         .alert("Estimate Already Exists", isPresented: $viewModel.showingDuplicateAlert) {
             Button("Create New Version") {
                 Task { await viewModel.generateEstimate() }
@@ -268,6 +302,14 @@ struct DeckBuilderView: View {
                     EstimateDetailView(estimate: estimate, viewModel: estimateVM)
                 }
             }
+        }
+        .alert("Missing Scale", isPresented: .init(
+            get: { viewModel.estimateValidationError != nil },
+            set: { if !$0 { viewModel.estimateValidationError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.estimateValidationError ?? "")
         }
         // Estimate created toast — tappable to navigate
         .overlay(alignment: .bottom) {
@@ -326,13 +368,106 @@ struct DeckBuilderView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: viewModel.saveError)
+        // Undo-affects-all-levels toast
+        .overlay(alignment: .top) {
+            if viewModel.showUndoLevelToast {
+                Text("Undo affects all levels.")
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(OPSStyle.Colors.cardBackground)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                    .padding(.top, 100)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                            withAnimation { viewModel.showUndoLevelToast = false }
+                        }
+                    }
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: viewModel.showUndoLevelToast)
+        .alert("Clear this design?", isPresented: $viewModel.showingClearConfirm) {
+            Button("Clear", role: .destructive) {
+                viewModel.clearDesign()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This cannot be undone.")
+        }
         .statusBarHidden(true)
         .onAppear {
             // Defense-in-depth: prevent deep-link or programmatic access bypassing UI gate
             if !PermissionStore.shared.isFeatureEnabled("deck_builder") {
                 dismiss()
             }
+            viewModel.taskTypes = taskTypes.filter { $0.deletedAt == nil }
         }
+        .onChange(of: taskTypes.count) { _, _ in
+            viewModel.taskTypes = taskTypes.filter { $0.deletedAt == nil }
+        }
+    }
+
+    // MARK: - Floating Title
+
+    @ViewBuilder
+    private var floatingTitlePill: some View {
+        HStack {
+            if viewModel.isEditingTitle {
+                HStack(spacing: 8) {
+                    TextField("Design name", text: $editingTitleText)
+                        .font(OPSStyle.Typography.bodyEmphasis)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .textFieldStyle(.plain)
+                        .submitLabel(.done)
+                        .onSubmit { commitTitleEdit() }
+
+                    Button {
+                        commitTitleEdit()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    LinearGradient(
+                        colors: [OPSStyle.Colors.background, OPSStyle.Colors.background.opacity(0)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+            } else {
+                Button {
+                    editingTitleText = viewModel.deckDesign.title
+                    viewModel.isEditingTitle = true
+                } label: {
+                    Text(viewModel.deckDesign.title)
+                        .font(OPSStyle.Typography.bodyEmphasis)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            LinearGradient(
+                                colors: [OPSStyle.Colors.background, OPSStyle.Colors.background.opacity(0)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                }
+            }
+            Spacer()
+        }
+    }
+
+    private func commitTitleEdit() {
+        viewModel.renameDesign(to: editingTitleText)
+        viewModel.isEditingTitle = false
     }
 
     // MARK: - Title Bar
@@ -361,17 +496,14 @@ struct DeckBuilderView: View {
             }
             .disabled(isSaving)
 
-            // Title + save status — takes all available space
-            VStack(alignment: .leading, spacing: 1) {
-                Text(viewModel.deckDesign.title)
-                    .font(OPSStyle.Typography.bodyEmphasis)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-
-                Text(viewModel.deckDesign.needsSync ? "Unsaved changes" : "Saved")
+            // Save status — tracks local persistence, not remote sync
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(viewModel.isLocallySaved ? OPSStyle.Colors.successStatus : OPSStyle.Colors.warningStatus)
+                    .frame(width: 6, height: 6)
+                Text(viewModel.isLocallySaved ? "Saved" : "Saving…")
                     .font(OPSStyle.Typography.microLabel)
-                    .foregroundColor(viewModel.deckDesign.needsSync ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.secondaryText)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -427,7 +559,13 @@ struct DeckBuilderView: View {
             } else if PermissionStore.shared.can("deck_builder.edit") {
                 // Import menu — edit permission required
                 Menu {
-                    Button { showingTemplatePicker = true } label: {
+                    Button {
+                        if viewModel.drawingData.allVertices.count > 0 {
+                            showingTemplateReplaceConfirm = true
+                        } else {
+                            showingTemplatePicker = true
+                        }
+                    } label: {
                         Label("From Template", systemImage: "square.grid.2x2")
                     }
                     Button { showingSketchCapture = true } label: {

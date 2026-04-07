@@ -21,6 +21,7 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var drawingMode: DrawingMode = .idle
     @Published var activeTool: DrawingTool = .draw
     @Published var selection: SelectionState = SelectionState()
+    @Published var alignmentGuides: [AlignmentGuide] = []
 
     // MARK: - UI State
 
@@ -29,6 +30,10 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var showingElevationInput: Bool = false
     @Published var showingStairConfig: Bool = false
     @Published var showingAssignmentWheel: Bool = false
+    @Published var showingMaterialPicker: Bool = false
+    var taskTypes: [TaskType] = []
+    @Published var showingClearConfirm: Bool = false
+    @Published var isEditingTitle: Bool = false
     @Published var editingEdgeId: String?
     @Published var editingVertexId: String?
 
@@ -71,10 +76,17 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Error State
 
     @Published var saveError: String?
+    @Published var isLocallySaved: Bool = true
+    @Published var estimateValidationError: String?
+    @Published var showUndoLevelToast: Bool = false
+    private var hasShownUndoLevelToast: Bool = false
 
     // MARK: - Assignment Wheel
 
     @Published var activeAssignment: AssignedItem?
+    @Published var showAssignmentToast: Bool = false
+    @Published var assignmentToastText: String = ""
+    private var assignmentToastTimer: Timer?
 
     // MARK: - Laser Meter
 
@@ -264,6 +276,13 @@ class DeckBuilderViewModel: ObservableObject {
 
     func undo() {
         guard let snapshot = undoStack.popLast() else { return }
+
+        // First undo in multi-level mode: show a one-time toast
+        if isMultiLevel && !hasShownUndoLevelToast {
+            hasShownUndoLevelToast = true
+            showUndoLevelToast = true
+        }
+
         redoStack.append(DrawingSnapshot(drawingData: drawingData, description: "redo"))
         drawingData = snapshot.drawingData
         hapticLight()
@@ -331,6 +350,7 @@ class DeckBuilderViewModel: ObservableObject {
     func switchToLevel(_ index: Int) {
         guard index < drawingData.levels.count else { return }
         drawingMode = .idle // Cancel any in-progress drawing to prevent cross-level edges
+        showingPropertySheet = false
         activeLevelIndex = index
         selection.clear()
         editingEdgeId = nil
@@ -403,13 +423,16 @@ class DeckBuilderViewModel: ObservableObject {
             snappedPosition = SnapEngine.snapToGrid(position, gridSpacing: lengthSnapInCanvasPoints())
         }
 
+        // Snapshot BEFORE any mutations — one undo undoes the entire draw
+        // (start vertex + end vertex + edge all revert together)
+        pushUndo("draw line")
+
         let vertexId: String
         if let existing = existingVertexId {
             vertexId = existing
         } else {
             let vertex = DeckVertex(position: snappedPosition)
             vertexId = vertex.id
-            pushUndo("begin line")
             activeVertices.append(vertex)
         }
 
@@ -420,7 +443,8 @@ class DeckBuilderViewModel: ObservableObject {
         guard case .drawing(let fromId, _) = drawingMode else { return }
         guard let startVertex = activeVertex(byId: fromId) else { return }
 
-        let snapped = SnapEngine.snapEndpoint(
+        // First apply angle/length snapping
+        var snapped = SnapEngine.snapEndpoint(
             from: startVertex.position,
             rawEnd: rawEnd,
             angleIncrement: drawingData.config.angleSnapIncrement,
@@ -428,6 +452,23 @@ class DeckBuilderViewModel: ObservableObject {
             snappingEnabled: drawingData.config.snappingEnabled
         )
 
+        // Then detect alignment guides (axis-aligned, parallel, perpendicular)
+        let alignment = SnapEngine.detectAlignmentGuides(
+            from: startVertex.position,
+            currentEnd: snapped,
+            vertices: activeVertices,
+            edges: activeEdges,
+            vertexLookup: { self.activeVertex(byId: $0) },
+            threshold: 8.0,
+            excludeVertexIds: [fromId]
+        )
+
+        // Apply axis alignment snap (overrides angle/length snap for X or Y)
+        if alignment.guides.contains(where: { $0.type == .vertical || $0.type == .horizontal }) {
+            snapped = alignment.snappedPoint
+        }
+
+        alignmentGuides = alignment.guides
         drawingMode = .drawing(fromVertexId: fromId, currentEnd: snapped)
     }
 
@@ -438,6 +479,10 @@ class DeckBuilderViewModel: ObservableObject {
             drawingMode = .idle
             return
         }
+
+        // No pushUndo here — snapshot was taken in beginLine() so one undo
+        // reverts start vertex + end vertex + edge atomically
+
         let snapped = SnapEngine.snapEndpoint(
             from: startVertex.position,
             rawEnd: rawEnd,
@@ -466,13 +511,26 @@ class DeckBuilderViewModel: ObservableObject {
         // Create the edge
         var edge = DeckEdge(startVertexId: fromId, endVertexId: endVertexId)
 
+        // Calculate and store the real-world dimension on the edge
+        let endPosition = activeVertex(byId: endVertexId)?.position ?? snapped
+        let canvasDistance = SnapEngine.distance(startVertex.position, endPosition)
+        if canvasDistance > 0 {
+            if let scale = drawingData.scaleFactor, scale > 0 {
+                edge.dimension = canvasDistance / scale  // inches
+            } else {
+                // No scale factor — store canvas-point length so dimension label renders;
+                // recalculated when scale is set via autoFillDimensionsFromScale()
+                edge.dimension = canvasDistance
+            }
+            edge.dimensionSource = .scale  // always .scale when auto-calculated from drawing
+        }
+
         // Apply active assignment if set
         if let assignment = activeAssignment,
            assignment.unitType == .linearFoot || assignment.unitType == .linearMeter {
             edge.assignedItems.append(assignment)
         }
 
-        pushUndo("draw line")
         activeEdges.append(edge)
 
         // Check if we closed the polygon
@@ -483,6 +541,7 @@ class DeckBuilderViewModel: ObservableObject {
             hapticMedium() // line committed
         }
 
+        alignmentGuides = []
         drawingMode = .idle
         save()
     }
@@ -630,8 +689,59 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     func endVertexDrag() {
+        if case .draggingVertex(let vertexId) = drawingMode {
+            // Check if dragged vertex overlaps another vertex (merge to close polygon)
+            if let draggedVertex = activeVertex(byId: vertexId),
+               let mergeTargetId = SnapEngine.findSnapTarget(
+                   point: draggedVertex.position,
+                   vertices: activeVertices,
+                   snapRadius: drawingData.config.endpointSnapRadius,
+                   excludeVertexIds: [vertexId]
+               ) {
+                // Merge: reroute all edges from dragged vertex to the target
+                for i in activeEdges.indices {
+                    if activeEdges[i].startVertexId == vertexId {
+                        activeEdges[i].startVertexId = mergeTargetId
+                    }
+                    if activeEdges[i].endVertexId == vertexId {
+                        activeEdges[i].endVertexId = mergeTargetId
+                    }
+                }
+                // Remove the dragged vertex (it's now merged into the target)
+                activeVertices.removeAll { $0.id == vertexId }
+
+                // Recalculate dimensions on edges now connected to the merge target
+                recalculateEdgeDimensions(connectedTo: mergeTargetId)
+
+                // Check if we closed the polygon
+                if activeIsClosed {
+                    activeFootprint.isClosed = true
+                    hapticSuccess()
+                }
+            } else {
+                recalculateEdgeDimensions(connectedTo: vertexId)
+            }
+        }
         drawingMode = .idle
         save()
+    }
+
+    /// Recalculate dimension values for edges connected to a vertex (after drag/move)
+    private func recalculateEdgeDimensions(connectedTo vertexId: String) {
+        for i in activeEdges.indices {
+            let edge = activeEdges[i]
+            guard edge.startVertexId == vertexId || edge.endVertexId == vertexId else { continue }
+            // Only recalculate scale-derived dimensions; manual/laser/AR dimensions are user-set
+            guard edge.dimensionSource == .scale else { continue }
+            guard let start = activeVertex(byId: edge.startVertexId),
+                  let end = activeVertex(byId: edge.endVertexId) else { continue }
+            let canvasDistance = SnapEngine.distance(start.position, end.position)
+            if let scale = drawingData.scaleFactor, scale > 0 {
+                activeEdges[i].dimension = canvasDistance / scale
+            } else {
+                activeEdges[i].dimension = canvasDistance
+            }
+        }
     }
 
     // MARK: - Dimension Entry
@@ -704,6 +814,12 @@ class DeckBuilderViewModel: ObservableObject {
         save()
     }
 
+    func clearOverallElevation() {
+        pushUndo("clear overall elevation")
+        drawingData.overallElevation = nil
+        save()
+    }
+
     // MARK: - Footprint Properties
 
     func assignItemToFootprint(_ item: AssignedItem) {
@@ -711,6 +827,8 @@ class DeckBuilderViewModel: ObservableObject {
         var fp = activeFootprint
         fp.assignedItems.append(item)
         activeFootprint = fp
+        hapticLight()
+        showAssignmentConfirmation("Surface: \(item.name)")
         save()
     }
 
@@ -729,12 +847,15 @@ class DeckBuilderViewModel: ObservableObject {
         pushUndo("assign edge item")
         edge.assignedItems.append(item)
         activeUpdateEdge(edge)
+        hapticLight()
+        showAssignmentConfirmation("\(item.name) applied to 1 edge")
         save()
     }
 
     // MARK: - Batch Assignment (from wheel on selection)
 
     func assignItemToSelectedEdges(_ item: AssignedItem) {
+        let count = selection.selectedEdgeIds.count
         pushUndo("batch assign")
         for edgeId in selection.selectedEdgeIds {
             guard var edge = activeEdge(byId: edgeId) else { continue }
@@ -743,7 +864,22 @@ class DeckBuilderViewModel: ObservableObject {
             edge.assignedItems.append(item)
             activeUpdateEdge(edge)
         }
+        hapticLight()
+        showAssignmentConfirmation("\(item.name) applied to \(count) edge\(count == 1 ? "" : "s")")
         save()
+    }
+
+    // MARK: - Assignment Toast
+
+    private func showAssignmentConfirmation(_ text: String) {
+        assignmentToastTimer?.invalidate()
+        assignmentToastText = text
+        showAssignmentToast = true
+        assignmentToastTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.showAssignmentToast = false
+            }
+        }
     }
 
     // MARK: - Auto-Fill Scale
@@ -799,13 +935,32 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Persistence
 
     func save() {
+        isLocallySaved = false
         deckDesign.drawingData = drawingData  // triggers needsSync via setter
         do {
             try modelContext?.save()
+            isLocallySaved = true
         } catch {
             print("[DeckBuilder] Save failed: \(error)")
             saveError = "Save failed — check storage"
         }
+    }
+
+    func renameDesign(to newTitle: String) {
+        let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        deckDesign.title = trimmed
+        save()
+    }
+
+    func clearDesign() {
+        pushUndo("clear design")
+        drawingData = DeckDrawingData()
+        selection.clear()
+        editingEdgeId = nil
+        editingVertexId = nil
+        save()
+        hapticMedium()
     }
 
     // MARK: - Render + Save Thumbnail
@@ -1012,6 +1167,27 @@ class DeckBuilderViewModel: ObservableObject {
 
     func generateEstimate() async {
         guard !isGeneratingEstimate else { return }
+
+        // Validate scale factor exists before generating
+        guard drawingData.scaleFactor != nil else {
+            estimateValidationError = "Set at least one dimension to establish scale before generating an estimate."
+            return
+        }
+
+        // Check if stairs need elevation but it's missing
+        let hasStairs = drawingData.allEdges.contains { $0.stairConfig != nil }
+        if hasStairs && drawingData.overallElevation == nil {
+            estimateValidationError = "Set deck height — stair calculations require elevation."
+            return
+        }
+
+        // Warn on self-intersecting polygon
+        let positions = drawingData.allVertices.map { $0.position }
+        if PolygonMath.isSelfIntersecting(vertices: positions) {
+            estimateValidationError = "Deck outline appears to cross itself — adjust vertices before generating estimate."
+            return
+        }
+
         isGeneratingEstimate = true
         defer { isGeneratingEstimate = false }
 
@@ -1043,23 +1219,50 @@ class DeckBuilderViewModel: ObservableObject {
         do {
             let created = try await repo.create(dto)
 
-            // Add each line item
-            for item in lineItems {
-                let lineDTO = CreateLineItemDTO(
+            // Group line items by task type and create parent-child structure
+            let groups = EstimateGeneratorService.groupByTaskType(lineItems, taskTypes: taskTypes)
+            var sortOrder = 0
+
+            for group in groups {
+                // Create parent line item (bundled scope of work)
+                let parentDTO = CreateLineItemDTO(
                     estimateId: created.id,
-                    productId: item.productId,
-                    name: item.name,
-                    description: item.description ?? item.name,
-                    quantity: item.quantity,
-                    unitPrice: item.unitPrice,
-                    unit: item.unit,
-                    sortOrder: item.sortOrder,
-                    isOptional: item.isOptional,
-                    taskTypeId: nil,
-                    type: item.type.rawValue,
-                    category: item.category
+                    productId: nil,
+                    name: group.taskTypeName,
+                    description: group.taskTypeName,
+                    quantity: 1,
+                    unitPrice: group.parentTotal,
+                    unit: nil,
+                    sortOrder: sortOrder,
+                    isOptional: false,
+                    taskTypeId: group.taskTypeId,
+                    type: group.taskTypeId != nil ? LineItemType.labor.rawValue : LineItemType.other.rawValue,
+                    category: nil,
+                    parentLineItemId: nil
                 )
-                _ = try await repo.addLineItem(lineDTO)
+                let parentItem = try await repo.addLineItem(parentDTO)
+                sortOrder += 1
+
+                // Create child line items (material breakdown)
+                for child in group.children {
+                    let childDTO = CreateLineItemDTO(
+                        estimateId: created.id,
+                        productId: child.productId,
+                        name: child.name,
+                        description: child.description ?? child.name,
+                        quantity: child.quantity,
+                        unitPrice: child.unitPrice,
+                        unit: child.unit,
+                        sortOrder: sortOrder,
+                        isOptional: child.isOptional,
+                        taskTypeId: group.taskTypeId,
+                        type: LineItemType.material.rawValue,
+                        category: child.category,
+                        parentLineItemId: parentItem.id
+                    )
+                    _ = try await repo.addLineItem(childDTO)
+                    sortOrder += 1
+                }
             }
 
             // Store for navigation
@@ -1157,10 +1360,12 @@ class DeckBuilderViewModel: ObservableObject {
 
     private func lengthSnapInCanvasPoints() -> Double {
         guard let scale = drawingData.scaleFactor, scale > 0 else {
-            // No scale set yet — snap in raw canvas points (approximate)
-            return drawingData.config.lengthSnapIncrement
+            // No scale set yet — snap to visible grid (20pt matches DeckCanvasView.gridSpacing fallback)
+            return 20.0
         }
-        return SnapEngine.inchesToCanvasPoints(drawingData.config.lengthSnapIncrement, scaleFactor: scale)
+        let spacing = SnapEngine.inchesToCanvasPoints(drawingData.config.lengthSnapIncrement, scaleFactor: scale)
+        // Clamp to match DeckCanvasView gridSpacing bounds (too-dense snaps are unusable)
+        return max(8, min(80, spacing))
     }
 
     // MARK: - Haptics

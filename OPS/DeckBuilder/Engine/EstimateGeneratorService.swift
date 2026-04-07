@@ -13,9 +13,19 @@ struct EstimateGeneratorService {
         let unit: String           // "linear ft", "sq ft", "each", "set"
         let unitPrice: Double
         let productId: String?
+        let taskTypeId: String?    // task type from the assigned product
         let category: String       // "Surface", "Railing", "Stairs", "Substructure", "Other"
         let sortOrder: Int
         let isOptional: Bool
+        var warning: String?       // validation warning (e.g., missing elevation)
+    }
+
+    /// Grouped line items by task type for parent-child estimate creation
+    struct GeneratedEstimateGroup {
+        let taskTypeId: String?
+        let taskTypeName: String
+        let children: [GeneratedLineItem]
+        var parentTotal: Double
     }
 
     /// Generate all line items from a deck drawing
@@ -74,7 +84,7 @@ struct EstimateGeneratorService {
                 name: "\(prefix) \u{2014} Stair Treads",
                 description: "\(treadCount) treads, \(DimensionEngine.formatImperial(config.runPerTread)) run each",
                 type: .material, quantity: Double(treadCount), unit: "each",
-                unitPrice: 0, productId: nil, category: "Connecting Stairs",
+                unitPrice: 0, productId: nil, taskTypeId: nil, category: "Connecting Stairs",
                 sortOrder: sortOrder, isOptional: false
             ))
             sortOrder += 1
@@ -83,7 +93,7 @@ struct EstimateGeneratorService {
                 name: "\(prefix) \u{2014} Stringers",
                 description: "\(DimensionEngine.formatImperial(stringerLength)) stringer length",
                 type: .material, quantity: Double(stringerCount), unit: "each",
-                unitPrice: 0, productId: nil, category: "Connecting Stairs",
+                unitPrice: 0, productId: nil, taskTypeId: nil, category: "Connecting Stairs",
                 sortOrder: sortOrder, isOptional: false
             ))
             sortOrder += 1
@@ -94,7 +104,7 @@ struct EstimateGeneratorService {
                     name: "\(prefix) \u{2014} \(stairRailing.railingType.displayName) Railing",
                     description: "Both sides", type: .material,
                     quantity: round(railingLenFt * 100) / 100, unit: "linear ft",
-                    unitPrice: 0, productId: nil, category: "Connecting Stairs",
+                    unitPrice: 0, productId: nil, taskTypeId: nil, category: "Connecting Stairs",
                     sortOrder: sortOrder, isOptional: false
                 ))
                 sortOrder += 1
@@ -104,7 +114,7 @@ struct EstimateGeneratorService {
                     name: "\(prefix) \u{2014} Stair Railing Posts",
                     description: nil, type: .material,
                     quantity: Double(postCount), unit: "each",
-                    unitPrice: 0, productId: nil, category: "Connecting Stairs",
+                    unitPrice: 0, productId: nil, taskTypeId: nil, category: "Connecting Stairs",
                     sortOrder: sortOrder, isOptional: false
                 ))
                 sortOrder += 1
@@ -146,6 +156,7 @@ struct EstimateGeneratorService {
                 unit: "sq ft",
                 unitPrice: item.unitPrice ?? 0,
                 productId: item.productId,
+                taskTypeId: item.taskTypeId,
                 category: "Surface",
                 sortOrder: sortOrder,
                 isOptional: false
@@ -169,6 +180,7 @@ struct EstimateGeneratorService {
                 unit: "each",
                 unitPrice: 0,
                 productId: nil,
+                taskTypeId: nil,
                 category: "Substructure",
                 sortOrder: sortOrder,
                 isOptional: false
@@ -196,6 +208,7 @@ struct EstimateGeneratorService {
                 unit: "linear ft",
                 unitPrice: 0,
                 productId: nil,
+                taskTypeId: nil,
                 category: "Railing",
                 sortOrder: sortOrder,
                 isOptional: false
@@ -211,6 +224,7 @@ struct EstimateGeneratorService {
                 unit: "each",
                 unitPrice: 0,
                 productId: nil,
+                taskTypeId: nil,
                 category: "Railing",
                 sortOrder: sortOrder,
                 isOptional: false
@@ -226,6 +240,7 @@ struct EstimateGeneratorService {
                     unit: item.unitType == .linearFoot ? "linear ft" : "each",
                     unitPrice: item.unitPrice ?? 0,
                     productId: item.productId,
+                    taskTypeId: item.taskTypeId,
                     category: "Railing",
                     sortOrder: sortOrder,
                     isOptional: false
@@ -238,7 +253,20 @@ struct EstimateGeneratorService {
         for edge in edges {
             guard let stairConfig = edge.stairConfig else { continue }
 
-            let totalRise = calculateTotalRise(edge: edge, drawingData: drawingData)
+            guard let totalRise = calculateTotalRise(edge: edge, drawingData: drawingData) else {
+                // Missing elevation — add a warning line item instead of guessing
+                var warning = GeneratedLineItem(
+                    name: "\(prefix)Stairs (missing elevation)",
+                    description: "Set deck height to calculate stair dimensions",
+                    type: .material, quantity: 0, unit: "each",
+                    unitPrice: 0, productId: nil, taskTypeId: nil, category: "Stairs",
+                    sortOrder: sortOrder, isOptional: false
+                )
+                warning.warning = "Set deck height — stair calculations require elevation."
+                items.append(warning)
+                sortOrder += 1
+                continue
+            }
 
             let treadCount: Int
             if let override = stairConfig.treadCount, override > 0 {
@@ -254,7 +282,7 @@ struct EstimateGeneratorService {
                 name: "\(prefix)Stair Treads",
                 description: "\(treadCount) treads, \(DimensionEngine.formatImperial(stairConfig.runPerTread)) run each",
                 type: .material, quantity: Double(treadCount), unit: "each",
-                unitPrice: 0, productId: nil, category: "Stairs",
+                unitPrice: 0, productId: nil, taskTypeId: nil, category: "Stairs",
                 sortOrder: sortOrder, isOptional: false
             ))
             sortOrder += 1
@@ -263,7 +291,7 @@ struct EstimateGeneratorService {
                 name: "\(prefix)Stair Stringers",
                 description: "\(DimensionEngine.formatImperial(stringerLength)) stringer length",
                 type: .material, quantity: Double(stringerCount), unit: "each",
-                unitPrice: 0, productId: nil, category: "Stairs",
+                unitPrice: 0, productId: nil, taskTypeId: nil, category: "Stairs",
                 sortOrder: sortOrder, isOptional: false
             ))
             sortOrder += 1
@@ -274,7 +302,7 @@ struct EstimateGeneratorService {
                     name: "\(prefix)Stair \(stairRailing.railingType.displayName) Railing",
                     description: "Both sides of stairs",
                     type: .material, quantity: round(stairRailingLengthFt * 100) / 100, unit: "linear ft",
-                    unitPrice: 0, productId: nil, category: "Stairs",
+                    unitPrice: 0, productId: nil, taskTypeId: nil, category: "Stairs",
                     sortOrder: sortOrder, isOptional: false
                 ))
                 sortOrder += 1
@@ -283,7 +311,7 @@ struct EstimateGeneratorService {
                 items.append(GeneratedLineItem(
                     name: "\(prefix)Stair Railing Posts",
                     description: nil, type: .material, quantity: Double(stairPostCount), unit: "each",
-                    unitPrice: 0, productId: nil, category: "Stairs",
+                    unitPrice: 0, productId: nil, taskTypeId: nil, category: "Stairs",
                     sortOrder: sortOrder, isOptional: false
                 ))
                 sortOrder += 1
@@ -300,7 +328,9 @@ struct EstimateGeneratorService {
                 items.append(GeneratedLineItem(
                     name: "\(prefix)\(item.name)",
                     description: "Stairs", type: .material, quantity: qty, unit: unitStr,
-                    unitPrice: item.unitPrice ?? 0, productId: item.productId, category: "Stairs",
+                    unitPrice: item.unitPrice ?? 0, productId: item.productId,
+                    taskTypeId: item.taskTypeId,
+                    category: "Stairs",
                     sortOrder: sortOrder, isOptional: false
                 ))
                 sortOrder += 1
@@ -324,7 +354,9 @@ struct EstimateGeneratorService {
                     name: "\(prefix)\(item.name)",
                     description: edgeDescription(edge, drawingData: drawingData),
                     type: .material, quantity: quantity, unit: unit,
-                    unitPrice: item.unitPrice ?? 0, productId: item.productId, category: "Other",
+                    unitPrice: item.unitPrice ?? 0, productId: item.productId,
+                    taskTypeId: item.taskTypeId,
+                    category: "Other",
                     sortOrder: sortOrder, isOptional: false
                 ))
                 sortOrder += 1
@@ -332,6 +364,35 @@ struct EstimateGeneratorService {
         }
 
         return (items, sortOrder)
+    }
+
+    /// Group flat line items by taskTypeId into parent-child bundles
+    static func groupByTaskType(
+        _ items: [GeneratedLineItem],
+        taskTypes: [TaskType]
+    ) -> [GeneratedEstimateGroup] {
+        let grouped = Dictionary(grouping: items, by: { $0.taskTypeId ?? "__misc__" })
+        var groups: [GeneratedEstimateGroup] = []
+
+        for (key, children) in grouped.sorted(by: { $0.key < $1.key }) {
+            let taskTypeId: String? = key == "__misc__" ? nil : key
+            let taskTypeName: String
+            if let id = taskTypeId,
+               let tt = taskTypes.first(where: { $0.id == id && $0.deletedAt == nil }) {
+                taskTypeName = tt.display
+            } else {
+                taskTypeName = "Misc"
+            }
+            let total = children.reduce(0.0) { $0 + ($1.quantity * $1.unitPrice) }
+            groups.append(GeneratedEstimateGroup(
+                taskTypeId: taskTypeId,
+                taskTypeName: taskTypeName,
+                children: children,
+                parentTotal: round(total * 100) / 100
+            ))
+        }
+
+        return groups
     }
 
     /// Generate a material summary text for sharing
@@ -433,17 +494,18 @@ struct EstimateGeneratorService {
         return counts
     }
 
-    /// Calculate total rise for stairs on an edge (in inches)
-    private static func calculateTotalRise(edge: DeckEdge, drawingData: DeckDrawingData) -> Double {
+    /// Calculate total rise for stairs on an edge (in inches). Returns nil if elevation is not set.
+    static func calculateTotalRise(edge: DeckEdge, drawingData: DeckDrawingData) -> Double? {
         // Get elevation from connected vertices (elevation is in feet)
         if let startVertex = drawingData.vertex(byId: edge.startVertexId),
            let endVertex = drawingData.vertex(byId: edge.endVertexId) {
-            let defaultElevation = drawingData.overallElevation ?? 2.5 // 2.5 feet default
-            let startElev = startVertex.elevation ?? defaultElevation
-            let endElev = endVertex.elevation ?? defaultElevation
+            guard let overallElev = drawingData.overallElevation else { return nil }
+            let startElev = startVertex.elevation ?? overallElev
+            let endElev = endVertex.elevation ?? overallElev
             return max(startElev, endElev) * 12.0 // feet to inches
         }
-        return (drawingData.overallElevation ?? 2.5) * 12.0
+        guard let overallElev = drawingData.overallElevation else { return nil }
+        return overallElev * 12.0
     }
 
     private static func edgeDescription(_ edge: DeckEdge, drawingData: DeckDrawingData) -> String? {

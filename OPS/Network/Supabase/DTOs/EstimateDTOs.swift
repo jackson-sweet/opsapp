@@ -94,6 +94,7 @@ struct EstimateLineItemDTO: Codable, Identifiable {
     let taskTypeId: String?
     let type: String?
     let category: String?
+    let parentLineItemId: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -110,6 +111,7 @@ struct EstimateLineItemDTO: Codable, Identifiable {
         case taskTypeId  = "task_type_id"
         case type
         case category
+        case parentLineItemId = "parent_line_item_id"
     }
 
     func toModel() -> EstimateLineItem {
@@ -128,6 +130,7 @@ struct EstimateLineItemDTO: Codable, Identifiable {
         item.optional = isOptional ?? false
         item.lineTotal = lineTotal ?? (quantity * unitPrice)
         item.taskTypeId = taskTypeId
+        item.parentLineItemId = parentLineItemId
         return item
     }
 }
@@ -172,6 +175,7 @@ struct CreateLineItemDTO: Codable {
     let taskTypeId: String?
     let type: String?
     let category: String?
+    let parentLineItemId: String?
 
     enum CodingKeys: String, CodingKey {
         case estimateId  = "estimate_id"
@@ -186,6 +190,7 @@ struct CreateLineItemDTO: Codable {
         case taskTypeId  = "task_type_id"
         case type
         case category
+        case parentLineItemId = "parent_line_item_id"
     }
 }
 
@@ -195,6 +200,7 @@ struct UpdateLineItemDTO: Codable {
     var unitPrice: Double?
     var sortOrder: Int?
     var isOptional: Bool?
+    var parentLineItemId: String?
 
     enum CodingKeys: String, CodingKey {
         case description
@@ -202,5 +208,6 @@ struct UpdateLineItemDTO: Codable {
         case unitPrice  = "unit_price"
         case sortOrder  = "sort_order"
         case isOptional = "is_optional"
+        case parentLineItemId = "parent_line_item_id"
     }
 }

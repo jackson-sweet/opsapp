@@ -20,6 +20,7 @@ class InvoiceLineItem: Identifiable {
     var unitPrice: Double
     var lineTotal: Double
     var displayOrder: Int
+    var parentLineItemId: String?
     var createdAt: Date
 
     init(

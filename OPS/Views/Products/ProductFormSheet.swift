@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct ProductFormSheet: View {
     var editing: Product? = nil
@@ -23,6 +24,8 @@ struct ProductFormSheet: View {
     @State private var taxable = true
     @State private var isSaving = false
     @State private var error: String? = nil
+    @Query(sort: \TaskType.displayOrder) private var taskTypes: [TaskType]
+    @State private var selectedTaskTypeId: String? = nil
 
     private var isValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty &&
@@ -169,6 +172,64 @@ struct ProductFormSheet: View {
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
 
+                    // Task Type picker
+                    sectionHeader("TASK TYPE")
+                    VStack(spacing: 0) {
+                        Button {
+                            selectedTaskTypeId = nil
+                        } label: {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
+                                Circle()
+                                    .fill(OPSStyle.Colors.tertiaryText.opacity(0.3))
+                                    .frame(width: 12, height: 12)
+                                Text("None")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                Spacer()
+                                if selectedTaskTypeId == nil {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                }
+                            }
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        ForEach(taskTypes.filter { $0.deletedAt == nil }) { tt in
+                            Divider().background(OPSStyle.Colors.cardBorder)
+                            Button {
+                                selectedTaskTypeId = tt.id
+                            } label: {
+                                HStack(spacing: OPSStyle.Layout.spacing2) {
+                                    Circle()
+                                        .fill(Color(hex: tt.color) ?? OPSStyle.Colors.tertiaryText)
+                                        .frame(width: 12, height: 12)
+                                    Text(tt.display)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                    Spacer()
+                                    if selectedTaskTypeId == tt.id {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    }
+                                }
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+
                     // Save button
                     Button(editing != nil ? "SAVE CHANGES" : "ADD PRODUCT") { save() }
                         .opsPrimaryButtonStyle()
@@ -197,6 +258,7 @@ struct ProductFormSheet: View {
                     unitCost = prod.unitCost.map { String(format: "%.2f", $0) } ?? ""
                     unit = prod.unit ?? ""
                     taxable = prod.taxable
+                    selectedTaskTypeId = prod.taskTypeId
                 }
             }
             .alert("Error", isPresented: Binding(
@@ -242,7 +304,8 @@ struct ProductFormSheet: View {
                         costPrice: Double(unitCost),
                         unit: unit.isEmpty ? nil : unit,
                         type: type.rawValue,
-                        isTaxable: taxable
+                        isTaxable: taxable,
+                        taskTypeId: selectedTaskTypeId
                     )
                     _ = try await repo.update(prod.id, fields: dto)
                 } else {
@@ -254,7 +317,8 @@ struct ProductFormSheet: View {
                         costPrice: Double(unitCost),
                         unit: unit.isEmpty ? nil : unit,
                         type: type.rawValue,
-                        isTaxable: taxable
+                        isTaxable: taxable,
+                        taskTypeId: selectedTaskTypeId
                     )
                     _ = try await repo.create(dto)
                 }

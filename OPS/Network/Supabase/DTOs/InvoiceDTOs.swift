@@ -97,6 +97,7 @@ struct InvoiceLineItemDTO: Codable, Identifiable {
     let type: String?
     let lineTotal: Double?
     let sortOrder: Int?
+    let parentLineItemId: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -110,6 +111,7 @@ struct InvoiceLineItemDTO: Codable, Identifiable {
         case type
         case lineTotal  = "line_total"
         case sortOrder  = "sort_order"
+        case parentLineItemId = "parent_line_item_id"
     }
 
     func toModel() -> InvoiceLineItem {
@@ -127,6 +129,7 @@ struct InvoiceLineItemDTO: Codable, Identifiable {
         item.lineTotal = lineTotal ?? (qty * price)
         item.unit = unit
         item.itemDescription = description
+        item.parentLineItemId = parentLineItemId
         return item
     }
 }

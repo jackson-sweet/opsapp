@@ -119,11 +119,27 @@ enum RailingType: String, Codable, CaseIterable {
 
 // MARK: - Stairs
 
+enum StairAlignment: String, Codable, CaseIterable {
+    case left
+    case center
+    case right
+
+    var displayName: String {
+        switch self {
+        case .left:   return "Left"
+        case .center: return "Center"
+        case .right:  return "Right"
+        }
+    }
+}
+
 struct StairConfig: Codable, Equatable {
     var width: Double               // inches
     var risePerStep: Double = 7.5   // inches (IRC R311.7: max 7.75")
     var runPerTread: Double = 10.0  // inches (IRC R311.7: min 10")
     var treadCount: Int?            // auto-calculated or user override
+    var alignment: StairAlignment = .center  // position along edge when width < edge length
+    var offset: Double = 0          // inches from alignment side
     var railingConfig: RailingConfig?
     var assignedItems: [AssignedItem] = []
 
@@ -154,19 +170,25 @@ struct AssignedItem: Identifiable, Codable, Equatable {
     var name: String                // display name
     var unitType: UnitType          // determines what this item measures
     var unitPrice: Double?          // price per unit (optional — may come from product)
+    var taskTypeId: String?         // task type this material belongs to
+    var taskTypeColor: String?      // hex color cached from TaskType at assignment time
 
     init(
         id: String = UUID().uuidString,
         productId: String? = nil,
         name: String,
         unitType: UnitType,
-        unitPrice: Double? = nil
+        unitPrice: Double? = nil,
+        taskTypeId: String? = nil,
+        taskTypeColor: String? = nil
     ) {
         self.id = id
         self.productId = productId
         self.name = name
         self.unitType = unitType
         self.unitPrice = unitPrice
+        self.taskTypeId = taskTypeId
+        self.taskTypeColor = taskTypeColor
     }
 }
 

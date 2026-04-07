@@ -25,18 +25,7 @@ struct AssignmentWheelView: View {
             items.append(WheelSlot(name: "Add Stairs", icon: "stairs", action: .addStairs))
             items.append(WheelSlot(name: "Dimension", icon: "ruler", action: .dimension))
         } else if viewModel.selection.selectedFootprint {
-            items.append(WheelSlot(name: "Composite", icon: "square.grid.3x3", action: .assignItem(
-                AssignedItem(name: "Composite Decking", unitType: .squareFoot)
-            )))
-            items.append(WheelSlot(name: "Vinyl", icon: "square.grid.3x3.fill", action: .assignItem(
-                AssignedItem(name: "Vinyl Surfacing", unitType: .squareFoot)
-            )))
-            items.append(WheelSlot(name: "Wood", icon: "rectangle.split.3x1.fill", action: .assignItem(
-                AssignedItem(name: "Wood Decking", unitType: .squareFoot)
-            )))
-            items.append(WheelSlot(name: "Plywood", icon: "square.stack.fill", action: .assignItem(
-                AssignedItem(name: "Plywood", unitType: .squareFoot)
-            )))
+            items.append(WheelSlot(name: "Material", icon: "shippingbox", action: .openMaterialPicker))
         }
 
         return items
@@ -55,13 +44,13 @@ struct AssignmentWheelView: View {
                     let angle = slotAngle(index: index)
                     let isHighlighted = highlightedIndex == index
 
-                    VStack(spacing: 4) {
+                    VStack(spacing: 3) {
                         Image(systemName: slot.icon)
-                            .font(.system(size: isHighlighted ? 22 : 18, weight: .medium))
-                            .foregroundColor(isHighlighted ? OPSStyle.Colors.primaryAccent : .white)
+                            .font(.system(size: isHighlighted ? OPSStyle.Layout.IconSize.lg : OPSStyle.Layout.IconSize.md, weight: .medium))
+                            .foregroundColor(isHighlighted ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
 
                         Text(slot.name)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(OPSStyle.Typography.miniLabel)
                             .foregroundColor(isHighlighted ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
                     }
                     .frame(width: 60, height: 60)
@@ -95,12 +84,12 @@ struct AssignmentWheelView: View {
                 Group {
                     if let assignment = viewModel.activeAssignment {
                         Text(assignment.name.prefix(3).uppercased())
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.white)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                     } else {
-                        Image(systemName: isExpanded ? "xmark" : "circle.grid.2x2")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
+                        Image(systemName: isExpanded ? OPSStyle.Icons.xmark : "circle.grid.2x2")
+                            .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .bold))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                     }
                 }
             )
@@ -173,13 +162,17 @@ struct AssignmentWheelView: View {
     }
 
     private func executeAction(_ action: WheelAction) {
-        guard let edgeId = viewModel.selection.selectedEdgeIds.first else {
-            // Footprint actions
-            if case .assignItem(let item) = action, viewModel.selection.selectedFootprint {
-                viewModel.assignItemToFootprint(item)
-            }
+        // Footprint actions
+        if case .openMaterialPicker = action, viewModel.selection.selectedFootprint {
+            viewModel.showingMaterialPicker = true
             return
         }
+        if case .assignItem(let item) = action, viewModel.selection.selectedFootprint {
+            viewModel.assignItemToFootprint(item)
+            return
+        }
+
+        guard let edgeId = viewModel.selection.selectedEdgeIds.first else { return }
 
         switch action {
         case .edgeType(let type):
@@ -203,6 +196,8 @@ struct AssignmentWheelView: View {
             viewModel.showingDimensionInput = true
         case .assignItem(let item):
             viewModel.assignItemToSelectedEdges(item)
+        case .openMaterialPicker:
+            viewModel.showingMaterialPicker = true
         }
     }
 }
@@ -222,4 +217,5 @@ private enum WheelAction {
     case addStairs
     case dimension
     case assignItem(AssignedItem)
+    case openMaterialPicker
 }

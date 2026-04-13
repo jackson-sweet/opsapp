@@ -32,7 +32,11 @@ struct ProjectActionBar: View {
     @StateObject private var expenseViewModel = ExpenseViewModel()
     
     var body: some View {
-        OPSActionBar {
+        // horizontalPadding: 4 gives each button more allocated width, which
+        // pulls the first/last button icons closer to the card edge AND
+        // widens the visual gaps between icons. The default 16 clumps the
+        // icons toward the centre.
+        OPSActionBar(horizontalPadding: 4) {
             HStack(spacing: 0) {
                 ForEach(Array(ProjectAction.allCases.enumerated()), id: \.element) { index, action in
                     OPSActionBarButton(
@@ -54,7 +58,10 @@ struct ProjectActionBar: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 12)
+        // 16pt outer margin matches NavigationManeuverCard, ActiveProjectCard,
+        // and NavigationTripStrip so every floating card aligns to the same
+        // vertical gutter on both edges of the screen.
+        .padding(.horizontal, 16)
         .contentMargins(.bottom, 90)
         // Complete Project Confirmation
         .alert(isPresented: $showCompleteConfirmation) {

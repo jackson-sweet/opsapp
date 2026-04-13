@@ -24,10 +24,16 @@ import UIKit
 ///
 struct OPSActionBar<Content: View>: View {
     let showBackground: Bool
+    let horizontalPadding: CGFloat
     let content: Content
 
-    init(showBackground: Bool = true, @ViewBuilder content: () -> Content) {
+    init(
+        showBackground: Bool = true,
+        horizontalPadding: CGFloat = 16,
+        @ViewBuilder content: () -> Content
+    ) {
         self.showBackground = showBackground
+        self.horizontalPadding = horizontalPadding
         self.content = content()
     }
 
@@ -36,7 +42,7 @@ struct OPSActionBar<Content: View>: View {
     var body: some View {
         if showBackground {
             content
-                .padding(.horizontal, 16)
+                .padding(.horizontal, horizontalPadding)
                 .padding(.vertical, 10)
                 .background(
                     ZStack {
@@ -53,7 +59,7 @@ struct OPSActionBar<Content: View>: View {
                 )
         } else {
             content
-                .padding(.horizontal, 16)
+                .padding(.horizontal, horizontalPadding)
                 .padding(.vertical, 10)
         }
     }

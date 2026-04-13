@@ -32,12 +32,31 @@ final class OPSNavigationManager: ObservableObject {
     @Published var hasArrived: Bool = false
     @Published var isVoiceEnabled: Bool = true
 
+    /// All route steps with non-empty instructions. Published so the UI
+    /// can render an expanded turn-by-turn list.
+    @Published var routeSteps: [MKRoute.Step] = []
+    /// Index of the step the user is currently approaching. Published so
+    /// the UI updates as the driver progresses along the route.
+    @Published var currentStepIndex: Int = 0
+
+    /// Steps ahead of the driver (includes the current step), used to
+    /// drive the expanded turn-by-turn list. Empty when not navigating.
+    var upcomingSteps: [MKRoute.Step] {
+        guard currentStepIndex < routeSteps.count else { return [] }
+        return Array(routeSteps[currentStepIndex...])
+    }
+
+    /// Returns the SF Symbol name for a given route step's instruction.
+    /// Exposed so the expanded turn list can reuse the same icon mapping
+    /// the maneuver header uses for the current step.
+    func icon(for step: MKRoute.Step) -> String {
+        sfSymbolForInstruction(step.instructions)
+    }
+
     // ──────────────────────────────────────────────
     // MARK: - Private State
     // ──────────────────────────────────────────────
 
-    private var routeSteps: [MKRoute.Step] = []
-    private var currentStepIndex: Int = 0
     private var progressTimer: Timer?
     private var destination: CLLocationCoordinate2D?
     private weak var locationManager: LocationManager?

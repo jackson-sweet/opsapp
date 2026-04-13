@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import UIKit
 import CoreLocation
 
 struct OPSMapContainer: View {
@@ -26,11 +27,6 @@ struct OPSMapContainer: View {
     @ObservedObject var appState: AppState
     @ObservedObject var locationManager: LocationManager
 
-    /// Measured AppHeader height, piped in from HomeContentView via
-    /// HeaderHeightPreferenceKey. Drives clearance for the navigation
-    /// maneuver card so it never overlaps the header.
-    var headerHeight: CGFloat
-
     // ──────────────────────────────────────────────
     // MARK: - Internal State
     // ──────────────────────────────────────────────
@@ -46,6 +42,11 @@ struct OPSMapContainer: View {
     /// Drag offset for the stacked group sheet (dismiss gesture)
     @State private var stackedGroupDragOffset: CGFloat = 0
 
+    /// Whether the top NavigationManeuverCard is expanded to show the
+    /// full turn-by-turn list. Collapses automatically when navigation
+    /// stops or project mode ends.
+    @State private var isManeuverExpanded: Bool = false
+
     // ──────────────────────────────────────────────
     // MARK: - Init
     // ──────────────────────────────────────────────
@@ -58,8 +59,7 @@ struct OPSMapContainer: View {
         onNavigationStarted: @escaping (Project) -> Void,
         filterMode: Binding<MapFilterMode>,
         appState: AppState,
-        locationManager: LocationManager,
-        headerHeight: CGFloat
+        locationManager: LocationManager
     ) {
         self.projects = projects
         self.selectedIndex = selectedIndex
@@ -69,7 +69,6 @@ struct OPSMapContainer: View {
         self._filterMode = filterMode
         self.appState = appState
         self.locationManager = locationManager
-        self.headerHeight = headerHeight
 
         _coordinator = StateObject(
             wrappedValue: OPSMapCoordinator(locationManager: locationManager)
@@ -95,6 +94,84 @@ struct OPSMapContainer: View {
     /// The currently selected project, if any.
     private var selectedProject: Project? {
         coordinator.selectedProject
+    }
+
+    // ──────────────────────────────────────────────
+    // MARK: - Top project overlay
+    // ──────────────────────────────────────────────
+
+    /// The project to display in the top project overlay. Prefers the
+    /// coordinator's selected project; falls back to looking up the
+    /// active project id on AppState (covers the brief window where
+    /// project mode is entered from outside the map).
+    private var topOverlayProject: Project? {
+        if let selected = coordinator.selectedProject {
+            return selected
+        }
+        if let id = appState.activeProjectID {
+            return projects.first(where: { $0.id == id })
+        }
+        return nil
+    }
+
+    /// The top card shown in the project overlay. Crossfades between the
+    /// routing maneuver card and the static active project card.
+    @ViewBuilder
+    private var topProjectCard: some View {
+        if coordinator.isNavigating {
+            NavigationManeuverCard(
+                navigationManager: coordinator.navigationManager,
+                destinationName: topOverlayProject?.title,
+                isExpanded: $isManeuverExpanded
+            )
+            .transition(.opacity)
+        } else if let project = topOverlayProject {
+            ActiveProjectCard(project: project)
+                .transition(.opacity)
+        }
+    }
+
+    /// Exit pill shown below the top project overlay. Auto-sizing width,
+    /// 44pt tall (HIG touch target), inverted fill so it reads as the
+    /// primary action on the dark card stack above it.
+    private var exitProjectPill: some View {
+        Button(action: exitProjectMode) {
+            HStack(spacing: 8) {
+                Text("EXIT PROJECT")
+                    .font(OPSStyle.Typography.smallButton)
+                    .foregroundColor(OPSStyle.Colors.cardBackground)
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(OPSStyle.Colors.cardBackground)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 44)
+            .background(OPSStyle.Colors.primaryText)
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Exit project")
+    }
+
+    /// Teardown action for the EXIT pill. Stops routing (if active),
+    /// posts the legacy StopNavigation notification, exits project mode,
+    /// and collapses the maneuver list. Medium impact haptic fires at
+    /// the moment of commitment.
+    private func exitProjectMode() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        if InProgressManager.shared.isRouting {
+            InProgressManager.shared.stopRouting()
+        }
+        NotificationCenter.default.post(
+            name: Notification.Name("StopNavigation"),
+            object: nil
+        )
+
+        withAnimation(OPSStyle.Animation.standard) {
+            isManeuverExpanded = false
+            appState.exitProjectMode()
+        }
     }
 
     /// Today's tasks for the selected project.
@@ -383,35 +460,36 @@ struct OPSMapContainer: View {
                 .animation(OPSStyle.Animation.standard, value: coordinator.showingCrewTooltip)
             }
 
-            // 7. Navigation UI — split into maneuver card (top) + trip strip (bottom)
-            if coordinator.isNavigating {
-                // 7a. Maneuver card — positioned below AppHeader.
-                // Total clearance = safe area top inset + measured AppHeader HStack
-                // height + 8pt breathing room. AppHeader measures only its HStack
-                // (the gradient background `.ignoresSafeArea` does not participate
-                // in the preference key), so we add the safe area inset manually.
-                // `max(headerHeight, 56)` floors the value on the very first frame
-                // before the preference key has reported.
+            // 7. Top project overlay — shown whenever the user is in project mode.
+            //    - Routing → NavigationManeuverCard (expandable turn list)
+            //    - Not routing → ActiveProjectCard (static project summary)
+            //    - Below either card → centered EXIT pill
+            // AppHeader is hidden by HomeContentView while in project mode, so
+            // this overlay owns the top of the screen. Positioned at the safe
+            // area top + 8pt breathing room — no magic header offset required.
+            if appState.isInProjectMode {
                 GeometryReader { geo in
                     let safeTop = geo.safeAreaInsets.top
-                    let clearance = safeTop + max(headerHeight, 56) + 8
-                    VStack {
-                        NavigationManeuverCard(
-                            navigationManager: coordinator.navigationManager,
-                            destinationName: coordinator.selectedProject?.title
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.top, clearance)
-                        Spacer()
+                    VStack(spacing: 10) {
+                        topProjectCard
+                        exitProjectPill
+                        Spacer(minLength: 0)
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.top, safeTop + 8)
                     .frame(maxWidth: .infinity)
                 }
-                .transition(.move(edge: .top))
-                .animation(OPSStyle.Animation.standard, value: coordinator.isNavigating)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(OPSStyle.Animation.standard, value: appState.isInProjectMode)
+                .animation(OPSStyle.Animation.spring, value: coordinator.isNavigating)
+                .animation(OPSStyle.Animation.spring, value: isManeuverExpanded)
+            }
 
-                // 7b. Trip info strip — above tab bar; higher when action bar is visible
-                // ProjectActionBar sits at safe area bottom + 120pt padding + ~64pt bar height
-                // = ~218pt from screen bottom on notch phones. Strip must clear that.
+            // 7b. Trip info strip — above tab bar; only shown while navigating.
+            // ProjectActionBar sits at safe area bottom + 120pt padding + ~64pt
+            // bar height = ~218pt from screen bottom on notch phones. Strip
+            // must clear that.
+            if coordinator.isNavigating {
                 VStack {
                     Spacer()
                     NavigationTripStrip(navigationManager: coordinator.navigationManager)
@@ -423,10 +501,11 @@ struct OPSMapContainer: View {
                 .animation(OPSStyle.Animation.standard, value: coordinator.isNavigating)
             }
 
-            // 8. Geofence banners — below header
+            // 8. Geofence banners — below the top project overlay when in
+            // project mode, below the AppHeader otherwise.
             if geofenceManager.pendingArrival != nil || geofenceManager.pendingDeparture != nil {
                 VStack {
-                    Spacer().frame(height: coordinator.isNavigating ? 270 : 100)
+                    Spacer().frame(height: appState.isInProjectMode ? 240 : 100)
 
                     if let arrival = geofenceManager.pendingArrival {
                         GeofenceBannerView(
@@ -578,6 +657,21 @@ struct OPSMapContainer: View {
             NotificationCenter.default.publisher(for: Notification.Name("StopNavigation"))
         ) { _ in
             coordinator.stopNavigation()
+        }
+        // Auto-collapse the expanded maneuver list whenever navigation
+        // stops or project mode ends — stale expansion state across
+        // sessions would be jarring.
+        .onChange(of: coordinator.isNavigating) { _, isNavigating in
+            if !isNavigating, isManeuverExpanded {
+                withAnimation(OPSStyle.Animation.standard) {
+                    isManeuverExpanded = false
+                }
+            }
+        }
+        .onChange(of: appState.isInProjectMode) { _, inProjectMode in
+            if !inProjectMode, isManeuverExpanded {
+                isManeuverExpanded = false
+            }
         }
     }
 

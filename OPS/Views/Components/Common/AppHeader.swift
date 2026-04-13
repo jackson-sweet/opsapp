@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import UIKit
 
 struct AppHeader: View {
     enum HeaderType {
@@ -21,8 +20,6 @@ struct AppHeader: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @EnvironmentObject private var appState: AppState
-    @ObservedObject private var inProgressManager = InProgressManager.shared
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showLockedMessage: String? = nil
     @State private var showLockedAlert: Bool = false
     var headerType: HeaderType
@@ -99,40 +96,6 @@ struct AppHeader: View {
                 
                 Spacer()
 
-                // EXIT PROJECT button — only visible when in project mode.
-                // Replaces the legacy ProjectHeader STOP PROJECT button.
-                // 44x44 circle, matching the other AppHeader action buttons.
-                // Commitment beat: medium impact haptic fires at tap.
-                if appState.isInProjectMode {
-                    Button(action: {
-                        // Commitment haptic — fires at the moment of the decision.
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-
-                        if inProgressManager.isRouting {
-                            inProgressManager.stopRouting()
-                        }
-                        NotificationCenter.default.post(
-                            name: Notification.Name("StopNavigation"),
-                            object: nil
-                        )
-                        appState.exitProjectMode()
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .frame(width: 44, height: 44)
-                            .background(OPSStyle.Colors.cardBackground)
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .padding(.trailing, 8)
-                    .accessibilityLabel("Exit project")
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.6).combined(with: .opacity),
-                        removal: .scale(scale: 0.6).combined(with: .opacity)
-                    ))
-                }
-
                 // User avatar with sync indicator and notification bell overlay
                 Button(action: {
                     appState.showingNotifications = true
@@ -195,10 +158,6 @@ struct AppHeader: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
-            .animation(
-                reduceMotion ? OPSStyle.Animation.standard : OPSStyle.Animation.spring,
-                value: appState.isInProjectMode
-            )
             .background(
                 LinearGradient(
                     colors: [
@@ -210,15 +169,6 @@ struct AppHeader: View {
                     endPoint: .bottom
                 )
                 .ignoresSafeArea()
-            )
-            .background(
-                GeometryReader { geo in
-                    Color.clear
-                        .preference(
-                            key: HeaderHeightPreferenceKey.self,
-                            value: geo.size.height
-                        )
-                }
             )
             .sheet(isPresented: $appState.showingNotifications) {
                 NavigationStack {

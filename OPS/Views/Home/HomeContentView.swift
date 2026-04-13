@@ -46,10 +46,6 @@ struct HomeContentView: View {
     @State private var showingEditProject = false
     @State private var projectToEdit: Project?
 
-    // Measured AppHeader height — drives clearance for the navigation
-    // maneuver card so it never overlaps the header.
-    @State private var measuredHeaderHeight: CGFloat = 0
-
     // Map filter mode — defaults based on user role (crew = today, others = active)
     // Can be overridden by user preference in Map Settings
     @AppStorage("mapDefaultFilter") private var mapDefaultFilterRaw = ""
@@ -192,8 +188,7 @@ struct HomeContentView: View {
                 },
                 filterMode: $mapFilterMode,
                 appState: appState,
-                locationManager: locationManager,
-                headerHeight: measuredHeaderHeight
+                locationManager: locationManager
             )
             
             // Semi-transparent dark overlay - using clear since we have gradient overlay
@@ -233,8 +228,12 @@ struct HomeContentView: View {
 
     private var contentOverlay: some View {
         VStack(spacing: 0) {
-            // Header
-            headerView
+            // Header — hidden in project mode so the top project overlay
+            // (rendered inside OPSMapContainer) has the top of the screen
+            // to itself.
+            if !appState.isInProjectMode {
+                headerView
+            }
 
             // Project carousel or empty state (hide when shown in separate layer for tutorial)
             if !showCarouselInSeparateLayer {
@@ -261,9 +260,6 @@ struct HomeContentView: View {
                     //.padding(.horizontal, 24)
                     .padding(.bottom, 120) // Add padding for tab bar
             }
-        }
-        .onPreferenceChange(HeaderHeightPreferenceKey.self) { newHeight in
-            measuredHeaderHeight = newHeight
         }
     }
 

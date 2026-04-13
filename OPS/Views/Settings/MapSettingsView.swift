@@ -14,6 +14,9 @@ struct MapSettingsView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var locationManager: LocationManager
 
+    // ── Voice info alert ──
+    @State private var showingVoiceInfo = false
+
     // ── Task types (dynamic legend) ──
     @Query(sort: \TaskType.displayOrder) private var allTaskTypes: [TaskType]
 
@@ -383,12 +386,15 @@ struct MapSettingsView: View {
     // MARK: - Voice Guidance Row
 
     /// Inline row inside the NAVIGATION section that explains how to
-    /// upgrade the turn-by-turn voice and offers a one-tap jump to the
-    /// iOS Settings voice picker. iOS has no public API to deep-link
-    /// directly to `Settings → Accessibility → Spoken Content → Voices`,
-    /// so we try the private `App-Prefs:` scheme first and fall back to
-    /// `UIApplication.openSettingsURLString` (which lands on OPS's own
-    /// page — the user can swipe back to root Settings from there).
+    /// upgrade the turn-by-turn voice. iOS has no public API to
+    /// deep-link directly to `Settings → Accessibility → Spoken Content
+    /// → Voices`, and the private `App-Prefs:` path schemes are
+    /// unreliable on iOS 17/18 (they land on arbitrary Settings pages
+    /// or do nothing at all). Instead we show a confirmation alert
+    /// with exact step-by-step instructions, then open iOS Settings
+    /// via the public `openSettingsURLString` — which lands on OPS's
+    /// own Settings page. The user taps the "< Settings" back chevron
+    /// once to reach root, then follows the steps.
     private var voiceGuidanceRow: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
@@ -396,17 +402,20 @@ struct MapSettingsView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
-                Text("Turn-by-turn voice uses whatever iOS voice you have downloaded. For a higher-quality voice, download a Premium or Enhanced voice in iOS Settings → Accessibility → Spoken Content → Voices → English.")
+                Text("Turn-by-turn voice uses whatever iOS voice you have installed. Apple doesn't allow apps to deep-link to the voice picker directly, so you'll need to navigate there manually.")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Button(action: openVoiceSettings) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showingVoiceInfo = true
+            } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.up.right.square")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                    Text("DOWNLOAD VOICES")
+                    Text("HOW TO DOWNLOAD VOICES")
                         .font(OPSStyle.Typography.captionBold)
                 }
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -421,25 +430,15 @@ struct MapSettingsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-    }
-
-    /// Try to deep-link to Settings → Accessibility → Spoken Content →
-    /// Voices → English. The `App-Prefs:` scheme is private but widely
-    /// used; if iOS blocks it we fall back to the public settings URL.
-    private func openVoiceSettings() {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-
-        // Private deep-link — opens directly to Spoken Content on iOS 17/18.
-        if let deepLink = URL(string: "App-Prefs:ACCESSIBILITY&path=SPEECH"),
-           UIApplication.shared.canOpenURL(deepLink) {
-            UIApplication.shared.open(deepLink)
-            return
-        }
-
-        // Public fallback — lands on OPS's own Settings page. The user
-        // can tap "< Settings" to reach the root and navigate manually.
-        if let fallback = URL(string: UIApplication.openSettingsURLString) {
-            UIApplication.shared.open(fallback)
+        .alert("Download a Premium Voice", isPresented: $showingVoiceInfo) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Tap Open Settings, then navigate:\n\n1. Tap the back arrow to reach Settings root\n2. Accessibility\n3. Spoken Content\n4. Voices\n5. English\n\nDownload any voice labelled Premium — Ava, Zoe, Evan, or Nathan are the best. OPS will pick it up on your next navigation session.")
         }
     }
 

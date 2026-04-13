@@ -173,6 +173,10 @@ struct MapSettingsView: View {
                                 description: "Zoom out at highway speed, zoom in when slow",
                                 isOn: $mapSpeedZoom
                             )
+
+                            settingsDivider
+
+                            voiceGuidanceRow
                         }
 
                         // ── RESET ──
@@ -349,6 +353,69 @@ struct MapSettingsView: View {
                         .lineLimit(1)
                 }
             }
+        }
+    }
+
+    // MARK: - Voice Guidance Row
+
+    /// Inline row inside the NAVIGATION section that explains how to
+    /// upgrade the turn-by-turn voice and offers a one-tap jump to the
+    /// iOS Settings voice picker. iOS has no public API to deep-link
+    /// directly to `Settings → Accessibility → Spoken Content → Voices`,
+    /// so we try the private `App-Prefs:` scheme first and fall back to
+    /// `UIApplication.openSettingsURLString` (which lands on OPS's own
+    /// page — the user can swipe back to root Settings from there).
+    private var voiceGuidanceRow: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Voice Guidance")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                Text("Turn-by-turn voice uses whatever iOS voice you have downloaded. For a higher-quality voice, download a Premium or Enhanced voice in iOS Settings → Accessibility → Spoken Content → Voices → English.")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button(action: openVoiceSettings) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                    Text("DOWNLOAD VOICES")
+                        .font(OPSStyle.Typography.captionBold)
+                }
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .padding(.horizontal, 14)
+                .frame(height: 36)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+    }
+
+    /// Try to deep-link to Settings → Accessibility → Spoken Content →
+    /// Voices → English. The `App-Prefs:` scheme is private but widely
+    /// used; if iOS blocks it we fall back to the public settings URL.
+    private func openVoiceSettings() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+        // Private deep-link — opens directly to Spoken Content on iOS 17/18.
+        if let deepLink = URL(string: "App-Prefs:ACCESSIBILITY&path=SPEECH"),
+           UIApplication.shared.canOpenURL(deepLink) {
+            UIApplication.shared.open(deepLink)
+            return
+        }
+
+        // Public fallback — lands on OPS's own Settings page. The user
+        // can tap "< Settings" to reach the root and navigate manually.
+        if let fallback = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(fallback)
         }
     }
 

@@ -529,7 +529,101 @@ final class OPSMapCoordinator: ObservableObject {
         )
     }
 
-    /// Show a route-overview zoom level (stub calls this).
+    /// Show a route-overview zoom level that fits both user location and destination.
+    /// Zoom the camera so that every currently-visible project marker
+    /// fits inside the viewport. Respects the active filter mode: the
+    /// same set of projects that are rendered as pins is used to build
+    /// the bounding box.
+    ///
+    /// - 0 visible markers → no-op
+    /// - 1 visible marker  → centre on it at a comfortable browse zoom
+    /// - 2+ visible markers → bounding box fit with a small padding
+    func zoomToFitVisibleMarkers() {
+        let coords = visibleMarkerCoordinates()
+        guard !coords.isEmpty else { return }
+
+        isFollowingUser = false
+
+        // Single marker — just centre on it. No bounding box math needed.
+        if coords.count == 1, let only = coords.first {
+            flyTo(
+                center: only,
+                zoom: BrowseDefaults.zoom,
+                heading: 0,
+                pitch: BrowseDefaults.pitch,
+                duration: CameraDuration.routeOverview
+            )
+            return
+        }
+
+        // Multi-marker — compute bounding box + zoom.
+        var minLat = coords[0].latitude
+        var maxLat = coords[0].latitude
+        var minLon = coords[0].longitude
+        var maxLon = coords[0].longitude
+        for c in coords {
+            minLat = min(minLat, c.latitude)
+            maxLat = max(maxLat, c.latitude)
+            minLon = min(minLon, c.longitude)
+            maxLon = max(maxLon, c.longitude)
+        }
+
+        let center = CLLocationCoordinate2D(
+            latitude: (minLat + maxLat) / 2,
+            longitude: (minLon + maxLon) / 2
+        )
+
+        // Same Web Mercator tile math as showRouteOverview. 0.8 zoom
+        // subtracted so the edge markers sit comfortably inside the
+        // viewport rather than kissing the screen edge.
+        let latSpan = maxLat - minLat
+        let lonSpan = maxLon - minLon
+        let maxSpan = max(latSpan, lonSpan, 0.002) // floor at ~200m
+        let overviewZoom = min(16.0, log2(360.0 / maxSpan) - 0.8)
+
+        flyTo(
+            center: center,
+            zoom: max(1.0, overviewZoom),
+            heading: 0,
+            pitch: 0,
+            duration: CameraDuration.routeOverview
+        )
+    }
+
+    /// Coordinates of the projects currently rendered as pins. Mirrors
+    /// the filter logic in `buildProjectAnnotations` /
+    /// `buildTodayTaskAnnotations` so zoom-to-fit always matches what
+    /// the user sees on screen.
+    private func visibleMarkerCoordinates() -> [CLLocationCoordinate2D] {
+        switch filterMode {
+        case .active:
+            return projects
+                .compactMap { project -> CLLocationCoordinate2D? in
+                    guard let coord = project.coordinate,
+                          project.status == .accepted || project.status == .inProgress
+                    else { return nil }
+                    return coord
+                }
+        case .all:
+            return projects.compactMap { $0.coordinate }
+        case .today:
+            let calendar = Calendar.current
+            let today = calendar.startOfDay(for: Date())
+            return projects.compactMap { project -> CLLocationCoordinate2D? in
+                guard let coord = project.coordinate else { return nil }
+                let hasTaskToday = project.tasks.contains { task in
+                    guard let start = task.startDate else { return false }
+                    guard task.status == .active || task.status == .completed else { return false }
+                    let end = task.endDate ?? start
+                    let startDay = calendar.startOfDay(for: start)
+                    let endDay = calendar.startOfDay(for: end)
+                    return startDay <= today && endDay >= today
+                }
+                return hasTaskToday ? coord : nil
+            }
+        }
+    }
+
     func showRouteOverview() {
         guard isNavigating,
               let userCoord = locationManager.currentLocation?.coordinate,
@@ -548,15 +642,18 @@ final class OPSMapCoordinator: ObservableObject {
             longitude: (minLon + maxLon) / 2
         )
 
-        // Rough zoom from span — good enough for an overview
+        // Zoom from span using Mapbox's Web Mercator tile math.
+        // At zoom 0, the world spans 360°. Each zoom level halves the span.
+        // zoom = log2(360 / span) gives the zoom where span fills the viewport.
+        // Subtract 0.8 for padding so both pins sit comfortably inside the view.
         let latSpan = maxLat - minLat
         let lonSpan = maxLon - minLon
-        let maxSpan = max(latSpan, lonSpan)
-        let overviewZoom = max(10.0, 14.0 - log2(max(maxSpan, 0.001) / 0.01))
+        let maxSpan = max(latSpan, lonSpan, 0.002) // floor at ~200m to avoid extreme zoom-in
+        let overviewZoom = min(16.0, log2(360.0 / maxSpan) - 0.8)
 
         flyTo(
             center: center,
-            zoom: overviewZoom,
+            zoom: max(1.0, overviewZoom),
             heading: 0,
             pitch: 0,
             duration: CameraDuration.routeOverview

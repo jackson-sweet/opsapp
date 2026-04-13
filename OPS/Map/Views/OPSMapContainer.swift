@@ -708,6 +708,19 @@ struct OPSMapContainer: View {
                 }
             }
 
+            // Zoom to fit all visible markers — only outside navigation.
+            // Uses the current filter mode (Today / Active / All) to decide
+            // which pins to frame.
+            if !coordinator.isNavigating {
+                controlButton(
+                    icon: "arrow.up.left.and.arrow.down.right",
+                    isActive: false
+                ) {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    coordinator.zoomToFitVisibleMarkers()
+                }
+            }
+
             // Route overview — only during navigation
             if coordinator.isNavigating {
                 controlButton(

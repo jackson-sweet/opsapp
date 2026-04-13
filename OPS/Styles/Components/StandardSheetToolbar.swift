@@ -57,19 +57,24 @@ struct StandardSheetToolbarModifier: ViewModifier {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: onAction) {
-                        if isSaving && showProgressOnSave {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: actionColor))
-                                .scaleEffect(0.8)
-                        } else {
-                            Text(actionText)
-                                .font(OPSStyle.Typography.bodyBold)
+                // Trailing action — omitted entirely when `actionText` is
+                // empty so read-only sheets (e.g. ClientPickerSheet, where
+                // row taps dismiss) don't get an invisible tappable button.
+                if !actionText.isEmpty || (isSaving && showProgressOnSave) {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(action: onAction) {
+                            if isSaving && showProgressOnSave {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: actionColor))
+                                    .scaleEffect(0.8)
+                            } else {
+                                Text(actionText)
+                                    .font(OPSStyle.Typography.bodyBold)
+                            }
                         }
+                        .foregroundColor(isActionEnabled ? actionColor : OPSStyle.Colors.tertiaryText)
+                        .disabled(!isActionEnabled || isSaving)
                     }
-                    .foregroundColor(isActionEnabled ? actionColor : OPSStyle.Colors.tertiaryText)
-                    .disabled(!isActionEnabled || isSaving)
                 }
             }
     }

@@ -499,16 +499,16 @@ struct OPSMapContainer: View {
                 .animation(OPSStyle.Animation.spring, value: isManeuverExpanded)
             }
 
-            // 7b. Trip info strip — above tab bar; only shown while navigating.
-            // ProjectActionBar sits at safe area bottom + 120pt padding + ~64pt
-            // bar height = ~218pt from screen bottom on notch phones. Strip
-            // must clear that.
+            // 7b. Trip info strip — above the ProjectActionBar while navigating.
+            // No horizontal padding: the strip uses a soft vertical gradient
+            // that bleeds edge-to-edge into the map. Bottom padding sits it
+            // tight to the action bar (~8pt visual gap accounting for the
+            // gradient falloff).
             if coordinator.isNavigating {
                 VStack {
                     Spacer()
                     NavigationTripStrip(navigationManager: coordinator.navigationManager)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, appState.isInProjectMode ? 235 : 108)
+                        .padding(.bottom, appState.isInProjectMode ? 208 : 92)
                 }
                 .frame(maxWidth: .infinity)
                 .transition(.move(edge: .bottom))

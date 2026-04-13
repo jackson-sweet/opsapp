@@ -270,8 +270,11 @@ struct NavigationManeuverCard: View {
 
 // MARK: - Trip Info Strip (Bottom)
 
-/// Compact strip showing time remaining, distance, and ETA.
-/// Positioned above the ProjectActionBar.
+/// Floating strip showing time remaining, distance, and ETA. No card
+/// chrome — the content sits on a soft vertical gradient fading to
+/// `OPSStyle.Colors.background` (which matches the Mapbox dark map
+/// land color `#0A0A0A`), so the stats appear to rise out of the map
+/// rather than sitting in a boxed card.
 struct NavigationTripStrip: View {
 
     @ObservedObject var navigationManager: OPSNavigationManager
@@ -297,37 +300,47 @@ struct NavigationTripStrip: View {
                 label: "ARRIVAL"
             )
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity)
         .background(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
+            // Soft 4-stop vertical gradient, opaque in the middle and
+            // fading to transparent at the top and bottom. Matches the
+            // dark land color of the Mapbox style so the bleed blends
+            // seamlessly into the map.
+            LinearGradient(
+                stops: [
+                    .init(color: OPSStyle.Colors.background.opacity(0), location: 0),
+                    .init(color: OPSStyle.Colors.background.opacity(0.85), location: 0.32),
+                    .init(color: OPSStyle.Colors.background.opacity(0.85), location: 0.68),
+                    .init(color: OPSStyle.Colors.background.opacity(0), location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .padding(.vertical, -18) // extend gradient above/below the text
+            .allowsHitTesting(false)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 
     // MARK: - Stat Item
 
     private func statItem(value: String, label: String) -> some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 4) {
             Text(value)
-                .font(OPSStyle.Typography.bodyEmphasis)
+                .font(OPSStyle.Typography.heading)
                 .foregroundColor(.white)
             Text(label)
-                .font(OPSStyle.Typography.miniLabel)
-                .tracking(0.3)
-                .foregroundColor(Color.white.opacity(0.5))
+                .font(OPSStyle.Typography.caption)
+                .tracking(0.6)
+                .foregroundColor(Color.white.opacity(0.55))
         }
         .frame(maxWidth: .infinity)
     }
 
     private var thinDivider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.10))
-            .frame(width: 1, height: 28)
+            .fill(Color.white.opacity(0.14))
+            .frame(width: 1, height: 36)
     }
 
     // MARK: - Format

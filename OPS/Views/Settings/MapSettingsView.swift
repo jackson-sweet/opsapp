@@ -432,13 +432,30 @@ struct MapSettingsView: View {
         .padding(16)
         .alert("Download a Premium Voice", isPresented: $showingVoiceInfo) {
             Button("Open Settings") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
+                openSettingsRoot()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Tap Open Settings, then navigate:\n\n1. Tap the back arrow to reach Settings root\n2. Accessibility\n3. Spoken Content\n4. Voices\n5. English\n\nDownload any voice labelled Premium — Ava, Zoe, Evan, or Nathan are the best. OPS will pick it up on your next navigation session.")
+            Text("In Settings, navigate:\n\n• Accessibility\n• Spoken Content\n• Voices\n• English\n\nDownload any voice labelled Premium — Ava, Zoe, Evan, or Nathan are the best. OPS will pick it up on your next navigation session.")
+        }
+    }
+
+    /// Try to open iOS Settings at the root (so the user lands on the
+    /// main Settings list and can tap Accessibility directly). Apple's
+    /// public API (`UIApplication.openSettingsURLString`) only opens
+    /// the app's own settings page, so we first try the unofficial
+    /// `App-prefs:` root scheme. If iOS blocks it (uncommon for the
+    /// bare root variant, common for path-suffixed variants) we fall
+    /// back to the public URL and the user can tap the back arrow once
+    /// to reach Settings root.
+    private func openSettingsRoot() {
+        if let rootURL = URL(string: "App-prefs:"),
+           UIApplication.shared.canOpenURL(rootURL) {
+            UIApplication.shared.open(rootURL)
+            return
+        }
+        if let appSettings = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(appSettings)
         }
     }
 

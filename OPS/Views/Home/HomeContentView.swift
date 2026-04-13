@@ -268,22 +268,11 @@ struct HomeContentView: View {
     }
 
     private var headerView: some View {
-        Group {
-            if appState.isInProjectMode {
-                ProjectHeader(project: getActiveProject())
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .top).combined(with: .opacity),
-                        removal: .move(edge: .top).combined(with: .opacity)
-                    ))
-            } else {
-                AppHeader(headerType: .home)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .top).combined(with: .opacity),
-                        removal: .move(edge: .top).combined(with: .opacity)
-                    ))
-            }
-        }
-        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: appState.isInProjectMode)
+        AppHeader(headerType: .home)
+            .transition(.asymmetric(
+                insertion: .move(edge: .top).combined(with: .opacity),
+                removal: .move(edge: .top).combined(with: .opacity)
+            ))
     }
     
     private var projectCarouselView: some View {

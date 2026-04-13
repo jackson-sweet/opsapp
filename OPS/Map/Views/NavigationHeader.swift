@@ -14,7 +14,7 @@ import CoreLocation
 // MARK: - Maneuver Card (Top)
 
 /// Large card showing the next maneuver instruction.
-/// Positioned below the ProjectHeader, above the map.
+/// Positioned below AppHeader, above the map.
 struct NavigationManeuverCard: View {
 
     @ObservedObject var navigationManager: OPSNavigationManager

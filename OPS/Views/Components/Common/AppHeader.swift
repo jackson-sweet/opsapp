@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct AppHeader: View {
     enum HeaderType {
@@ -16,10 +17,12 @@ struct AppHeader: View {
         case inventory
         case pipeline
     }
-    
+
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @EnvironmentObject private var appState: AppState
+    @ObservedObject private var inProgressManager = InProgressManager.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showLockedMessage: String? = nil
     @State private var showLockedAlert: Bool = false
     var headerType: HeaderType
@@ -96,6 +99,48 @@ struct AppHeader: View {
                 
                 Spacer()
 
+                // EXIT PROJECT pill — only visible when in project mode.
+                // Replaces the legacy ProjectHeader STOP PROJECT button.
+                // Commitment beat: medium impact haptic fires at tap, reduced-motion
+                // uses a standard ease transition instead of the spring.
+                if appState.isInProjectMode {
+                    Button(action: {
+                        // Commitment haptic — fires at the moment of the decision.
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+                        if inProgressManager.isRouting {
+                            inProgressManager.stopRouting()
+                        }
+                        NotificationCenter.default.post(
+                            name: Notification.Name("StopNavigation"),
+                            object: nil
+                        )
+                        appState.exitProjectMode()
+                    }) {
+                        HStack(spacing: 6) {
+                            Text("EXIT")
+                                .font(OPSStyle.Typography.smallButton)
+                                .foregroundColor(OPSStyle.Colors.cardBackground)
+                            Image(systemName: "xmark")
+                                .font(.system(
+                                    size: OPSStyle.Layout.IconSize.sm,
+                                    weight: .semibold
+                                ))
+                                .foregroundColor(OPSStyle.Colors.cardBackground)
+                        }
+                        .padding(.horizontal, 12)
+                        .frame(height: 44)
+                        .background(OPSStyle.Colors.primaryText)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .padding(.trailing, 8)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .trailing).combined(with: .opacity)
+                    ))
+                }
+
                 // User avatar with sync indicator and notification bell overlay
                 Button(action: {
                     appState.showingNotifications = true
@@ -158,6 +203,10 @@ struct AppHeader: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
+            .animation(
+                reduceMotion ? OPSStyle.Animation.standard : OPSStyle.Animation.spring,
+                value: appState.isInProjectMode
+            )
             .background(
                 LinearGradient(
                     colors: [

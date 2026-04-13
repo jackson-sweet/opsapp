@@ -12,6 +12,7 @@ import Foundation
 import MapKit
 import CoreLocation
 import Combine
+import AVFoundation
 
 @MainActor
 final class OPSNavigationManager: ObservableObject {
@@ -60,6 +61,14 @@ final class OPSNavigationManager: ObservableObject {
     private var progressTimer: Timer?
     private var destination: CLLocationCoordinate2D?
     private weak var locationManager: LocationManager?
+
+    /// Voice guidance synthesizer. Lazily built so the audio engine is
+    /// only warmed when the user actually enables voice. Created once
+    /// and reused for the lifetime of the manager.
+    private lazy var speechSynthesizer: AVSpeechSynthesizer = {
+        let synth = AVSpeechSynthesizer()
+        return synth
+    }()
 
     // Reroute tracking
     private var lastRerouteTime: Date = .distantPast
@@ -124,11 +133,73 @@ final class OPSNavigationManager: ObservableObject {
         destination = nil
         progressTimer?.invalidate()
         progressTimer = nil
+        stopSpeaking()
     }
 
     /// Toggle voice guidance on/off.
+    /// - Off → On: immediately speak the current maneuver instruction so
+    ///   the user gets audio feedback that the toggle worked.
+    /// - On → Off: stop any in-progress utterance.
     func toggleVoice() {
-        isVoiceEnabled.toggle()
+        let newValue = !isVoiceEnabled
+        isVoiceEnabled = newValue
+
+        if newValue {
+            speakCurrentInstruction()
+        } else {
+            stopSpeaking()
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    // MARK: - Voice Guidance
+    // ──────────────────────────────────────────────
+
+    /// Speak the current maneuver instruction. Safe to call even when
+    /// voice is disabled — it no-ops in that case.
+    private func speakCurrentInstruction() {
+        guard isVoiceEnabled else { return }
+        let text = currentInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+
+        configureAudioSessionIfNeeded()
+
+        // Stop any in-flight utterance so the new one takes over.
+        if speechSynthesizer.isSpeaking {
+            speechSynthesizer.stopSpeaking(at: .immediate)
+        }
+
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: Locale.current.language.languageCode?.identifier ?? "en-US")
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        utterance.pitchMultiplier = 1.0
+        utterance.volume = 1.0
+        speechSynthesizer.speak(utterance)
+    }
+
+    /// Halt any in-progress speech immediately. Called when the user
+    /// toggles voice off and when navigation stops.
+    private func stopSpeaking() {
+        guard speechSynthesizer.isSpeaking else { return }
+        speechSynthesizer.stopSpeaking(at: .immediate)
+    }
+
+    /// Configure the shared audio session for playback + ducking once,
+    /// so voice guidance interrupts/ducks other audio cleanly.
+    private func configureAudioSessionIfNeeded() {
+        let session = AVAudioSession.sharedInstance()
+        guard session.category != .playback else { return }
+        do {
+            try session.setCategory(
+                .playback,
+                mode: .spokenAudio,
+                options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers]
+            )
+            try session.setActive(true, options: [])
+        } catch {
+            // Best-effort — if session configuration fails, fall back to
+            // whatever the default is. The synthesizer still plays.
+        }
     }
 
     // ──────────────────────────────────────────────
@@ -200,6 +271,7 @@ final class OPSNavigationManager: ObservableObject {
         guard currentStepIndex < routeSteps.count else {
             currentInstruction = "Arrive at destination"
             maneuverIcon = "mappin.circle.fill"
+            speakCurrentInstruction()
             return
         }
 
@@ -207,6 +279,11 @@ final class OPSNavigationManager: ObservableObject {
         currentInstruction = step.instructions
         distanceToNextManeuver = step.distance
         maneuverIcon = sfSymbolForInstruction(step.instructions)
+
+        // Speak the new maneuver whenever we advance to the next step
+        // while voice is enabled. Safe to call when voice is off — it
+        // no-ops in that branch.
+        speakCurrentInstruction()
     }
 
     // ──────────────────────────────────────────────

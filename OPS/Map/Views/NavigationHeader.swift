@@ -18,6 +18,7 @@ import CoreLocation
 struct NavigationManeuverCard: View {
 
     @ObservedObject var navigationManager: OPSNavigationManager
+    var destinationName: String?
 
     var body: some View {
         if navigationManager.hasArrived {
@@ -30,49 +31,77 @@ struct NavigationManeuverCard: View {
     // MARK: - Active Maneuver
 
     private var maneuverCard: some View {
-        HStack(spacing: 12) {
-            // Maneuver icon — large, prominent
-            Image(systemName: navigationManager.maneuverIcon)
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundColor(.white)
-                .frame(width: 44, height: 44)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(OPSStyle.Colors.primaryAccent)
-                )
-
-            // Instruction + distance
-            VStack(alignment: .leading, spacing: 2) {
-                // Distance to next maneuver
-                Text(formatDistanceShort(navigationManager.distanceToNextManeuver))
-                    .font(OPSStyle.Typography.heading)
+        VStack(alignment: .leading, spacing: 0) {
+            // Top row — maneuver instruction (primary).
+            HStack(spacing: 12) {
+                // Maneuver icon — large, prominent
+                Image(systemName: navigationManager.maneuverIcon)
+                    .font(.system(size: 28, weight: .semibold))
                     .foregroundColor(.white)
-
-                // Instruction text
-                Text(navigationManager.currentInstruction)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(Color.white.opacity(0.85))
-                    .lineLimit(2)
-            }
-
-            Spacer()
-
-            // Voice toggle
-            Button {
-                navigationManager.toggleVoice()
-            } label: {
-                Image(systemName: navigationManager.isVoiceEnabled
-                      ? "speaker.wave.2.fill"
-                      : "speaker.slash.fill")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.white)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .background(
-                        Circle()
-                            .fill(Color.white.opacity(0.12))
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(OPSStyle.Colors.primaryAccent)
                     )
+
+                // Instruction + distance
+                VStack(alignment: .leading, spacing: 2) {
+                    // Distance to next maneuver
+                    Text(formatDistanceShort(navigationManager.distanceToNextManeuver))
+                        .font(OPSStyle.Typography.heading)
+                        .foregroundColor(.white)
+
+                    // Instruction text
+                    Text(navigationManager.currentInstruction)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(Color.white.opacity(0.85))
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                // Voice toggle
+                Button {
+                    navigationManager.toggleVoice()
+                } label: {
+                    Image(systemName: navigationManager.isVoiceEnabled
+                          ? "speaker.wave.2.fill"
+                          : "speaker.slash.fill")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(width: 36, height: 36)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.12))
+                        )
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+
+            // Destination row — subordinate, shows the active project title.
+            // Thin divider above, smaller type, single line with tail truncation.
+            if let destinationName, !destinationName.isEmpty {
+                Rectangle()
+                    .fill(Color.white.opacity(0.10))
+                    .frame(height: 1)
+                    .padding(.top, 12)
+                    .padding(.bottom, 10)
+
+                HStack(spacing: 8) {
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color.white.opacity(0.55))
+
+                    Text(destinationName.uppercased())
+                        .font(OPSStyle.Typography.miniLabel)
+                        .tracking(0.4)
+                        .foregroundColor(Color.white.opacity(0.7))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    Spacer(minLength: 0)
+                }
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -231,8 +260,12 @@ struct NavigationTripStrip: View {
 
 struct NavigationHeader: View {
     @ObservedObject var navigationManager: OPSNavigationManager
+    var destinationName: String? = nil
 
     var body: some View {
-        NavigationManeuverCard(navigationManager: navigationManager)
+        NavigationManeuverCard(
+            navigationManager: navigationManager,
+            destinationName: destinationName
+        )
     }
 }

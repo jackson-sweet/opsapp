@@ -70,6 +70,11 @@ final class OPSNavigationManager: ObservableObject {
         return synth
     }()
 
+    /// Cached best-available voice, computed on first speak and reused
+    /// for the session. Cleared on `stopNavigation` so a fresh session
+    /// picks up any voices the user has downloaded in the meantime.
+    private var cachedGuidanceVoice: AVSpeechSynthesisVoice?
+
     // Reroute tracking
     private var lastRerouteTime: Date = .distantPast
     private let rerouteDistanceThreshold: CLLocationDistance = 30 // meters off route
@@ -134,6 +139,7 @@ final class OPSNavigationManager: ObservableObject {
         progressTimer?.invalidate()
         progressTimer = nil
         stopSpeaking()
+        cachedGuidanceVoice = nil
     }
 
     /// Toggle voice guidance on/off.
@@ -170,11 +176,76 @@ final class OPSNavigationManager: ObservableObject {
         }
 
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: Locale.current.language.languageCode?.identifier ?? "en-US")
+        utterance.voice = bestAvailableVoice()
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
         utterance.pitchMultiplier = 1.0
         utterance.volume = 1.0
         speechSynthesizer.speak(utterance)
+    }
+
+    /// Picks the highest-quality voice installed on the device for the
+    /// user's current language, with a fallback chain:
+    ///
+    ///   Premium (Siri-grade, iOS 16+) → Enhanced → Default (Compact)
+    ///
+    /// Users who have downloaded Enhanced or Premium voices in Settings →
+    /// Accessibility → Spoken Content → Voices get a dramatic upgrade for
+    /// free. Users with nothing downloaded get the same Compact voice
+    /// `AVSpeechSynthesisVoice(language:)` would have returned.
+    private func bestAvailableVoice() -> AVSpeechSynthesisVoice? {
+        if let cached = cachedGuidanceVoice {
+            return cached
+        }
+
+        let targetLanguage = Locale.current.language.languageCode?.identifier ?? "en"
+        let allVoices = AVSpeechSynthesisVoice.speechVoices()
+
+        // Narrow to voices matching the user's primary language (e.g. "en"
+        // matches "en-US", "en-GB", "en-AU" — ignoring the region).
+        let matching = allVoices.filter { voice in
+            voice.language.lowercased().hasPrefix(targetLanguage.lowercased())
+        }
+        guard !matching.isEmpty else {
+            // No language match — fall back to whatever the system would
+            // have picked for the raw language code.
+            let fallback = AVSpeechSynthesisVoice(language: targetLanguage)
+                ?? AVSpeechSynthesisVoice(language: "en-US")
+            cachedGuidanceVoice = fallback
+            return fallback
+        }
+
+        // Score each voice; higher wins.
+        let preferredRegion = Locale.current.identifier.replacingOccurrences(of: "_", with: "-")
+        let scored: [(AVSpeechSynthesisVoice, Int)] = matching.map { voice in
+            var score = 0
+
+            // Quality tier: Premium (iOS 16+) > Enhanced > Default.
+            if #available(iOS 16.0, *), voice.quality == .premium {
+                score += 1000
+            } else if voice.quality == .enhanced {
+                score += 500
+            }
+
+            // Slight bump if the region matches the user's locale exactly
+            // (e.g. en-US user gets en-US over en-GB).
+            if voice.language.caseInsensitiveCompare(preferredRegion) == .orderedSame {
+                score += 50
+            }
+
+            // Penalize novelty voices ("Bells", "Organ", "Trinoids" etc.)
+            // on iOS 17+ where the trait is available.
+            if #available(iOS 17.0, *),
+               voice.voiceTraits.contains(.isNoveltyVoice) {
+                score -= 2000
+            }
+
+            return (voice, score)
+        }
+
+        let best = scored.max(by: { $0.1 < $1.1 })?.0
+            ?? matching.first
+        cachedGuidanceVoice = best
+        return best
     }
 
     /// Halt any in-progress speech immediately. Called when the user

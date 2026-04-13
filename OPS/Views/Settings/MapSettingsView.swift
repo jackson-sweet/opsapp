@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import CoreLocation
 
 struct MapSettingsView: View {
@@ -13,8 +14,19 @@ struct MapSettingsView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var locationManager: LocationManager
 
+    // ── Task types (dynamic legend) ──
+    @Query(sort: \TaskType.displayOrder) private var allTaskTypes: [TaskType]
+
+    /// Task types for the current user's company, filtered to non-deleted
+    /// records, used to render the project marker outer-ring legend.
+    private var companyTaskTypes: [TaskType] {
+        guard let companyId = dataController.currentUser?.companyId else { return [] }
+        return allTaskTypes
+            .filter { $0.companyId == companyId && $0.deletedAt == nil }
+            .sorted { $0.displayOrder < $1.displayOrder }
+    }
+
     // ── Map Appearance ──
-    @AppStorage("mapStyle") private var mapStyleRaw = "dark"
     @AppStorage("map3DBuildings") private var map3DBuildings = true
 
     // ── Camera Behavior ──
@@ -52,20 +64,6 @@ struct MapSettingsView: View {
 
                         // ── MAP APPEARANCE ──
                         settingsSection(title: "MAP APPEARANCE") {
-
-                            // Map Style
-                            settingsRow(title: "Map Style", description: "Color theme for the map") {
-                                SegmentedControl(
-                                    selection: $mapStyleRaw,
-                                    options: [
-                                        ("dark", "Dark"),
-                                        ("light", "Light"),
-                                        ("classic", "Classic")
-                                    ]
-                                )
-                            }
-
-                            settingsDivider
 
                             // 3D Buildings
                             SettingsToggle(
@@ -225,46 +223,47 @@ struct MapSettingsView: View {
 
                 Divider().background(OPSStyle.Colors.cardBorder)
 
-                // Pipeline status colors
+                // Pipeline status colors — iterates Status.allCases so the
+                // list stays in sync with the enum automatically.
                 VStack(alignment: .leading, spacing: 12) {
                     Text("CENTER DOT — PIPELINE STATUS")
                         .font(OPSStyle.Typography.miniLabel)
                         .tracking(0.3)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                    legendColorGrid(items: [
-                        ("RFQ", OPSStyle.Colors.statusColor(for: .rfq)),
-                        ("Estimated", OPSStyle.Colors.statusColor(for: .estimated)),
-                        ("Accepted", OPSStyle.Colors.statusColor(for: .accepted)),
-                        ("In Progress", OPSStyle.Colors.statusColor(for: .inProgress)),
-                        ("Completed", OPSStyle.Colors.statusColor(for: .completed)),
-                        ("Closed", OPSStyle.Colors.statusColor(for: .closed)),
-                        ("Archived", OPSStyle.Colors.statusColor(for: .archived)),
-                    ])
+                    legendColorGrid(items: Status.allCases.map { status in
+                        (status.displayName, OPSStyle.Colors.statusColor(for: status))
+                    })
                 }
                 .padding(16)
 
                 Divider().background(OPSStyle.Colors.cardBorder)
 
-                // Task type colors
+                // Task type colors — pulled live from the user's company
+                // task types. Shows an empty-state when none are configured.
                 VStack(alignment: .leading, spacing: 12) {
                     Text("OUTER RING — TASK TYPES")
                         .font(OPSStyle.Typography.miniLabel)
                         .tracking(0.3)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                    legendColorGrid(items: [
-                        ("Site Estimate", OPSStyle.Colors.successStatus),
-                        ("Quote/Proposal", OPSStyle.Colors.primaryAccent),
-                        ("Material Order", OPSStyle.Colors.warningStatus),
-                        ("Installation", OPSStyle.Colors.errorStatus),
-                        ("Inspection", Color(hex: "#7B68A6") ?? OPSStyle.Colors.primaryAccent),
-                        ("Completion", OPSStyle.Colors.tertiaryText),
-                    ])
+                    if companyTaskTypes.isEmpty {
+                        Text("No task types configured yet. Add them in Settings → Task Types.")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        legendColorGrid(items: companyTaskTypes.map { taskType in
+                            (
+                                taskType.display,
+                                Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent
+                            )
+                        })
 
-                    Text("Task type colors are customizable in your company settings.")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Text("Task type colors are customizable in Settings → Task Types.")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
                 }
                 .padding(16)
             }
@@ -279,26 +278,31 @@ struct MapSettingsView: View {
     }
 
     /// Large visual diagram of a project marker with labels.
+    /// The outer ring uses the first three live task type colors from
+    /// the company so the illustration matches what the user actually
+    /// sees on the map. Falls back to OPSStyle accents when the
+    /// company has fewer than three task types configured.
     private var markerDiagram: some View {
         HStack(spacing: 24) {
             // Large rendered marker
             ZStack {
-                // Outer ring — segmented
+                // Outer ring — segmented (up to 3 segments drawn)
+                let ringColors = diagramRingColors
                 Circle()
                     .trim(from: 0, to: 0.3)
-                    .stroke(OPSStyle.Colors.successStatus, lineWidth: 4)
+                    .stroke(ringColors[0], lineWidth: 4)
                     .frame(width: 56, height: 56)
                     .rotationEffect(.degrees(-90))
 
                 Circle()
                     .trim(from: 0.33, to: 0.63)
-                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 4)
+                    .stroke(ringColors[1], lineWidth: 4)
                     .frame(width: 56, height: 56)
                     .rotationEffect(.degrees(-90))
 
                 Circle()
                     .trim(from: 0.66, to: 0.96)
-                    .stroke(OPSStyle.Colors.errorStatus, lineWidth: 4)
+                    .stroke(ringColors[2], lineWidth: 4)
                     .frame(width: 56, height: 56)
                     .rotationEffect(.degrees(-90))
 
@@ -331,6 +335,26 @@ struct MapSettingsView: View {
                 }
             }
         }
+    }
+
+    /// Three colors for the marker diagram's outer ring. Prefers the
+    /// company's first three task types so the illustration matches the
+    /// real map. Falls back to OPSStyle accents when fewer exist.
+    private var diagramRingColors: [Color] {
+        let fallback: [Color] = [
+            OPSStyle.Colors.successStatus,
+            OPSStyle.Colors.primaryAccent,
+            OPSStyle.Colors.errorStatus
+        ]
+        let live = companyTaskTypes
+            .prefix(3)
+            .map { Color(hex: $0.color) ?? OPSStyle.Colors.primaryAccent }
+        // Pad with fallbacks if the company has fewer than 3 types.
+        var result: [Color] = Array(live)
+        while result.count < 3 {
+            result.append(fallback[result.count])
+        }
+        return result
     }
 
     /// Grid of color swatches with labels.
@@ -585,7 +609,6 @@ struct MapSettingsView: View {
     // MARK: - Reset
 
     private func resetToDefaults() {
-        mapStyleRaw = "dark"
         map3DBuildings = true
         mapDefaultFilter = ""
         mapOrientationRaw = "northUp"

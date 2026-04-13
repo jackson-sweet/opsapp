@@ -427,11 +427,13 @@ struct LogActivitySheet: View {
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                            Picker("Direction", selection: $viewModel.direction) {
-                                Text("Outbound").tag("outbound")
-                                Text("Inbound").tag("inbound")
-                            }
-                            .pickerStyle(.segmented)
+                            SegmentedControl(
+                                selection: $viewModel.direction,
+                                options: [
+                                    ("outbound", "Outbound"),
+                                    ("inbound", "Inbound")
+                                ]
+                            )
                         }
                     }
 

@@ -59,8 +59,13 @@ struct HomeContentView: View {
             // 1. Map layer
             mapLayer
 
-            // 2. Gradient overlay
-            gradientOverlay
+            // 2. Gradient overlay — suppressed in project mode so the top
+            //    project overlay (rendered inside OPSMapContainer) is not
+            //    washed out by the dark fade.
+            if !appState.isInProjectMode {
+                gradientOverlay
+                    .transition(.opacity)
+            }
 
             // 3. UI content overlay (header, action bar - NOT carousel in tutorial mode)
             contentOverlay

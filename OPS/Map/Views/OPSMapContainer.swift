@@ -96,6 +96,20 @@ struct OPSMapContainer: View {
         coordinator.selectedProject
     }
 
+    /// The device's top safe area inset, read directly from the key
+    /// window. `GeometryReader` inside this container returns 0 for the
+    /// top inset because the parent `mapLayer` applies `.ignoresSafeArea`.
+    /// Reading from the window is the reliable path for portrait iOS.
+    private var topSafeAreaInset: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?
+            .windows
+            .first(where: { $0.isKeyWindow })?
+            .safeAreaInsets.top
+        ?? 47 // notch-era fallback
+    }
+
     // ──────────────────────────────────────────────
     // MARK: - Top project overlay
     // ──────────────────────────────────────────────
@@ -463,22 +477,22 @@ struct OPSMapContainer: View {
             // 7. Top project overlay — shown whenever the user is in project mode.
             //    - Routing → NavigationManeuverCard (expandable turn list)
             //    - Not routing → ActiveProjectCard (static project summary)
-            //    - Below either card → centered EXIT pill
+            //    - Below either card → right-aligned EXIT PROJECT pill
             // AppHeader is hidden by HomeContentView while in project mode, so
-            // this overlay owns the top of the screen. Positioned at the safe
-            // area top + 8pt breathing room — no magic header offset required.
+            // this overlay owns the top of the screen. Positioned at the
+            // window's top safe area inset + 8pt breathing room.
             if appState.isInProjectMode {
-                GeometryReader { geo in
-                    let safeTop = geo.safeAreaInsets.top
-                    VStack(spacing: 10) {
-                        topProjectCard
-                        exitProjectPill
+                VStack(spacing: 10) {
+                    topProjectCard
+                    HStack(spacing: 0) {
                         Spacer(minLength: 0)
+                        exitProjectPill
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, safeTop + 8)
-                    .frame(maxWidth: .infinity)
+                    Spacer(minLength: 0)
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, topSafeAreaInset + 8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .animation(OPSStyle.Animation.standard, value: appState.isInProjectMode)
                 .animation(OPSStyle.Animation.spring, value: coordinator.isNavigating)

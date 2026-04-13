@@ -508,19 +508,21 @@ struct DeckBuilderView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             // 2D/3D toggle
-            Picker("View Mode", selection: Binding(
-                get: { viewModel.is3DMode },
-                set: { newValue in
-                    withAnimation(OPSStyle.Animation.standard) {
-                        viewModel.is3DMode = newValue
+            SegmentedControl(
+                selection: Binding(
+                    get: { viewModel.is3DMode },
+                    set: { newValue in
+                        withAnimation(OPSStyle.Animation.standard) {
+                            viewModel.is3DMode = newValue
+                        }
                     }
-                }
-            )) {
-                Image(systemName: "square.grid.2x2").tag(false)
-                Image(systemName: "cube").tag(true)
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 80)
+                ),
+                iconOptions: [
+                    (false, "square.grid.2x2"),
+                    (true, "cube")
+                ]
+            )
+            .frame(width: 96)
             .disabled(!viewModel.can3DMode)
 
             // Undo / Redo — edit permission required

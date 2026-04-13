@@ -7,24 +7,40 @@
 
 import SwiftUI
 
+/// How a single segment is rendered. Text for labeled pickers, icon for
+/// compact icon-only pickers like a 2D/3D toggle.
+fileprivate enum SegmentContent: Equatable {
+    case text(String)
+    case icon(systemName: String)
+}
+
 struct SegmentedControl<SelectionValue>: View where SelectionValue: Hashable {
     @Binding var selection: SelectionValue
-    let options: [(value: SelectionValue, label: String)]
-    
+    fileprivate let segments: [(value: SelectionValue, content: SegmentContent)]
+
+    /// Text-labeled segments. Labels are uppercased for display.
     init(selection: Binding<SelectionValue>, options: [(SelectionValue, String)]) {
         self._selection = selection
-        self.options = options.map { (value: $0.0, label: $0.1) }
+        self.segments = options.map { (value: $0.0, content: .text($0.1)) }
     }
-    
+
+    /// Icon-only segments. Each value is paired with an SF Symbol name.
+    /// Best for compact toggles (e.g. 2D/3D view mode) where text labels
+    /// would be redundant or overflow the available width.
+    init(selection: Binding<SelectionValue>, iconOptions: [(SelectionValue, String)]) {
+        self._selection = selection
+        self.segments = iconOptions.map { (value: $0.0, content: .icon(systemName: $0.1)) }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(options, id: \.value) { option in
+            ForEach(segments, id: \.value) { segment in
                 SegmentButton(
-                    title: option.label,
-                    isSelected: selection == option.value,
+                    content: segment.content,
+                    isSelected: selection == segment.value,
                     action: {
                         withAnimation(OPSStyle.Animation.fast) {
-                            selection = option.value
+                            selection = segment.value
                         }
                     }
                 )
@@ -36,27 +52,38 @@ struct SegmentedControl<SelectionValue>: View where SelectionValue: Hashable {
 }
 
 private struct SegmentButton: View {
-    let title: String
+    let content: SegmentContent
     let isSelected: Bool
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
-            Text(title.uppercased())
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(isSelected ? .black : .white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(
-                    Group {
-                        if isSelected {
-                            Color.white
-                        } else {
-                            Color.clear
-                        }
+            Group {
+                switch content {
+                case .text(let title):
+                    Text(title.uppercased())
+                        .font(OPSStyle.Typography.bodyBold)
+                case .icon(let systemName):
+                    Image(systemName: systemName)
+                        .font(.system(
+                            size: OPSStyle.Layout.IconSize.md,
+                            weight: .semibold
+                        ))
+                }
+            }
+            .foregroundColor(isSelected ? .black : .white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(
+                Group {
+                    if isSelected {
+                        Color.white
+                    } else {
+                        Color.clear
                     }
-                )
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                }
+            )
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
     }
 }

@@ -46,6 +46,10 @@ struct HomeContentView: View {
     @State private var showingEditProject = false
     @State private var projectToEdit: Project?
 
+    // Measured AppHeader height — drives clearance for the navigation
+    // maneuver card so it never overlaps the header.
+    @State private var measuredHeaderHeight: CGFloat = 0
+
     // Map filter mode — defaults based on user role (crew = today, others = active)
     // Can be overridden by user preference in Map Settings
     @AppStorage("mapDefaultFilter") private var mapDefaultFilterRaw = ""
@@ -188,7 +192,8 @@ struct HomeContentView: View {
                 },
                 filterMode: $mapFilterMode,
                 appState: appState,
-                locationManager: locationManager
+                locationManager: locationManager,
+                headerHeight: measuredHeaderHeight
             )
             
             // Semi-transparent dark overlay - using clear since we have gradient overlay
@@ -257,8 +262,11 @@ struct HomeContentView: View {
                     .padding(.bottom, 120) // Add padding for tab bar
             }
         }
+        .onPreferenceChange(HeaderHeightPreferenceKey.self) { newHeight in
+            measuredHeaderHeight = newHeight
+        }
     }
-    
+
     private var headerView: some View {
         Group {
             if appState.isInProjectMode {

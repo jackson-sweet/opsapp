@@ -26,6 +26,11 @@ struct OPSMapContainer: View {
     @ObservedObject var appState: AppState
     @ObservedObject var locationManager: LocationManager
 
+    /// Measured AppHeader height, piped in from HomeContentView via
+    /// HeaderHeightPreferenceKey. Drives clearance for the navigation
+    /// maneuver card so it never overlaps the header.
+    var headerHeight: CGFloat
+
     // ──────────────────────────────────────────────
     // MARK: - Internal State
     // ──────────────────────────────────────────────
@@ -53,7 +58,8 @@ struct OPSMapContainer: View {
         onNavigationStarted: @escaping (Project) -> Void,
         filterMode: Binding<MapFilterMode>,
         appState: AppState,
-        locationManager: LocationManager
+        locationManager: LocationManager,
+        headerHeight: CGFloat
     ) {
         self.projects = projects
         self.selectedIndex = selectedIndex
@@ -63,6 +69,7 @@ struct OPSMapContainer: View {
         self._filterMode = filterMode
         self.appState = appState
         self.locationManager = locationManager
+        self.headerHeight = headerHeight
 
         _coordinator = StateObject(
             wrappedValue: OPSMapCoordinator(locationManager: locationManager)
@@ -378,13 +385,20 @@ struct OPSMapContainer: View {
 
             // 7. Navigation UI — split into maneuver card (top) + trip strip (bottom)
             if coordinator.isNavigating {
-                // 7a. Maneuver card — positioned below ProjectHeader
-                // ProjectHeader occupies ~110pt from safe area top (~59pt on notch phones)
-                // = ~169pt from absolute screen top. Padding must clear that.
+                // 7a. Maneuver card — positioned below AppHeader using the measured
+                // header height (HeaderHeightPreferenceKey). AppHeader's gradient
+                // background already extends under the safe area, so the measured
+                // height includes the top inset. 12pt breathing room below.
+                // `max(headerHeight, 64)` floors the value on the very first frame
+                // before the preference key has reported, so the card never starts
+                // flush with the top of the screen.
                 VStack {
-                    NavigationManeuverCard(navigationManager: coordinator.navigationManager)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 185)
+                    NavigationManeuverCard(
+                        navigationManager: coordinator.navigationManager,
+                        destinationName: coordinator.selectedProject?.title
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.top, max(headerHeight, 64) + 12)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)

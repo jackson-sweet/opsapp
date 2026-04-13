@@ -170,6 +170,15 @@ struct AppHeader: View {
                 )
                 .ignoresSafeArea()
             )
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .preference(
+                            key: HeaderHeightPreferenceKey.self,
+                            value: geo.size.height
+                        )
+                }
+            )
             .sheet(isPresented: $appState.showingNotifications) {
                 NavigationStack {
                     NotificationListView()

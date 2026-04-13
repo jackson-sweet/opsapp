@@ -99,10 +99,10 @@ struct AppHeader: View {
                 
                 Spacer()
 
-                // EXIT PROJECT pill — only visible when in project mode.
+                // EXIT PROJECT button — only visible when in project mode.
                 // Replaces the legacy ProjectHeader STOP PROJECT button.
-                // Commitment beat: medium impact haptic fires at tap, reduced-motion
-                // uses a standard ease transition instead of the spring.
+                // 44x44 circle, matching the other AppHeader action buttons.
+                // Commitment beat: medium impact haptic fires at tap.
                 if appState.isInProjectMode {
                     Button(action: {
                         // Commitment haptic — fires at the moment of the decision.
@@ -117,27 +117,19 @@ struct AppHeader: View {
                         )
                         appState.exitProjectMode()
                     }) {
-                        HStack(spacing: 6) {
-                            Text("EXIT")
-                                .font(OPSStyle.Typography.smallButton)
-                                .foregroundColor(OPSStyle.Colors.cardBackground)
-                            Image(systemName: "xmark")
-                                .font(.system(
-                                    size: OPSStyle.Layout.IconSize.sm,
-                                    weight: .semibold
-                                ))
-                                .foregroundColor(OPSStyle.Colors.cardBackground)
-                        }
-                        .padding(.horizontal, 12)
-                        .frame(height: 44)
-                        .background(OPSStyle.Colors.primaryText)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        Image(systemName: "xmark")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .frame(width: 44, height: 44)
+                            .background(OPSStyle.Colors.cardBackground)
+                            .clipShape(Circle())
                     }
                     .buttonStyle(PlainButtonStyle())
                     .padding(.trailing, 8)
+                    .accessibilityLabel("Exit project")
                     .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .trailing).combined(with: .opacity)
+                        insertion: .scale(scale: 0.6).combined(with: .opacity),
+                        removal: .scale(scale: 0.6).combined(with: .opacity)
                     ))
                 }
 

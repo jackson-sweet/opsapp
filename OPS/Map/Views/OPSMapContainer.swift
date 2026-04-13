@@ -385,23 +385,27 @@ struct OPSMapContainer: View {
 
             // 7. Navigation UI — split into maneuver card (top) + trip strip (bottom)
             if coordinator.isNavigating {
-                // 7a. Maneuver card — positioned below AppHeader using the measured
-                // header height (HeaderHeightPreferenceKey). AppHeader's gradient
-                // background already extends under the safe area, so the measured
-                // height includes the top inset. 12pt breathing room below.
-                // `max(headerHeight, 64)` floors the value on the very first frame
-                // before the preference key has reported, so the card never starts
-                // flush with the top of the screen.
-                VStack {
-                    NavigationManeuverCard(
-                        navigationManager: coordinator.navigationManager,
-                        destinationName: coordinator.selectedProject?.title
-                    )
-                    .padding(.horizontal, 16)
-                    .padding(.top, max(headerHeight, 64) + 12)
-                    Spacer()
+                // 7a. Maneuver card — positioned below AppHeader.
+                // Total clearance = safe area top inset + measured AppHeader HStack
+                // height + 8pt breathing room. AppHeader measures only its HStack
+                // (the gradient background `.ignoresSafeArea` does not participate
+                // in the preference key), so we add the safe area inset manually.
+                // `max(headerHeight, 56)` floors the value on the very first frame
+                // before the preference key has reported.
+                GeometryReader { geo in
+                    let safeTop = geo.safeAreaInsets.top
+                    let clearance = safeTop + max(headerHeight, 56) + 8
+                    VStack {
+                        NavigationManeuverCard(
+                            navigationManager: coordinator.navigationManager,
+                            destinationName: coordinator.selectedProject?.title
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.top, clearance)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
                 .transition(.move(edge: .top))
                 .animation(OPSStyle.Animation.standard, value: coordinator.isNavigating)
 

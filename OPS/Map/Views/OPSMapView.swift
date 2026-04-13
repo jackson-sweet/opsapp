@@ -23,6 +23,9 @@ struct OPSMapView: UIViewRepresentable {
         // Match the style's land color while tiles stream in
         mapView.backgroundColor = style.backgroundColor
 
+        // --- Hide scale bar ornament ---
+        mapView.ornaments.options.scaleBar.visibility = .hidden
+
         // --- User location puck ---
         mapView.location.options.puckType = .puck2D(
             Puck2DConfiguration(scale: .constant(0.8))

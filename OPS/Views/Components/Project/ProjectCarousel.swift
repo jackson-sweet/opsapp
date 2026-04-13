@@ -135,21 +135,23 @@ struct ProjectCardView: View {
         ZStack {
             // Fixed size container for card
             ZStack {
-                // Card background
+                // Card background — frosted glass over the map.
                 ZStack {
-                    // Base background
-                    Color("CardBackground")
-                        .opacity(0.3)
-                    
+                    // ultraThinMaterial reads darker/more blurred than
+                    // thinMaterial in the OPS dark theme and matches the
+                    // NavigationManeuverCard / ActiveProjectCard chrome.
                     Rectangle()
-                        .fill(Color.clear)
-                        .background(Material.thinMaterial.opacity(0.7))
-                    
+                        .fill(.ultraThinMaterial)
+
+                    // Hairline stroke for edge definition over the blur.
+                    Rectangle()
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+
                     // Subtle background color for completed projects
                     if project.status.isCompleted {
                         OPSStyle.Colors.statusColor(for: .completed).opacity(0.1)
                     }
-                    
+
                     // Simple highlight for long press
                     if isLongPressing {
                         OPSStyle.Colors.primaryAccent.opacity(0.3)

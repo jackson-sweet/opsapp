@@ -51,12 +51,18 @@ class InvoiceViewModel: ObservableObject {
     }
 
     /// Re-read invoices from the local SwiftData store. Call after a sync or mutation.
+    ///
+    /// Runs on the main thread because SwiftData's ModelContext is not thread-safe.
+    /// A fetch limit caps the worst-case hitch for companies with very large invoice
+    /// histories — 500 most-recent invoices is plenty for the list UI, and any deeper
+    /// history is reachable via search (which queries SwiftData directly) or pagination.
     func reloadFromLocal() {
         guard let ctx = modelContext else { return }
-        let descriptor = FetchDescriptor<Invoice>(
+        var descriptor = FetchDescriptor<Invoice>(
             predicate: #Predicate { $0.deletedAt == nil },
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
+        descriptor.fetchLimit = 500
         invoices = (try? ctx.fetch(descriptor)) ?? []
     }
 

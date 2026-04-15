@@ -50,12 +50,15 @@ class EstimateViewModel: ObservableObject {
         reloadFromLocal()
     }
 
+    /// Runs on the main thread (SwiftData's ModelContext is not thread-safe).
+    /// Capped to 500 most-recent estimates to bound worst-case hitch on large histories.
     func reloadFromLocal() {
         guard let ctx = modelContext else { return }
-        let descriptor = FetchDescriptor<Estimate>(
+        var descriptor = FetchDescriptor<Estimate>(
             predicate: #Predicate { $0.deletedAt == nil },
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
+        descriptor.fetchLimit = 500
         estimates = (try? ctx.fetch(descriptor)) ?? []
     }
 

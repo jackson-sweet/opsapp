@@ -1001,6 +1001,9 @@ class DataController: ObservableObject {
         // Clear permissions
         permissionStore?.clearPermissions()
 
+        // Clear on-disk client avatar cache
+        ClientAvatarCache.shared.clearAll()
+
         // First, clear the current user reference to prevent views from accessing it
         self.currentUser = nil
 

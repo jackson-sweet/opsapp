@@ -24,18 +24,19 @@ import Foundation
 struct TeamManagementWizard: WizardDefinitionProtocol {
     let wizardId = "team_management"
     let displayName = "TEAM MANAGEMENT"
-    let displayDescription = "Build your crew. View your team, invite new members with your crew code, and assign roles that control what everyone can see and do."
+    let displayDescription = "Build your crew. Invite people, assign roles, control access."
     let bulletPoints = [
-        "View your team roster",
-        "Share your crew code to invite members",
-        "Send invitations by email or phone",
-        "Assign roles to control access"
+        "See your team roster",
+        "Share the crew code",
+        "Send invites by email or phone",
+        "Assign roles"
     ]
     let iconName = "person.3.fill"
     let triggerType: WizardTriggerType = .contextual
     let minimumTier: WizardAccessTier = .office
     let requiredPermission: String? = "team.manage"
-    let bannerText = "Want help setting up your team?"
+    let bannerText = "Let's get your team set up."
+    let estimatedMinutes = 1
 
     let steps: [WizardStepDefinition] = [
         WizardStepDefinition(

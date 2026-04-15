@@ -28,7 +28,7 @@ struct WizardRegistry {
         PaymentReviewWizard()
     ]
 
-    /// Wizards filtered by role and permissions
+    /// Wizards filtered by role and permissions (for trigger evaluation)
     static func wizards(
         for role: UserRole,
         permissionCheck: (String) -> Bool
@@ -42,6 +42,14 @@ struct WizardRegistry {
                 return permissionCheck(required)
             }
             return true
+        }
+    }
+
+    /// Wizards filtered by role tier only — permissions shown as locks in the UI
+    static func wizardsForDisplay(role: UserRole) -> [any WizardDefinitionProtocol] {
+        let tier = WizardAccessTier.tier(for: role)
+        return allWizards.filter { wizard in
+            tier.canAccess(minimumTier: wizard.minimumTier)
         }
     }
 

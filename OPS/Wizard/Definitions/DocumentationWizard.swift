@@ -12,16 +12,17 @@ import Foundation
 struct DocumentationWizard: WizardDefinitionProtocol {
     let wizardId = "documentation"
     let displayName = "DOCUMENTATION & DETAILS"
-    let displayDescription = "Keep a complete record of every job. Write notes to your crew, capture photos on-site, and review your documentation."
+    let displayDescription = "Notes and photos — everything your crew needs to see, right on the project."
     let bulletPoints = [
-        "Write a note with @mentions",
-        "Capture photos to document the job",
-        "View and review your photos"
+        "Write a note, @ your crew",
+        "Capture photos on site",
+        "View photos full screen"
     ]
     let iconName = "doc.text.image"
     let triggerType: WizardTriggerType = .contextual
     let minimumTier: WizardAccessTier = .field
-    let bannerText = "Want to learn how to document your jobs?"
+    let bannerText = "Capture notes and photos on your projects."
+    let estimatedMinutes = 1
 
     let steps: [WizardStepDefinition] = [
         WizardStepDefinition(

@@ -203,7 +203,7 @@ private struct WizardTargetGlow<Content: View>: View {
         let opacity = pulsePhase ? fillOpacityHigh : fillOpacityLow
         switch style {
         case .circle:
-            Circle().fill(color.opacity(opacity))
+            Circle().fill(color.opacity(opacity)).padding(-6)
         case .button, .input, .row:
             RoundedRectangle(cornerRadius: cornerRadius).fill(color.opacity(opacity))
         }
@@ -214,7 +214,7 @@ private struct WizardTargetGlow<Content: View>: View {
         let opacity = pulsePhase ? borderOpacityHigh : borderOpacityLow
         switch style {
         case .circle:
-            Circle().stroke(color.opacity(opacity), lineWidth: borderWidth)
+            Circle().stroke(color.opacity(opacity), lineWidth: borderWidth).padding(-6)
         case .button, .input, .row:
             RoundedRectangle(cornerRadius: cornerRadius).stroke(color.opacity(opacity), lineWidth: borderWidth)
         }

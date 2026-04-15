@@ -40,11 +40,20 @@ struct WizardBanner: View {
                         .tracking(1.2)
                 }
 
-                // Description
-                Text(wizard.bannerText)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .lineLimit(2)
+                // Description + time estimate
+                HStack(spacing: 0) {
+                    Text(wizard.bannerText)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    Spacer(minLength: 8)
+
+                    Text("\(wizard.estimatedMinutes) MIN")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .tracking(0.8)
+                }
+                .lineLimit(2)
 
                 // Action buttons
                 HStack(spacing: 10) {
@@ -146,5 +155,16 @@ struct WizardBannerModifier: ViewModifier {
 extension View {
     func wizardBanner(stateManager: WizardStateManager) -> some View {
         modifier(WizardBannerModifier(stateManager: stateManager))
+    }
+
+    /// Applies the wizard banner only when a state manager is available.
+    /// Use inside fullScreenCovers where the root banner is hidden.
+    @ViewBuilder
+    func wizardBannerIfAvailable(stateManager: WizardStateManager?) -> some View {
+        if let manager = stateManager {
+            self.wizardBanner(stateManager: manager)
+        } else {
+            self
+        }
     }
 }

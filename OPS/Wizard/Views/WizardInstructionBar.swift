@@ -106,12 +106,29 @@ struct WizardInstructionBar: View {
                             let isLastStep = stateManager.currentStepIndex >= stateManager.totalSteps - 1
                             Button {
                                 TutorialHaptics.lightTap()
-                                // Call completeCurrentStep directly (not via notification)
-                                // so we can navigate to the next tab immediately after.
-                                stateManager.completeCurrentStep()
-                                // Auto-navigate to the next step's tab after step advances
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    stateManager.navigateToCurrentStep()
+
+                                // Collapse bar → switch tab → expand bar with new step
+                                stateManager.isStepTransitioning = true
+
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                    stateManager.completeCurrentStep()
+
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                        if isLastStep {
+                                            NotificationCenter.default.post(
+                                                name: Notification.Name("WizardNavigateToTarget"),
+                                                object: nil,
+                                                userInfo: ["tabTarget": "Home"]
+                                            )
+                                        } else {
+                                            stateManager.navigateToCurrentStep()
+                                        }
+
+                                        // Slide back up after tab settles
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                            stateManager.isStepTransitioning = false
+                                        }
+                                    }
                                 }
                             } label: {
                                 Text(isLastStep ? "GET STARTED" : "NEXT")

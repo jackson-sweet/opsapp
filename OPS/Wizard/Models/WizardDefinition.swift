@@ -113,6 +113,9 @@ protocol WizardDefinitionProtocol {
     /// Banner text shown when triggered
     var bannerText: String { get }
 
+    /// Estimated minutes to complete (shown in banner and prompt overlay)
+    var estimatedMinutes: Int { get }
+
     /// Ordered list of steps
     var steps: [WizardStepDefinition] { get }
 }

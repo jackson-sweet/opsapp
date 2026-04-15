@@ -24,6 +24,7 @@ struct PaymentReviewWizard: WizardDefinitionProtocol {
     let minimumTier: WizardAccessTier = .office
     let requiredPermission: String? = "finances.view"
     let bannerText = "You have completed projects to review — want a quick walkthrough?"
+    let estimatedMinutes = 2
 
     let steps: [WizardStepDefinition] = [
         // Step 1: Navigate to the review button in the header

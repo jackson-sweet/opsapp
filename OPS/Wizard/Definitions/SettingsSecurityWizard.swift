@@ -16,23 +16,24 @@ import Foundation
 struct SettingsSecurityWizard: WizardDefinitionProtocol {
     let wizardId = "settings_security"
     let displayName = "SETTINGS & SECURITY"
-    let displayDescription = "Lock down your app and personalize your experience. Set up a PIN, complete your profile, and configure how you get notified."
+    let displayDescription = "PIN lock, profile, notifications. Takes two minutes."
     let bulletPoints = [
-        "Complete your profile information",
-        "Set up your company details",
-        "Enable PIN lock for security",
-        "Configure notification preferences"
+        "Fill in your profile",
+        "Check your company details",
+        "Enable PIN lock",
+        "Set notification preferences"
     ]
     let iconName = "gearshape.fill"
     let triggerType: WizardTriggerType = .contextual
     let minimumTier: WizardAccessTier = .field
-    let bannerText = "Want to set up your profile and security?"
+    let bannerText = "Set up your profile and lock things down."
+    let estimatedMinutes = 1
 
     let steps: [WizardStepDefinition] = [
         WizardStepDefinition(
             id: "open_profile",
             instruction: "OPEN YOUR PROFILE",
-            description: "Add your name, phone, and photo so your crew knows who you are.",
+            description: "Name, phone, photo. Your crew sees this.",
             targetScreen: "Settings",
             canSkip: false,
             completionNotification: "WizardProfileViewed"

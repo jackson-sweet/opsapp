@@ -23,6 +23,7 @@ struct InventorySetupWizard: WizardDefinitionProtocol {
     let minimumTier: WizardAccessTier = .office
     let requiredPermission: String? = "inventory.manage"
     let bannerText = "Let's set up your inventory"
+    let estimatedMinutes = 2
 
     let steps: [WizardStepDefinition] = [
         WizardStepDefinition(

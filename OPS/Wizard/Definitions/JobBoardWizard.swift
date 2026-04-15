@@ -24,17 +24,18 @@ import Foundation
 struct JobBoardWizard: WizardDefinitionProtocol {
     let wizardId = "job_board"
     let displayName = "JOB BOARD"
-    let displayDescription = "Your command center for every project. Browse, filter, swipe to change status, and tap into project details."
+    let displayDescription = "All your projects. Filter, swipe, tap in for details."
     let bulletPoints = [
-        "Browse your active projects",
-        "Filter by status or crew member",
-        "Swipe a card to advance its status",
-        "Tap a project for full details"
+        "Browse active projects",
+        "Filter by status or crew",
+        "Swipe to change status",
+        "Tap a project for details"
     ]
     let iconName = "list.clipboard"
     let triggerType: WizardTriggerType = .contextual
     let minimumTier: WizardAccessTier = .field
-    let bannerText = "Want a quick tour of the job board?"
+    let bannerText = "First time on the board? 2-minute walkthrough."
+    let estimatedMinutes = 2
 
     let steps: [WizardStepDefinition] = [
         WizardStepDefinition(

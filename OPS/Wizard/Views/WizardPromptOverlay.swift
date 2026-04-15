@@ -42,7 +42,19 @@ struct WizardPromptOverlay: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .lineSpacing(4)
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 12)
+
+                // Time estimate
+                HStack(spacing: 6) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 12))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                    Text("About \(wizard.estimatedMinutes) min")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .padding(.bottom, 20)
 
                 // Bullet points
                 VStack(alignment: .leading, spacing: 0) {

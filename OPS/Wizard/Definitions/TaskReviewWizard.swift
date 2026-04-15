@@ -24,6 +24,7 @@ struct TaskReviewWizard: WizardDefinitionProtocol {
     let minimumTier: WizardAccessTier = .field
     let requiredPermission: String? = "tasks.view"
     let bannerText = "You have overdue tasks — want a quick walkthrough of task review?"
+    let estimatedMinutes = 2
 
     let steps: [WizardStepDefinition] = [
         WizardStepDefinition(

@@ -2,88 +2,24 @@
 //  WizardOverlayWindow.swift
 //  OPS
 //
-//  A UIWindow-level overlay that persists the wizard instruction bar
-//  across ALL presentation contexts — sheets, fullScreenCovers, alerts.
-//  Uses a passthrough window so touches outside the bar reach the app.
+//  Wizard instruction bar + exit prompt, applied as a SwiftUI modifier
+//  on the root content view. No secondary UIWindow — just native SwiftUI.
 //
 
 import SwiftUI
 import UIKit
 
-// MARK: - Passthrough Window
+// MARK: - Wizard Overlay Modifier
 
-/// A UIWindow that only intercepts touches on its visible content.
-/// Touches on transparent areas pass through to the window below.
-class PassthroughWindow: UIWindow {
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        guard let hitView = super.hitTest(point, with: event) else { return nil }
-        // If the hit view is the root hosting controller's view (transparent background),
-        // return nil so the touch passes through to the app window below.
-        if hitView === rootViewController?.view {
-            return nil
-        }
-        return hitView
-    }
-}
-
-// MARK: - Wizard Overlay Controller
-
-@MainActor
-class WizardOverlayController: ObservableObject {
-    static let shared = WizardOverlayController()
-
-    private var overlayWindow: PassthroughWindow?
-    private var hostingController: UIHostingController<AnyView>?
-    private weak var stateManager: WizardStateManager?
-
-    private init() {}
-
-    /// Install the overlay window. Call once from OPSApp or ContentView after wizard system is configured.
-    func install(stateManager: WizardStateManager) {
-        guard overlayWindow == nil else { return }
-        self.stateManager = stateManager
-
-        guard let windowScene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first else { return }
-
-        let overlayView = WizardOverlayView(stateManager: stateManager)
-        let hosting = UIHostingController(rootView: AnyView(overlayView))
-        hosting.view.backgroundColor = .clear
-
-        let window = PassthroughWindow(windowScene: windowScene)
-        window.windowLevel = .alert - 1 // Below alerts, above everything else
-        window.rootViewController = hosting
-        window.isHidden = false
-        window.backgroundColor = .clear
-
-        self.overlayWindow = window
-        self.hostingController = hosting
-    }
-
-    /// Remove the overlay (cleanup).
-    func teardown() {
-        overlayWindow?.isHidden = true
-        overlayWindow = nil
-        hostingController = nil
-        stateManager = nil
-    }
-}
-
-// MARK: - Overlay SwiftUI View
-
-/// The SwiftUI view hosted in the overlay window.
-/// Shows the instruction bar at the bottom when a wizard is active.
-/// Detects when the user navigates away from the wizard context and prompts to exit.
-private struct WizardOverlayView: View {
+/// Adds the wizard instruction bar (bottom), exit prompt (centered), and
+/// completion toast to any view. Apply once at the ContentView level.
+struct WizardOverlayModifier: ViewModifier {
     @ObservedObject var stateManager: WizardStateManager
 
     @State private var showExitPrompt = false
     @State private var currentTab: String = ""
     @State private var exitPromptSuppressedUntil: Date = .distantPast
 
-    /// Wizards that manage their own fullscreen flow and should not show
-    /// the overlay instruction bar or exit-prompt detection.
     private static let fullscreenManagedWizards: Set<String> = ["inventory_setup"]
 
     private var isFullscreenManaged: Bool {
@@ -91,104 +27,11 @@ private struct WizardOverlayView: View {
         return Self.fullscreenManagedWizards.contains(wizardId)
     }
 
-    var body: some View {
-        ZStack {
-            // Exit prompt overlay — suppressed for wizards with their own fullscreen flow
-            if showExitPrompt && !isFullscreenManaged {
-                // Scrim — tapping outside the dialog returns to the wizard.
-                // allowsHitTesting(false) on the scrim itself; a background tap
-                // handler on the full ZStack layer handles dismiss so it never
-                // competes with the dialog buttons.
-                Color.black.opacity(0.5)
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
-
-                // Invisible tap catcher behind the dialog — returns to wizard
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        TutorialHaptics.lightTap()
-                        showExitPrompt = false
-                        stateManager.isPaused = false
-                        stateManager.navigateToCurrentStep()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            stateManager.requestDeepNavigation()
-                        }
-                    }
-
-                // Dialog card
-                VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("LEAVE GUIDE?")
-                            .font(OPSStyle.Typography.cardTitle)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-
-                        Text("You navigated away from the setup guide.")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-
-                    VStack(spacing: 12) {
-                        Button {
-                            TutorialHaptics.lightTap()
-                            showExitPrompt = false
-                            stateManager.isPaused = false
-                            stateManager.navigateToCurrentStep()
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                stateManager.requestDeepNavigation()
-                            }
-                        } label: {
-                            Text("CONTINUE GUIDE")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.buttonText)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: OPSStyle.Layout.touchTargetStandard)
-                                .background(OPSStyle.Colors.wizardAccent)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        }
-
-                        Button {
-                            TutorialHaptics.lightTap()
-                            showExitPrompt = false
-                            stateManager.isPaused = false
-                            stateManager.exitWizard()
-                        } label: {
-                            Text("EXIT GUIDE")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: OPSStyle.Layout.touchTargetStandard)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                                )
-                        }
-                    }
-                }
-                .padding(24)
-                .background(
-                    BlurView(style: .systemUltraThinMaterialDark)
-                        .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.85))
-                )
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
-                .padding(.horizontal, 24)
-                // Prevent taps on the dialog from falling through to the dismiss handler
-                .contentShape(Rectangle())
-                .onTapGesture { } // Block taps from falling through to dismiss handler
-                .transition(.opacity)
-            }
-
-            // Instruction bar at bottom — hidden for wizards that manage their own fullscreen flow
-            VStack {
-                Spacer()
-
-                if stateManager.isActive && !showExitPrompt && !isFullscreenManaged {
+    func body(content: Content) -> some View {
+        content
+            // Instruction bar — collapses between steps so tab bar is visible during transitions
+            .safeAreaInset(edge: .bottom) {
+                if stateManager.isActive && !showExitPrompt && !isFullscreenManaged && !stateManager.isStepTransitioning {
                     WizardInstructionBar(
                         stateManager: stateManager,
                         onPausedBarTapped: {
@@ -199,55 +42,198 @@ private struct WizardOverlayView: View {
                         }
                     )
                     .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(998)
                 }
             }
-        }
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: stateManager.isActive)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: stateManager.currentStepIndex)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showExitPrompt)
-        .onChange(of: stateManager.isActive) { _, active in
-            // Clear exit prompt if wizard completes/exits while prompt is showing
-            if !active {
-                showExitPrompt = false
-            } else {
-                // Suppress exit prompt for 2s after wizard starts (allows navigation to settle)
+            // Completion toast pinned to bottom
+            .safeAreaInset(edge: .bottom) {
+                if stateManager.completedWizardId != nil {
+                    let isWelcomeTour = stateManager.completedWizardId == "welcome_tour"
+                    HStack(spacing: 10) {
+                        Image(systemName: isWelcomeTour ? "hand.thumbsup.fill" : "checkmark.circle.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.wizardAccent)
+
+                        Text(isWelcomeTour ? "YOU'RE ALL SET." : "GUIDE COMPLETE.")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .tracking(1.2)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 16)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        BlurView(style: .systemUltraThinMaterialDark)
+                            .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.9))
+                            .ignoresSafeArea(edges: .bottom)
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            // Exit prompt overlay — full-screen scrim + centered dialog
+            .overlay {
+                if showExitPrompt && !isFullscreenManaged {
+                    ZStack {
+                        Color.black.opacity(0.5)
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                TutorialHaptics.lightTap()
+                                showExitPrompt = false
+                                stateManager.isPaused = false
+                                stateManager.navigateToCurrentStep()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    stateManager.requestDeepNavigation()
+                                }
+                            }
+
+                        VStack(alignment: .leading, spacing: 20) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("LEAVE GUIDE?")
+                                    .font(OPSStyle.Typography.cardTitle)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                                Text("You navigated away from the setup guide.")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+
+                            VStack(spacing: 12) {
+                                Button {
+                                    TutorialHaptics.lightTap()
+                                    showExitPrompt = false
+                                    stateManager.isPaused = false
+                                    stateManager.navigateToCurrentStep()
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                        stateManager.requestDeepNavigation()
+                                    }
+                                } label: {
+                                    Text("CONTINUE GUIDE")
+                                        .font(OPSStyle.Typography.captionBold)
+                                        .foregroundColor(OPSStyle.Colors.buttonText)
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: OPSStyle.Layout.touchTargetStandard)
+                                        .background(OPSStyle.Colors.wizardAccent)
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                }
+
+                                Button {
+                                    TutorialHaptics.lightTap()
+                                    showExitPrompt = false
+                                    stateManager.isPaused = false
+                                    stateManager.exitWizard()
+                                } label: {
+                                    Text("EXIT GUIDE")
+                                        .font(OPSStyle.Typography.captionBold)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: OPSStyle.Layout.touchTargetStandard)
+                                        .background(OPSStyle.Colors.cardBackgroundDark)
+                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                                        )
+                                }
+                            }
+                        }
+                        .padding(24)
+                        .background(
+                            BlurView(style: .systemUltraThinMaterialDark)
+                                .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.85))
+                        )
+                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        )
+                        .padding(.horizontal, 24)
+                        .contentShape(Rectangle())
+                        .onTapGesture { }
+                    }
+                    .transition(.opacity)
+                    .zIndex(999)
+                }
+            }
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: stateManager.isActive)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: stateManager.currentStepIndex)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showExitPrompt)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: stateManager.completedWizardId != nil)
+            .animation(.easeInOut(duration: 0.2), value: stateManager.isStepTransitioning)
+            .onChange(of: stateManager.isActive) { _, active in
+                if !active {
+                    showExitPrompt = false
+                } else {
+                    exitPromptSuppressedUntil = Date().addingTimeInterval(2.0)
+                }
+            }
+            .onChange(of: stateManager.currentStepIndex) { _, _ in
                 exitPromptSuppressedUntil = Date().addingTimeInterval(2.0)
             }
-        }
-        .onChange(of: stateManager.currentStepIndex) { _, _ in
-            // Suppress exit prompt for 2s after each step advancement.
-            // Prevents false exit prompts when a step completion triggers a sheet/cover dismiss
-            // that fires WizardScreenDismissed before the user has returned to the target view.
-            exitPromptSuppressedUntil = Date().addingTimeInterval(2.0)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardCurrentTabChanged"))) { notification in
-            guard stateManager.isActive,
-                  let tabName = notification.userInfo?["tabName"] as? String else { return }
-            currentTab = tabName
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardCurrentTabChanged"))) { notification in
+                guard let tabName = notification.userInfo?["tabName"] as? String else { return }
 
-            // Check if the user navigated away from the wizard's target area
-            guard let targetScreen = stateManager.currentStep?.targetScreen,
-                  let expectedTab = WizardStateManager.tabTarget(for: targetScreen) else { return }
+                // Dismiss any pending banner when the user leaves the triggering tab
+                if stateManager.showBanner {
+                    stateManager.showBanner = false
+                    stateManager.pendingBannerWizard = nil
+                }
 
-            // Suppress exit prompt when a wizard deep-nav sheet is open above the tab bar —
-            // the underlying tab may differ from the expected tab, but the user is still
-            // correctly inside the wizard context (e.g., documentation wizard in project details).
-            let isDeepNavOpen = stateManager.deepNavProjectId != nil
-            if tabName != expectedTab && !showExitPrompt && Date() > exitPromptSuppressedUntil && !isDeepNavOpen && !isFullscreenManaged {
-                stateManager.isPaused = true
-                showExitPrompt = true
+                guard stateManager.isActive else { return }
+                currentTab = tabName
+
+                guard let targetScreen = stateManager.currentStep?.targetScreen,
+                      let expectedTab = WizardStateManager.tabTarget(for: targetScreen) else { return }
+
+                let isDeepNavOpen = stateManager.deepNavProjectId != nil
+                if tabName != expectedTab && !showExitPrompt && Date() > exitPromptSuppressedUntil && !isDeepNavOpen && !isFullscreenManaged {
+                    stateManager.isPaused = true
+                    showExitPrompt = true
+                }
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScreenDismissed"))) { notification in
-            guard stateManager.isActive,
-                  let dismissedScreen = notification.userInfo?["screen"] as? String else { return }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScreenDismissed"))) { notification in
+                guard stateManager.isActive,
+                      let dismissedScreen = notification.userInfo?["screen"] as? String else { return }
 
-            // If the dismissed screen matches the wizard's current target, prompt to exit
-            if let targetScreen = stateManager.currentStep?.targetScreen,
-               targetScreen == dismissedScreen && !showExitPrompt && Date() > exitPromptSuppressedUntil && !isFullscreenManaged {
-                stateManager.isPaused = true
-                showExitPrompt = true
+                if let targetScreen = stateManager.currentStep?.targetScreen,
+                   targetScreen == dismissedScreen && !showExitPrompt && Date() > exitPromptSuppressedUntil && !isFullscreenManaged {
+                    stateManager.isPaused = true
+                    showExitPrompt = true
+                }
             }
+    }
+}
+
+extension View {
+    func wizardOverlay(stateManager: WizardStateManager) -> some View {
+        modifier(WizardOverlayModifier(stateManager: stateManager))
+    }
+
+    /// Applies the wizard overlay (instruction bar + exit prompt) only when
+    /// a state manager is available. Use inside fullScreenCovers.
+    @ViewBuilder
+    func wizardOverlayIfAvailable(stateManager: WizardStateManager?) -> some View {
+        if let manager = stateManager {
+            self.wizardOverlay(stateManager: manager)
+        } else {
+            self
         }
     }
+}
+
+// MARK: - Legacy Overlay Controller (kept for teardown compatibility)
+
+@MainActor
+class WizardOverlayController: ObservableObject {
+    static let shared = WizardOverlayController()
+    private init() {}
+
+    /// No-op — overlay is now a SwiftUI modifier, not a UIWindow.
+    func install(stateManager: WizardStateManager) {}
+
+    /// No-op — nothing to tear down.
+    func teardown() {}
 }

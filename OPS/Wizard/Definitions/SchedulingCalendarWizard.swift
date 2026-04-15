@@ -12,17 +12,18 @@ import Foundation
 struct SchedulingCalendarWizard: WizardDefinitionProtocol {
     let wizardId = "scheduling_calendar"
     let displayName = "SCHEDULING & CALENDAR"
-    let displayDescription = "See your crew's schedule at a glance. Browse by week or month, filter by team member, and tap any task for details."
+    let displayDescription = "Your crew's week, day by day. Tap any task to see the full picture."
     let bulletPoints = [
-        "Navigate the week view",
-        "Select a day to see scheduled tasks",
-        "Switch to month view for the big picture",
-        "Tap a task for full details"
+        "Swipe through the week",
+        "Tap a day to see what's scheduled",
+        "Switch to month view",
+        "Tap a task for details"
     ]
     let iconName = "calendar"
     let triggerType: WizardTriggerType = .contextual
     let minimumTier: WizardAccessTier = .field
-    let bannerText = "Want a quick tour of your schedule?"
+    let bannerText = "Quick walkthrough of the schedule."
+    let estimatedMinutes = 2
 
     let steps: [WizardStepDefinition] = [
         WizardStepDefinition(

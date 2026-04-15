@@ -12,18 +12,19 @@ import Foundation
 struct ProjectLifecycleWizard: WizardDefinitionProtocol {
     let wizardId = "project_lifecycle"
     let displayName = "PROJECT LIFECYCLE"
-    let displayDescription = "Learn how to create and manage a project from start to finish. You'll create real data — a client, a project with tasks, assign your crew, and see how status tracking works."
+    let displayDescription = "Create a client, build a project, assign your crew. Real data — not a demo."
     let bulletPoints = [
-        "Create a client for your jobs",
+        "Add a client",
         "Build a project with tasks",
-        "Assign dates and crew members",
-        "Move a project through its lifecycle"
+        "Assign dates and crew",
+        "Swipe to change status"
     ]
     let iconName = "hammer.circle"
     let triggerType: WizardTriggerType = .sequenced
     let minimumTier: WizardAccessTier = .field
     let requiredPermission: String? = "projects.create"
-    let bannerText = "Want help creating your first project?"
+    let bannerText = "Let's build your first project."
+    let estimatedMinutes = 3
 
     let steps: [WizardStepDefinition] = [
         // --- Phase 1: Create a Client ---
@@ -80,7 +81,7 @@ struct ProjectLifecycleWizard: WizardDefinitionProtocol {
         WizardStepDefinition(
             id: "enter_project_name",
             instruction: "ENTER A PROJECT NAME",
-            description: "Name this job — something like \"Kitchen Renovation\" or \"Office Build.\"",
+            description: "Give this job a name.",
             targetScreen: "ProjectForm",
             canSkip: false,
             completionNotification: "WizardProjectNameEntered"
@@ -142,7 +143,7 @@ struct ProjectLifecycleWizard: WizardDefinitionProtocol {
         WizardStepDefinition(
             id: "view_on_board",
             instruction: "FIND YOUR PROJECT ON THE BOARD",
-            description: "Your new project appears in the job board. Swipe right to advance its status.",
+            description: "There it is. Swipe right to move it forward.",
             targetScreen: "JobBoard",
             canSkip: true,
             completionNotification: "WizardProjectStatusChanged"

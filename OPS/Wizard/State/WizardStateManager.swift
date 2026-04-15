@@ -53,6 +53,12 @@ class WizardStateManager: ObservableObject {
     /// Whether the wizard system is enabled (master toggle)
     @Published var isEnabled: Bool = true
 
+    /// Briefly set on wizard completion to show a celebration toast
+    @Published var completedWizardId: String?
+
+    /// True during step transitions — collapses the instruction bar so the tab bar is visible
+    @Published var isStepTransitioning: Bool = false
+
     // MARK: - Private Properties
 
     private var modelContext: ModelContext?
@@ -278,7 +284,9 @@ class WizardStateManager: ObservableObject {
         currentStepIndex = state.currentStepIndex
         isActive = true
         isPaused = false
-        showPromptOverlay = false
+        withAnimation(OPSStyle.Animation.standard) {
+            showPromptOverlay = false
+        }
         pendingBannerWizard = nil
         stepStartTime = Date()
         wizardStartTime = Date()
@@ -323,7 +331,9 @@ class WizardStateManager: ObservableObject {
         currentStepIndex = state.currentStepIndex
         isActive = true
         isPaused = false
-        showPromptOverlay = false
+        withAnimation(OPSStyle.Animation.standard) {
+            showPromptOverlay = false
+        }
         pendingBannerWizard = nil
         stepStartTime = Date()
         wizardStartTime = Date()
@@ -366,7 +376,9 @@ class WizardStateManager: ObservableObject {
         currentStepIndex = state.currentStepIndex
         isActive = true
         isPaused = false
-        showPromptOverlay = false
+        withAnimation(OPSStyle.Animation.standard) {
+            showPromptOverlay = false
+        }
         pendingBannerWizard = nil
         stepStartTime = Date()
         wizardStartTime = Date()
@@ -422,8 +434,13 @@ class WizardStateManager: ObservableObject {
             userRole: userRole?.rawValue
         )
 
-        showPromptOverlay = false
-        pendingBannerWizard = nil
+        withAnimation(OPSStyle.Animation.standard) {
+            showPromptOverlay = false
+        }
+        // Clear reference after animation completes to avoid flicker
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            self?.pendingBannerWizard = nil
+        }
     }
 
     // MARK: - Step Progression
@@ -574,7 +591,18 @@ class WizardStateManager: ObservableObject {
         )
 
         TutorialHaptics.success()
+
+        // Show completion toast before deactivating
+        let wizardId = wizard.wizardId
+        completedWizardId = wizardId
         deactivate()
+
+        // Auto-dismiss celebration after 2 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            if self?.completedWizardId == wizardId {
+                self?.completedWizardId = nil
+            }
+        }
     }
 
     /// Deactivate the wizard UI without changing persistence

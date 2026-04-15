@@ -24,18 +24,19 @@ import Foundation
 struct PermissionsRolesWizard: WizardDefinitionProtocol {
     let wizardId = "permissions_roles"
     let displayName = "PERMISSIONS & ROLES"
-    let displayDescription = "Control who can do what. Browse preset roles, customize permissions, and set per-person overrides for your team."
+    let displayDescription = "Control who sees what, who edits what. Roles and per-person overrides."
     let bulletPoints = [
-        "Browse preset and custom roles",
-        "See what each role can access",
-        "View your team's permission assignments",
-        "Set per-person permission overrides"
+        "Browse roles",
+        "See what each role can do",
+        "Check team assignments",
+        "Set per-person overrides"
     ]
     let iconName = "lock.shield"
     let triggerType: WizardTriggerType = .contextual
     let minimumTier: WizardAccessTier = .admin
     let requiredPermission: String? = "settings.company"
-    let bannerText = "Want a walkthrough of permissions?"
+    let bannerText = "Quick look at how permissions work."
+    let estimatedMinutes = 1
 
     let steps: [WizardStepDefinition] = [
         WizardStepDefinition(

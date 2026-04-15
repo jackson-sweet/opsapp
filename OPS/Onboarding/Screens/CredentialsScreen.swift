@@ -282,6 +282,18 @@ struct CredentialsScreen: View {
                         lastName: lastName
                     )
 
+                    // Download Google profile photo in background
+                    if let photoURL = googleUser.profile?.imageURL(withDimension: 400) {
+                        Task {
+                            if let (data, _) = try? await URLSession.shared.data(from: photoURL),
+                               UIImage(data: data) != nil {
+                                await MainActor.run {
+                                    manager.state.userData.avatarData = data
+                                }
+                            }
+                        }
+                    }
+
                     isSocialSignIn = false
                     manager.goForward()
                 } else {
@@ -326,11 +338,28 @@ struct CredentialsScreen: View {
                     // Extract user data
                     let userId = UserDefaults.standard.string(forKey: "user_id") ?? ""
 
+                    // Apple only provides name on FIRST sign-in ever.
+                    // Persist it so retries / re-installs can still pre-fill.
+                    var resolvedFirstName = appleResult.givenName
+                    var resolvedLastName = appleResult.familyName
+
+                    if let givenName = appleResult.givenName {
+                        UserDefaults.standard.set(givenName, forKey: "apple_given_name")
+                    } else if let saved = UserDefaults.standard.string(forKey: "apple_given_name"), !saved.isEmpty {
+                        resolvedFirstName = saved
+                    }
+
+                    if let familyName = appleResult.familyName {
+                        UserDefaults.standard.set(familyName, forKey: "apple_family_name")
+                    } else if let saved = UserDefaults.standard.string(forKey: "apple_family_name"), !saved.isEmpty {
+                        resolvedLastName = saved
+                    }
+
                     try await manager.handleSocialAuth(
                         userId: userId,
                         email: appleResult.email ?? "",
-                        firstName: appleResult.givenName,
-                        lastName: appleResult.familyName
+                        firstName: resolvedFirstName,
+                        lastName: resolvedLastName
                     )
 
                     isSocialSignIn = false

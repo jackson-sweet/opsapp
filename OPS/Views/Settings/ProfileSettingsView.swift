@@ -46,12 +46,8 @@ struct ProfileSettingsView: View {
 
     var body: some View {
         ZStack {
-            // Background gradient — tap to dismiss keyboard
             OPSStyle.Colors.backgroundGradient
                 .ignoresSafeArea()
-                .onTapGesture {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
 
             VStack(spacing: 0) {
                 // Header area with back button and title
@@ -71,7 +67,7 @@ struct ProfileSettingsView: View {
                 )
                 .padding(.bottom, 8)
 
-                // Scrollable content
+                // Scrollable content — tap to dismiss keyboard
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
 
@@ -273,6 +269,9 @@ struct ProfileSettingsView: View {
                     }
                     .padding(.top, 12)
                     .tabBarPadding() // Add padding for tab bar
+                }
+                .onTapGesture {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                 }
 
             }

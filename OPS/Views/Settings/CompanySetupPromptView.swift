@@ -40,6 +40,7 @@ struct CompanySetupPromptView: View {
 
     // Focus
     @FocusState private var focusedField: SetupField?
+    @State private var keyboardVisible = false
 
     enum SetupField: Hashable {
         case phone
@@ -88,12 +89,25 @@ struct CompanySetupPromptView: View {
             !(company.address ?? "").isEmpty ||
             company.logoData != nil ||
             !(company.logoURL ?? "").isEmpty
-        return hasAnyData ? "FINISH SETTING UP YOUR COMPANY" : "SET UP YOUR COMPANY"
+        return hasAnyData ? "COMPLETE YOUR PROFILE" : "YOUR COMPANY PROFILE"
     }
 
     private var headerSubtitle: String {
-        "Clients and crew will see this info. Takes 30 seconds."
+        "This shows up on estimates, invoices, and shared projects."
     }
+
+    /// How many of the 5 profile fields are already filled
+    private var completionCount: Int {
+        var count = 0
+        if !(company.phone ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !editedPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { count += 1 }
+        if !(company.email ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !editedEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { count += 1 }
+        if !(company.website ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !editedWebsite.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { count += 1 }
+        if !(company.address ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !editedAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { count += 1 }
+        if company.logoData != nil || !(company.logoURL ?? "").isEmpty || companyImage != nil { count += 1 }
+        return count
+    }
+
+    private let totalFields = 5
 
     // MARK: - Body
 
@@ -103,122 +117,240 @@ struct CompanySetupPromptView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header bar
-                headerBar
+                // Header
+                HStack {
+                    Text(headerTitle)
+                        .font(OPSStyle.Typography.headingBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        // Title section
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(headerTitle)
-                                .font(OPSStyle.Typography.headingBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
+                    Spacer()
 
-                            Text(headerSubtitle)
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                        .padding(.top, 8)
-
-                        // Logo section
-                        logoSection
-
-                        // Form fields
-                        VStack(spacing: 16) {
-                            // Website
-                            if (company.website ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                formField(
-                                    label: "WEBSITE",
-                                    text: $editedWebsite,
-                                    placeholder: "www.yourcompany.com",
-                                    keyboardType: .URL,
-                                    field: .website
-                                )
-                            }
-
-                            // Phone
-                            if (company.phone ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                formField(
-                                    label: "PHONE",
-                                    text: $editedPhone,
-                                    placeholder: "(555) 123-4567",
-                                    keyboardType: .phonePad,
-                                    field: .phone
-                                )
-                            }
-
-                            // Email
-                            if (company.email ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                formField(
-                                    label: "EMAIL",
-                                    text: $editedEmail,
-                                    placeholder: "contact@yourcompany.com",
-                                    keyboardType: .emailAddress,
-                                    field: .email
-                                )
-                            }
-
-                            // Address
-                            if (company.address ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                addressField
-                            }
-                        }
-
-                        // Pre-filled fields (read-only display)
-                        prefilledSection
-
-                        // Error message
-                        if let error = errorMessage {
-                            HStack(spacing: 8) {
-                                Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
-                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                    .foregroundColor(OPSStyle.Colors.errorStatus)
-
-                                Text(error)
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.errorStatus)
-                            }
-                        }
-
-                        // Save button
-                        Button {
-                            Task { await saveChanges() }
-                        } label: {
-                            HStack(spacing: 8) {
-                                if isSaving {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
-                                        .scaleEffect(0.8)
-                                }
-                                Text(isSaving ? "SAVING..." : "SAVE")
-                                    .font(OPSStyle.Typography.bodyBold)
-                            }
-                            .foregroundColor(OPSStyle.Colors.invertedText)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(hasChanges ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.4))
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        }
-                        .disabled(!hasChanges || isSaving)
-
-                        // Skip button
-                        Button {
-                            skipForNow()
-                        } label: {
-                            Text("Skip for now")
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                        }
-                        .disabled(isSaving)
+                    Button { skipForNow() } label: {
+                        Image(systemName: OPSStyle.Icons.xmark)
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 40)
+                    .disabled(isSaving)
                 }
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing3)
+
+                // Subtitle + counter
+                HStack {
+                    Text(headerSubtitle)
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Spacer()
+                    Text("\(completionCount)/\(totalFields)")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(completionCount == totalFields ? OPSStyle.Colors.successStatus : OPSStyle.Colors.tertiaryText)
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing1)
+                .padding(.bottom, OPSStyle.Layout.spacing4)
+
+                // Field cards
+                ScrollView {
+                    VStack(spacing: OPSStyle.Layout.spacing2) {
+
+                        // LOGO
+                        if !(company.logoData != nil || !(company.logoURL ?? "").isEmpty) {
+                            fieldCard(isComplete: companyImage != nil) {
+                                HStack(spacing: OPSStyle.Layout.spacing3) {
+                                    // Preview circle
+                                    Button(action: { showImagePicker = true }) {
+                                        if let image = companyImage {
+                                            Image(uiImage: image)
+                                                .resizable()
+                                                .scaledToFill()
+                                                .frame(width: 48, height: 48)
+                                                .clipShape(Circle())
+                                        } else {
+                                            Circle()
+                                                .fill(OPSStyle.Colors.background)
+                                                .frame(width: 48, height: 48)
+                                                .overlay(
+                                                    Image(systemName: "camera.fill")
+                                                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                                )
+                                        }
+                                    }
+
+                                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                                        Text("COMPANY LOGO")
+                                            .font(OPSStyle.Typography.captionBold)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
+                                        Text("Clients see this on every estimate")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    }
+
+                                    Spacer()
+
+                                    Button(action: { showImagePicker = true }) {
+                                        Text(companyImage == nil ? "ADD" : "CHANGE")
+                                            .font(OPSStyle.Typography.captionBold)
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    }
+                                }
+                            }
+                        }
+
+                        // WEBSITE
+                        if (company.website ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            inputFieldCard(
+                                label: "WEBSITE",
+                                text: $editedWebsite,
+                                placeholder: "www.yourcompany.com",
+                                keyboardType: .URL,
+                                field: .website
+                            )
+                        }
+
+                        // PHONE
+                        if (company.phone ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            inputFieldCard(
+                                label: "PHONE",
+                                text: $editedPhone,
+                                placeholder: "(555) 123-4567",
+                                keyboardType: .phonePad,
+                                field: .phone,
+                                useMineValue: dataController.currentUser?.phone
+                            )
+                        }
+
+                        // EMAIL
+                        if (company.email ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            inputFieldCard(
+                                label: "EMAIL",
+                                text: $editedEmail,
+                                placeholder: "contact@yourcompany.com",
+                                keyboardType: .emailAddress,
+                                field: .email,
+                                useMineValue: dataController.currentUser?.email
+                            )
+                        }
+
+                        // ADDRESS
+                        if (company.address ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            fieldCard(isComplete: !editedAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                                    Text("ADDRESS")
+                                        .font(OPSStyle.Typography.captionBold)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                                    if isAddressFieldActive {
+                                        AddressAutocompleteField(
+                                            address: $editedAddress,
+                                            placeholder: "Enter company address",
+                                            onAddressSelected: { fullAddress, _ in
+                                                editedAddress = fullAddress
+                                                isAddressFieldActive = false
+                                            }
+                                        )
+                                    } else {
+                                        Button(action: { isAddressFieldActive = true }) {
+                                            HStack {
+                                                Text(editedAddress.isEmpty ? "Enter company address" : editedAddress)
+                                                    .font(OPSStyle.Typography.body)
+                                                    .foregroundColor(editedAddress.isEmpty ? OPSStyle.Colors.placeholderText : OPSStyle.Colors.primaryText)
+                                                    .lineLimit(1)
+                                                Spacer()
+                                                Image(systemName: OPSStyle.Icons.chevronRight)
+                                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                            }
+                                            .padding(OPSStyle.Layout.spacing2_5)
+                                            .background(OPSStyle.Colors.background)
+                                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ALREADY ON FILE — completed fields shown as locked cards
+                        if hasPrefilledFields {
+                            Text("ON FILE")
+                                .font(OPSStyle.Typography.microLabel)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .tracking(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, OPSStyle.Layout.spacing2)
+                                .padding(.horizontal, OPSStyle.Layout.spacing1)
+
+                            ForEach(prefilledItems, id: \.0) { label, value in
+                                completedFieldCard(label: label, value: value)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.bottom, OPSStyle.Layout.spacing4)
+                }
+
+                Spacer(minLength: 0)
+
+                // Bottom action area — hidden when keyboard is up
+                if !keyboardVisible {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    // Error message
+                    if let error = errorMessage {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                .foregroundColor(OPSStyle.Colors.errorStatus)
+                            Text(error)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.errorStatus)
+                        }
+                    }
+
+                    // Save
+                    Button {
+                        Task { await saveChanges() }
+                    } label: {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            if isSaving {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
+                                    .scaleEffect(0.8)
+                            }
+                            Text(isSaving ? "SAVING..." : "DONE")
+                                .font(OPSStyle.Typography.bodyBold)
+                        }
+                        .foregroundColor(OPSStyle.Colors.invertedText)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: OPSStyle.Layout.touchTargetStandard)
+                        .background(hasChanges ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.3))
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    }
+                    .disabled(!hasChanges || isSaving)
+
+                    // Skip
+                    Button { skipForNow() } label: {
+                        Text("Later")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: OPSStyle.Layout.touchTargetMin)
+                    }
+                    .disabled(isSaving)
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.bottom, OPSStyle.Layout.spacing4)
+                } // end keyboard guard
             }
         }
+        .ignoresSafeArea(.keyboard)
         .interactiveDismissDisabled(isSaving)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            keyboardVisible = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardVisible = false
+        }
         .onAppear {
             loadExistingData()
         }
@@ -237,217 +369,147 @@ struct CompanySetupPromptView: View {
         }
     }
 
-    // MARK: - Header Bar
+    // MARK: - Card Components
 
-    private var headerBar: some View {
-        HStack {
-            Spacer()
-            Button {
-                skipForNow()
-            } label: {
-                Image(systemName: OPSStyle.Icons.xmark)
-                    .font(.system(size: OPSStyle.Layout.IconSize.md))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-            }
-            .disabled(isSaving)
+    /// Container card for each field — left accent bar shows completion state
+    private func fieldCard<Content: View>(isComplete: Bool, @ViewBuilder content: () -> Content) -> some View {
+        HStack(spacing: 0) {
+            // Left accent bar — 3pt wide, green when complete, subtle border color when not
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(isComplete ? OPSStyle.Colors.successStatus : OPSStyle.Colors.cardBorder)
+                .frame(width: 3)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
+                .animation(OPSStyle.Animation.fast, value: isComplete)
+
+            content()
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 4)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
 
-    // MARK: - Logo Section
-
-    private var logoSection: some View {
-        let hasExistingLogo = company.logoData != nil ||
-            !(company.logoURL ?? "").isEmpty
-
-        return Group {
-            if !hasExistingLogo {
-                HStack(spacing: 16) {
-                    // Logo circle
-                    Button(action: { showImagePicker = true }) {
-                        ZStack {
-                            if let image = companyImage {
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 72, height: 72)
-                                    .clipShape(Circle())
-                                    .overlay(
-                                        Circle()
-                                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick)
-                                    )
-                            } else {
-                                Circle()
-                                    .fill(OPSStyle.Colors.cardBackgroundDark)
-                                    .frame(width: 72, height: 72)
-                                    .overlay(
-                                        Image(systemName: "camera.fill")
-                                            .font(.system(size: OPSStyle.Layout.IconSize.lg))
-                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    )
-                                    .overlay(
-                                        Circle()
-                                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.thick)
-                                    )
-                            }
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(companyImage == nil ? "ADD COMPANY LOGO" : "CHANGE LOGO")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                        Text("Appears on projects and estimates")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-
-                    Spacer()
-                }
-            }
-        }
-    }
-
-    // MARK: - Address Field
-
-    private var addressField: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("ADDRESS")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            if isAddressFieldActive {
-                AddressAutocompleteField(
-                    address: $editedAddress,
-                    placeholder: "Enter company address",
-                    onAddressSelected: { fullAddress, _ in
-                        editedAddress = fullAddress
-                        isAddressFieldActive = false
-                    }
-                )
-            } else {
-                Button(action: {
-                    isAddressFieldActive = true
-                }) {
-                    HStack {
-                        Text(editedAddress.isEmpty ? "Enter company address" : editedAddress)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(editedAddress.isEmpty ? OPSStyle.Colors.placeholderText : OPSStyle.Colors.primaryText)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-
-                        Spacer()
-                    }
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.clear)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-                }
-            }
-        }
-    }
-
-    // MARK: - Pre-filled Section
-
-    /// Shows already-filled fields as read-only so the user knows what's done
-    @ViewBuilder
-    private var prefilledSection: some View {
-        let prefilledItems: [(String, String)] = {
-            var items: [(String, String)] = []
-            if let phone = company.phone, !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                items.append(("Phone", phone))
-            }
-            if let email = company.email, !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                items.append(("Email", email))
-            }
-            if let website = company.website, !website.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                items.append(("Website", website))
-            }
-            if let address = company.address, !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                items.append(("Address", address))
-            }
-            return items
-        }()
-
-        if !prefilledItems.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 6) {
-                    Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
-                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                        .foregroundColor(OPSStyle.Colors.successStatus)
-
-                    Text("ALREADY ON FILE")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-
-                ForEach(prefilledItems, id: \.0) { label, value in
-                    HStack {
-                        Text(label)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .frame(width: 70, alignment: .leading)
-
-                        Text(value)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .lineLimit(1)
-                    }
-                }
-            }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark)
-            )
-        }
-    }
-
-    // MARK: - Form Field
-
-    private func formField(
+    /// Input field card — label, inset text field, optional USE MINE button
+    private func inputFieldCard(
         label: String,
         text: Binding<String>,
         placeholder: String,
         keyboardType: UIKeyboardType,
-        field: SetupField
+        field: SetupField,
+        useMineValue: String? = nil
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(label)
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+        let isFilled = !text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-            TextField("", text: text)
-                .placeholder(when: text.wrappedValue.isEmpty) {
-                    Text(placeholder)
-                        .foregroundColor(OPSStyle.Colors.placeholderText)
+        return fieldCard(isComplete: isFilled) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                HStack {
+                    Text(label)
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    Spacer()
+
+                    if let value = useMineValue,
+                       !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button {
+                            text.wrappedValue = value
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            Text("USE MINE")
+                                .font(OPSStyle.Typography.microLabel)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                .padding(.vertical, OPSStyle.Layout.spacing1)
+                                .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
+                                .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+                        }
+                    }
                 }
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .keyboardType(keyboardType)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(keyboardType == .emailAddress || keyboardType == .URL ? .never : .words)
-                .focused($focusedField, equals: field)
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
-                .background(Color.clear)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(
-                            focusedField == field ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
-                            lineWidth: OPSStyle.Layout.Border.standard
-                        )
-                )
+
+                // Inset input — darker background signals "type here"
+                TextField("", text: text)
+                    .placeholder(when: text.wrappedValue.isEmpty) {
+                        Text(placeholder)
+                            .foregroundColor(OPSStyle.Colors.placeholderText)
+                    }
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .keyboardType(keyboardType)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(keyboardType == .emailAddress || keyboardType == .URL ? .never : .words)
+                    .focused($focusedField, equals: field)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                    .background(OPSStyle.Colors.background)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(
+                                focusedField == field ? OPSStyle.Colors.primaryAccent : Color.clear,
+                                lineWidth: OPSStyle.Layout.Border.standard
+                            )
+                    )
+            }
         }
+    }
+
+    /// Read-only card for already-filled fields
+    private func completedFieldCard(label: String, value: String) -> some View {
+        HStack(spacing: 0) {
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(OPSStyle.Colors.successStatus.opacity(0.5))
+                .frame(width: 3)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
+
+            HStack {
+                Text(label)
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                Spacer()
+
+                Text(value)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        }
+        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+    }
+
+    // MARK: - Pre-filled Data
+
+    private var hasPrefilledFields: Bool {
+        !prefilledItems.isEmpty
+    }
+
+    private var prefilledItems: [(String, String)] {
+        var items: [(String, String)] = []
+        if let phone = company.phone, !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items.append(("PHONE", phone))
+        }
+        if let email = company.email, !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items.append(("EMAIL", email))
+        }
+        if let website = company.website, !website.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items.append(("WEBSITE", website))
+        }
+        if let address = company.address, !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items.append(("ADDRESS", address))
+        }
+        if company.logoData != nil || !(company.logoURL ?? "").isEmpty {
+            items.append(("LOGO", "On file"))
+        }
+        return items
     }
 
     // MARK: - Data Loading
@@ -537,7 +599,7 @@ struct CompanySetupPromptView: View {
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.error)
 
-            errorMessage = "Failed to save. Try again or skip for now."
+            errorMessage = "Couldn't save. Check your connection and try again."
             print("[COMPANY_SETUP] Error saving changes: \(error)")
         }
 

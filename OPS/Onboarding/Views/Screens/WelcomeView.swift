@@ -200,6 +200,19 @@ struct WelcomeView: View {
                         viewModel.lastName = familyName
                     }
 
+                    // Download Google profile photo in background
+                    // (will be ready by the time user reaches profile picture phase)
+                    if let photoURL = googleUser.profile?.imageURL(withDimension: 400) {
+                        Task {
+                            if let (data, _) = try? await URLSession.shared.data(from: photoURL),
+                               let image = UIImage(data: data) {
+                                await MainActor.run {
+                                    viewModel.profileImage = image
+                                }
+                            }
+                        }
+                    }
+
                     viewModel.isSignedUp = true
                     viewModel.moveToNextStep()
                 } else {
@@ -250,11 +263,25 @@ struct WelcomeView: View {
                     if let email = appleResult.email {
                         viewModel.email = email
                     }
+
+                    // Apple only provides name on FIRST sign-in ever.
+                    // Persist it so retries / re-installs can still pre-fill.
                     if let givenName = appleResult.givenName {
                         viewModel.firstName = givenName
+                        UserDefaults.standard.set(givenName, forKey: "apple_given_name")
+                    } else if viewModel.firstName.isEmpty,
+                              let saved = UserDefaults.standard.string(forKey: "apple_given_name"),
+                              !saved.isEmpty {
+                        viewModel.firstName = saved
                     }
+
                     if let familyName = appleResult.familyName {
                         viewModel.lastName = familyName
+                        UserDefaults.standard.set(familyName, forKey: "apple_family_name")
+                    } else if viewModel.lastName.isEmpty,
+                              let saved = UserDefaults.standard.string(forKey: "apple_family_name"),
+                              !saved.isEmpty {
+                        viewModel.lastName = saved
                     }
 
                     viewModel.isSignedUp = true

@@ -90,6 +90,8 @@ struct UserPermissionsListView: View {
         .sheet(item: $selectedMember) { member in
             UserPermissionDetailView(member: member, companyId: company?.id ?? "")
                 .environmentObject(dataController)
+                .wizardBannerIfAvailable(stateManager: wizardStateManager)
+                .wizardOverlayIfAvailable(stateManager: wizardStateManager)
         }
     }
 

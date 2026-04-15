@@ -115,6 +115,8 @@ struct OrganizationSettingsView: View {
                     .environment(\.wizardStateManager, wizardStateManager)
                     .environment(\.wizardTriggerService, wizardTriggerService)
             }
+            .wizardBannerIfAvailable(stateManager: wizardStateManager)
+            .wizardOverlayIfAvailable(stateManager: wizardStateManager)
         }
         // Wizard deep navigation: open ManageTeam when forwarded from SettingsView
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardOpenManageTeamFromOrg"))) { _ in

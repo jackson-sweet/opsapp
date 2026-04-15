@@ -16,6 +16,7 @@ struct UserPermissionDetailView: View {
     @EnvironmentObject private var dataController: DataController
     @ObservedObject private var permissionStore = PermissionStore.shared
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.wizardStateManager) private var wizardStateManager
 
     // Role state
     @State private var selectedRole: UserRole
@@ -31,6 +32,12 @@ struct UserPermissionDetailView: View {
 
     // Feature gate alert
     @State private var showFeatureGateAlert = false
+
+    /// Whether this member is the company creator (account holder) — their role cannot be changed
+    private var isCompanyCreator: Bool {
+        guard let company = dataController.getCompany(id: companyId) else { return false }
+        return company.accountHolderId == member.id
+    }
 
     struct OverrideState {
         let granted: Bool
@@ -64,6 +71,20 @@ struct UserPermissionDetailView: View {
                         VStack(alignment: .leading, spacing: 24) {
                             // Member header
                             memberHeader
+
+                            // Wizard context hint
+                            if let mgr = wizardStateManager, mgr.isActive,
+                               mgr.activeWizard?.wizardId == "permissions_roles" {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "info.circle.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(OPSStyle.Colors.wizardAccent)
+                                    Text("Assign a role below, or scroll down for per-person permission overrides.")
+                                        .font(OPSStyle.Typography.caption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                }
+                                .padding(.horizontal, 20)
+                            }
 
                             // Error
                             if let error = errorMessage {
@@ -147,56 +168,86 @@ struct UserPermissionDetailView: View {
             }
             .padding(.horizontal, 20)
 
-            VStack(spacing: 0) {
-                ForEach(UserRole.allCases.sorted(by: { $0.hierarchy < $1.hierarchy }), id: \.rawValue) { role in
-                    if role != UserRole.allCases.sorted(by: { $0.hierarchy < $1.hierarchy }).first {
-                        Divider().background(OPSStyle.Colors.cardBorder)
-                    }
-                    roleOption(role, title: role.displayName, description: role.roleDescription)
-                }
-            }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .padding(.horizontal, 20)
+            if isCompanyCreator {
+                // Creator lock — cannot change the account holder's role
+                HStack(spacing: 12) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-            // Save role button (only when changed)
-            if selectedRole != originalRole {
-                Button(action: { saveRole() }) {
-                    HStack {
-                        if isSavingRole {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
-                                .scaleEffect(0.8)
-                        } else {
-                            Text("SAVE ROLE")
-                                .font(OPSStyle.Typography.button)
-                                .foregroundColor(OPSStyle.Colors.invertedText)
-                        }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(selectedRole.displayName.uppercased())
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+
+                        Text("Account holder. Role cannot be changed.")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(OPSStyle.Colors.primaryAccent)
-                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+
+                    Spacer()
                 }
-                .disabled(isSavingRole)
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .padding(.horizontal, 20)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(UserRole.allCases.sorted(by: { $0.hierarchy < $1.hierarchy }), id: \.rawValue) { role in
+                        if role != UserRole.allCases.sorted(by: { $0.hierarchy < $1.hierarchy }).first {
+                            Divider().background(OPSStyle.Colors.cardBorder)
+                        }
+                        roleOption(role, title: role.displayName, description: role.roleDescription)
+                    }
+                }
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .padding(.horizontal, 20)
+
+                // Save role button (only when changed)
+                if selectedRole != originalRole {
+                    Button(action: { saveRole() }) {
+                        HStack {
+                            if isSavingRole {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
+                                    .scaleEffect(0.8)
+                            } else {
+                                Text("SAVE ROLE")
+                                    .font(OPSStyle.Typography.button)
+                                    .foregroundColor(OPSStyle.Colors.invertedText)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(OPSStyle.Colors.primaryAccent)
+                        .cornerRadius(OPSStyle.Layout.buttonRadius)
+                    }
+                    .disabled(isSavingRole)
+                    .padding(.horizontal, 20)
+                }
+
+                // Edit roles link
+                Button(action: { showRoleListSheet = true }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "pencil.and.list.clipboard")
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        Text("Edit & manage roles")
+                            .font(OPSStyle.Typography.caption)
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
                 .padding(.horizontal, 20)
             }
-
-            // Edit roles link
-            Button(action: { showRoleListSheet = true }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "pencil.and.list.clipboard")
-                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                    Text("Edit & manage roles")
-                        .font(OPSStyle.Typography.caption)
-                }
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-            }
-            .padding(.horizontal, 20)
         }
     }
 

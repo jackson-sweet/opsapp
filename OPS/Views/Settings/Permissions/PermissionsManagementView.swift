@@ -70,16 +70,9 @@ struct PermissionsManagementView: View {
             if let wizard = WizardRegistry.contextualWizard(for: "permissions_roles") {
                 wizardTriggerService?.evaluateTrigger(for: wizard, context: "permissions_visit")
             }
-            // Wizard system: notify roles tab viewed with staggered delays to eliminate race condition.
+            // Wizard system: notify roles tab viewed after user has time to read the list.
             // Re-fires each time view appears (safe — observer auto-cancels after step completes)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                NotificationCenter.default.post(
-                    name: Notification.Name("WizardRolesTabViewed"),
-                    object: nil
-                )
-            }
-            // Also post with longer delay as fallback
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
                 NotificationCenter.default.post(
                     name: Notification.Name("WizardRolesTabViewed"),
                     object: nil

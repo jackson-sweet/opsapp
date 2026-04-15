@@ -10,6 +10,7 @@ import SwiftUI
 
 struct RoleListView: View {
     @EnvironmentObject private var dataController: DataController
+    @Environment(\.wizardStateManager) private var wizardStateManager
 
     @State private var roles: [AdminRoleRow] = []
     @State private var rolePermissionCounts: [String: Int] = [:]
@@ -138,6 +139,8 @@ struct RoleListView: View {
                 RoleDetailView(role: role)
                     .environmentObject(dataController)
             }
+            .wizardBannerIfAvailable(stateManager: wizardStateManager)
+            .wizardOverlayIfAvailable(stateManager: wizardStateManager)
         }
         .sheet(isPresented: $showingRoleForm) {
             roleFormSheet
@@ -427,10 +430,14 @@ struct RoleListView: View {
         Task {
             do {
                 let fetchedRoles = try await PermissionAdminService.fetchAllRoles()
-                var counts: [String: Int] = [:]
-                var userCounts: [String: Int] = [:]
 
-                // Get company team member IDs to filter user counts to current company only
+                // Show roles immediately — counts load in background
+                await MainActor.run {
+                    self.roles = fetchedRoles
+                    self.isLoading = false
+                }
+
+                // Load permission counts and user counts in parallel
                 let companyId = dataController.getCurrentUserCompany()?.id
                 let companyUserIds: Set<String>
                 if let companyId = companyId {
@@ -439,21 +446,22 @@ struct RoleListView: View {
                     companyUserIds = []
                 }
 
-                for role in fetchedRoles {
-                    let perms = try await PermissionAdminService.fetchRolePermissions(roleId: role.id)
-                    counts[role.id] = perms.count
+                await withTaskGroup(of: (String, Int, Int).self) { group in
+                    for role in fetchedRoles {
+                        group.addTask {
+                            let permCount = (try? await PermissionAdminService.fetchRolePermissions(roleId: role.id).count) ?? 0
+                            let allUserIds = (try? await PermissionAdminService.fetchUserIdsForRole(roleId: role.id)) ?? []
+                            let userCount = allUserIds.filter { companyUserIds.contains($0) }.count
+                            return (role.id, permCount, userCount)
+                        }
+                    }
 
-                    let allUserIds = try await PermissionAdminService.fetchUserIdsForRole(roleId: role.id)
-                    // Only count users that belong to this company
-                    let companyRoleUsers = allUserIds.filter { companyUserIds.contains($0) }
-                    userCounts[role.id] = companyRoleUsers.count
-                }
-
-                await MainActor.run {
-                    self.roles = fetchedRoles
-                    self.rolePermissionCounts = counts
-                    self.roleUserCounts = userCounts
-                    self.isLoading = false
+                    for await (roleId, permCount, userCount) in group {
+                        await MainActor.run {
+                            self.rolePermissionCounts[roleId] = permCount
+                            self.roleUserCounts[roleId] = userCount
+                        }
+                    }
                 }
             } catch {
                 await MainActor.run {

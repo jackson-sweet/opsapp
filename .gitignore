@@ -5,3 +5,6 @@ build/
 Secrets.xcconfig
 **/Secrets.xcconfig
 *.xcconfig.local
+
+# Firebase CLI debug logs
+firebase-debug.log

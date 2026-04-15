@@ -1107,4 +1107,120 @@ final class InboundProcessor {
             try context.save()
         }
     }
+
+    // MARK: - Invoice Sync
+
+    private func syncInvoices(since: Date?, context: ModelContext) async throws {
+        let dtos = try await invoiceRepo.fetchAll(since: since)
+        for dto in dtos {
+            try mergeInvoice(dto: dto, context: context)
+            try mergeInvoiceLineItems(dto: dto, context: context)
+            try mergeInvoicePayments(dto: dto, context: context)
+        }
+
+        if let sinceDate = since {
+            let deletedIds = try await invoiceRepo.fetchDeletedIds(since: sinceDate)
+            for id in deletedIds {
+                try markInvoiceDeleted(id: id, context: context)
+            }
+        }
+
+        print("[InboundProcessor] Merged \(dtos.count) invoices")
+    }
+
+    private func mergeInvoice(dto: InvoiceDTO, context: ModelContext) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<Invoice>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try context.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .invoice,
+                entityId: id,
+                fields: [
+                    "invoiceNumber", "title", "status", "subtotal", "taxRate",
+                    "taxAmount", "total", "amountPaid", "balanceDue",
+                    "dueDate", "sentAt", "paidAt", "clientId", "projectId",
+                    "estimateId", "opportunityId"
+                ],
+                context: context
+            )
+
+            if accept.contains("invoiceNumber") { existing.invoiceNumber = dto.invoiceNumber ?? "" }
+            if accept.contains("title") { existing.title = dto.subject }
+            if accept.contains("status") {
+                existing.status = InvoiceStatus(rawValue: dto.status ?? "") ?? .draft
+            }
+            if accept.contains("subtotal") { existing.subtotal = dto.subtotal ?? 0 }
+            if accept.contains("taxRate") { existing.taxRate = dto.taxRate ?? 0 }
+            if accept.contains("taxAmount") { existing.taxAmount = dto.taxAmount ?? 0 }
+            if accept.contains("total") { existing.total = dto.total ?? 0 }
+            if accept.contains("amountPaid") { existing.amountPaid = dto.amountPaid ?? 0 }
+            if accept.contains("balanceDue") { existing.balanceDue = dto.balanceDue ?? 0 }
+            if accept.contains("dueDate") { existing.dueDate = dto.dueDate.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("sentAt") { existing.sentAt = dto.sentAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("paidAt") { existing.paidAt = dto.paidAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("clientId") { existing.clientId = dto.clientId }
+            if accept.contains("projectId") { existing.projectId = dto.projectId }
+            if accept.contains("estimateId") { existing.estimateId = dto.estimateId }
+            if accept.contains("opportunityId") { existing.opportunityId = dto.opportunityId }
+
+            existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } ?? Date()
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+
+        // Mark for targeted Spotlight update on sync completion
+        spotlightTracker.markDirty(domain: SpotlightDomain.invoice, id: id)
+
+        try context.save()
+    }
+
+    private func mergeInvoiceLineItems(dto: InvoiceDTO, context: ModelContext) throws {
+        guard let lineItems = dto.lineItems else { return }
+        for liDTO in lineItems {
+            let liId = liDTO.id
+            let descriptor = FetchDescriptor<InvoiceLineItem>(
+                predicate: #Predicate { $0.id == liId }
+            )
+            if try context.fetch(descriptor).first == nil {
+                let model = liDTO.toModel()
+                context.insert(model)
+            }
+        }
+        try context.save()
+    }
+
+    private func mergeInvoicePayments(dto: InvoiceDTO, context: ModelContext) throws {
+        guard let payments = dto.payments else { return }
+        for pDTO in payments {
+            let pId = pDTO.id
+            let descriptor = FetchDescriptor<Payment>(
+                predicate: #Predicate { $0.id == pId }
+            )
+            if try context.fetch(descriptor).first == nil {
+                let model = pDTO.toModel()
+                context.insert(model)
+            }
+        }
+        try context.save()
+    }
+
+    private func markInvoiceDeleted(id: String, context: ModelContext) throws {
+        let descriptor = FetchDescriptor<Invoice>(
+            predicate: #Predicate { $0.id == id }
+        )
+        if let existing = try context.fetch(descriptor).first {
+            existing.deletedAt = Date()
+            existing.needsSync = false
+            spotlightTracker.markDeleted(domain: SpotlightDomain.invoice, id: id)
+            try context.save()
+        }
+    }
 }

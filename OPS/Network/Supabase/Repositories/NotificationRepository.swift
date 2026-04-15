@@ -10,6 +10,11 @@ import Foundation
 import Supabase
 
 class NotificationRepository {
+    /// Shared instance for call sites that don't need a per-instance repository.
+    /// The repo is stateless beyond the Supabase client handle, so sharing
+    /// is safe and avoids re-wiring unrelated callers.
+    static let shared = NotificationRepository()
+
     private let client: SupabaseClient
 
     init() {
@@ -142,6 +147,25 @@ class NotificationRepository {
             .from("notifications")
             .update(MarkRead(is_read: true))
             .eq("user_id", value: userId)
+            .eq("is_read", value: false)
+            .execute()
+    }
+
+    /// Marks any unread `role_needed` notifications whose action_url contains
+    /// `assignRole=<memberId>` as read. Called after iOS assigns a role so
+    /// the admin's rail notification disappears without a second API call.
+    /// The web PATCH /api/users/:id/role endpoint does the same cleanup when
+    /// the admin acts from the web — this mirrors that behavior on iOS.
+    func markRoleNeededNotificationsAsReadForMember(memberId: String) async throws {
+        struct MarkRead: Codable {
+            let is_read: Bool
+        }
+        let pattern = "%assignRole=\(memberId)%"
+        try await client
+            .from("notifications")
+            .update(MarkRead(is_read: true))
+            .eq("type", value: "role_needed")
+            .like("action_url", pattern: pattern)
             .eq("is_read", value: false)
             .execute()
     }

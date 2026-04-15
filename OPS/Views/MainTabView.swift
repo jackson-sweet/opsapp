@@ -62,6 +62,9 @@ struct MainTabView: View {
 
     private let openJobBoardObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenJobBoard"))
+
+    private let openSubscriptionObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenSubscription"))
     
     // Keyboard observers
     private let keyboardWillShow = NotificationCenter.default
@@ -311,6 +314,12 @@ struct MainTabView: View {
             withAnimation(OPSStyle.Animation.fast) {
                 selectedTab = scheduleTabIndex
             }
+        }
+
+        // Handle opening subscription/plan selection from push notification
+        .onReceive(openSubscriptionObserver) { _ in
+            print("[PUSH_NAVIGATION] Opening subscription plan selection")
+            appState.showingPlanSelection = true
         }
 
         // Handle opening job board from push notification

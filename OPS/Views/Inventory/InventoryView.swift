@@ -312,6 +312,16 @@ struct InventoryView: View {
             }
             // Check if inventory wizard should be shown
             checkInventoryWizard()
+
+            // Handle wizard started from Settings — isActive is already true
+            // before this view mounts, so onChange(of: isActive) never fires.
+            if wizardStateManager?.isActive == true,
+               wizardStateManager?.activeWizard?.wizardId == "inventory_setup",
+               !showInventoryWizard {
+                wizardCoordinator.dataController = dataController
+                wizardCoordinator.wizardStateManager = wizardStateManager
+                showInventoryWizard = true
+            }
         }
         .onDisappear {
             AnalyticsService.shared.endScreenView(screenName: "inventory")

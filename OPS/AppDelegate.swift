@@ -259,6 +259,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                     userInfo: ["projectId": projectId]
                 )
             }
+        case "subscription", "planSelection":
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenSubscription"),
+                object: nil,
+                userInfo: [:]
+            )
         default:
             print("[PUSH] Unknown screen: \(screen)")
         }
@@ -358,6 +364,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                     userInfo: ["projectId": projectId]
                 )
             }
+        case "trial_expiry", "subscription":
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenSubscription"),
+                object: nil
+            )
         default:
             print("[PUSH] Unknown type: \(type)")
         }

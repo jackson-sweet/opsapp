@@ -21,11 +21,24 @@ class ARPerimeterViewModel: ObservableObject {
     @Published var isClosed: Bool = false
     @Published var isNearFirstVertex: Bool = false
     @Published var currentCrosshairPosition: SIMD3<Float>?
+    @Published var showPlaneTimeoutAlert: Bool = false
+    private var planeDetectionTask: Task<Void, Never>?
+
+    // MARK: - Alignment Guides (AR Space)
+
+    struct ARAlignmentGuide {
+        let from: SIMD3<Float>
+        let to: SIMD3<Float>
+        let type: AlignmentGuideType  // reuse the canvas enum
+    }
+
+    @Published var activeAlignmentGuides: [ARAlignmentGuide] = []
 
     // MARK: - UI State
 
     @Published var liveDimensionLabel: String = ""
-    @Published var angleSnappingEnabled: Bool = true
+    @Published var angleSnappingEnabled: Bool = false   // Off for first line, auto-enabled after
+    @Published var lengthSnappingEnabled: Bool = true
     @Published var isEditingVertex: Bool = false
     @Published var editingVertexIndex: Int?
     @Published var showVertexPopover: Bool = false
@@ -56,12 +69,19 @@ class ARPerimeterViewModel: ObservableObject {
     var vertexEntityNames: [String] = []
     var edgeEntityNames: [String] = []
 
+    // MARK: - Render Versioning
+
+    /// Incremented on any vertex/edge mutation (reposition, delete, split) to trigger 3D re-render.
+    /// Count-based detection misses same-count mutations like vertex repositioning.
+    @Published var renderVersion: Int = 0
+
     // MARK: - Constants
 
     private let closeLoopRadius: Float = 0.1           // meters ≈ 4" — tight snap, deliberate close only
     private let metersToInches: Double = 39.3701
     private let angleSnapIncrement: Double = 15.0     // degrees
     private let angleSnapTolerance: Double = 7.5      // degrees within which to snap
+    private let lengthSnapIncrementMeters: Double = 0.1524  // 6 inches
 
     // MARK: - Haptic Generators
 
@@ -75,6 +95,25 @@ class ARPerimeterViewModel: ObservableObject {
         lightImpact.prepare()
         mediumImpact.prepare()
         successNotification.prepare()
+        startPlaneDetectionTimeout()
+    }
+
+    // MARK: - Plane Detection Timeout
+
+    func startPlaneDetectionTimeout() {
+        planeDetectionTask?.cancel()
+        showPlaneTimeoutAlert = false
+        planeDetectionTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 30_000_000_000) // 30 seconds
+            guard !Task.isCancelled else { return }
+            guard let self, !self.isPlaneDetected else { return }
+            self.showPlaneTimeoutAlert = true
+        }
+    }
+
+    func cancelPlaneDetectionTimeout() {
+        planeDetectionTask?.cancel()
+        planeDetectionTask = nil
     }
 
     // MARK: - Record Vertex
@@ -85,28 +124,29 @@ class ARPerimeterViewModel: ObservableObject {
         guard !isClosed else { return }
 
         var finalPosition = worldPosition
+        var didSnap = false
 
-        // Apply angle snapping if enabled and we have at least 2 vertices (need a previous edge to snap against)
+        // Angle snapping — only for 3rd+ vertices (second line onward).
+        // First line has no previous edge to reference, so angle snap is disabled.
         if angleSnappingEnabled && arVertices.count >= 2 {
             let snappedResult = snapAngleInWorldSpace(
-                newPosition: worldPosition,
+                newPosition: finalPosition,
                 previousPosition: simd3(arVertices[arVertices.count - 1]),
                 priorPosition: simd3(arVertices[arVertices.count - 2])
             )
             finalPosition = snappedResult.position
-            if snappedResult.didSnap {
-                lightImpact.impactOccurred()
-            }
-        } else if angleSnappingEnabled && arVertices.count == 1 {
-            // For the second vertex, snap to cardinal angles (0, 15, 30, 45, etc.) relative to world axes
-            let snappedResult = snapAngleToCardinal(
-                newPosition: worldPosition,
-                fromPosition: simd3(arVertices[0])
-            )
+            didSnap = didSnap || snappedResult.didSnap
+        }
+
+        // Length snapping — available for all lines (2nd vertex onward)
+        if lengthSnappingEnabled, let lastVertex = arVertices.last {
+            let snappedResult = snapLength(position: finalPosition, fromPosition: simd3(lastVertex))
             finalPosition = snappedResult.position
-            if snappedResult.didSnap {
-                lightImpact.impactOccurred()
-            }
+            didSnap = didSnap || snappedResult.didSnap
+        }
+
+        if didSnap {
+            lightImpact.impactOccurred()
         }
 
         let vertexId = UUID().uuidString
@@ -117,6 +157,12 @@ class ARPerimeterViewModel: ObservableObject {
             y: Double(finalPosition.y)
         )
         arVertices.append(vertex)
+        renderVersion += 1
+
+        // Auto-enable angle snapping after first line is placed (2nd vertex down)
+        if arVertices.count == 2 && !angleSnappingEnabled {
+            angleSnappingEnabled = true
+        }
 
         // Create edge from previous vertex
         if arVertices.count >= 2 {
@@ -145,6 +191,7 @@ class ARPerimeterViewModel: ObservableObject {
             arEdges.append(edge)
         }
 
+        activeAlignmentGuides = []
         mediumImpact.impactOccurred()
     }
 
@@ -179,6 +226,7 @@ class ARPerimeterViewModel: ObservableObject {
         arEdges.append(edge)
         isClosed = true
         isNearFirstVertex = false
+        renderVersion += 1
 
         successNotification.notificationOccurred(.success)
     }
@@ -196,17 +244,35 @@ class ARPerimeterViewModel: ObservableObject {
 
         // Apply real-time snapping so the crosshair shows the snapped position
         var snappedPosition = position
-        if angleSnappingEnabled, let lastVertex = arVertices.last {
+        if let lastVertex = arVertices.last {
             let lastPos = simd3(lastVertex)
-            if arVertices.count >= 2 {
+
+            // Angle snapping — only for 3rd+ vertices (second line onward)
+            if angleSnappingEnabled && arVertices.count >= 2 {
                 let priorPos = simd3(arVertices[arVertices.count - 2])
                 let result = snapAngleInWorldSpace(
-                    newPosition: position, previousPosition: lastPos, priorPosition: priorPos)
-                snappedPosition = result.position
-            } else {
-                let result = snapAngleToCardinal(newPosition: position, fromPosition: lastPos)
+                    newPosition: snappedPosition, previousPosition: lastPos, priorPosition: priorPos)
                 snappedPosition = result.position
             }
+
+            // Length snapping — available for all lines
+            if lengthSnappingEnabled {
+                let result = snapLength(position: snappedPosition, fromPosition: lastPos)
+                snappedPosition = result.position
+            }
+
+            // Alignment guides — detect and apply axis/parallel/perpendicular snaps
+            if arVertices.count >= 2 {
+                let (alignedPos, guides) = detectARAlignmentGuides(from: lastPos, currentEnd: snappedPosition)
+                if guides.contains(where: { $0.type == .vertical || $0.type == .horizontal }) {
+                    snappedPosition = alignedPos
+                }
+                activeAlignmentGuides = guides
+            } else {
+                activeAlignmentGuides = []
+            }
+        } else {
+            activeAlignmentGuides = []
         }
 
         currentCrosshairPosition = snappedPosition
@@ -246,9 +312,15 @@ class ARPerimeterViewModel: ObservableObject {
             arEdges.removeLast()
         }
 
+        // Disable angle snapping if back to first-line territory
+        if arVertices.count < 2 {
+            angleSnappingEnabled = false
+        }
+
         // Reset close-loop state
         isNearFirstVertex = false
         liveDimensionLabel = ""
+        renderVersion += 1
 
         lightImpact.impactOccurred()
     }
@@ -323,6 +395,7 @@ class ARPerimeterViewModel: ObservableObject {
 
         isSplittingEdge = false
         splittingEdgeIndex = nil
+        renderVersion += 1
 
         lightImpact.impactOccurred()
     }
@@ -369,6 +442,7 @@ class ARPerimeterViewModel: ObservableObject {
 
         isEditingVertex = false
         editingVertexIndex = nil
+        renderVersion += 1
         mediumImpact.impactOccurred()
     }
 
@@ -436,6 +510,7 @@ class ARPerimeterViewModel: ObservableObject {
 
         isEditingVertex = false
         editingVertexIndex = nil
+        renderVersion += 1
         lightImpact.impactOccurred()
     }
 
@@ -480,8 +555,8 @@ class ARPerimeterViewModel: ObservableObject {
         if turnAngle > 180 { turnAngle -= 360 }
         if turnAngle < -180 { turnAngle += 360 }
 
-        // Snap the turn angle to the nearest increment
-        let snappedTurn = SnapEngine.snapAngle(turnAngle + 360, increment: angleSnapIncrement) - 360
+        // Snap the turn angle directly — round to nearest increment preserving sign
+        let snappedTurn = (turnAngle / angleSnapIncrement).rounded() * angleSnapIncrement
         let angleDiff = abs(turnAngle - snappedTurn)
 
         if angleDiff < angleSnapTolerance && angleDiff > 0.1 {
@@ -523,9 +598,128 @@ class ARPerimeterViewModel: ObservableObject {
         return SnapResult(position: newPosition, didSnap: false)
     }
 
+    /// Snap the distance from a reference point to the nearest length increment (6 inches)
+    private func snapLength(position: SIMD3<Float>, fromPosition: SIMD3<Float>) -> SnapResult {
+        let dx = Double(position.x - fromPosition.x)
+        let dz = Double(position.z - fromPosition.z)
+        let distance = sqrt(dx * dx + dz * dz)
+
+        guard distance > 0 else {
+            return SnapResult(position: position, didSnap: false)
+        }
+
+        let snappedDistance = (distance / lengthSnapIncrementMeters).rounded() * lengthSnapIncrementMeters
+        let diff = abs(distance - snappedDistance)
+
+        if diff > 0.001 {
+            let scale = snappedDistance / distance
+            let snappedX = Double(fromPosition.x) + dx * scale
+            let snappedZ = Double(fromPosition.z) + dz * scale
+            return SnapResult(
+                position: SIMD3<Float>(Float(snappedX), position.y, Float(snappedZ)),
+                didSnap: true
+            )
+        }
+
+        return SnapResult(position: position, didSnap: false)
+    }
+
     /// Convert ARVertex to SIMD3<Float> for distance checks
     private func simd3(_ vertex: ARCoordinateConverter.ARVertex) -> SIMD3<Float> {
         SIMD3<Float>(Float(vertex.x), Float(vertex.y), Float(vertex.z))
+    }
+
+    // MARK: - Alignment Guide Detection (AR World Space)
+
+    /// Detect axis alignment, parallel, and perpendicular guides in AR world space.
+    /// Works on the ground plane (X/Z). Returns a snapped position and active guides.
+    private func detectARAlignmentGuides(
+        from start: SIMD3<Float>,
+        currentEnd: SIMD3<Float>
+    ) -> (snapped: SIMD3<Float>, guides: [ARAlignmentGuide]) {
+        let threshold: Float = 0.08  // ~3 inches in world meters
+        let angleThreshold: Double = 2.0  // degrees
+        var guides: [ARAlignmentGuide] = []
+        var snappedX = currentEnd.x
+        var snappedZ = currentEnd.z
+        var bestDx: Float = threshold + 1
+        var bestDz: Float = threshold + 1
+
+        // Exclude the start vertex from detection
+        let startVertexId = arVertices.last?.id
+
+        // --- Axis alignment with existing vertices ---
+        for vertex in arVertices {
+            if vertex.id == startVertexId { continue }
+            let vx = Float(vertex.x)
+            let vz = Float(vertex.z)
+
+            // X alignment (vertical guide in plan view)
+            let dx = abs(currentEnd.x - vx)
+            if dx < threshold && dx < bestDx {
+                bestDx = dx
+                snappedX = vx
+                guides.removeAll { $0.type == .vertical }
+                let minZ = min(vz, currentEnd.z) - 0.3
+                let maxZ = max(vz, currentEnd.z) + 0.3
+                guides.append(ARAlignmentGuide(
+                    from: SIMD3<Float>(vx, currentEnd.y, minZ),
+                    to: SIMD3<Float>(vx, currentEnd.y, maxZ),
+                    type: .vertical
+                ))
+            }
+
+            // Z alignment (horizontal guide in plan view)
+            let dz = abs(currentEnd.z - vz)
+            if dz < threshold && dz < bestDz {
+                bestDz = dz
+                snappedZ = vz
+                guides.removeAll { $0.type == .horizontal }
+                let minX = min(vx, currentEnd.x) - 0.3
+                let maxX = max(vx, currentEnd.x) + 0.3
+                guides.append(ARAlignmentGuide(
+                    from: SIMD3<Float>(minX, currentEnd.y, vz),
+                    to: SIMD3<Float>(maxX, currentEnd.y, vz),
+                    type: .horizontal
+                ))
+            }
+        }
+
+        // --- Parallel / Perpendicular to existing edges ---
+        let snappedEnd = SIMD3<Float>(snappedX, currentEnd.y, snappedZ)
+        let currentAngle = atan2(Double(snappedEnd.z - start.z), Double(snappedEnd.x - start.x)) * 180.0 / .pi
+
+        for edge in arEdges {
+            guard let sv = arVertices.first(where: { $0.id == edge.startVertexId }),
+                  let ev = arVertices.first(where: { $0.id == edge.endVertexId }) else { continue }
+            if edge.startVertexId == startVertexId || edge.endVertexId == startVertexId { continue }
+
+            let edgeAngle = atan2(ev.z - sv.z, ev.x - sv.x) * 180.0 / .pi
+            var angleDiff = abs(currentAngle - edgeAngle)
+            if angleDiff > 180 { angleDiff = 360 - angleDiff }
+
+            if angleDiff < angleThreshold || abs(angleDiff - 180) < angleThreshold {
+                if !guides.contains(where: { $0.type == .parallel }) {
+                    guides.append(ARAlignmentGuide(
+                        from: SIMD3<Float>(Float(sv.x), Float(sv.y), Float(sv.z)),
+                        to: SIMD3<Float>(Float(ev.x), Float(ev.y), Float(ev.z)),
+                        type: .parallel
+                    ))
+                }
+            }
+
+            if abs(angleDiff - 90) < angleThreshold || abs(angleDiff - 270) < angleThreshold {
+                if !guides.contains(where: { $0.type == .perpendicular }) {
+                    guides.append(ARAlignmentGuide(
+                        from: SIMD3<Float>(Float(sv.x), Float(sv.y), Float(sv.z)),
+                        to: SIMD3<Float>(Float(ev.x), Float(ev.y), Float(ev.z)),
+                        type: .perpendicular
+                    ))
+                }
+            }
+        }
+
+        return (SIMD3<Float>(snappedX, currentEnd.y, snappedZ), guides)
     }
 
     // MARK: - Address Detection (Reverse Geocoding)

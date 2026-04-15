@@ -29,18 +29,18 @@ struct EstimatePreviewSheet: View {
 
                     // AR accuracy warning
                     if let note = arNote {
-                        HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 14, weight: .medium))
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
                             Text(note)
                                 .font(OPSStyle.Typography.caption)
                         }
                         .foregroundColor(OPSStyle.Colors.warningStatus)
-                        .padding(12)
+                        .padding(OPSStyle.Layout.spacing2_5)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(OPSStyle.Colors.warningStatus.opacity(0.15))
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                     }
 
                     // Category breakdown
@@ -82,13 +82,13 @@ struct EstimatePreviewSheet: View {
                             }
                         }
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
                             if viewModel.isGeneratingEstimate {
                                 ProgressView()
                                     .tint(.white)
                             } else {
                                 Image(systemName: "doc.text")
-                                    .font(.system(size: 18, weight: .semibold))
+                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
                             }
                             Text("Create Estimate")
                                 .font(OPSStyle.Typography.bodyBold)

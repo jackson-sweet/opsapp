@@ -46,7 +46,7 @@ struct DeckToolbar: View {
                 if isViewOnly {
                     // View Only badge — no drawing tools
                     Text("VIEW ONLY")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .font(OPSStyle.Typography.miniLabel)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
@@ -61,6 +61,18 @@ struct DeckToolbar: View {
 
                     actionButton(icon: "arrow.up.and.down.circle", label: "Height") {
                         viewModel.showingElevationInput = true
+                    }
+
+                    if viewModel.canAddLevel {
+                        actionButton(icon: "plus.square.on.square", label: "Add Level") {
+                            viewModel.addLevel()
+                        }
+                    }
+
+                    toolDivider
+
+                    actionButton(icon: "trash", label: "Clear", tint: OPSStyle.Colors.errorStatus) {
+                        viewModel.showingClearConfirm = true
                     }
                 }
 
@@ -150,16 +162,12 @@ struct DeckToolbar: View {
                     viewModel.showingDimensionInput = true
                 }
 
-                actionButton(icon: "fence", label: "Railing") {
-                    viewModel.showingPropertySheet = true
-                }
-
                 actionButton(icon: "stairs", label: "Stairs") {
                     viewModel.showingStairConfig = true
                 }
 
-                actionButton(icon: "building.2", label: "Type") {
-                    viewModel.showingPropertySheet = true
+                actionButton(icon: "square.grid.3x3", label: "Material") {
+                    viewModel.showingMaterialPicker = true
                 }
 
                 actionButton(icon: "info.circle", label: "Properties") {
@@ -188,7 +196,7 @@ struct DeckToolbar: View {
             toolDivider
 
             actionButton(icon: "square.grid.3x3", label: "Material") {
-                viewModel.showingAssignmentWheel = true
+                viewModel.showingMaterialPicker = true
             }
 
             actionButton(icon: "arrow.up.and.down.circle", label: "Elevation") {
@@ -211,7 +219,7 @@ struct DeckToolbar: View {
 
     private func contextLabel(_ text: String) -> some View {
         Text(text.uppercased())
-            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .font(OPSStyle.Typography.miniLabel)
             .foregroundColor(OPSStyle.Colors.primaryAccent)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)

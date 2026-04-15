@@ -41,6 +41,17 @@ struct ARHeightMeasureView: View {
         }
         .statusBarHidden(true)
         .task { await checkARAvailability() }
+        .alert("Unable to Detect Surface",
+               isPresented: $viewModel.showPlaneTimeoutAlert) {
+            Button("Try Again") {
+                viewModel.startPlaneDetectionTimeout()
+            }
+            Button("Cancel", role: .cancel) {
+                dismiss()
+            }
+        } message: {
+            Text("Try better lighting or a textured surface.")
+        }
     }
 
     private func checkARAvailability() async {
@@ -353,7 +364,10 @@ private struct ARHeightViewContainer: UIViewRepresentable {
                         hit.worldTransform.columns.3.z
                     )
                     Task { @MainActor in
-                        self.viewModel.isPlaneDetected = true
+                        if !self.viewModel.isPlaneDetected {
+                            self.viewModel.isPlaneDetected = true
+                            self.viewModel.cancelPlaneDetectionTimeout()
+                        }
                         self.viewModel.updateCrosshairPosition(position)
                     }
                     return
@@ -369,7 +383,10 @@ private struct ARHeightViewContainer: UIViewRepresentable {
                         hit.worldTransform.columns.3.z
                     )
                     Task { @MainActor in
-                        self.viewModel.isPlaneDetected = true
+                        if !self.viewModel.isPlaneDetected {
+                            self.viewModel.isPlaneDetected = true
+                            self.viewModel.cancelPlaneDetectionTimeout()
+                        }
                         self.viewModel.updateCrosshairPosition(position)
                     }
                     return

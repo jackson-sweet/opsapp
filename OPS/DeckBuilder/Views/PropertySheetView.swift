@@ -45,30 +45,30 @@ struct PropertySheetView: View {
 
     @ViewBuilder
     private var edgeProperties: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             sectionHeader("Edge Properties", icon: "line.diagonal")
 
             // Edge type picker
             ForEach(Array(viewModel.selection.selectedEdgeIds), id: \.self) { edgeId in
                 if let edge = viewModel.drawingData.edge(byId: edgeId) {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         // Dimension
                         if let dim = edge.dimension {
                             HStack {
                                 Text("Length")
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                 Spacer()
                                 Text(DimensionEngine.format(dim, system: viewModel.drawingData.config.measurementSystem))
                                     .font(.system(size: 16, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                             }
                         }
 
                         // Edge type
                         HStack {
                             Text("Type")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                             Spacer()
                             Picker("", selection: Binding(
@@ -92,7 +92,7 @@ struct PropertySheetView: View {
                         // Stairs
                         stairSection(edgeId: edgeId, edge: edge)
                     }
-                    .padding(16)
+                    .padding(OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
@@ -102,35 +102,35 @@ struct PropertySheetView: View {
 
     @ViewBuilder
     private func railingSection(edgeId: String, edge: DeckEdge) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Text("Railing")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 Spacer()
                 if edge.railingConfig != nil {
                     Button("Remove") {
                         viewModel.setRailing(edgeId, config: nil)
                     }
-                    .font(.system(size: 12, weight: .medium))
+                    .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.errorStatus)
                 }
             }
 
             if let railing = edge.railingConfig {
                 Text(railing.railingType.displayName)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                 // Post spacing
                 HStack {
                     Text("Max post spacing")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Spacer()
                     Text(DimensionEngine.formatImperial(railing.maxPostSpacing))
                         .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
 
                 // Post count
@@ -138,17 +138,17 @@ struct PropertySheetView: View {
                     let posts = DimensionEngine.postCount(edgeLengthInches: dim, maxSpacing: railing.maxPostSpacing)
                     HStack {
                         Text("Posts needed")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Spacer()
                         Text("\(posts)")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.white)
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                     }
                 }
             } else {
                 // Railing type picker
-                HStack(spacing: 8) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(RailingType.allCases, id: \.self) { type in
                         Button {
                             let config = RailingConfig(
@@ -158,10 +158,10 @@ struct PropertySheetView: View {
                             viewModel.setRailing(edgeId, config: config)
                         } label: {
                             Text(type.displayName)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                                .padding(.vertical, OPSStyle.Layout.spacing2)
                                 .background(OPSStyle.Colors.background)
                                 .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                         }
@@ -173,30 +173,30 @@ struct PropertySheetView: View {
 
     @ViewBuilder
     private func stairSection(edgeId: String, edge: DeckEdge) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Text("Stairs")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 Spacer()
                 if edge.stairConfig != nil {
                     Button("Remove") {
                         viewModel.setStairs(edgeId, config: nil)
                     }
-                    .font(.system(size: 12, weight: .medium))
+                    .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.errorStatus)
                 } else {
                     Button("Add Stairs") {
                         viewModel.editingEdgeId = edgeId
                         viewModel.showingStairConfig = true
                     }
-                    .font(.system(size: 12, weight: .bold))
+                    .font(OPSStyle.Typography.smallButton)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
             }
 
             if let stair = edge.stairConfig {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     infoRow("Width", value: DimensionEngine.formatImperial(stair.width))
                     if let treads = stair.treadCount {
                         infoRow("Treads", value: "\(treads)")
@@ -212,25 +212,25 @@ struct PropertySheetView: View {
 
     @ViewBuilder
     private var vertexProperties: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             sectionHeader("Vertex Properties", icon: "circle.fill")
 
             ForEach(Array(viewModel.selection.selectedVertexIds), id: \.self) { vertexId in
                 if let vertex = viewModel.drawingData.vertex(byId: vertexId) {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         // Elevation
                         HStack {
                             Text("Elevation")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                             Spacer()
                             if let elev = vertex.elevation {
                                 Text(String(format: "%.1f'", elev))
                                     .font(.system(size: 16, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.white)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                             } else {
                                 Text("Not set")
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(OPSStyle.Typography.caption)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
                         }
@@ -238,7 +238,7 @@ struct PropertySheetView: View {
                         // Footing type
                         HStack {
                             Text("Footing")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                             Spacer()
                             Picker("", selection: Binding(
@@ -258,7 +258,7 @@ struct PropertySheetView: View {
                             .pickerStyle(.menu)
                         }
                     }
-                    .padding(16)
+                    .padding(OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
@@ -270,57 +270,57 @@ struct PropertySheetView: View {
 
     @ViewBuilder
     private var footprintProperties: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             sectionHeader("Surface Properties", icon: "square.fill")
 
             // Area display
             if let area = viewModel.totalArea {
                 HStack {
                     Text("Area")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Spacer()
                     Text(DimensionEngine.formatArea(area, system: viewModel.drawingData.config.measurementSystem))
                         .font(.system(size: 20, weight: .bold, design: .monospaced))
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
-                .padding(16)
+                .padding(OPSStyle.Layout.spacing3)
                 .background(OPSStyle.Colors.cardBackground)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
 
             // Assigned surface items
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("Assigned Items")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
 
                 if viewModel.drawingData.footprint.assignedItems.isEmpty {
                     Text("No items assigned. Use the assignment wheel to add surfacing materials.")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
                 } else {
                     ForEach(viewModel.drawingData.footprint.assignedItems) { item in
                         HStack {
                             Text(item.name)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.white)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                             Spacer()
                             Text(item.unitType.rawValue.replacingOccurrences(of: "_", with: " "))
-                                .font(.system(size: 12, weight: .medium))
+                                .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                             Button {
                                 viewModel.removeFootprintItem(item.id)
                             } label: {
-                                Image(systemName: "xmark.circle.fill")
+                                Image(systemName: OPSStyle.Icons.xmarkCircleFill)
                                     .foregroundColor(OPSStyle.Colors.errorStatus)
                             }
                         }
                     }
                 }
             }
-            .padding(16)
+            .padding(OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.cardBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
@@ -331,20 +331,20 @@ struct PropertySheetView: View {
     @ViewBuilder
     private func sectionHeader(_ title: String, icon: String) -> some View {
         Label(title, systemImage: icon)
-            .font(.system(size: 16, weight: .bold))
-            .foregroundColor(.white)
+            .font(OPSStyle.Typography.bodyEmphasis)
+            .foregroundColor(OPSStyle.Colors.primaryText)
     }
 
     @ViewBuilder
     private func infoRow(_ label: String, value: String) -> some View {
         HStack {
             Text(label)
-                .font(.system(size: 12, weight: .medium))
+                .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             Spacer()
             Text(value)
                 .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                .foregroundColor(.white)
+                .foregroundColor(OPSStyle.Colors.primaryText)
         }
     }
 }

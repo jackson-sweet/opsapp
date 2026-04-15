@@ -3,6 +3,27 @@
 import Foundation
 import SwiftUI
 
+// MARK: - Alignment Guide Types
+
+enum AlignmentGuideType: Equatable {
+    case horizontal    // endpoint shares Y with another vertex
+    case vertical      // endpoint shares X with another vertex
+    case parallel      // line is parallel to an existing edge
+    case perpendicular // line is perpendicular to an existing edge
+}
+
+struct AlignmentGuide: Equatable {
+    let from: CGPoint    // start of the dotted guide line
+    let to: CGPoint      // end of the dotted guide line
+    let type: AlignmentGuideType
+    let referenceLabel: String?  // optional label (e.g., "∥" or "⊥")
+}
+
+struct AlignmentResult {
+    var snappedPoint: CGPoint       // the endpoint after alignment snapping
+    var guides: [AlignmentGuide]    // active guide lines to render
+}
+
 struct SnapEngine {
 
     // MARK: - Angle Snapping
@@ -101,6 +122,114 @@ struct SnapEngine {
         return CGPoint(
             x: (Double(point.x) / gridSpacing).rounded() * gridSpacing,
             y: (Double(point.y) / gridSpacing).rounded() * gridSpacing
+        )
+    }
+
+    // MARK: - Alignment Guide Detection
+
+    /// Detect alignment guides for the current drawing endpoint.
+    /// Checks axis alignment with all vertices and parallel/perpendicular to all edges.
+    /// Returns a snapped point and the active guide lines.
+    static func detectAlignmentGuides(
+        from start: CGPoint,
+        currentEnd: CGPoint,
+        vertices: [DeckVertex],
+        edges: [DeckEdge],
+        vertexLookup: (String) -> DeckVertex?,
+        threshold: Double = 8.0,        // canvas points — how close to trigger
+        excludeVertexIds: Set<String> = []
+    ) -> AlignmentResult {
+        var guides: [AlignmentGuide] = []
+        var snappedX = currentEnd.x
+        var snappedY = currentEnd.y
+        var bestDx = threshold + 1.0  // track closest X alignment
+        var bestDy = threshold + 1.0  // track closest Y alignment
+
+        // --- Axis alignment with existing vertices ---
+        for vertex in vertices {
+            guard !excludeVertexIds.contains(vertex.id) else { continue }
+            let pos = vertex.position
+
+            // Vertical alignment: same X coordinate
+            let dx = abs(Double(currentEnd.x - pos.x))
+            if dx < threshold && dx < bestDx {
+                bestDx = dx
+                snappedX = pos.x
+                // Guide line: vertical dotted line from the reference vertex to the snap point
+                guides.removeAll { $0.type == .vertical }
+                let minY = min(pos.y, currentEnd.y) - 20
+                let maxY = max(pos.y, currentEnd.y) + 20
+                guides.append(AlignmentGuide(
+                    from: CGPoint(x: pos.x, y: minY),
+                    to: CGPoint(x: pos.x, y: maxY),
+                    type: .vertical,
+                    referenceLabel: nil
+                ))
+            }
+
+            // Horizontal alignment: same Y coordinate
+            let dy = abs(Double(currentEnd.y - pos.y))
+            if dy < threshold && dy < bestDy {
+                bestDy = dy
+                snappedY = pos.y
+                // Guide line: horizontal dotted line from the reference vertex to the snap point
+                guides.removeAll { $0.type == .horizontal }
+                let minX = min(pos.x, currentEnd.x) - 20
+                let maxX = max(pos.x, currentEnd.x) + 20
+                guides.append(AlignmentGuide(
+                    from: CGPoint(x: minX, y: pos.y),
+                    to: CGPoint(x: maxX, y: pos.y),
+                    type: .horizontal,
+                    referenceLabel: nil
+                ))
+            }
+        }
+
+        // --- Parallel / Perpendicular to existing edges ---
+        let currentAngle = lineAngle(from: start, to: CGPoint(x: snappedX, y: snappedY))
+        let angleThreshold = 2.0  // degrees
+
+        for edge in edges {
+            guard let eStart = vertexLookup(edge.startVertexId),
+                  let eEnd = vertexLookup(edge.endVertexId) else { continue }
+            // Skip edges connected to the start vertex (trivially parallel to themselves)
+            if edge.startVertexId == excludeVertexIds.first || edge.endVertexId == excludeVertexIds.first {
+                continue
+            }
+
+            let edgeAngle = lineAngle(from: eStart.position, to: eEnd.position)
+
+            // Parallel: angles match (mod 180°)
+            var angleDiff = abs(currentAngle - edgeAngle)
+            if angleDiff > 180 { angleDiff = 360 - angleDiff }
+            if angleDiff < angleThreshold || abs(angleDiff - 180) < angleThreshold {
+                // Don't duplicate if we already have axis-aligned guides covering this
+                if !guides.contains(where: { $0.type == .parallel }) {
+                    guides.append(AlignmentGuide(
+                        from: eStart.position,
+                        to: eEnd.position,
+                        type: .parallel,
+                        referenceLabel: "∥"
+                    ))
+                }
+            }
+
+            // Perpendicular: angles differ by 90°
+            if abs(angleDiff - 90) < angleThreshold || abs(angleDiff - 270) < angleThreshold {
+                if !guides.contains(where: { $0.type == .perpendicular }) {
+                    guides.append(AlignmentGuide(
+                        from: eStart.position,
+                        to: eEnd.position,
+                        type: .perpendicular,
+                        referenceLabel: "⊥"
+                    ))
+                }
+            }
+        }
+
+        return AlignmentResult(
+            snappedPoint: CGPoint(x: snappedX, y: snappedY),
+            guides: guides
         )
     }
 

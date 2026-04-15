@@ -196,6 +196,57 @@ class ARLineRenderer {
         liveLineEntity = nil
     }
 
+    // MARK: - Alignment Guide Lines
+
+    private var alignmentGuideEntity: Entity?
+
+    /// Render dotted alignment guide lines in AR world space.
+    /// Colors match the 2D canvas: cyan for axis, accent for parallel, green for perpendicular.
+    func updateAlignmentGuides(_ guides: [ARPerimeterViewModel.ARAlignmentGuide]) {
+        alignmentGuideEntity?.removeFromParent()
+        alignmentGuideEntity = nil
+        guard !guides.isEmpty else { return }
+
+        let group = Entity()
+        group.name = "alignment_guides"
+
+        for guide in guides {
+            let color: UIColor
+            switch guide.type {
+            case .horizontal, .vertical:
+                color = UIColor.cyan.withAlphaComponent(0.5)
+            case .parallel:
+                color = UIColor.systemOrange.withAlphaComponent(0.4)
+            case .perpendicular:
+                color = UIColor.systemGreen.withAlphaComponent(0.4)
+            }
+
+            // Dashed line
+            let from = guide.from
+            let to = guide.to
+            let distance = simd_distance(from, to)
+            let segmentLength: Float = 0.06
+            let gapLength: Float = 0.04
+            let direction = distance > 0.001 ? simd_normalize(to - from) : SIMD3<Float>(1, 0, 0)
+
+            var d: Float = 0
+            while d < distance {
+                let segEnd = min(d + segmentLength, distance)
+                let segment = createLineEntity(
+                    from: from + direction * d,
+                    to: from + direction * segEnd,
+                    color: color,
+                    alpha: 0.8
+                )
+                group.addChild(segment)
+                d = segEnd + gapLength
+            }
+        }
+
+        rootAnchor.addChild(group)
+        alignmentGuideEntity = group
+    }
+
     // MARK: - Footprint Fill
 
     func showFootprintFill(vertices: [SIMD3<Float>]) {
@@ -230,6 +281,11 @@ class ARLineRenderer {
         footprintEntity = entity
     }
 
+    func removeFootprintFill() {
+        footprintEntity?.removeFromParent()
+        footprintEntity = nil
+    }
+
     // MARK: - Label Billboarding
 
     func updateLabelOrientations(cameraPosition: SIMD3<Float>) {
@@ -239,16 +295,110 @@ class ARLineRenderer {
         if let liveLabel = liveLabelEntity {
             billboardToCamera(entity: liveLabel, cameraPosition: cameraPosition)
         }
+        for label in repositionPreviewLabels {
+            billboardToCamera(entity: label, cameraPosition: cameraPosition)
+        }
     }
 
     /// Billboard that faces camera but stays upright (no mirroring).
-    /// The standard look(at:) produces mirrored text because RealityKit text
-    /// faces +Z but look(at:) orients -Z toward the target.
+    /// RealityKit text faces +Z. We rotate around Y so +Z points toward the camera.
+    /// Derivation: rotation by θ around Y transforms +Z to (−sin θ, 0, cos θ).
+    /// Setting that equal to the camera direction gives θ = atan2(−toCamera.x, toCamera.z).
     private func billboardToCamera(entity: ModelEntity, cameraPosition: SIMD3<Float>) {
         let toCamera = cameraPosition - entity.position
-        let angle = atan2(toCamera.x, toCamera.z)
-        // Rotate around Y axis to face camera, + PI to flip text forward
-        entity.orientation = simd_quatf(angle: angle + .pi, axis: SIMD3<Float>(0, 1, 0))
+        let angle = atan2(-toCamera.x, toCamera.z)
+        entity.orientation = simd_quatf(angle: angle, axis: SIMD3<Float>(0, 1, 0))
+    }
+
+    // MARK: - Reposition Preview
+
+    private var repositionPreviewEntity: Entity?
+    private var repositionPreviewLabels: [ModelEntity] = []
+    private var hiddenEdgeNames: Set<String> = []
+    private var hiddenVertexName: String?
+
+    /// Hide the static edges and vertex being repositioned so preview replaces them
+    func beginRepositionPreview(hideEdgeNames: [String], hideVertexName: String) {
+        for name in hideEdgeNames {
+            edgeEntities[name]?.isEnabled = false
+            hiddenEdgeNames.insert(name)
+        }
+        vertexEntities[hideVertexName]?.isEnabled = false
+        hiddenVertexName = hideVertexName
+    }
+
+    /// Render dashed preview lines from connected vertices to the crosshair + a vertex marker
+    func updateRepositionPreview(
+        vertexPosition: SIMD3<Float>,
+        connectedEndpoints: [(otherVertex: SIMD3<Float>, label: String)],
+        cameraPosition: SIMD3<Float>
+    ) {
+        repositionPreviewEntity?.removeFromParent()
+        repositionPreviewLabels.removeAll()
+
+        let group = Entity()
+        group.name = "reposition_preview"
+
+        // Vertex marker at crosshair
+        let vtxMesh = MeshResource.generateBox(width: vertexSize, height: vertexSize * 0.3, depth: vertexSize)
+        let vtxMaterial = SimpleMaterial(color: UIColor.white, isMetallic: true)
+        let diamond = ModelEntity(mesh: vtxMesh, materials: [vtxMaterial])
+        diamond.position = vertexPosition
+        diamond.transform.rotation = simd_quatf(angle: .pi / 4, axis: SIMD3<Float>(0, 1, 0))
+        group.addChild(diamond)
+
+        // Dashed lines to each connected vertex
+        for connection in connectedEndpoints {
+            let from = connection.otherVertex
+            let to = vertexPosition
+            let distance = simd_distance(from, to)
+            let segmentLength: Float = 0.12
+            let gapLength: Float = 0.06
+            let direction = distance > 0.001 ? simd_normalize(to - from) : SIMD3<Float>(0, 0, 1)
+
+            var d: Float = 0
+            while d < distance {
+                let segEnd = min(d + segmentLength, distance)
+                let segment = createLineEntity(
+                    from: from + direction * d,
+                    to: from + direction * segEnd,
+                    color: edgeLiveColor,
+                    alpha: 0.6
+                )
+                group.addChild(segment)
+                d = segEnd + gapLength
+            }
+
+            // Dimension label
+            let dimLabel = createBillboardLabel(
+                text: connection.label,
+                position: midpoint(from, to) + SIMD3<Float>(0, 0.07, 0),
+                fontSize: labelTextSize
+            )
+            billboardToCamera(entity: dimLabel, cameraPosition: cameraPosition)
+            group.addChild(dimLabel)
+            repositionPreviewLabels.append(dimLabel)
+        }
+
+        rootAnchor.addChild(group)
+        repositionPreviewEntity = group
+    }
+
+    /// End reposition preview — restore hidden entities and clean up
+    func endRepositionPreview() {
+        repositionPreviewEntity?.removeFromParent()
+        repositionPreviewEntity = nil
+        repositionPreviewLabels.removeAll()
+
+        for name in hiddenEdgeNames {
+            edgeEntities[name]?.isEnabled = true
+        }
+        hiddenEdgeNames.removeAll()
+
+        if let name = hiddenVertexName {
+            vertexEntities[name]?.isEnabled = true
+        }
+        hiddenVertexName = nil
     }
 
     // MARK: - Clear All
@@ -264,6 +414,9 @@ class ARLineRenderer {
         liveLabelEntity = nil
         footprintEntity?.removeFromParent()
         footprintEntity = nil
+        alignmentGuideEntity?.removeFromParent()
+        alignmentGuideEntity = nil
+        endRepositionPreview()
     }
 
     // MARK: - Private Helpers
@@ -284,13 +437,15 @@ class ARLineRenderer {
         return entity
     }
 
-    /// Create a billboard text label. Uses a parent entity for positioning so the
-    /// text mesh offset is in local space and survives billboard rotation.
+    /// Create a billboard text label with dark badge background.
+    /// Uses a parent entity for positioning so the text mesh offset is in local space
+    /// and survives billboard rotation. Badge matches canvas dimension badge style.
     private func createBillboardLabel(
         text: String,
         position: SIMD3<Float>,
         fontSize: CGFloat,
-        color: UIColor = .white
+        color: UIColor = .white,
+        showBadge: Bool = true
     ) -> ModelEntity {
         let mesh = MeshResource.generateText(
             text,
@@ -305,12 +460,32 @@ class ARLineRenderer {
 
         // Center the text mesh in its local space (before billboard rotation)
         let bounds = textEntity.visualBounds(relativeTo: nil)
-        textEntity.position = SIMD3<Float>(-bounds.extents.x / 2, 0, 0)
+        textEntity.position = SIMD3<Float>(-bounds.center.x, -bounds.center.y, 0)
 
         // Wrap in a pivot entity at the world position — billboard rotates the pivot
         let pivot = ModelEntity()
         pivot.position = position
         pivot.addChild(textEntity)
+
+        // Badge background — dark rounded rect behind text
+        if showBadge {
+            let padH: Float = 0.012  // horizontal padding
+            let padV: Float = 0.006  // vertical padding
+            let bgWidth = bounds.extents.x * 2 + padH * 2
+            let bgHeight = bounds.extents.y * 2 + padV * 2
+            let bgMesh = MeshResource.generateBox(
+                width: bgWidth, height: bgHeight, depth: 0.0004,
+                cornerRadius: 0.004
+            )
+            var bgMaterial = SimpleMaterial(
+                color: UIColor.black.withAlphaComponent(0.7), isMetallic: false
+            )
+            bgMaterial.roughness = .float(1.0)
+            let bgEntity = ModelEntity(mesh: bgMesh, materials: [bgMaterial])
+            // Position behind text center (slight -Z to avoid z-fighting)
+            bgEntity.position = SIMD3<Float>(0, 0, -0.002)
+            pivot.addChild(bgEntity)
+        }
 
         return pivot
     }

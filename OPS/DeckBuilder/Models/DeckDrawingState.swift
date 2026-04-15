@@ -10,7 +10,7 @@ enum DrawingTool: String {
     case none           // long-press always works regardless
 }
 
-enum DrawingMode {
+enum DrawingMode: Equatable {
     case idle                                      // no active gesture
     case drawing(fromVertexId: String, currentEnd: CGPoint) // actively dragging a line
     case selecting(rect: CGRect)                   // dragging a selection rectangle

@@ -46,7 +46,7 @@ struct ARCoordinateConverter {
 
         let metersToInches = 39.3701
 
-        // Step 1: Find the best rotation to align the longest edge with the X axis
+        // Step 1: Find the best rotation to align the drawing's dominant edge direction with canvas X axis
         let rotationAngle = bestAlignmentAngle(vertices: arVertices, edges: arEdges)
 
         // Step 2: Rotate all vertices around their centroid
@@ -81,15 +81,32 @@ struct ARCoordinateConverter {
         let availH = Double(canvasHeight) * 0.6
         let scaleFactor = min(availW / widthInches, availH / heightInches)
 
-        // Center of mass at center of canvas
+        // Step 4: Center of mass (vertex centroid) at canvas center
         let canvasCenterX = Double(canvasWidth) / 2
         let canvasCenterY = Double(canvasHeight) / 2
-        let shapeCenterXInches = ((minX + maxX) / 2 - minX) * metersToInches
-        let shapeCenterZInches = ((minZ + maxZ) / 2 - minZ) * metersToInches
-        let offsetX = canvasCenterX - shapeCenterXInches * scaleFactor
-        let offsetY = canvasCenterY - shapeCenterZInches * scaleFactor
+        let centroidX = rotated.map { $0.x }.reduce(0, +) / Double(rotated.count)
+        let centroidZ = rotated.map { $0.z }.reduce(0, +) / Double(rotated.count)
+        let centroidXInches = (centroidX - minX) * metersToInches
+        let centroidZInches = (centroidZ - minZ) * metersToInches
+        var offsetX = canvasCenterX - centroidXInches * scaleFactor
+        var offsetY = canvasCenterY - centroidZInches * scaleFactor
 
-        // Build deck vertices — snap origin vertex to nearest grid point
+        // Step 5: Snap origin vertex (first vertex) to nearest grid point (1 foot grid)
+        if let firstRp = rotated.first {
+            let firstXInches = (firstRp.x - minX) * metersToInches
+            let firstZInches = (firstRp.z - minZ) * metersToInches
+            let firstCanvasX = firstXInches * scaleFactor + offsetX
+            let firstCanvasY = firstZInches * scaleFactor + offsetY
+            let gridSpacing = 12.0 * scaleFactor  // 1 foot in canvas points
+            if gridSpacing > 1.0 {
+                let snappedX = (firstCanvasX / gridSpacing).rounded() * gridSpacing
+                let snappedY = (firstCanvasY / gridSpacing).rounded() * gridSpacing
+                offsetX += snappedX - firstCanvasX
+                offsetY += snappedY - firstCanvasY
+            }
+        }
+
+        // Build deck vertices
         var deckVertices: [DeckVertex] = []
         var vertexIdMap: [String: String] = [:]
 
@@ -132,14 +149,15 @@ struct ARCoordinateConverter {
     // MARK: - Auto-Rotation Alignment
 
     /// Find the rotation angle that best aligns the drawing's edges with the canvas axes.
-    /// Returns the angle (radians) to rotate around the centroid so the longest edge
-    /// is closest to horizontal (X axis).
+    /// Uses length-weighted circular statistics across ALL edges (not just the longest)
+    /// to find the dominant edge direction, then aligns it with the nearest canvas axis.
+    /// The "angle doubling" technique handles undirected edges (±180° equivalence).
     private static func bestAlignmentAngle(vertices: [ARVertex], edges: [AREdge]) -> Double {
         guard !edges.isEmpty else { return 0 }
 
-        // Find the longest edge
-        var longestLength = 0.0
-        var longestAngle = 0.0
+        // Accumulate length-weighted direction using circular mean with angle doubling
+        var sumCos = 0.0
+        var sumSin = 0.0
 
         for edge in edges {
             guard let start = vertices.first(where: { $0.id == edge.startVertexId }),
@@ -147,15 +165,19 @@ struct ARCoordinateConverter {
             let dx = end.x - start.x
             let dz = end.z - start.z
             let length = sqrt(dx * dx + dz * dz)
-            if length > longestLength {
-                longestLength = length
-                longestAngle = atan2(dz, dx)
-            }
+            guard length > 0.001 else { continue }
+            let angle = atan2(dz, dx)
+            // Double the angle so ±180° map to the same point on the unit circle
+            sumCos += length * cos(2 * angle)
+            sumSin += length * sin(2 * angle)
         }
 
+        // Dominant direction (halve the doubled angle)
+        let dominantAngle = atan2(sumSin, sumCos) / 2
+
         // Snap to nearest 90° alignment — we want edges parallel to X or Y axis
-        let snapped = (longestAngle / (.pi / 2)).rounded() * (.pi / 2)
-        return -(longestAngle - snapped)
+        let snapped = (dominantAngle / (.pi / 2)).rounded() * (.pi / 2)
+        return -(dominantAngle - snapped)
     }
 
     /// Convert two AR height points to elevation in inches

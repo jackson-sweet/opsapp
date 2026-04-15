@@ -8,6 +8,7 @@ struct DimensionInputView: View {
 
     @State private var inputText: String = ""
     @FocusState private var isFocused: Bool
+    @StateObject private var voiceInput = VoiceDimensionInput(expectedDimensionCount: 1)
 
     private var currentEdge: DeckEdge? {
         guard let edgeId = viewModel.editingEdgeId else { return nil }
@@ -16,7 +17,7 @@ struct DimensionInputView: View {
 
     var body: some View {
         NavigationView {
-            VStack(spacing: 24) {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
                 // Current dimension display
                 if let edge = currentEdge, let dim = edge.dimension {
                     Text(DimensionEngine.format(dim, system: viewModel.drawingData.config.measurementSystem))
@@ -24,14 +25,14 @@ struct DimensionInputView: View {
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 } else {
                     Text("No dimension set")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(OPSStyle.Typography.heading)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
 
                 // Input field
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     Text("Enter dimension")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
                     TextField(
@@ -41,20 +42,50 @@ struct DimensionInputView: View {
                         text: $inputText
                     )
                     .font(.system(size: 24, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.white)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .keyboardType(.numbersAndPunctuation)
                     .focused($isFocused)
-                    .padding(16)
+                    .padding(OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
 
+                // Voice input
+                HStack(spacing: OPSStyle.Layout.spacing3) {
+                    if voiceInput.isListening {
+                        VoiceWaveformView(isListening: true)
+                            .frame(height: 40)
+                    }
+
+                    Button {
+                        if voiceInput.isListening {
+                            voiceInput.stopListening()
+                        } else {
+                            isFocused = false
+                            voiceInput.startListening()
+                        }
+                    } label: {
+                        Image(systemName: voiceInput.isListening ? "mic.fill" : "mic")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(voiceInput.isListening ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                            .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                            .background(OPSStyle.Colors.cardBackground)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    }
+                }
+                .onChange(of: voiceInput.parsedDimensions) { dims in
+                    if let first = dims.first, let inches = first {
+                        inputText = DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    }
+                }
+
                 // Action buttons
-                HStack(spacing: 16) {
+                HStack(spacing: OPSStyle.Layout.spacing3) {
                     Button("Clear") {
                         inputText = ""
                     }
-                    .font(.system(size: 16, weight: .medium))
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(maxWidth: .infinity)
                     .frame(height: OPSStyle.Layout.touchTargetStandard)
@@ -64,7 +95,7 @@ struct DimensionInputView: View {
                     Button("Confirm") {
                         applyDimension()
                     }
-                    .font(.system(size: 16, weight: .bold))
+                    .font(OPSStyle.Typography.bodyEmphasis)
                     .foregroundColor(OPSStyle.Colors.buttonText)
                     .frame(maxWidth: .infinity)
                     .frame(height: OPSStyle.Layout.touchTargetStandard)
@@ -79,7 +110,7 @@ struct DimensionInputView: View {
                         dismiss()
                     } label: {
                         Label("Auto-fill from scale", systemImage: "wand.and.stars")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .frame(maxWidth: .infinity)
                             .frame(height: OPSStyle.Layout.touchTargetStandard)

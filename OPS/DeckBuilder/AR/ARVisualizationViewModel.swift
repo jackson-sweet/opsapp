@@ -23,6 +23,8 @@ class ARVisualizationViewModel: ObservableObject {
     @Published var showDragHint: Bool = false
     @Published var screenshotImage: UIImage?
     @Published var showingShareSheet: Bool = false
+    @Published var showPlaneTimeoutAlert: Bool = false
+    private var planeDetectionTask: Task<Void, Never>?
 
     // MARK: - Data
 
@@ -37,12 +39,32 @@ class ARVisualizationViewModel: ObservableObject {
 
     init(drawingData: DeckDrawingData) {
         self.drawingData = drawingData
+        startPlaneDetectionTimeout()
+    }
+
+    // MARK: - Plane Detection Timeout
+
+    func startPlaneDetectionTimeout() {
+        planeDetectionTask?.cancel()
+        showPlaneTimeoutAlert = false
+        planeDetectionTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            guard !Task.isCancelled else { return }
+            guard let self, self.placementState == .scanning else { return }
+            self.showPlaneTimeoutAlert = true
+        }
+    }
+
+    func cancelPlaneDetectionTimeout() {
+        planeDetectionTask?.cancel()
+        planeDetectionTask = nil
     }
 
     // MARK: - State Transitions
 
     func onPlaneDetected() {
         guard placementState == .scanning else { return }
+        cancelPlaneDetectionTimeout()
         placementState = .previewing
         statusMessage = "Tap to place your deck"
     }

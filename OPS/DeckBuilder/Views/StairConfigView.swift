@@ -11,6 +11,9 @@ struct StairConfigView: View {
     @State private var runPerTread: Double = 10.0
     @State private var addRailing: Bool = false
     @State private var railingType: RailingType = .picket
+    @State private var inlineHeightText: String = ""
+    @State private var alignment: StairAlignment = .center
+    @State private var offsetText: String = "0"
 
     private var totalRise: Double {
         // Get elevation from edge endpoints or overall elevation
@@ -28,6 +31,34 @@ struct StairConfigView: View {
         }
 
         return (viewModel.drawingData.overallElevation ?? 0) * 12
+    }
+
+    /// Edge length in inches (for defaulting stair width)
+    private var edgeLengthInches: Double? {
+        guard let edgeId = viewModel.editingEdgeId,
+              let edge = viewModel.drawingData.edge(byId: edgeId),
+              let dim = edge.dimension else { return nil }
+        return dim
+    }
+
+    /// Whether stair width is less than edge length (show alignment controls)
+    private var needsAlignment: Bool {
+        guard let edgeLen = edgeLengthInches,
+              let width = Double(widthText) else { return false }
+        return width < edgeLen - 1  // 1" tolerance
+    }
+
+    /// Left and right gap measurements in inches
+    private var gapMeasurements: (left: Double, right: Double)? {
+        guard let edgeLen = edgeLengthInches,
+              let width = Double(widthText), width < edgeLen else { return nil }
+        let offset = Double(offsetText) ?? 0
+        let gap = edgeLen - width
+        switch alignment {
+        case .left:   return (left: offset, right: gap - offset)
+        case .center: return (left: gap / 2 + offset, right: gap / 2 - offset)
+        case .right:  return (left: gap - offset, right: offset)
+        }
     }
 
     private var stairSpec: StairCalculator.StairSpec? {
@@ -53,6 +84,11 @@ struct StairConfigView: View {
 
                     // Width input
                     widthInput
+
+                    // Alignment & offset (only when width < edge length)
+                    if needsAlignment {
+                        alignmentSection
+                    }
 
                     // Code parameters
                     codeParameters
@@ -95,10 +131,15 @@ struct StairConfigView: View {
                 widthText = String(format: "%.0f", existing.width)
                 risePerStep = existing.risePerStep
                 runPerTread = existing.runPerTread
+                alignment = existing.alignment
+                offsetText = String(format: "%.0f", existing.offset)
                 if let railing = existing.railingConfig {
                     addRailing = true
                     railingType = railing.railingType
                 }
+            } else if let edgeLen = edgeLengthInches {
+                // Default width = edge length
+                widthText = String(format: "%.0f", edgeLen)
             }
         }
     }
@@ -108,43 +149,84 @@ struct StairConfigView: View {
     @ViewBuilder
     private var riseInfoCard: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text("Total Rise")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Text(DimensionEngine.formatImperial(totalRise))
-                    .font(.system(size: 24, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
+                    .font(OPSStyle.Typography.headlineMono)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
             }
             Spacer()
             Text("IRC R311.7")
-                .font(.system(size: 11, weight: .bold))
+                .font(OPSStyle.Typography.microLabel)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                .padding(.vertical, OPSStyle.Layout.spacing1)
                 .background(OPSStyle.Colors.primaryAccent.opacity(0.15))
-                .cornerRadius(4)
+                .cornerRadius(OPSStyle.Layout.smallCornerRadius)
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackground)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 
     @ViewBuilder
     private var noElevationWarning: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 24))
-                .foregroundColor(OPSStyle.Colors.warningStatus)
-            Text("Set deck height first")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.white)
-            Text("Go back and set the deck elevation to auto-calculate treads.")
-                .font(.system(size: 13, weight: .medium))
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: OPSStyle.Icons.exclamationmarkTriangle)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
+                Text("Deck height required")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
+            }
+
+            Text("Enter the deck height to calculate treads automatically.")
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .multilineTextAlignment(.center)
+
+            HStack {
+                TextField("e.g., 3", text: $inlineHeightText)
+                    .font(OPSStyle.Typography.titleMono)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .keyboardType(.decimalPad)
+                    .onChange(of: inlineHeightText) { _, newValue in
+                        if let height = Double(newValue), height > 0 {
+                            viewModel.setOverallElevation(height)
+                        }
+                    }
+
+                Text("feet")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+            .padding(OPSStyle.Layout.spacing2_5)
+            .background(OPSStyle.Colors.background)
+            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+
+            // Quick presets
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                ForEach(["2", "2.5", "3", "4"], id: \.self) { preset in
+                    Button {
+                        inlineHeightText = preset
+                        if let height = Double(preset) {
+                            viewModel.setOverallElevation(height)
+                        }
+                    } label: {
+                        Text("\(preset)'")
+                            .font(OPSStyle.Typography.smallButton)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
+                            .background(OPSStyle.Colors.background)
+                            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+                    }
+                }
+            }
         }
-        .padding(20)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackground)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
@@ -153,61 +235,114 @@ struct StairConfigView: View {
 
     @ViewBuilder
     private var widthInput: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("Stair Width")
-                .font(.system(size: 14, weight: .medium))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             HStack {
                 TextField("48", text: $widthText)
-                    .font(.system(size: 20, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
+                    .font(OPSStyle.Typography.titleMono)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                     .keyboardType(.numberPad)
 
                 Text("inches")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            .padding(12)
+            .padding(OPSStyle.Layout.spacing2_5)
             .background(OPSStyle.Colors.cardBackground)
             .cornerRadius(OPSStyle.Layout.smallCornerRadius)
 
             // Quick presets
-            HStack(spacing: 8) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach([36, 42, 48, 60], id: \.self) { width in
                     Button {
                         widthText = "\(width)"
                     } label: {
                         Text("\(width)\"")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
+                            .font(OPSStyle.Typography.smallButton)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
                             .background(OPSStyle.Colors.background)
-                            .cornerRadius(4)
+                            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                     }
                 }
             }
         }
     }
 
+    // MARK: - Alignment & Offset
+
+    @ViewBuilder
+    private var alignmentSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            Text("Position Along Edge")
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+
+            // Alignment picker
+            Picker("Alignment", selection: $alignment) {
+                ForEach(StairAlignment.allCases, id: \.self) { align in
+                    Text(align.displayName).tag(align)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            // Offset input
+            HStack {
+                Text("Offset")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Spacer()
+                TextField("0", text: $offsetText)
+                    .font(OPSStyle.Typography.monoValue)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .keyboardType(.numberPad)
+                    .frame(width: 60)
+                    .multilineTextAlignment(.trailing)
+                Text("inches")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+
+            // Gap measurements
+            if let gaps = gapMeasurements {
+                HStack {
+                    Text("Left gap: \(DimensionEngine.formatImperial(gaps.left))")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Spacer()
+                    Text("Right gap: \(DimensionEngine.formatImperial(gaps.right))")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .padding(.top, OPSStyle.Layout.spacing1)
+            }
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.cardBackground)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+    }
+
     // MARK: - Code Parameters
 
     @ViewBuilder
     private var codeParameters: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             Text("Building Code (IRC R311.7)")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.white)
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
 
             HStack {
                 Text("Rise per step")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Spacer()
                 Text(String(format: "%.1f\"", risePerStep))
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
+                    .font(OPSStyle.Typography.monoValue)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 Stepper("", value: $risePerStep, in: 7.0...7.75, step: 0.25)
                     .labelsHidden()
                     .frame(width: 100)
@@ -215,18 +350,18 @@ struct StairConfigView: View {
 
             HStack {
                 Text("Run per tread")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 Spacer()
                 Text(String(format: "%.0f\"", runPerTread))
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
+                    .font(OPSStyle.Typography.monoValue)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
                 Stepper("", value: $runPerTread, in: 10.0...12.0, step: 0.5)
                     .labelsHidden()
                     .frame(width: 100)
             }
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackground)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
@@ -235,9 +370,9 @@ struct StairConfigView: View {
 
     @ViewBuilder
     private func calculatedValues(spec: StairCalculator.StairSpec) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("Auto-Calculated")
-                .font(.system(size: 14, weight: .semibold))
+                .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
 
             calcRow("Treads", value: "\(spec.treadCount)")
@@ -246,7 +381,7 @@ struct StairConfigView: View {
             calcRow("Stringer length", value: DimensionEngine.formatImperial(spec.stringerLength))
             calcRow("Stringers needed", value: "\(spec.stringerCount)")
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.primaryAccent.opacity(0.08))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
@@ -255,12 +390,12 @@ struct StairConfigView: View {
     private func calcRow(_ label: String, value: String) -> some View {
         HStack {
             Text(label)
-                .font(.system(size: 13, weight: .medium))
+                .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             Spacer()
             Text(value)
-                .font(.system(size: 15, weight: .bold, design: .monospaced))
-                .foregroundColor(.white)
+                .font(OPSStyle.Typography.monoValue)
+                .foregroundColor(OPSStyle.Colors.primaryText)
         }
     }
 
@@ -268,11 +403,11 @@ struct StairConfigView: View {
 
     @ViewBuilder
     private var railingSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Toggle(isOn: $addRailing) {
                 Text("Add Railing")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
             }
             .tint(OPSStyle.Colors.primaryAccent)
 
@@ -285,7 +420,7 @@ struct StairConfigView: View {
                 .pickerStyle(.segmented)
             }
         }
-        .padding(16)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackground)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
@@ -298,6 +433,8 @@ struct StairConfigView: View {
 
         var config = StairConfig(width: spec.width, risePerStep: risePerStep, runPerTread: runPerTread)
         config.treadCount = spec.treadCount
+        config.alignment = alignment
+        config.offset = Double(offsetText) ?? 0
 
         if addRailing {
             config.railingConfig = RailingConfig(

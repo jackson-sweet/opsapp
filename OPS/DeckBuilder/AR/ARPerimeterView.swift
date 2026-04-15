@@ -60,6 +60,17 @@ struct ARPerimeterView: View {
                 Text("AR detected: \(addr)\n\nUpdate the project address?")
             }
         }
+        .alert("Unable to Detect Surface",
+               isPresented: $viewModel.showPlaneTimeoutAlert) {
+            Button("Try Again") {
+                viewModel.startPlaneDetectionTimeout()
+            }
+            Button("Cancel", role: .cancel) {
+                onComplete(DeckDrawingData())
+            }
+        } message: {
+            Text("Try better lighting or a textured surface.")
+        }
     }
 
     private func checkARAvailability() async {
@@ -127,7 +138,7 @@ struct ARPerimeterView: View {
             Spacer()
             vertexCountBadge
             Spacer()
-            snapToggle
+            snapToggles
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.top, OPSStyle.Layout.spacing4)
@@ -175,24 +186,44 @@ struct ARPerimeterView: View {
         }
     }
 
-    private var snapToggle: some View {
+    private var snapToggles: some View {
+        HStack(spacing: 6) {
+            snapButton(
+                icon: "angle",
+                label: "ANG",
+                isEnabled: viewModel.angleSnappingEnabled
+            ) {
+                viewModel.angleSnappingEnabled.toggle()
+            }
+
+            snapButton(
+                icon: "ruler",
+                label: "LEN",
+                isEnabled: viewModel.lengthSnappingEnabled
+            ) {
+                viewModel.lengthSnappingEnabled.toggle()
+            }
+        }
+    }
+
+    private func snapButton(icon: String, label: String, isEnabled: Bool, action: @escaping () -> Void) -> some View {
         Button {
-            viewModel.angleSnappingEnabled.toggle()
+            action()
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: viewModel.angleSnappingEnabled ? "lock.fill" : "lock.open")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                Text("SNAP")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+            HStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .bold))
+                Text(label)
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
             }
-            .foregroundColor(viewModel.angleSnappingEnabled ? Color.white : Color.white.opacity(0.4))
-            .padding(.horizontal, 10)
+            .foregroundColor(isEnabled ? Color.white : Color.white.opacity(0.4))
+            .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .background(Color.black.opacity(0.4))
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(viewModel.angleSnappingEnabled ? Color.white.opacity(0.3) : Color.clear, lineWidth: 1)
+                    .stroke(isEnabled ? Color.white.opacity(0.3) : Color.clear, lineWidth: 1)
             )
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
@@ -325,8 +356,8 @@ struct ARPerimeterView: View {
                         viewModel.recordVertex(worldPosition: pos)
                     }
                 }
-                .disabled(!viewModel.isPlaneDetected || viewModel.isClosed)
-                .opacity(viewModel.isClosed ? 0.4 : 1.0)
+                .disabled(!viewModel.isPlaneDetected || (viewModel.isClosed && !viewModel.isEditingVertex && !viewModel.isSplittingEdge))
+                .opacity((viewModel.isClosed && !viewModel.isEditingVertex && !viewModel.isSplittingEdge) ? 0.4 : 1.0)
 
                 Spacer()
 
@@ -354,6 +385,8 @@ struct ARPerimeterView: View {
 
     private var triggerLabel: String {
         if !viewModel.isPlaneDetected { return "scanning" }
+        if viewModel.isEditingVertex { return "tap to reposition" }
+        if viewModel.isSplittingEdge { return "tap to split" }
         if viewModel.isClosed { return "done" }
         if let label = viewModel.currentAssignmentLabel { return label }
         if viewModel.arVertices.isEmpty { return "place vertex" }
@@ -362,7 +395,23 @@ struct ARPerimeterView: View {
 
     private var rightControls: some View {
         VStack(spacing: 8) {
-            if viewModel.isClosed {
+            if viewModel.isEditingVertex || viewModel.isSplittingEdge {
+                Button {
+                    viewModel.isEditingVertex = false
+                    viewModel.editingVertexIndex = nil
+                    viewModel.isSplittingEdge = false
+                    viewModel.splittingEdgeIndex = nil
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Text("Cancel")
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.white.opacity(0.15))
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                }
+            } else if viewModel.isClosed {
                 Button {
                     let data = viewModel.toDrawingData()
                     onComplete(data)
@@ -645,9 +694,9 @@ struct ARViewContainer: UIViewRepresentable {
         var renderer: ARLineRenderer?
         weak var arView: ARView?
 
-        private var renderedVertexCount = 0
-        private var renderedEdgeCount = 0
+        private var renderedVersion = -1
         private var renderedClosed = false
+        private var isShowingRepositionPreview = false
         private var backgroundObserver: NSObjectProtocol?
         private var foregroundObserver: NSObjectProtocol?
         private let locationManager = CLLocationManager()
@@ -717,7 +766,10 @@ struct ARViewContainer: UIViewRepresentable {
         private func handleHit(position: SIMD3<Float>, cameraPosition: SIMD3<Float>) {
             let renderer = self.renderer
             Task { @MainActor in
-                self.viewModel.isPlaneDetected = true
+                if !self.viewModel.isPlaneDetected {
+                    self.viewModel.isPlaneDetected = true
+                    self.viewModel.cancelPlaneDetectionTimeout()
+                }
                 self.viewModel.updateCrosshairPosition(position)
                 self.updateRendering(crosshairPosition: position, cameraPosition: cameraPosition, renderer: renderer)
 
@@ -735,11 +787,13 @@ struct ARViewContainer: UIViewRepresentable {
         private func updateRendering(crosshairPosition: SIMD3<Float>, cameraPosition: SIMD3<Float>, renderer: ARLineRenderer?) {
             guard let renderer = renderer else { return }
 
-            let vCount = viewModel.arVertices.count
-            let eCount = viewModel.arEdges.count
+            let version = viewModel.renderVersion
             let closed = viewModel.isClosed
 
-            if vCount != renderedVertexCount {
+            // Re-render vertices and edges on any data mutation (version-based, not count-based,
+            // so position changes from reposition/split are caught)
+            if version != renderedVersion {
+                // Vertices
                 for name in viewModel.vertexEntityNames {
                     renderer.removeVertex(named: name)
                 }
@@ -750,10 +804,8 @@ struct ARViewContainer: UIViewRepresentable {
                     let name = renderer.addVertex(at: pos, isFirst: i == 0)
                     viewModel.vertexEntityNames.append(name)
                 }
-                renderedVertexCount = vCount
-            }
 
-            if eCount != renderedEdgeCount {
+                // Edges
                 for name in viewModel.edgeEntityNames {
                     renderer.removeEdge(named: name)
                 }
@@ -793,22 +845,106 @@ struct ARViewContainer: UIViewRepresentable {
                     )
                     viewModel.edgeEntityNames.append(name)
                 }
-                renderedEdgeCount = eCount
+
+                // Footprint — refresh when closed, remove when opened
+                if closed {
+                    let positions = viewModel.arVertices.map {
+                        SIMD3<Float>(Float($0.x), Float($0.y), Float($0.z))
+                    }
+                    renderer.showFootprintFill(vertices: positions)
+                    renderedClosed = true
+                } else if renderedClosed {
+                    renderer.removeFootprintFill()
+                    renderedClosed = false
+                }
+
+                renderedVersion = version
             }
 
-            if !closed, let lastV = viewModel.arVertices.last {
-                let lastPos = SIMD3<Float>(Float(lastV.x), Float(lastV.y), Float(lastV.z))
-                renderer.updateLiveLine(from: lastPos, to: crosshairPosition, label: viewModel.liveDimensionLabel)
-            } else {
-                renderer.removeLiveLine()
-            }
-
+            // Footprint on first close (version doesn't change on closeLoop since it's
+            // handled by recordVertex + closeLoop which don't bump renderVersion)
             if closed && !renderedClosed {
                 let positions = viewModel.arVertices.map {
                     SIMD3<Float>(Float($0.x), Float($0.y), Float($0.z))
                 }
                 renderer.showFootprintFill(vertices: positions)
                 renderedClosed = true
+            } else if !closed && renderedClosed {
+                renderer.removeFootprintFill()
+                renderedClosed = false
+            }
+
+            // Live line — use snapped crosshair position so snapping is visible in real-time
+            if !closed, let lastV = viewModel.arVertices.last, !viewModel.isEditingVertex {
+                let lastPos = SIMD3<Float>(Float(lastV.x), Float(lastV.y), Float(lastV.z))
+                let snappedCrosshair = viewModel.currentCrosshairPosition ?? crosshairPosition
+                renderer.updateLiveLine(from: lastPos, to: snappedCrosshair, label: viewModel.liveDimensionLabel)
+            } else if !viewModel.isEditingVertex {
+                renderer.removeLiveLine()
+            }
+
+            // Alignment guides — dotted lines showing axis/parallel/perpendicular alignment
+            renderer.updateAlignmentGuides(viewModel.activeAlignmentGuides)
+
+            // Reposition preview — dashed lines from connected vertices to crosshair
+            if viewModel.isEditingVertex, let editIdx = viewModel.editingVertexIndex,
+               editIdx < viewModel.arVertices.count {
+                let editVertex = viewModel.arVertices[editIdx]
+                let previewPos = viewModel.currentCrosshairPosition ?? crosshairPosition
+
+                // On first frame of reposition, hide the static entities
+                if !isShowingRepositionPreview {
+                    isShowingRepositionPreview = true
+                    renderer.removeLiveLine()
+
+                    // Find which rendered entity names to hide
+                    let vertexName = editIdx < viewModel.vertexEntityNames.count
+                        ? viewModel.vertexEntityNames[editIdx] : nil
+                    var edgeNamesToHide: [String] = []
+                    for (i, edge) in viewModel.arEdges.enumerated() {
+                        if edge.startVertexId == editVertex.id || edge.endVertexId == editVertex.id {
+                            if i < viewModel.edgeEntityNames.count {
+                                edgeNamesToHide.append(viewModel.edgeEntityNames[i])
+                            }
+                        }
+                    }
+                    if let vName = vertexName {
+                        renderer.beginRepositionPreview(hideEdgeNames: edgeNamesToHide, hideVertexName: vName)
+                    }
+                }
+
+                // Build connected endpoint list
+                var connections: [(otherVertex: SIMD3<Float>, label: String)] = []
+                for edge in viewModel.arEdges {
+                    let otherId: String?
+                    if edge.startVertexId == editVertex.id {
+                        otherId = edge.endVertexId
+                    } else if edge.endVertexId == editVertex.id {
+                        otherId = edge.startVertexId
+                    } else {
+                        otherId = nil
+                    }
+                    if let oid = otherId,
+                       let otherV = viewModel.arVertices.first(where: { $0.id == oid }) {
+                        let otherPos = SIMD3<Float>(Float(otherV.x), Float(otherV.y), Float(otherV.z))
+                        let dx = Double(previewPos.x - otherPos.x)
+                        let dz = Double(previewPos.z - otherPos.z)
+                        let distMeters = sqrt(dx * dx + dz * dz)
+                        let distInches = distMeters * 39.3701
+                        let label = "~" + DimensionEngine.formatImperial(distInches)
+                        connections.append((otherVertex: otherPos, label: label))
+                    }
+                }
+
+                renderer.updateRepositionPreview(
+                    vertexPosition: previewPos,
+                    connectedEndpoints: connections,
+                    cameraPosition: cameraPosition
+                )
+            } else if isShowingRepositionPreview {
+                // Editing ended — clean up preview
+                isShowingRepositionPreview = false
+                renderer.endRepositionPreview()
             }
 
             // Billboard all labels to face the camera every frame
@@ -839,20 +975,16 @@ struct ARViewContainer: UIViewRepresentable {
         private func processTap(hitPosition: SIMD3<Float>) {
             guard !viewModel.arVertices.isEmpty else { return }
 
+            // During reposition mode, only the trigger button should confirm placement — ignore AR taps
+            if viewModel.isEditingVertex { return }
+
             let vertexHitRadius: Float = 0.3
             for (index, vertex) in viewModel.arVertices.enumerated() {
                 let vPos = SIMD3<Float>(Float(vertex.x), Float(vertex.y), Float(vertex.z))
                 if simd_distance(hitPosition, vPos) < vertexHitRadius {
-                    if viewModel.isEditingVertex, let editIdx = viewModel.editingVertexIndex {
-                        // Already in reposition mode — record the new position
-                        if let crosshair = viewModel.currentCrosshairPosition {
-                            viewModel.repositionVertex(index: editIdx, to: crosshair)
-                        }
-                    } else {
-                        // Show vertex popover with Reposition / Delete options
-                        viewModel.popoverVertexIndex = index
-                        viewModel.showVertexPopover = true
-                    }
+                    // Show vertex popover with Reposition / Delete options
+                    viewModel.popoverVertexIndex = index
+                    viewModel.showVertexPopover = true
                     return
                 }
             }

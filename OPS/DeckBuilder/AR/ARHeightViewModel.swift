@@ -24,6 +24,8 @@ class ARHeightViewModel: ObservableObject {
     @Published var isPlaneDetected: Bool = false
     @Published var currentCrosshairPosition: SIMD3<Float>?
     @Published var liveHeightLabel: String = ""
+    @Published var showPlaneTimeoutAlert: Bool = false
+    private var planeDetectionTask: Task<Void, Never>?
 
     // MARK: - Haptics
 
@@ -33,6 +35,25 @@ class ARHeightViewModel: ObservableObject {
     init() {
         mediumImpact.prepare()
         successNotification.prepare()
+        startPlaneDetectionTimeout()
+    }
+
+    // MARK: - Plane Detection Timeout
+
+    func startPlaneDetectionTimeout() {
+        planeDetectionTask?.cancel()
+        showPlaneTimeoutAlert = false
+        planeDetectionTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            guard !Task.isCancelled else { return }
+            guard let self, !self.isPlaneDetected else { return }
+            self.showPlaneTimeoutAlert = true
+        }
+    }
+
+    func cancelPlaneDetectionTimeout() {
+        planeDetectionTask?.cancel()
+        planeDetectionTask = nil
     }
 
     // MARK: - Point Placement

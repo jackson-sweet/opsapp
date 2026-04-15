@@ -16,34 +16,14 @@ struct LevelTabBar: View {
                     levelTab(level: level, index: index)
                 }
 
-                // Add level button
-                if viewModel.canAddLevel {
-                    Button {
-                        viewModel.addLevel()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 12, weight: .semibold))
-                            Text("Add Level")
-                                .font(OPSStyle.Typography.caption)
-                        }
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    }
-                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                }
-
-                // Connect levels button
+                // Connect levels button (Add Level moved to toolbar)
                 if viewModel.canConnectLevels {
                     Button {
                         viewModel.showingLevelConnectionSheet = true
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.up.arrow.down")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(OPSStyle.Typography.smallCaption)
                             Text("Connect")
                                 .font(OPSStyle.Typography.caption)
                         }
@@ -106,12 +86,12 @@ struct LevelTabBar: View {
                 // Elevation badge
                 if let elev = level.elevation {
                     Text(formatElevation(elev))
-                        .font(.system(size: 10, weight: .medium))
+                        .font(OPSStyle.Typography.miniLabel)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .padding(.horizontal, 4)
+                        .padding(.horizontal, OPSStyle.Layout.spacing1)
                         .padding(.vertical, 2)
                         .background(OPSStyle.Colors.background.opacity(0.5))
-                        .cornerRadius(2)
+                        .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                 }
             }
             .padding(.horizontal, 12)

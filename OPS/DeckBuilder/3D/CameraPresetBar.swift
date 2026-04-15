@@ -12,21 +12,21 @@ struct CameraPresetBar: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     onPreset(preset)
                 } label: {
-                    VStack(spacing: 4) {
+                    VStack(spacing: 3) {
                         Image(systemName: preset.iconName)
-                            .font(.system(size: 18, weight: .medium))
+                            .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
 
                         Text(preset.displayName)
-                            .font(.system(size: 10, weight: .medium))
+                            .font(OPSStyle.Typography.miniLabel)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
                     .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetMin)
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
         .background(OPSStyle.Colors.cardBackground)
     }
 }

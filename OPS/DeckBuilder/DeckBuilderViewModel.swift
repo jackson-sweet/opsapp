@@ -686,6 +686,8 @@ class DeckBuilderViewModel: ObservableObject {
         }
         vertex.position = SnapEngine.snapToGrid(position, gridSpacing: lengthSnapInCanvasPoints())
         activeUpdateVertex(vertex)
+        // Recalculate dimensions in realtime so labels update during drag
+        recalculateEdgeDimensions(connectedTo: vertexId)
     }
 
     func endVertexDrag() {

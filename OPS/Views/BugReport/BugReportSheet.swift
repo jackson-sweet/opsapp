@@ -21,6 +21,7 @@ struct BugReportSheet: View {
     @State private var submitError: String?
     @State private var showFullScreenshot: Bool = false
     @State private var submitSuccess: Bool = false
+    @State private var screenshotDragOffset: CGFloat = 0
 
     var body: some View {
         NavigationStack {
@@ -253,32 +254,61 @@ struct BugReportSheet: View {
                 Image(uiImage: screenshot)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .ignoresSafeArea()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .offset(y: screenshotDragOffset)
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                // Only allow downward drag
+                                if value.translation.height > 0 {
+                                    screenshotDragOffset = value.translation.height
+                                }
+                            }
+                            .onEnded { value in
+                                if value.translation.height > 120 {
+                                    showFullScreenshot = false
+                                }
+                                withAnimation(OPSStyle.Animation.spring) {
+                                    screenshotDragOffset = 0
+                                }
+                            }
+                    )
             }
 
+            // Close button — top right
             VStack {
                 HStack {
                     Spacer()
                     Button {
                         showFullScreenshot = false
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(.white.opacity(0.7))
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
+                            Image(systemName: OPSStyle.Icons.xmark)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
+                            Text("Close")
+                                .font(OPSStyle.Typography.captionBold)
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
+                        .background(OPSStyle.Colors.overlayMedium)
+                        .clipShape(Capsule())
                     }
-                    .padding()
+                    .padding(.top, OPSStyle.Layout.spacing5 + OPSStyle.Layout.spacing4)
+                    .padding(.trailing, OPSStyle.Layout.spacing3)
                 }
                 Spacer()
             }
         }
+        .opacity(1.0 - Double(screenshotDragOffset) / 400.0)
     }
 
     // MARK: - Success Overlay
 
     private var successOverlay: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 48))
+            Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.successStatus)
 
             Text("Report submitted")

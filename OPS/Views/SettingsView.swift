@@ -13,6 +13,7 @@ struct SettingsView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var permissionStore: PermissionStore
+    @Environment(\.wizardStateManager) private var wizardStateManager
     @State private var showLogoutConfirmation = false
     @State private var showingSearchSheet = false
     @State private var isRestartingTutorial = false
@@ -32,6 +33,7 @@ struct SettingsView: View {
         case permissions
         case tutorialExperience, tutorialV2
         case wizardManagement
+        case laserMeter
         case trash
 
         var id: String { rawValue }
@@ -177,6 +179,17 @@ struct SettingsView: View {
                     "app lock", "authentication", "secure"
                 ],
                 destination: AnyView(SecuritySettingsView().environmentObject(dataController))
+            ),
+            SearchableSettingItem(
+                title: "Laser Meter",
+                categoryTitle: "App",
+                categoryIcon: "antenna.radiowaves.left.and.right",
+                keywords: [
+                    "laser", "meter", "bluetooth", "ble", "bosch", "leica",
+                    "disto", "glm", "distance", "measure", "pair", "connect",
+                    "laser meter", "tape measure", "rangefinder"
+                ],
+                destination: AnyView(LaserMeterSettingsView())
             )
         ])
 
@@ -407,6 +420,37 @@ struct SettingsView: View {
                                     title: "Security & Privacy",
                                     action: { activeDestination = .security }
                                 )
+
+                                sectionDivider
+
+                                Button(action: { activeDestination = .laserMeter }) {
+                                    HStack(spacing: 14) {
+                                        Image(systemName: "antenna.radiowaves.left.and.right")
+                                            .font(.system(size: OPSStyle.Layout.IconSize.md))
+                                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                                            .frame(width: 28, alignment: .center)
+
+                                        Text("Laser Meter")
+                                            .font(OPSStyle.Typography.body)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
+
+                                        Spacer()
+
+                                        if LaserMeterService.shared.connectionState == .connected {
+                                            Circle()
+                                                .fill(OPSStyle.Colors.successStatus)
+                                                .frame(width: 8, height: 8)
+                                        }
+
+                                        Image(systemName: OPSStyle.Icons.chevronRight)
+                                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    }
+                                    .padding(.vertical, 14)
+                                    .padding(.horizontal, 16)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(PlainButtonStyle())
                             }
                             .padding(.horizontal, 20)
 
@@ -605,6 +649,8 @@ struct SettingsView: View {
         // MARK: - Navigation Cover (consolidated enum-based)
         .fullScreenCover(item: $activeDestination) { destination in
             settingsDestinationView(for: destination)
+                .wizardBannerIfAvailable(stateManager: wizardStateManager)
+                .wizardOverlayIfAvailable(stateManager: wizardStateManager)
         }
         .onChange(of: activeDestination) { oldValue, _ in
             if oldValue == .developerDashboard {
@@ -628,6 +674,9 @@ struct SettingsView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SettingsOpenPermissions"))) { _ in
             activeDestination = .permissions
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardDismissSettingsCovers"))) { _ in
+            activeDestination = nil
         }
     }
 
@@ -742,6 +791,10 @@ struct SettingsView: View {
                 WizardManagementView()
                     .environmentObject(dataController)
                     .environmentObject(permissionStore)
+            }
+        case .laserMeter:
+            NavigationStack {
+                LaserMeterSettingsView()
             }
         }
     }

@@ -11,76 +11,85 @@ struct NotificationListView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var notifications: [NotificationDTO] = []
     @State private var isLoading = true
+    @State private var showingOlder = false
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.background
+            OPSStyle.Colors.backgroundGradient
                 .edgesIgnoringSafeArea(.all)
 
-            if isLoading {
-                ProgressView()
-                    .tint(OPSStyle.Colors.primaryAccent)
-            } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        userInfoHeader
+            VStack(spacing: 0) {
+                // Header — matches SettingsHeader pattern
+                HStack {
+                    Button(action: { dismiss() }) {
+                        Image(systemName: OPSStyle.Icons.chevronLeft)
+                            .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
 
-                        // Push notification disabled warning
-                        if !NotificationManager.shared.isNotificationsEnabled {
-                            pushDisabledBanner
-                                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                                .padding(.bottom, 12)
+                    Spacer()
+
+                    Text("NOTIFICATIONS")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    Spacer()
+
+                    if !notifications.isEmpty {
+                        Button(action: { markAllAsRead() }) {
+                            Text("READ ALL")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
+                        .frame(height: OPSStyle.Layout.touchTargetMin)
+                    } else {
+                        Spacer()
+                            .frame(width: OPSStyle.Layout.touchTargetMin)
+                    }
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
 
-                        // Sync status section — shows pending/failed operations
-                        SyncStatusSection()
-                            .environmentObject(dataController)
+                if isLoading {
+                    Spacer()
+                    ProgressView()
+                        .tint(OPSStyle.Colors.primaryAccent)
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            userInfoHeader
 
-                        if notifications.isEmpty {
-                            emptyState
-                                .padding(.top, 60)
-                        } else {
-                            notificationListContent
+                            // Push notification disabled warning
+                            if !NotificationManager.shared.isNotificationsEnabled {
+                                pushDisabledBanner
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                    .padding(.bottom, 12)
+                            }
+
+                            // Sync status section — shows pending/failed operations
+                            SyncStatusSection()
+                                .environmentObject(dataController)
+
+                            if notifications.isEmpty {
+                                emptyState
+                                    .padding(.top, 60)
+                            } else {
+                                notificationListContent
+                            }
                         }
                     }
                 }
             }
         }
         .trackScreen("Notifications")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text("NOTIFICATIONS")
-                    .font(OPSStyle.Typography.caption)
-                    .tracking(0.5)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-            }
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    dismiss()
-                } label: {
-                    Text("DONE")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .tracking(0.3)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if !notifications.isEmpty {
-                    Button {
-                        markAllAsRead()
-                    } label: {
-                        Text("MARK ALL READ")
-                            .font(OPSStyle.Typography.miniLabel)
-                            .tracking(0.3)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                }
-            }
-        }
+        .navigationBarBackButtonHidden(true)
+        .navigationBarHidden(true)
         .task {
             await loadNotifications()
         }
@@ -198,21 +207,218 @@ struct NotificationListView: View {
         }
     }
 
-    // MARK: - Notification List
+    // MARK: - Notification List (Sectioned)
+
+    /// Buckets used to group notifications in the list.
+    private enum NotificationBucket {
+        case today
+        case thisWeek
+        case lastWeek
+        case older
+    }
+
+    /// Groups notifications by date bucket (today / this week / last week / older).
+    /// Calendar-week semantics: "this week" = current calendar week excluding today;
+    /// "last week" = the previous calendar week.
+    private var groupedNotifications: (today: [NotificationDTO], thisWeek: [NotificationDTO], lastWeek: [NotificationDTO], older: [NotificationDTO]) {
+        var today: [NotificationDTO] = []
+        var thisWeek: [NotificationDTO] = []
+        var lastWeek: [NotificationDTO] = []
+        var older: [NotificationDTO] = []
+
+        for notification in notifications {
+            guard let date = parseCreatedAt(notification.createdAt) else {
+                older.append(notification)
+                continue
+            }
+            switch bucket(for: date) {
+            case .today:    today.append(notification)
+            case .thisWeek: thisWeek.append(notification)
+            case .lastWeek: lastWeek.append(notification)
+            case .older:    older.append(notification)
+            }
+        }
+        return (today, thisWeek, lastWeek, older)
+    }
+
+    private func bucket(for date: Date) -> NotificationBucket {
+        let calendar = Calendar.current
+        let now = Date()
+
+        if calendar.isDateInToday(date) {
+            return .today
+        }
+
+        // Resolve the start of the current and previous calendar weeks once.
+        guard let currentWeekStart = calendar.dateInterval(of: .weekOfYear, for: now)?.start else {
+            return .older
+        }
+
+        if date >= currentWeekStart {
+            return .thisWeek
+        }
+
+        if let lastWeekStart = calendar.date(byAdding: .weekOfYear, value: -1, to: currentWeekStart),
+           date >= lastWeekStart {
+            return .lastWeek
+        }
+
+        return .older
+    }
 
     private var notificationListContent: some View {
-        LazyVStack(spacing: 0) {
-            ForEach(notifications) { notification in
-                notificationRow(notification)
+        let grouped = groupedNotifications
+        return LazyVStack(spacing: 0) {
+            if !grouped.today.isEmpty {
+                sectionHeader("TODAY", count: grouped.today.count)
+                sectionRows(grouped.today)
+            }
 
-                if notification.id != notifications.last?.id {
+            if !grouped.thisWeek.isEmpty {
+                sectionHeader("THIS WEEK", count: grouped.thisWeek.count)
+                sectionRows(grouped.thisWeek)
+            }
+
+            if !grouped.lastWeek.isEmpty {
+                sectionHeader("LAST WEEK", count: grouped.lastWeek.count)
+                sectionRows(grouped.lastWeek)
+            }
+
+            if !grouped.older.isEmpty {
+                collapsibleOlderSection(grouped.older)
+            }
+        }
+        .padding(.bottom, OPSStyle.Layout.spacing3)
+    }
+
+    private func sectionHeader(_ title: String, count: Int) -> some View {
+        // Section labels above grouped content use the canonical OPS pattern:
+        // microLabel (Kosugi 11pt) + secondaryText, matching PersonalEventSheet.sectionLabel
+        // and the explicit purpose comment in Fonts.swift for `microLabel`.
+        HStack(spacing: OPSStyle.Layout.spacing1) {
+            Text(title)
+                .font(OPSStyle.Typography.microLabel)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            Text("(\(count))")
+                .font(OPSStyle.Typography.microLabel)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            Spacer()
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.top, OPSStyle.Layout.spacing3_5)
+        .padding(.bottom, OPSStyle.Layout.spacing2)
+    }
+
+    private func sectionRows(_ items: [NotificationDTO]) -> some View {
+        ForEach(Array(items.enumerated()), id: \.element.id) { index, notif in
+            VStack(spacing: 0) {
+                notificationRow(notif)
+                if index < items.count - 1 {
                     Rectangle()
                         .fill(OPSStyle.Colors.cardBorderSubtle)
-                        .frame(height: 1)
+                        .frame(height: OPSStyle.Layout.Border.standard)
                         .padding(.leading, 56)
                 }
             }
         }
+    }
+
+    /// The expand/collapse animation. Respects the system Reduce Motion setting:
+    /// when reduced, the content swaps without any spring or move transition.
+    private var collapseAnimation: SwiftUI.Animation? {
+        reduceMotion ? nil : OPSStyle.Animation.spring
+    }
+
+    private var collapseTransition: AnyTransition {
+        reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top))
+    }
+
+    private func collapsibleOlderSection(_ items: [NotificationDTO]) -> some View {
+        VStack(spacing: 0) {
+            if showingOlder {
+                // Expanded: section header on left, COLLAPSE label + chevron-up on right.
+                expandedOlderHeader(count: items.count)
+                sectionRows(items)
+                    .transition(collapseTransition)
+            } else {
+                // Collapsed: a clear "SEE OLDER" call-to-action button in the list area.
+                seeOlderButton(count: items.count)
+            }
+        }
+    }
+
+    private func expandedOlderHeader(count: Int) -> some View {
+        Button {
+            withAnimation(collapseAnimation) {
+                showingOlder = false
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                Text("OLDER")
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Text("(\(count))")
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                Spacer()
+
+                Text("COLLAPSE")
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Image(systemName: OPSStyle.Icons.chevronUp)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.top, OPSStyle.Layout.spacing3_5)
+            .padding(.bottom, OPSStyle.Layout.spacing2)
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func seeOlderButton(count: Int) -> some View {
+        Button {
+            withAnimation(collapseAnimation) {
+                showingOlder = true
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                Text("SEE OLDER")
+                    .font(OPSStyle.Typography.button)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                Text("(\(count))")
+                    .font(OPSStyle.Typography.button)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Image(systemName: OPSStyle.Icons.chevronDown)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .padding(.leading, OPSStyle.Layout.spacing1)
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.top, OPSStyle.Layout.spacing3_5)
     }
 
     // MARK: - Row
@@ -356,11 +562,42 @@ struct NotificationListView: View {
             try? await repo.markAsRead(notification.id)
         }
 
-        // Deep link to project if applicable
-        if let projectId = notification.projectId, !projectId.isEmpty {
+        // Route by deep link type
+        let deepLink = notification.deepLinkType ?? ""
+
+        switch deepLink {
+        case "subscription", "trial_expiry":
             dismiss()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                appState.viewProjectDetailsById(projectId)
+                // batchId carries the promo code for trial expiry notifications
+                appState.pendingPromoCode = notification.batchId
+                appState.showingPlanSelection = true
+            }
+        case "paymentReview":
+            dismiss()
+            // Switch to job board first, then post the review-open notification
+            // after the JobBoardView has had time to mount its onReceive handler.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("OpenJobBoard"), object: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    NotificationCenter.default.post(name: Notification.Name("OpenPaymentReview"), object: nil)
+                }
+            }
+        case "taskReview":
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("OpenJobBoard"), object: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    NotificationCenter.default.post(name: Notification.Name("OpenTaskReview"), object: nil)
+                }
+            }
+        default:
+            // Deep link to project if applicable
+            if let projectId = notification.projectId, !projectId.isEmpty {
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    appState.viewProjectDetailsById(projectId)
+                }
             }
         }
     }
@@ -380,17 +617,20 @@ struct NotificationListView: View {
 
     // MARK: - Helpers
 
-    private func relativeTime(_ isoString: String) -> String {
+    /// Parses an ISO8601 timestamp string from Supabase, tolerating both
+    /// fractional-second and whole-second forms.
+    private func parseCreatedAt(_ isoString: String) -> Date? {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = formatter.date(from: isoString) else {
-            // Try without fractional seconds
-            formatter.formatOptions = [.withInternetDateTime]
-            guard let date = formatter.date(from: isoString) else {
-                return ""
-            }
-            return RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date())
+        if let date = formatter.date(from: isoString) {
+            return date
         }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: isoString)
+    }
+
+    private func relativeTime(_ isoString: String) -> String {
+        guard let date = parseCreatedAt(isoString) else { return "" }
         let relFormatter = RelativeDateTimeFormatter()
         relFormatter.unitsStyle = .abbreviated
         return relFormatter.localizedString(for: date, relativeTo: Date())

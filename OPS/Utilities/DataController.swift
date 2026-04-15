@@ -10,9 +10,11 @@ import SwiftUI
 import SwiftData
 import Combine
 import Network
+import CoreLocation
 import GoogleSignIn
 import Supabase
 import FirebaseAuth
+import FirebaseCrashlytics
 
 /// Main controller for managing data, authentication, and app state
 class DataController: ObservableObject {
@@ -171,6 +173,10 @@ class DataController: ObservableObject {
         Task {
             // First clean up any duplicate users that might exist
             await cleanupDuplicateUsers()
+            await cleanupDuplicateProjects()
+            await cleanupDuplicateTasks()
+            await cleanupDuplicateClients()
+            await cleanupDuplicateTaskTypes()
 
             // Only after cleanup is done, initialize sync manager if needed
             await MainActor.run {
@@ -504,6 +510,9 @@ class DataController: ObservableObject {
     /// Apple login
     @MainActor
     func loginWithApple(appleResult: AppleSignInManager.AppleSignInResult) async -> Bool {
+        let crashlytics = Crashlytics.crashlytics()
+        crashlytics.log("[AUTH] loginWithApple: start")
+
         // Cancel any pending data wipe from a prior logout
         cancelPendingDataWipe()
 
@@ -516,19 +525,24 @@ class DataController: ObservableObject {
 
         do {
             // Authenticate with Firebase using Apple identity token
+            crashlytics.log("[AUTH] loginWithApple: FirebaseAuth.signInWithApple")
             try await FirebaseAuthService.shared.signInWithApple(identityToken: appleResult.identityToken)
 
             let firebaseUID = FirebaseAuthService.shared.firebaseUID ?? ""
             let email = FirebaseAuthService.shared.currentUserEmail ?? appleResult.email ?? ""
+            crashlytics.log("[AUTH] loginWithApple: firebase OK — uid='\(firebaseUID)' emailPresent=\(!email.isEmpty)")
+            crashlytics.setUserID(firebaseUID)
 
             // Store Apple user identifier for future logins
             UserDefaults.standard.set(appleResult.userIdentifier, forKey: "apple_user_identifier")
 
             // Look up existing user in Supabase users table by email
+            crashlytics.log("[AUTH] loginWithApple: loadUserFromSupabase")
             try await authManager.loadUserFromSupabase(userId: firebaseUID, email: email)
 
             // Use the user ID from users table (may differ from Firebase UID for migrated users)
             let userId = authManager.getUserId() ?? firebaseUID
+            crashlytics.log("[AUTH] loginWithApple: resolved userId='\(userId)'")
 
             // Set authentication flags
             UserDefaults.standard.set(true, forKey: "is_authenticated")
@@ -541,8 +555,11 @@ class DataController: ObservableObject {
 
             // Try to fetch full user data - may fail for brand new users
             do {
+                crashlytics.log("[AUTH] loginWithApple: fetchUserFromAPI")
                 try await fetchUserFromAPI(userId: userId)
+                crashlytics.log("[AUTH] loginWithApple: fetchUserFromAPI OK")
             } catch {
+                crashlytics.log("[AUTH] loginWithApple: fetchUserFromAPI threw — \(error.localizedDescription)")
                 print("[AUTH] User not found in users table — likely a new user, will need onboarding")
             }
 
@@ -610,9 +627,13 @@ class DataController: ObservableObject {
     /// Google login
     @MainActor
     func loginWithGoogle(googleUser: GIDGoogleUser) async -> Bool {
+        let crashlytics = Crashlytics.crashlytics()
+        crashlytics.log("[AUTH] loginWithGoogle: start")
+
         guard let idToken = googleUser.idToken?.tokenString,
               let accessToken = googleUser.accessToken.tokenString as String?,
               let email = googleUser.profile?.email else {
+            crashlytics.log("[AUTH] loginWithGoogle: missing googleUser fields — aborting")
             return false
         }
 
@@ -622,11 +643,15 @@ class DataController: ObservableObject {
 
         do {
             // Authenticate with Firebase using Google credentials
+            crashlytics.log("[AUTH] loginWithGoogle: FirebaseAuth.signInWithGoogle")
             try await FirebaseAuthService.shared.signInWithGoogle(idToken: idToken, accessToken: accessToken)
 
             let firebaseUID = FirebaseAuthService.shared.firebaseUID ?? ""
+            crashlytics.log("[AUTH] loginWithGoogle: firebase OK — uid='\(firebaseUID)'")
+            crashlytics.setUserID(firebaseUID)
 
             // Look up existing user in Supabase users table by email
+            crashlytics.log("[AUTH] loginWithGoogle: loadUserFromSupabase")
             try await authManager.loadUserFromSupabase(userId: firebaseUID, email: email)
 
             // Use the user ID from users table (may differ from Firebase UID for migrated users).
@@ -645,8 +670,11 @@ class DataController: ObservableObject {
 
             // Try to fetch full user data - may fail for brand new users
             do {
+                crashlytics.log("[AUTH] loginWithGoogle: fetchUserFromAPI")
                 try await fetchUserFromAPI(userId: userId)
+                crashlytics.log("[AUTH] loginWithGoogle: fetchUserFromAPI OK")
             } catch {
+                crashlytics.log("[AUTH] loginWithGoogle: fetchUserFromAPI threw — \(error.localizedDescription)")
                 print("[AUTH] fetchUserFromAPI failed: \(error)")
                 if userExistsInSupabase {
                     print("[AUTH] ⚠️ User exists in Supabase but fetch failed — treating as returning user")
@@ -752,17 +780,24 @@ class DataController: ObservableObject {
 
     @MainActor
     private func fetchUserFromAPI(userId: String) async throws {
+        let crashlytics = Crashlytics.crashlytics()
+        crashlytics.log("[AUTH] fetchUserFromAPI: start userId='\(userId)'")
+
         guard let context = modelContext else {
+            crashlytics.log("[AUTH] fetchUserFromAPI: modelContext nil")
             throw NSError(domain: "DataController", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
-        
+
         // First, check if this user already exists in the database
         let descriptor = FetchDescriptor<User>(predicate: #Predicate<User> { $0.id == userId })
         let existingUsers = try context.fetch(descriptor)
-        
+        crashlytics.log("[AUTH] fetchUserFromAPI: local users=\(existingUsers.count)")
+
         // Fetch user from API via repository and upsert locally
+        crashlytics.log("[AUTH] fetchUserFromAPI: initializeSyncManager #1")
         initializeSyncManager()
+        crashlytics.log("[AUTH] fetchUserFromAPI: fetchAndUpsertUser")
         guard let fetchedUser = try await fetchAndUpsertUser(id: userId) else {
             // If fetch failed, try local
             if let existingUser = existingUsers.first {
@@ -811,6 +846,7 @@ class DataController: ObservableObject {
         UserDefaults.standard.set(user.id, forKey: "currentUserId")
 
         // Link user to OneSignal for push notifications
+        crashlytics.log("[AUTH] fetchUserFromAPI: linkUserToOneSignal")
         NotificationManager.shared.linkUserToOneSignal()
 
         // Configure OneSignal service for sending notifications
@@ -819,12 +855,14 @@ class DataController: ObservableObject {
         }
 
         // Initialize sync managers (may already be initialized from line 751)
+        crashlytics.log("[AUTH] fetchUserFromAPI: initializeSyncManager #2")
         initializeSyncManager()
 
         // Reconfigure all sync processors with the now-confirmed companyId.
         // This is critical: if initializeSyncManager() ran before companyId was
         // in UserDefaults, the InboundProcessor repositories will have been built
         // with companyId="" and would fetch 0 rows.
+        crashlytics.log("[AUTH] fetchUserFromAPI: syncEngine.reconfigureForCompany")
         syncEngine.reconfigureForCompany()
 
         // IMPORTANT: Set isPerformingInitialSync BEFORE isAuthenticated
@@ -844,6 +882,7 @@ class DataController: ObservableObject {
         // Fetch company data if needed
         if isConnected, let companyId = user.companyId, !companyId.isEmpty {
             do {
+                crashlytics.log("[AUTH] fetchUserFromAPI: fetchCompanyData companyId='\(companyId)'")
                 await MainActor.run {
                     syncStatusMessage = "FETCHING COMPANY DATA... [\(companyId.prefix(8))]"
                 }
@@ -932,6 +971,12 @@ class DataController: ObservableObject {
     func logout() {
         print("[LOGOUT] Starting logout process...")
 
+        // Flip auth state FIRST so ContentView tears down PINGatedView before
+        // any downstream state mutations. Prevents a one-frame render of
+        // MainTabView when the lockout screen is dismissed by resetForLogout()
+        // while ContentView still sees isAuthenticated = true.
+        self.isAuthenticated = false
+
         // Unlink user from OneSignal
         NotificationManager.shared.unlinkUserFromOneSignal()
 
@@ -950,7 +995,7 @@ class DataController: ObservableObject {
         // Post notification to reset app state and dismiss views
         NotificationCenter.default.post(name: NSNotification.Name("LogoutInitiated"), object: nil)
 
-        // IMPORTANT: Clear auth state to trigger view dismissal
+        // Clear keychain, UserDefaults, and remaining auth tokens
         clearAuthentication()
 
         // Sign out from Firebase and Google synchronously — we're already on MainActor.
@@ -1304,11 +1349,260 @@ class DataController: ObservableObject {
             } catch {
                 // We should consider a way to recover from this error in a production app
             }
-            
+
         } catch {
         }
     }
-    
+
+    // MARK: - Project / Task / Client Duplicate Cleanup
+    //
+    // The core SwiftData models (Project, ProjectTask, Client) do not have
+    // @Attribute(.unique) on `id`, so historical sync paths could insert
+    // multiple rows with the same id. Duplicates render as blank cells in
+    // ForEach views (SwiftUI collapses duplicate IDs). These cleanup functions
+    // run on every modelContext init and are idempotent.
+
+    /// Picks the "freshest" duplicate to keep based on local-edit state and sync recency.
+    /// Returns the index of the winner in the input array.
+    private func pickFreshestIndex<T>(
+        _ duplicates: [T],
+        needsSync: (T) -> Bool,
+        lastSyncedAt: (T) -> Date?
+    ) -> Int {
+        var winnerIdx = 0
+        for i in 1..<duplicates.count {
+            let cur = duplicates[i]
+            let win = duplicates[winnerIdx]
+
+            // Local edits (needsSync == true) win — never discard unsynced user changes
+            let curNeedsSync = needsSync(cur)
+            let winNeedsSync = needsSync(win)
+            if curNeedsSync != winNeedsSync {
+                if curNeedsSync { winnerIdx = i }
+                continue
+            }
+
+            // Otherwise prefer the most recently synced row
+            let curSync = lastSyncedAt(cur) ?? .distantPast
+            let winSync = lastSyncedAt(win) ?? .distantPast
+            if curSync > winSync { winnerIdx = i }
+        }
+        return winnerIdx
+    }
+
+    func cleanupDuplicateProjects() async {
+        guard let context = modelContext else { return }
+
+        do {
+            let allProjects = try context.fetch(FetchDescriptor<Project>())
+            let grouped = Dictionary(grouping: allProjects, by: { $0.id })
+            let duplicateGroups = grouped.filter { $0.value.count > 1 }
+
+            guard !duplicateGroups.isEmpty else { return }
+
+            print("[Cleanup] Found \(duplicateGroups.count) project IDs with duplicates")
+            var totalDeleted = 0
+
+            for (id, copies) in duplicateGroups {
+                let winnerIdx = pickFreshestIndex(
+                    copies,
+                    needsSync: { $0.needsSync },
+                    lastSyncedAt: { $0.lastSyncedAt }
+                )
+                let keep = copies[winnerIdx]
+                let dupsToDelete = copies.enumerated()
+                    .filter { $0.offset != winnerIdx }
+                    .map { $0.element }
+
+                // Snapshot all tasks across duplicates BEFORE mutating relationships.
+                // Setting task.project = keep triggers SwiftData's inverse mechanism,
+                // which removes the task from dup.tasks — mutating during iteration
+                // corrupts the context.
+                //
+                // Also update the string FK (task.projectId). The relationship and
+                // the string field are maintained separately by application code;
+                // if we only touch the relationship, the string still points at
+                // the deleted row and sync DTOs leak the stale id.
+                let orphanedTasks = dupsToDelete.flatMap { Array($0.tasks) }
+                for task in orphanedTasks {
+                    task.project = keep
+                    task.projectId = keep.id
+                }
+
+                // Same snapshot pattern for team members.
+                // Project.teamMembers has User.assignedProjects as its inverse.
+                let existingMemberIds = Set(keep.teamMembers.map { $0.id })
+                let orphanedMembers = dupsToDelete.flatMap { Array($0.teamMembers) }
+                for member in orphanedMembers where !existingMemberIds.contains(member.id) {
+                    keep.teamMembers.append(member)
+                }
+
+                // Now safe to delete duplicates — their tasks array is empty,
+                // so the cascade delete rule has nothing to remove.
+                for dup in dupsToDelete {
+                    context.delete(dup)
+                    totalDeleted += 1
+                }
+
+                print("[Cleanup] Deduped project \(id): kept lastSyncedAt=\(String(describing: keep.lastSyncedAt)), deleted \(copies.count - 1)")
+            }
+
+            try context.save()
+            print("[Cleanup] Removed \(totalDeleted) duplicate Project rows total")
+        } catch {
+            print("[Cleanup] Failed to dedupe projects: \(error)")
+        }
+    }
+
+    func cleanupDuplicateTasks() async {
+        guard let context = modelContext else { return }
+
+        do {
+            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+            let grouped = Dictionary(grouping: allTasks, by: { $0.id })
+            let duplicateGroups = grouped.filter { $0.value.count > 1 }
+
+            guard !duplicateGroups.isEmpty else { return }
+
+            print("[Cleanup] Found \(duplicateGroups.count) task IDs with duplicates")
+            var totalDeleted = 0
+
+            for (id, copies) in duplicateGroups {
+                let winnerIdx = pickFreshestIndex(
+                    copies,
+                    needsSync: { $0.needsSync },
+                    lastSyncedAt: { $0.lastSyncedAt }
+                )
+                let dupsToDelete = copies.enumerated()
+                    .filter { $0.offset != winnerIdx }
+                    .map { $0.element }
+
+                for dup in dupsToDelete {
+                    context.delete(dup)
+                    totalDeleted += 1
+                }
+
+                print("[Cleanup] Deduped task \(id): deleted \(copies.count - 1)")
+            }
+
+            try context.save()
+            print("[Cleanup] Removed \(totalDeleted) duplicate ProjectTask rows total")
+        } catch {
+            print("[Cleanup] Failed to dedupe tasks: \(error)")
+        }
+    }
+
+    func cleanupDuplicateClients() async {
+        guard let context = modelContext else { return }
+
+        do {
+            let allClients = try context.fetch(FetchDescriptor<Client>())
+            let grouped = Dictionary(grouping: allClients, by: { $0.id })
+            let duplicateGroups = grouped.filter { $0.value.count > 1 }
+
+            guard !duplicateGroups.isEmpty else { return }
+
+            print("[Cleanup] Found \(duplicateGroups.count) client IDs with duplicates")
+            var totalDeleted = 0
+
+            for (id, copies) in duplicateGroups {
+                let winnerIdx = pickFreshestIndex(
+                    copies,
+                    needsSync: { $0.needsSync },
+                    lastSyncedAt: { $0.lastSyncedAt }
+                )
+                let keep = copies[winnerIdx]
+                let dupsToDelete = copies.enumerated()
+                    .filter { $0.offset != winnerIdx }
+                    .map { $0.element }
+
+                // Snapshot referenced projects from each duplicate's `projects` inverse
+                // BEFORE mutating relationships. Setting project.client = keep triggers
+                // the inverse which would mutate dup.projects mid-iteration.
+                //
+                // Also update the string FK (project.clientId) to keep it in sync
+                // with the relationship — sync DTOs read the string field.
+                let orphanedProjects = dupsToDelete.flatMap { Array($0.projects) }
+                for project in orphanedProjects {
+                    project.client = keep
+                    project.clientId = keep.id
+                }
+
+                for dup in dupsToDelete {
+                    context.delete(dup)
+                    totalDeleted += 1
+                }
+
+                print("[Cleanup] Deduped client \(id): deleted \(copies.count - 1)")
+            }
+
+            try context.save()
+            print("[Cleanup] Removed \(totalDeleted) duplicate Client rows total")
+        } catch {
+            print("[Cleanup] Failed to dedupe clients: \(error)")
+        }
+    }
+
+    /// Deduplicates local TaskType rows. Without `@Attribute(.unique)` on
+    /// `TaskType.id`, SwiftData can hold multiple rows with the same id. When
+    /// a task resolves `task.taskType`, it picks one of them — possibly a
+    /// stale duplicate with missing data — and the UI renders as if the task
+    /// has no type. Server-side is fine; only local state is broken.
+    ///
+    /// This runs on every launch (alongside the other cleanups) and is
+    /// idempotent: it only touches duplicate groups and ignores clean data.
+    func cleanupDuplicateTaskTypes() async {
+        guard let context = modelContext else { return }
+
+        do {
+            let allTaskTypes = try context.fetch(FetchDescriptor<TaskType>())
+            let grouped = Dictionary(grouping: allTaskTypes, by: { $0.id })
+            let duplicateGroups = grouped.filter { $0.value.count > 1 }
+
+            guard !duplicateGroups.isEmpty else { return }
+
+            print("[Cleanup] Found \(duplicateGroups.count) task type IDs with duplicates")
+            var totalDeleted = 0
+
+            for (id, copies) in duplicateGroups {
+                let winnerIdx = pickFreshestIndex(
+                    copies,
+                    needsSync: { $0.needsSync },
+                    lastSyncedAt: { $0.lastSyncedAt }
+                )
+                let keep = copies[winnerIdx]
+                let dupsToDelete = copies.enumerated()
+                    .filter { $0.offset != winnerIdx }
+                    .map { $0.element }
+
+                // Snapshot all tasks across duplicates BEFORE mutating relationships.
+                // TaskType.tasks is the inverse of ProjectTask.taskType, so setting
+                // task.taskType = keep removes the task from dup.tasks via the
+                // inverse — mutating during iteration corrupts the context (same
+                // bug pattern we hit on Project cleanup).
+                //
+                // Also update task.taskTypeId string so it matches the relationship.
+                let orphanedTasks = dupsToDelete.flatMap { Array($0.tasks) }
+                for task in orphanedTasks {
+                    task.taskType = keep
+                    task.taskTypeId = keep.id
+                }
+
+                for dup in dupsToDelete {
+                    context.delete(dup)
+                    totalDeleted += 1
+                }
+
+                print("[Cleanup] Deduped task type \(id) (\(keep.display)): deleted \(copies.count - 1)")
+            }
+
+            try context.save()
+            print("[Cleanup] Removed \(totalDeleted) duplicate TaskType rows total")
+        } catch {
+            print("[Cleanup] Failed to dedupe task types: \(error)")
+        }
+    }
+
     // MARK: - Data Operations
     
     /// Fetch company data from API - optimized for reliability
@@ -1325,8 +1619,14 @@ class DataController: ObservableObject {
         let companies = try context.fetch(descriptor)
 
         if companies.isEmpty || (companies.first?.needsSync == true) {
-            // Trigger a full sync via SyncEngine (fetches company, users, etc.)
-            await triggerCompanySync()
+            // Pull just the company row directly. triggerCompanySync() delegates
+            // to syncEngine.triggerSync() which runs a delta sync, and delta
+            // sync does NOT include the company entity — so the row wouldn't
+            // actually land in SwiftData until the subsequent full sync,
+            // creating a window where getCurrentUserCompany() returns nil and
+            // downstream features (subscription checks, views, etc.) fire with
+            // stale/empty state.
+            await syncEngine.syncCompanyNow()
 
             // Re-fetch the company after sync
             let updatedCompanies = try context.fetch(descriptor)
@@ -2039,9 +2339,6 @@ class DataController: ObservableObject {
                 predicate: #Predicate<Company> { $0.id == companyId }
             )
             let companies = try context.fetch(descriptor)
-            if companies.isEmpty {
-                print("[SUBSCRIPTION] getCurrentUserCompany: No company found with ID: \(companyId)")
-            }
             return companies.first
         } catch {
             print("[SUBSCRIPTION] getCurrentUserCompany: Error fetching company: \(error)")
@@ -3075,12 +3372,21 @@ class DataController: ObservableObject {
         project.needsSync = true
         try? modelContext?.save()
 
-        // Record for async sync
+        // Record for async sync — include completedAt when marking complete
+        var changedFields: [String: Any] = ["status": newStatus.rawValue]
+        if newStatus == .completed {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime]
+            changedFields["completed_at"] = formatter.string(from: project.completedAt ?? Date())
+        } else if previousStatus == .completed && newStatus != .completed {
+            changedFields["completed_at"] = NSNull()
+        }
+
         syncEngine.recordOperation(
             entityType: .project,
             entityId: project.id,
             operationType: "update",
-            changedFields: ["status": newStatus.rawValue]
+            changedFields: changedFields
         )
 
         // Track project status change for analytics
@@ -3789,9 +4095,36 @@ class DataController: ObservableObject {
     /// Update project address - SINGLE SOURCE OF TRUTH
     @MainActor
     func updateProjectAddress(project: Project, address: String) async throws {
-        // Apply locally
+        // Apply address locally
         project.address = address
         project.needsSync = true
+
+        var changedFields: [String: Any] = ["address": address]
+
+        // Geocode the address to update lat/long for map display
+        if !address.isEmpty {
+            let geocoder = CLGeocoder()
+            do {
+                let placemarks = try await geocoder.geocodeAddressString(address)
+                if let location = placemarks.first?.location {
+                    project.latitude = location.coordinate.latitude
+                    project.longitude = location.coordinate.longitude
+                    changedFields["latitude"] = location.coordinate.latitude
+                    changedFields["longitude"] = location.coordinate.longitude
+                    print("[DataController] ✅ Geocoded address to \(location.coordinate.latitude), \(location.coordinate.longitude)")
+                }
+            } catch {
+                print("[DataController] ⚠️ Geocoding failed for address: \(error.localizedDescription)")
+                // Continue without coordinates — address still saves
+            }
+        } else {
+            // Clear coordinates when address is cleared
+            project.latitude = nil
+            project.longitude = nil
+            changedFields["latitude"] = NSNull()
+            changedFields["longitude"] = NSNull()
+        }
+
         try? modelContext?.save()
 
         // Record for async sync
@@ -3799,7 +4132,7 @@ class DataController: ObservableObject {
             entityType: .project,
             entityId: project.id,
             operationType: "update",
-            changedFields: ["address": address]
+            changedFields: changedFields
         )
     }
 
@@ -3838,19 +4171,30 @@ class DataController: ObservableObject {
             throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
 
-        // Convert DTO to model and insert locally
-        let task = dto.toModel()
-        task.needsSync = true
-        context.insert(task)
+        // Check if task already exists in context (prevents duplicate inserts)
+        let taskId = dto.id
+        let existingDescriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { $0.id == taskId }
+        )
+        let existing = try? context.fetch(existingDescriptor)
 
-        // Link to project
-        let projectDescriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == dto.projectId })
-        if let project = try? context.fetch(projectDescriptor).first {
-            task.project = project
+        if existing?.isEmpty != false {
+            // Convert DTO to model and insert locally
+            let task = dto.toModel()
+            task.needsSync = true
+            context.insert(task)
+
+            // Link to project
+            let projectDescriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == dto.projectId })
+            if let project = try? context.fetch(projectDescriptor).first {
+                task.project = project
+            }
+
+            try context.save()
+            print("[DataController] ✅ Task created locally from DTO: \(dto.id)")
+        } else {
+            print("[DataController] ⚠️ Task already exists locally, skipping insert: \(dto.id)")
         }
-
-        try context.save()
-        print("[DataController] Task created locally from DTO: \(dto.id)")
 
         // Build the full payload for SyncEngine create
         var changedFields: [String: Any] = [
@@ -4384,6 +4728,9 @@ class DataController: ObservableObject {
             operationType: "update",
             changedFields: ["seated_employee_ids": userIds]
         )
+
+        // Refresh subscription status so the UI reflects the new seat assignments immediately
+        await SubscriptionManager.shared.checkSubscriptionStatus()
     }
 
     // MARK: - Generic Project Field Updates (SyncEngine Migration)
@@ -4499,29 +4846,40 @@ class DataController: ObservableObject {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
-        // Create local model from DTO
-        let project = Project(id: dto.id, title: dto.title, status: Status(rawValue: dto.status) ?? .rfq)
-        project.companyId = dto.companyId
-        project.clientId = dto.clientId
-        project.opportunityId = dto.opportunityId
-        project.address = dto.address
-        project.latitude = dto.latitude
-        project.longitude = dto.longitude
-        project.notes = dto.notes
-        project.projectDescription = dto.description
-        project.allDay = dto.allDay ?? true
-        project.duration = dto.duration ?? 1
-        if let startStr = dto.startDate { project.startDate = formatter.date(from: startStr) }
-        if let endStr = dto.endDate { project.endDate = formatter.date(from: endStr) }
-        if let memberIds = dto.teamMemberIds { project.setTeamMemberIds(memberIds) }
-        if let images = dto.projectImages { project.projectImagesString = images.joined(separator: ",") }
-        project.needsSync = true
+        // Check if project already exists in context (prevents duplicate inserts)
+        let projectId = dto.id
+        let existingDescriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { $0.id == projectId }
+        )
+        let existing = try? context.fetch(existingDescriptor)
 
-        // Insert locally
-        context.insert(project)
-        try context.save()
+        if existing?.isEmpty != false {
+            // Create local model from DTO
+            let project = Project(id: dto.id, title: dto.title, status: Status(rawValue: dto.status) ?? .rfq)
+            project.companyId = dto.companyId
+            project.clientId = dto.clientId
+            project.opportunityId = dto.opportunityId
+            project.address = dto.address
+            project.latitude = dto.latitude
+            project.longitude = dto.longitude
+            project.notes = dto.notes
+            project.projectDescription = dto.description
+            project.allDay = dto.allDay ?? true
+            project.duration = dto.duration ?? 1
+            if let startStr = dto.startDate { project.startDate = formatter.date(from: startStr) }
+            if let endStr = dto.endDate { project.endDate = formatter.date(from: endStr) }
+            if let memberIds = dto.teamMemberIds { project.setTeamMemberIds(memberIds) }
+            if let images = dto.projectImages { project.projectImagesString = images.joined(separator: ",") }
+            project.needsSync = true
 
-        print("[DataController] ✅ Project created locally: \(dto.id)")
+            // Insert locally
+            context.insert(project)
+            try context.save()
+
+            print("[DataController] ✅ Project created locally: \(dto.id)")
+        } else {
+            print("[DataController] ⚠️ Project already exists locally, skipping insert: \(dto.id)")
+        }
 
         // Build the full payload for SyncEngine create
         var changedFields: [String: Any] = [
@@ -4563,18 +4921,29 @@ class DataController: ObservableObject {
             throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
 
-        // Create local model
-        let client = Client(id: dto.id, name: dto.name, email: dto.email, phoneNumber: dto.phoneNumber, address: dto.address, companyId: dto.companyId, notes: dto.notes)
-        client.latitude = dto.latitude
-        client.longitude = dto.longitude
-        client.profileImageURL = dto.profileImageUrl
-        client.needsSync = true
+        // Check if client already exists in context (prevents duplicate inserts)
+        let clientId = dto.id
+        let existingDescriptor = FetchDescriptor<Client>(
+            predicate: #Predicate<Client> { $0.id == clientId }
+        )
+        let existing = try? context.fetch(existingDescriptor)
 
-        // Insert locally
-        context.insert(client)
-        try context.save()
+        if existing?.isEmpty != false {
+            // Create local model
+            let client = Client(id: dto.id, name: dto.name, email: dto.email, phoneNumber: dto.phoneNumber, address: dto.address, companyId: dto.companyId, notes: dto.notes)
+            client.latitude = dto.latitude
+            client.longitude = dto.longitude
+            client.profileImageURL = dto.profileImageUrl
+            client.needsSync = true
 
-        print("[DataController] ✅ Client created locally: \(dto.id)")
+            // Insert locally
+            context.insert(client)
+            try context.save()
+
+            print("[DataController] ✅ Client created locally: \(dto.id)")
+        } else {
+            print("[DataController] ⚠️ Client already exists locally, skipping insert: \(dto.id)")
+        }
 
         // Build payload for SyncEngine create
         var changedFields: [String: Any] = [
@@ -4609,28 +4978,39 @@ class DataController: ObservableObject {
             throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
 
-        // Create local model
-        let taskType = TaskType(
-            id: dto.id,
-            display: dto.display,
-            color: dto.color,
-            companyId: dto.companyId,
-            isDefault: dto.isDefault ?? false,
-            icon: dto.icon
+        // Check if task type already exists in context (prevents duplicate inserts)
+        let taskTypeId = dto.id
+        let existingDescriptor = FetchDescriptor<TaskType>(
+            predicate: #Predicate<TaskType> { $0.id == taskTypeId }
         )
-        taskType.displayOrder = dto.displayOrder ?? 0
-        if let deps = dto.dependencies,
-           let jsonData = try? JSONEncoder().encode(deps),
-           let jsonStr = String(data: jsonData, encoding: .utf8) {
-            taskType.dependenciesJSON = jsonStr
+        let existing = try? context.fetch(existingDescriptor)
+
+        if existing?.isEmpty != false {
+            // Create local model
+            let taskType = TaskType(
+                id: dto.id,
+                display: dto.display,
+                color: dto.color,
+                companyId: dto.companyId,
+                isDefault: dto.isDefault ?? false,
+                icon: dto.icon
+            )
+            taskType.displayOrder = dto.displayOrder ?? 0
+            if let deps = dto.dependencies,
+               let jsonData = try? JSONEncoder().encode(deps),
+               let jsonStr = String(data: jsonData, encoding: .utf8) {
+                taskType.dependenciesJSON = jsonStr
+            }
+            taskType.needsSync = true
+
+            // Insert locally
+            context.insert(taskType)
+            try context.save()
+
+            print("[DataController] ✅ Task type created locally: \(dto.id)")
+        } else {
+            print("[DataController] ⚠️ Task type already exists locally, skipping insert: \(dto.id)")
         }
-        taskType.needsSync = true
-
-        // Insert locally
-        context.insert(taskType)
-        try context.save()
-
-        print("[DataController] ✅ Task type created locally: \(dto.id)")
 
         // Build payload for SyncEngine create
         var changedFields: [String: Any] = [

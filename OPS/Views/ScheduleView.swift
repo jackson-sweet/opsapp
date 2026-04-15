@@ -90,8 +90,14 @@ struct ScheduleView: View {
 
                     // Day canvas — only in week mode
                     if !viewModel.isMonthExpanded {
-                        DayCanvasView(viewModel: viewModel)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        if hasNoProjectsAtAll {
+                            // First-time user with zero projects — show prompt at schedule level
+                            scheduleEmptyStatePrompt
+                                .transition(.opacity)
+                        } else {
+                            DayCanvasView(viewModel: viewModel)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
                     }
                 }
                 .animation(OPSStyle.Animation.standard, value: viewModel.isMonthExpanded)
@@ -196,6 +202,8 @@ struct ScheduleView: View {
                         .environment(\.modelContext, dataController.modelContext!)
                 }
                 .interactiveDismissDisabled(true)
+                .wizardBannerIfAvailable(stateManager: wizardStateManager)
+                .wizardOverlayIfAvailable(stateManager: wizardStateManager)
             } else {
                 Text("Task no longer available")
                     .font(OPSStyle.Typography.body)
@@ -341,6 +349,124 @@ struct ScheduleView: View {
             let taskCount = viewModel.scheduledTasks(for: viewModel.selectedDate).count
             wizardStateManager?.evaluateStepPrerequisites(scheduledTaskCount: taskCount)
         }
+    }
+
+    // MARK: - Empty State
+
+    private var hasNoProjectsAtAll: Bool {
+        !UserDefaults.standard.bool(forKey: "hasDismissedScheduleWizardPrompt") &&
+        dataController.getAllProjects().isEmpty
+    }
+
+    private var scheduleEmptyStatePrompt: some View {
+        VStack(spacing: 0) {
+            Spacer()
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 12) {
+                    Image(systemName: OPSStyle.Icons.schedule)
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                        .foregroundColor(OPSStyle.Colors.wizardAccent)
+
+                    Text("YOUR SCHEDULE")
+                        .font(OPSStyle.Typography.cardTitle)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                .padding(.bottom, 16)
+
+                Text("Projects, tasks, and meetings show up here as you create them. Your crew sees their schedule the moment they open OPS.")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineSpacing(4)
+                    .padding(.bottom, 20)
+
+                VStack(alignment: .leading, spacing: 0) {
+                    scheduleEmptyBullet(index: 1, text: "Create your first project")
+                    Rectangle()
+                        .fill(OPSStyle.Colors.cardBorderSubtle)
+                        .frame(height: 1)
+                        .padding(.leading, 30)
+                    scheduleEmptyBullet(index: 2, text: "Add tasks and assign your crew")
+                    Rectangle()
+                        .fill(OPSStyle.Colors.cardBorderSubtle)
+                        .frame(height: 1)
+                        .padding(.leading, 30)
+                    scheduleEmptyBullet(index: 3, text: "Schedule it on the calendar")
+                }
+                .padding(.bottom, 24)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    if let wizard = WizardRegistry.contextualWizard(for: "project_lifecycle") {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WizardStartRequested"),
+                            object: nil,
+                            userInfo: ["wizardId": wizard.wizardId]
+                        )
+                    } else {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("CreateNewProject"),
+                            object: nil
+                        )
+                    }
+                } label: {
+                    HStack {
+                        Text("CREATE YOUR FIRST PROJECT")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.buttonText)
+
+                        Spacer()
+
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.buttonText)
+                    }
+                    .padding(.horizontal, 20)
+                    .frame(height: OPSStyle.Layout.touchTargetStandard)
+                    .background(OPSStyle.Colors.wizardAccent)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                }
+                .padding(.bottom, 12)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    UserDefaults.standard.set(true, forKey: "hasDismissedScheduleWizardPrompt")
+                } label: {
+                    Text("I'LL EXPLORE ON MY OWN")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: OPSStyle.Layout.touchTargetMin)
+                }
+            }
+            .padding(28)
+            .background(
+                BlurView(style: .systemUltraThinMaterialDark)
+                    .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
+            )
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+            .padding(.horizontal, 20)
+
+            Spacer()
+        }
+    }
+
+    private func scheduleEmptyBullet(index: Int, text: String) -> some View {
+        HStack(spacing: 10) {
+            Text("\(index)")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.wizardAccent)
+                .frame(width: 20, alignment: .center)
+
+            Text(text)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+        }
+        .padding(.vertical, 14)
     }
 }
 

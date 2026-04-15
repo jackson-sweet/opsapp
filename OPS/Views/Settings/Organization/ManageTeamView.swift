@@ -235,12 +235,12 @@ struct ManageTeamView: View {
             TeamInviteSheet(companyId: company?.id ?? "")
                 .environmentObject(dataController)
                 .environment(\.wizardStateManager, wizardStateManager)
+                .wizardBannerIfAvailable(stateManager: wizardStateManager)
+                .wizardOverlayIfAvailable(stateManager: wizardStateManager)
                 .onAppear {
                     NotificationCenter.default.post(name: Notification.Name("WizardCompanyCodeViewed"), object: nil)
                 }
                 .onDisappear {
-                    // Delay dismissal notification so step completion (WizardTeamInviteSent)
-                    // processes before the exit-prompt-triggering screen dismissed event
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         NotificationCenter.default.post(
                             name: Notification.Name("WizardScreenDismissed"),

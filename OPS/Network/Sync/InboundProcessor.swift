@@ -35,6 +35,13 @@ final class InboundProcessor {
     private var projectNoteRepo: ProjectNoteRepository
     private var photoAnnotationRepo: PhotoAnnotationRepository
     private var deckDesignRepo: DeckDesignRepository
+    private var invoiceRepo: InvoiceRepository
+    private var estimateRepo: EstimateRepository
+
+    /// Tracks entities touched during the current sync pass so Spotlight receives
+    /// targeted, minimal updates after each sync instead of a full re-index.
+    /// Reset at the start of each full/delta sync; dispatched in linkAllRelationships.
+    let spotlightTracker = SpotlightSyncTracker()
 
     // MARK: - Init
 
@@ -53,6 +60,8 @@ final class InboundProcessor {
         self.projectNoteRepo = ProjectNoteRepository(companyId: companyId)
         self.photoAnnotationRepo = PhotoAnnotationRepository(companyId: companyId)
         self.deckDesignRepo = DeckDesignRepository(companyId: companyId)
+        self.invoiceRepo = InvoiceRepository(companyId: companyId)
+        self.estimateRepo = EstimateRepository(companyId: companyId)
     }
 
     // MARK: - Reconfigure
@@ -84,6 +93,8 @@ final class InboundProcessor {
         self.projectNoteRepo = ProjectNoteRepository(companyId: newCompanyId)
         self.photoAnnotationRepo = PhotoAnnotationRepository(companyId: newCompanyId)
         self.deckDesignRepo = DeckDesignRepository(companyId: newCompanyId)
+        self.invoiceRepo = InvoiceRepository(companyId: newCompanyId)
+        self.estimateRepo = EstimateRepository(companyId: newCompanyId)
     }
 
     // MARK: - Sync Priority Order
@@ -100,7 +111,9 @@ final class InboundProcessor {
         .projectTask,
         .projectNote,
         .photoAnnotation,
-        .deckDesign
+        .deckDesign,
+        .estimate,
+        .invoice
     ]
 
     // MARK: - Full Sync
@@ -196,6 +209,10 @@ final class InboundProcessor {
             try await syncPhotoAnnotations(since: since, context: context)
         case .deckDesign:
             try await syncDeckDesigns(since: since, context: context)
+        case .estimate:
+            try await syncEstimates(since: since, context: context)
+        case .invoice:
+            try await syncInvoices(since: since, context: context)
         default:
             print("[InboundProcessor] Entity type \(entityType.rawValue) not yet supported for inbound sync")
         }

@@ -268,8 +268,13 @@ struct OPSApp: App {
                 .onContinueUserActivity(CSSearchableItemActionType) { activity in
                     _ = SpotlightTapRouter.handle(activity)
                 }
-                // Custom URL schemes — ops:// + Google Sign-In (handled in AppDelegate)
+                // HTTPS universal links that weren't intercepted by AppDelegate.
+                // Skip ops:// scheme URLs — AppDelegate.application(_:open:) handles
+                // those and posts the deep-link notification directly. Without this
+                // guard, every ops:// tap would double-route and attempt to present
+                // the destination sheet twice.
                 .onOpenURL { url in
+                    guard url.scheme != "ops" else { return }
                     handleUniversalLink(url)
                 }
         }

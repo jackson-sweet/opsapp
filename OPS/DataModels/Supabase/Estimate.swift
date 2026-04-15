@@ -32,6 +32,11 @@ class Estimate: Identifiable {
     var createdAt: Date
     var updatedAt: Date
 
+    // Sync metadata — added for InboundProcessor integration
+    var lastSyncedAt: Date?
+    var needsSync: Bool = false
+    var deletedAt: Date?
+
     init(
         id: String = UUID().uuidString,
         companyId: String,
@@ -55,5 +60,8 @@ class Estimate: Identifiable {
         self.version = version
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.lastSyncedAt = nil
+        self.needsSync = false
+        self.deletedAt = nil
     }
 }

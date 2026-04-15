@@ -728,6 +728,33 @@ class NotificationManager: NSObject, ObservableObject {
         if let company = companyId {
             OneSignal.User.addTag(key: "companyId", value: company)
         }
+
+        // Persist the push subscription id to users.onesignal_player_id so the
+        // web server can target this device for OneSignal REST push sends.
+        // Runs best-effort; any failure is logged and swallowed.
+        syncOneSignalPlayerIdToSupabase(userId: userId)
+    }
+
+    /// Write OneSignal.User.pushSubscription.id to users.onesignal_player_id.
+    /// Called from linkUserToOneSignal() after login and on foreground return.
+    private func syncOneSignalPlayerIdToSupabase(userId: String) {
+        guard let playerId = OneSignal.User.pushSubscription.id else {
+            print("[ONESIGNAL] No pushSubscription.id yet — skipping Supabase sync")
+            return
+        }
+
+        Task {
+            do {
+                try await SupabaseService.shared.client
+                    .from("users")
+                    .update(["onesignal_player_id": playerId])
+                    .eq("id", value: userId)
+                    .execute()
+                print("[ONESIGNAL] Synced player_id to Supabase for user \(userId)")
+            } catch {
+                print("[ONESIGNAL] Failed to sync player_id: \(error)")
+            }
+        }
     }
 
     /// Unlink user from OneSignal when logging out

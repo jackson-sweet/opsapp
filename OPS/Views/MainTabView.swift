@@ -360,14 +360,28 @@ struct MainTabView: View {
             }
         }
 
-        // Handle opening task details from push notification
+        // Handle opening task details from push notification or Spotlight tap.
+        // Push notifications include both taskId + projectId; Spotlight sends only taskId
+        // (since the Spotlight item ID encodes one entity). In that case we resolve the
+        // parent project from SwiftData before routing.
         .onReceive(openTaskDetailsObserver) { notification in
-            if let taskId = notification.userInfo?["taskId"] as? String,
-               let projectId = notification.userInfo?["projectId"] as? String {
-                print("[PUSH_NAVIGATION] Opening task details - Task: \(taskId), Project: \(projectId)")
-                Task {
-                    await openTaskWithSync(taskId: taskId, projectId: projectId)
+            guard let taskId = notification.userInfo?["taskId"] as? String else { return }
+            let providedProjectId = notification.userInfo?["projectId"] as? String
+            Task {
+                let projectId: String
+                if let providedProjectId = providedProjectId {
+                    projectId = providedProjectId
+                } else if let resolved = await resolveProjectId(forTask: taskId) {
+                    projectId = resolved
+                } else {
+                    print("[PUSH_NAVIGATION] Task \(taskId) not found locally — showing access denied")
+                    await MainActor.run {
+                        appState.presentAccessDenied(message: "This task is no longer available.")
+                    }
+                    return
                 }
+                print("[PUSH_NAVIGATION] Opening task details - Task: \(taskId), Project: \(projectId)")
+                await openTaskWithSync(taskId: taskId, projectId: projectId)
             }
         }
 
@@ -793,6 +807,21 @@ struct MainTabView: View {
         // Project not found locally - sync first
         print("[PUSH_NAVIGATION] Project not found locally, triggering sync...")
         await syncAndOpenProject(projectId: projectId)
+    }
+
+    /// Resolve a task's parent project ID from SwiftData. Used when a Spotlight
+    /// tap arrives with only a taskId — we look up the task's project before
+    /// routing through `openTaskWithSync`.
+    @MainActor
+    private func resolveProjectId(forTask taskId: String) async -> String? {
+        guard let context = dataController.modelContext else { return nil }
+        let descriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate { $0.id == taskId }
+        )
+        if let task = try? context.fetch(descriptor).first {
+            return task.project?.id ?? task.projectId
+        }
+        return nil
     }
 
     /// Open a client detail sheet. Fetches from SwiftData; surfaces access-denied if stale.

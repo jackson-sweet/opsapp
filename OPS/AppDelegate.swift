@@ -74,10 +74,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         let notificationType = additionalData?["type"] as? String
         let projectId = additionalData?["projectId"] as? String
         let taskId = additionalData?["taskId"] as? String
+        let clientId = additionalData?["clientId"] as? String
+        let invoiceId = additionalData?["invoiceId"] as? String
+        let estimateId = additionalData?["estimateId"] as? String
         let screen = additionalData?["screen"] as? String
 
         print("[ONESIGNAL] Type: \(notificationType ?? "unknown")")
         print("[ONESIGNAL] Project: \(projectId ?? "none"), Task: \(taskId ?? "none")")
+        print("[ONESIGNAL] Client: \(clientId ?? "none"), Invoice: \(invoiceId ?? "none"), Estimate: \(estimateId ?? "none")")
         print("[ONESIGNAL] Screen: \(screen ?? "none")")
 
         // Track push notification opened
@@ -92,6 +96,32 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         // Delay routing to allow app to fully initialize if cold-launched
         // This gives time for view observers to be set up
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            // Check for client/invoice/estimate direct IDs first — these short-circuit the rest
+            if let clientId = clientId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenClientDetails"),
+                    object: nil,
+                    userInfo: ["clientId": clientId]
+                )
+                return
+            }
+            if let invoiceId = invoiceId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenInvoiceDetails"),
+                    object: nil,
+                    userInfo: ["invoiceId": invoiceId]
+                )
+                return
+            }
+            if let estimateId = estimateId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenEstimateDetails"),
+                    object: nil,
+                    userInfo: ["estimateId": estimateId]
+                )
+                return
+            }
+
             if let screen = screen {
                 self.routeToScreen(screen, projectId: projectId, taskId: taskId)
             } else if let type = notificationType {

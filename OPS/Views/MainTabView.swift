@@ -65,6 +65,12 @@ struct MainTabView: View {
 
     private let openSubscriptionObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenSubscription"))
+
+    // Web-to-app return bridge — fires when user taps a link from /auth/action
+    // handler page (e.g., after password reset). When received inside MainTabView,
+    // the user is already signed in — nothing to route to, just log arrival.
+    private let openAppFromWebObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenAppFromWeb"))
     
     // Keyboard observers
     private let keyboardWillShow = NotificationCenter.default
@@ -295,6 +301,15 @@ struct MainTabView: View {
                     await openProjectWithSync(projectId: projectId)
                 }
             }
+        }
+
+        // Web-to-app return bridge. If the user landed here already signed in,
+        // they completed an auth flow on web (password reset, email verify, etc.)
+        // and don't need any further routing — iOS Keychain handles credential
+        // autofill when they later reach the login screen via sign-out.
+        .onReceive(openAppFromWebObserver) { notification in
+            let from = (notification.userInfo?["from"] as? String) ?? ""
+            print("[OpenAppFromWeb] Received inside MainTabView (user already signed in), from=\(from)")
         }
 
         // Handle opening task details from push notification

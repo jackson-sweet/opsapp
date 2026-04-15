@@ -354,6 +354,20 @@ struct MainTabView: View {
             }
         }
 
+        // Handle navigating to Clients tab in Job Board
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NavigateToClients"))) { _ in
+            withAnimation(.easeInOut(duration: 0.2)) {
+                selectedTab = jobBoardTabIndex
+            }
+            // Post follow-up notification to switch to Clients section within Job Board
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                NotificationCenter.default.post(
+                    name: Notification.Name("SwitchToClientsSection"),
+                    object: nil
+                )
+            }
+        }
+
         // Track tab changes for slide transitions and analytics
         .onChange(of: selectedTab) { oldValue, newValue in
             previousTab = oldValue

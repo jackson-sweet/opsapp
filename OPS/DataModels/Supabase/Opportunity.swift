@@ -15,13 +15,14 @@ class Opportunity: Identifiable {
     var contactName: String
     var contactEmail: String?
     var contactPhone: String?
-    var jobDescription: String?
+    var descriptionText: String?
     var estimatedValue: Double?
     var stage: PipelineStage
     var source: String?
     var projectId: String?
     var clientId: String?
-    var lossReason: String?
+    var lostReason: String?
+    var quoteDeliveryMethod: QuoteDeliveryMethod?
     var createdAt: Date
     var updatedAt: Date
     var lastActivityAt: Date?

@@ -88,7 +88,7 @@ class LogActivityViewModel: ObservableObject {
         let search = opportunitySearchText.lowercased()
         return activeOpportunities.filter {
             $0.contactName.lowercased().contains(search)
-            || ($0.jobDescription?.lowercased().contains(search) ?? false)
+            || ($0.descriptionText?.lowercased().contains(search) ?? false)
             || ($0.contactEmail?.lowercased().contains(search) ?? false)
         }
     }
@@ -202,7 +202,8 @@ class LogActivityViewModel: ObservableObject {
                     contactPhone: newLeadPhone.isEmpty ? nil : newLeadPhone,
                     description: nil,
                     estimatedValue: nil,
-                    source: "voice_log"
+                    source: "voice_log",
+                    quoteDeliveryMethod: nil
                 )
                 let created = try await repository.create(dto)
                 opportunityId = created.id

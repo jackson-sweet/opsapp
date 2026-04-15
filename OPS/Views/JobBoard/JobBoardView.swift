@@ -344,7 +344,6 @@ struct JobBoardView: View {
                             selectedSection = target
                         }
                     }
-
                 }
 
             }

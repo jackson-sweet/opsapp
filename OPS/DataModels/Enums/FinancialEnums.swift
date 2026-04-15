@@ -107,6 +107,36 @@ enum FollowUpStatus: String, Codable {
     case skipped   = "skipped"
 }
 
+// MARK: - Quote Delivery Method
+
+enum QuoteDeliveryMethod: String, Codable, CaseIterable {
+    case inPerson = "in_person"
+    case email    = "email"
+    case phone    = "phone"
+    case mail     = "mail"
+    case other    = "other"
+
+    var displayName: String {
+        switch self {
+        case .inPerson: return "IN PERSON"
+        case .email:    return "EMAIL"
+        case .phone:    return "PHONE"
+        case .mail:     return "MAIL"
+        case .other:    return "OTHER"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .inPerson: return "person.fill"
+        case .email:    return "envelope.fill"
+        case .phone:    return "phone.fill"
+        case .mail:     return "envelope.badge.shield.half.filled.fill"
+        case .other:    return "ellipsis.circle.fill"
+        }
+    }
+}
+
 // MARK: - Site Visit Status
 
 enum SiteVisitStatus: String, Codable {

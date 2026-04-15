@@ -282,6 +282,7 @@ struct PINGatedView: View {
     // State for client creation success message
     @State private var showClientCreatedMessage = false
     @State private var createdClientName: String = ""
+    @State private var createdClientId: String? = nil
 
     // Permission change overlay — sits above all navigation stacks, sheets, and modals
     @State private var showPermissionChangeOverlay = false
@@ -378,6 +379,7 @@ struct PINGatedView: View {
                         } else {
                             createdClientName = ""
                         }
+                        createdClientId = notification.userInfo?["clientId"] as? String
                         showClientCreatedMessage = true
                     }
                     .onAppear {
@@ -497,7 +499,16 @@ struct PINGatedView: View {
                     title: "CLIENT CREATED",
                     subtitle: createdClientName.isEmpty ? nil : createdClientName,
                     type: .success,
-                    autoDismissAfter: 3.0
+                    autoDismissAfter: 5.0,
+                    actionLabel: "VIEW",
+                    onAction: {
+                        // Navigate to Job Board → Clients tab
+                        NotificationCenter.default.post(
+                            name: Notification.Name("NavigateToClients"),
+                            object: nil,
+                            userInfo: createdClientId != nil ? ["clientId": createdClientId!] : nil
+                        )
+                    }
                 )
                 .zIndex(2)
 

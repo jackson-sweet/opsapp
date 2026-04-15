@@ -8,12 +8,26 @@
 import SwiftUI
 import SwiftData
 
+enum ClientFilter: String, CaseIterable {
+    case all = "ALL"
+    case new = "NEW"
+}
+
 struct ClientListView: View {
     @EnvironmentObject private var dataController: DataController
     @Query private var clients: [Client]
     let searchText: String
     @State private var showingCreateClient = false
     @State private var lastDraggedLetter: String? = nil
+    @State private var activeFilter: ClientFilter = .all
+
+    private var newClientsThreshold: Date {
+        Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+    }
+
+    private var newClientsCount: Int {
+        clients.filter { ($0.createdAt ?? .distantPast) > newClientsThreshold }.count
+    }
 
     init(searchText: String, companyId: String) {
         self.searchText = searchText
@@ -26,12 +40,17 @@ struct ClientListView: View {
     }
 
     private var sortedAndFilteredClients: [Client] {
-        guard !searchText.isEmpty else { return clients }
-        return clients.filter { client in
+        var filtered = searchText.isEmpty ? clients : clients.filter { client in
             client.name.localizedCaseInsensitiveContains(searchText) ||
             (client.email?.localizedCaseInsensitiveContains(searchText) ?? false) ||
             (client.phoneNumber?.localizedCaseInsensitiveContains(searchText) ?? false)
         }
+
+        if activeFilter == .new {
+            filtered = filtered.filter { ($0.createdAt ?? .distantPast) > newClientsThreshold }
+        }
+
+        return filtered.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
 
     private var groupedClients: [String: [Client]] {
@@ -60,6 +79,65 @@ struct ClientListView: View {
                 )
                 .frame(maxHeight: .infinity)
             } else {
+                // Filter chips
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    ForEach(ClientFilter.allCases, id: \.self) { filter in
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                activeFilter = filter
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Text(filter.rawValue)
+                                    .font(OPSStyle.Typography.captionBold)
+                                if filter == .new && newClientsCount > 0 {
+                                    Text("\(newClientsCount)")
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(
+                                            Capsule().fill(
+                                                activeFilter == filter
+                                                ? Color.black.opacity(0.3)
+                                                : OPSStyle.Colors.primaryAccent.opacity(0.3)
+                                            )
+                                        )
+                                }
+                            }
+                            .foregroundColor(activeFilter == filter ? OPSStyle.Colors.cardBackgroundDark : OPSStyle.Colors.secondaryText)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                                    .fill(activeFilter == filter ? OPSStyle.Colors.primaryText : .clear)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                                    .stroke(activeFilter == filter ? .clear : OPSStyle.Colors.cardBorder, lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    Spacer()
+                }
+                .padding(.bottom, OPSStyle.Layout.spacing2)
+
+                if activeFilter == .new && sortedAndFilteredClients.isEmpty {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
+                        Spacer()
+                        Image(systemName: OPSStyle.Icons.client)
+                            .font(.system(size: 44))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Text("NO NEW CLIENTS")
+                            .font(OPSStyle.Typography.subtitle)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        Text("[no clients added in the last 7 days]")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Spacer()
+                    }
+                    .frame(maxHeight: .infinity)
+                } else {
                 ScrollViewReader { proxy in
                     ScrollView(showsIndicators: false) {
                         LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
@@ -82,6 +160,7 @@ struct ClientListView: View {
 
                     }
                 }
+                } // end activeFilter empty check
             }
         }
         .trackScreen("JobBoard.Clients")

@@ -204,20 +204,21 @@ final class Company {
     }
     
     var daysRemainingInGracePeriod: Int? {
-        // Grace period expiration is handled server-side,
-        // we'll show a static grace period message when status is "grace"
+        // The 7-day window is fixed by the web grace-expiry cron at
+        // ops-web/src/app/api/cron/expire-grace-periods/route.ts (GRACE_DAYS).
+        // If you change this constant, change that one too — they must match.
         guard subscriptionStatusEnum == .grace else { return nil }
-        
-        // If we have a seat grace start date, calculate from that
+
         if let graceStart = seatGraceStartDate {
             let graceDays = 7
             let endDate = Calendar.current.date(byAdding: .day, value: graceDays, to: graceStart) ?? graceStart
             let days = Calendar.current.dateComponents([.day], from: Date(), to: endDate).day ?? 0
             return max(0, days)
         }
-        
-        // Otherwise, show a default message
-        return 7 // Default grace period length
+
+        // Fallback when grace_start is missing — should not happen post-2026-04
+        // since the webhook now writes it on every past_due transition.
+        return 7
     }
     
     // Computed property for location

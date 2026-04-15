@@ -34,6 +34,7 @@ struct SupabaseCompanyDTO: Codable, Identifiable {
     let subscriptionPeriod: String?
     let trialStartDate: String?
     let trialEndDate: String?
+    let seatGraceStartDate: String?
     let hasPrioritySupport: Bool?
     let stripeCustomerId: String?
     let companyCode: String?
@@ -57,6 +58,7 @@ struct SupabaseCompanyDTO: Codable, Identifiable {
         case subscriptionPeriod   = "subscription_period"
         case trialStartDate       = "trial_start_date"
         case trialEndDate         = "trial_end_date"
+        case seatGraceStartDate   = "seat_grace_start_date"
         case hasPrioritySupport   = "has_priority_support"
         case stripeCustomerId     = "stripe_customer_id"
         case companyCode          = "company_code"

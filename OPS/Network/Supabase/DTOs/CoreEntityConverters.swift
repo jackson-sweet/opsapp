@@ -44,6 +44,7 @@ extension SupabaseCompanyDTO {
         company.subscriptionPeriod = subscriptionPeriod
         company.trialStartDate = trialStartDate.flatMap { SupabaseDate.parse($0) }
         company.trialEndDate = trialEndDate.flatMap { SupabaseDate.parse($0) }
+        company.seatGraceStartDate = seatGraceStartDate.flatMap { SupabaseDate.parse($0) }
         company.hasPrioritySupport = hasPrioritySupport ?? false
         company.stripeCustomerId = stripeCustomerId
         company.externalId = companyCode

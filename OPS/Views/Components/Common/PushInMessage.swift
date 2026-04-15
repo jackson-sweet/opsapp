@@ -43,6 +43,8 @@ struct PushInMessage: View {
     let type: PushInMessageType
     let autoDismissAfter: TimeInterval
     let showDismissButton: Bool
+    let actionLabel: String?
+    let onAction: (() -> Void)?
 
     @State private var autoDismissTimer: Timer?
     @State private var dragOffset: CGFloat = 0
@@ -56,7 +58,9 @@ struct PushInMessage: View {
         subtitle: String? = nil,
         type: PushInMessageType = .info,
         autoDismissAfter: TimeInterval = 3.0,
-        showDismissButton: Bool? = nil
+        showDismissButton: Bool? = nil,
+        actionLabel: String? = nil,
+        onAction: (() -> Void)? = nil
     ) {
         self._isPresented = isPresented
         self.title = title
@@ -65,6 +69,8 @@ struct PushInMessage: View {
         self.autoDismissAfter = autoDismissAfter
         // Don't show X button if auto-dismissing (unless explicitly requested)
         self.showDismissButton = showDismissButton ?? (autoDismissAfter <= 0)
+        self.actionLabel = actionLabel
+        self.onAction = onAction
     }
 
     var body: some View {
@@ -129,6 +135,18 @@ struct PushInMessage: View {
             }
 
             Spacer()
+
+            // Action button
+            if let label = actionLabel, let action = onAction {
+                Button(action: {
+                    dismissMessage()
+                    action()
+                }) {
+                    Text(label)
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+            }
 
             // Dismiss button
             if showDismissButton {

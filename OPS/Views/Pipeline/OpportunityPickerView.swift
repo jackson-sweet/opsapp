@@ -87,7 +87,7 @@ struct OpportunityPickerView: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
 
-                    if let desc = opp.jobDescription, !desc.isEmpty {
+                    if let desc = opp.descriptionText, !desc.isEmpty {
                         Text(desc)
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)

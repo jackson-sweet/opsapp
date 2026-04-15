@@ -99,9 +99,9 @@ class OpportunityRepository {
 
     // MARK: - Update
 
-    func advanceStage(opportunityId: String, to stage: PipelineStage, lossReason: String? = nil) async throws -> OpportunityDTO {
+    func advanceStage(opportunityId: String, to stage: PipelineStage, lostReason: String? = nil) async throws -> OpportunityDTO {
         var updates: [String: AnyJSON] = ["stage": .string(stage.rawValue)]
-        if let reason = lossReason { updates["lost_reason"] = .string(reason) }
+        if let reason = lostReason { updates["lost_reason"] = .string(reason) }
         let response: OpportunityDTO = try await client
             .from("opportunities")
             .update(updates)

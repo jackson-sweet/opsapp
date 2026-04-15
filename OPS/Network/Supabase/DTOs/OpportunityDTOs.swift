@@ -20,26 +20,28 @@ struct OpportunityDTO: Codable, Identifiable {
     let projectId: String?
     let clientId: String?
     let lostReason: String?
+    let quoteDeliveryMethod: String?
     let createdAt: String
     let updatedAt: String
     let lastActivityAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id
-        case companyId        = "company_id"
-        case contactName      = "contact_name"
-        case contactEmail     = "contact_email"
-        case contactPhone     = "contact_phone"
+        case companyId            = "company_id"
+        case contactName          = "contact_name"
+        case contactEmail         = "contact_email"
+        case contactPhone         = "contact_phone"
         case description
-        case estimatedValue   = "estimated_value"
+        case estimatedValue       = "estimated_value"
         case stage
         case source
-        case projectId        = "project_id"
-        case clientId         = "client_id"
-        case lostReason       = "lost_reason"
-        case createdAt        = "created_at"
-        case updatedAt        = "updated_at"
-        case lastActivityAt   = "last_activity_at"
+        case projectId            = "project_id"
+        case clientId             = "client_id"
+        case lostReason           = "lost_reason"
+        case quoteDeliveryMethod  = "quote_delivery_method"
+        case createdAt            = "created_at"
+        case updatedAt            = "updated_at"
+        case lastActivityAt       = "last_activity_at"
     }
 
     func toModel() -> Opportunity {
@@ -53,12 +55,13 @@ struct OpportunityDTO: Codable, Identifiable {
         )
         opp.contactEmail = contactEmail
         opp.contactPhone = contactPhone
-        opp.jobDescription = description
+        opp.descriptionText = description
         opp.estimatedValue = estimatedValue
         opp.source = source
         opp.projectId = projectId
         opp.clientId = clientId
-        opp.lossReason = lostReason
+        opp.lostReason = lostReason
+        if let method = quoteDeliveryMethod { opp.quoteDeliveryMethod = QuoteDeliveryMethod(rawValue: method) }
         if let la = lastActivityAt { opp.lastActivityAt = SupabaseDate.parse(la) }
         return opp
     }
@@ -72,15 +75,17 @@ struct CreateOpportunityDTO: Codable {
     let description: String?
     let estimatedValue: Double?
     let source: String?
+    let quoteDeliveryMethod: String?
 
     enum CodingKeys: String, CodingKey {
-        case companyId      = "company_id"
-        case contactName    = "contact_name"
-        case contactEmail   = "contact_email"
-        case contactPhone   = "contact_phone"
+        case companyId            = "company_id"
+        case contactName          = "contact_name"
+        case contactEmail         = "contact_email"
+        case contactPhone         = "contact_phone"
         case description
-        case estimatedValue = "estimated_value"
+        case estimatedValue       = "estimated_value"
         case source
+        case quoteDeliveryMethod  = "quote_delivery_method"
     }
 }
 
@@ -93,16 +98,18 @@ struct UpdateOpportunityDTO: Codable {
     var source: String?
     var clientId: String?
     var projectId: String?
+    var quoteDeliveryMethod: String?
 
     enum CodingKeys: String, CodingKey {
-        case contactName    = "contact_name"
-        case contactEmail   = "contact_email"
-        case contactPhone   = "contact_phone"
+        case contactName          = "contact_name"
+        case contactEmail         = "contact_email"
+        case contactPhone         = "contact_phone"
         case description
-        case estimatedValue = "estimated_value"
+        case estimatedValue       = "estimated_value"
         case source
-        case clientId       = "client_id"
-        case projectId      = "project_id"
+        case clientId             = "client_id"
+        case projectId            = "project_id"
+        case quoteDeliveryMethod  = "quote_delivery_method"
     }
 }
 

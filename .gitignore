@@ -8,3 +8,6 @@ Secrets.xcconfig
 
 # Git worktrees
 .worktrees/
+
+# Firebase CLI debug logs
+firebase-debug.log

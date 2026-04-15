@@ -131,6 +131,9 @@ final class InboundProcessor {
         }
         print("[InboundProcessor] ======== FULL SYNC STARTED ========")
 
+        // Reset Spotlight tracker at sync start
+        spotlightTracker.reset()
+
         let totalSteps = Double(Self.syncOrder.count)
 
         for (index, entityType) in Self.syncOrder.enumerated() {
@@ -145,6 +148,13 @@ final class InboundProcessor {
         // Link relationships after all entities are pulled
         print("[InboundProcessor] Linking relationships...")
         linkAllRelationships(context: context)
+
+        // Dispatch targeted Spotlight index updates based on what this sync touched.
+        // Only runs after initial backfill — first-run indexing is coordinated by
+        // SpotlightBackfillCoordinator which runs a full bulk index.
+        if SpotlightIndexManager.shared.hasCompletedInitialBackfill {
+            await spotlightTracker.dispatch(context: context)
+        }
 
         onProgress?(.photoAnnotation, 1.0)
         print("[InboundProcessor] ======== FULL SYNC COMPLETED ========")
@@ -165,6 +175,9 @@ final class InboundProcessor {
         }
         print("[InboundProcessor] ======== DELTA SYNC STARTED ========")
 
+        // Reset Spotlight tracker at sync start
+        spotlightTracker.reset()
+
         for entityType in Self.syncOrder {
             let sinceDate = since[entityType]
             // For delta sync, only fetch entity types that have a since date
@@ -176,6 +189,11 @@ final class InboundProcessor {
 
         // Re-link relationships after pulling updates
         linkAllRelationships(context: context)
+
+        // Dispatch targeted Spotlight index updates for the delta
+        if SpotlightIndexManager.shared.hasCompletedInitialBackfill {
+            await spotlightTracker.dispatch(context: context)
+        }
 
         print("[InboundProcessor] ======== DELTA SYNC COMPLETED ========")
     }
@@ -490,11 +508,24 @@ final class InboundProcessor {
 
             existing.lastSyncedAt = Date()
             existing.needsSync = false
+
+            // Mark for targeted Spotlight update — deletion wins over upsert
+            if existing.deletedAt != nil {
+                spotlightTracker.markDeleted(domain: SpotlightDomain.client, id: id)
+            } else {
+                spotlightTracker.markDirty(domain: SpotlightDomain.client, id: id)
+            }
         } else {
             let model = dto.toModel()
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)
+
+            if model.deletedAt != nil {
+                spotlightTracker.markDeleted(domain: SpotlightDomain.client, id: id)
+            } else {
+                spotlightTracker.markDirty(domain: SpotlightDomain.client, id: id)
+            }
         }
 
         try context.save()
@@ -616,11 +647,24 @@ final class InboundProcessor {
             if !hasPending {
                 existing.needsSync = false
             }
+
+            // Mark for targeted Spotlight update
+            if existing.deletedAt != nil {
+                spotlightTracker.markDeleted(domain: SpotlightDomain.project, id: existing.id)
+            } else {
+                spotlightTracker.markDirty(domain: SpotlightDomain.project, id: existing.id)
+            }
         } else {
             let model = dto.toModel()
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)
+
+            if model.deletedAt != nil {
+                spotlightTracker.markDeleted(domain: SpotlightDomain.project, id: model.id)
+            } else {
+                spotlightTracker.markDirty(domain: SpotlightDomain.project, id: model.id)
+            }
         }
 
         try context.save()
@@ -701,11 +745,24 @@ final class InboundProcessor {
             if !hasPending {
                 existing.needsSync = false
             }
+
+            // Mark for targeted Spotlight update
+            if existing.deletedAt != nil {
+                spotlightTracker.markDeleted(domain: SpotlightDomain.task, id: existing.id)
+            } else {
+                spotlightTracker.markDirty(domain: SpotlightDomain.task, id: existing.id)
+            }
         } else {
             let model = dto.toModel()
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)
+
+            if model.deletedAt != nil {
+                spotlightTracker.markDeleted(domain: SpotlightDomain.task, id: model.id)
+            } else {
+                spotlightTracker.markDirty(domain: SpotlightDomain.task, id: model.id)
+            }
         }
 
         try context.save()

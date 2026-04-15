@@ -253,6 +253,54 @@ struct MainTabView: View {
                 .environmentObject(dataController)
                 .environmentObject(appState)
         }
+        // Client detail sheet (from Spotlight / deep link)
+        .sheet(isPresented: $appState.showClientDetails) {
+            if let clientId = appState.selectedClientId,
+               let ctx = dataController.modelContext,
+               let client = try? ctx.fetch(FetchDescriptor<Client>(predicate: #Predicate { $0.id == clientId })).first {
+                ClientSheet(mode: .edit(client)) { _ in
+                    appState.showClientDetails = false
+                }
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
+            }
+        }
+        // Invoice detail sheet (from Spotlight / deep link)
+        .sheet(isPresented: $appState.showInvoiceDetails) {
+            if let invoiceId = appState.selectedInvoiceId,
+               let ctx = dataController.modelContext,
+               let invoice = try? ctx.fetch(FetchDescriptor<Invoice>(predicate: #Predicate { $0.id == invoiceId })).first,
+               let companyId = dataController.currentUser?.companyId {
+                NavigationStack {
+                    InvoiceDetailViewDeepLinkWrapper(
+                        invoice: invoice,
+                        companyId: companyId
+                    )
+                }
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
+            }
+        }
+        // Estimate detail sheet (from Spotlight / deep link)
+        .sheet(isPresented: $appState.showEstimateDetails) {
+            if let estimateId = appState.selectedEstimateId,
+               let ctx = dataController.modelContext,
+               let estimate = try? ctx.fetch(FetchDescriptor<Estimate>(predicate: #Predicate { $0.id == estimateId })).first,
+               let companyId = dataController.currentUser?.companyId {
+                NavigationStack {
+                    EstimateDetailViewDeepLinkWrapper(
+                        estimate: estimate,
+                        companyId: companyId
+                    )
+                }
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
+            }
+        }
+        // Access denied sheet (tapped result no longer permitted)
+        .sheet(isPresented: $appState.showAccessDenied) {
+            AccessDeniedSheet(message: appState.accessDeniedMessage ?? "Access denied.")
+        }
         // Add notification handler for project fetching
         .onReceive(fetchProjectObserver) { notification in
             if let projectID = notification.userInfo?["projectID"] as? String {

@@ -128,15 +128,28 @@ extension AppleSignInManager: ASAuthorizationControllerDelegate {
 // MARK: - ASAuthorizationControllerPresentationContextProviding
 extension AppleSignInManager: ASAuthorizationControllerPresentationContextProviding {
     nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        // Get the key window — must dispatch to MainActor for UIApplication access
+        // AppKit/UIKit will call this from the main thread during presentation,
+        // but keep the main-thread dispatch explicit for Swift 6 strict concurrency.
+        // The previous version called `fatalError` if no key window was found,
+        // which crashed the entire app during any transient state where the key
+        // window wasn't available (modal presentation, scene lifecycle edge
+        // cases, app coming out of background). Fall back to any attached
+        // window instead, and only as a last resort return a new UIWindow —
+        // Apple's ASAuthorizationController tolerates this because it presents
+        // into the scene's window hierarchy, not this exact window reference.
         return MainActor.assumeIsolated {
-            guard let window = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .flatMap({ $0.windows })
-                .first(where: { $0.isKeyWindow }) else {
-                fatalError("No key window found")
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            let allWindows = scenes.flatMap { $0.windows }
+
+            if let keyWindow = allWindows.first(where: { $0.isKeyWindow }) {
+                return keyWindow
             }
-            return window
+            if let anyWindow = allWindows.first {
+                print("[APPLE_SIGNIN] ⚠️ No key window at presentation time — falling back to first attached window")
+                return anyWindow
+            }
+            print("[APPLE_SIGNIN] ⚠️ No attached windows at presentation time — creating a transient anchor")
+            return UIWindow()
         }
     }
 }

@@ -507,6 +507,13 @@ class DataController: ObservableObject {
         // Cancel any pending data wipe from a prior logout
         cancelPendingDataWipe()
 
+        // Track whether we've begun writing persisted auth state so an
+        // exception mid-flight can be rolled back cleanly. Without this,
+        // a partial auth state would survive to the next launch and cause
+        // subsequent login attempts to crash while trying to load a user
+        // that doesn't exist yet.
+        var didWriteAuthFlags = false
+
         do {
             // Authenticate with Firebase using Apple identity token
             try await FirebaseAuthService.shared.signInWithApple(identityToken: appleResult.identityToken)
@@ -527,6 +534,7 @@ class DataController: ObservableObject {
             UserDefaults.standard.set(true, forKey: "is_authenticated")
             UserDefaults.standard.set(userId, forKey: "user_id")
             UserDefaults.standard.set(userId, forKey: "currentUserId")
+            didWriteAuthFlags = true
 
             // Backfill firebase_uid in users table
             Task { await authManager.backfillFirebaseUID(usersTableId: userId) }
@@ -582,6 +590,19 @@ class DataController: ObservableObject {
             return true
         } catch {
             print("[AUTH] Apple login failed: \(error)")
+            // Roll back any partial auth state so a failed attempt can't
+            // leave the app in a zombie "authenticated but no user" state
+            // that crashes subsequent launches when checkExistingAuth runs.
+            if didWriteAuthFlags {
+                UserDefaults.standard.removeObject(forKey: "is_authenticated")
+                UserDefaults.standard.removeObject(forKey: "user_id")
+                UserDefaults.standard.removeObject(forKey: "currentUserId")
+                UserDefaults.standard.removeObject(forKey: "apple_user_identifier")
+                print("[AUTH] Rolled back partial Apple login state")
+            }
+            // Sign the Firebase user out so a retry starts fresh instead
+            // of reusing a half-migrated session.
+            FirebaseAuthService.shared.signOut()
             return false
         }
     }

@@ -353,15 +353,16 @@ final class OutboundProcessor {
 
     private func handleProject(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
         let repo = ProjectRepository(companyId: companyId)
+        let sanitizedPayload = payload.filter { Self.validProjectColumns.contains($0.key) }
 
         switch operationType {
         case "create":
-            let jsonData = try JSONSerialization.data(withJSONObject: payload)
+            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
             let dto = try JSONDecoder().decode(SupabaseProjectDTO.self, from: jsonData)
             _ = try await repo.create(dto)
 
         case "update":
-            let fields = payloadToAnyJSON(payload)
+            let fields = payloadToAnyJSON(sanitizedPayload)
             try await repo.updateFields(entityId, fields: fields)
 
         case "delete":
@@ -372,15 +373,49 @@ final class OutboundProcessor {
         }
     }
 
-    /// Valid Supabase column names for the project_tasks table.
+    /// Valid Supabase column names for each table.
     /// Used to filter out local-only SwiftData properties (e.g. task_index, needs_sync)
     /// that would cause "could not find column" errors if sent to PostgREST.
+    private static let validProjectColumns: Set<String> = [
+        "id", "bubble_id", "company_id", "client_id", "opportunity_id",
+        "title", "status", "address", "latitude", "longitude",
+        "start_date", "end_date", "duration", "notes", "description",
+        "all_day", "team_member_ids", "project_images", "completed_at",
+        "deleted_at", "created_at", "updated_at"
+    ]
+
     private static let validProjectTaskColumns: Set<String> = [
         "id", "bubble_id", "company_id", "project_id", "task_type_id",
         "custom_title", "task_notes", "status", "task_color", "display_order",
         "team_member_ids", "source_line_item_id", "source_estimate_id",
         "start_date", "end_date", "duration", "dependency_overrides",
         "start_time", "end_time", "deleted_at", "created_at", "updated_at"
+    ]
+
+    private static let validUserColumns: Set<String> = [
+        "id", "bubble_id", "company_id", "first_name", "last_name",
+        "email", "phone_number", "role", "profile_image_url",
+        "deleted_at", "created_at", "updated_at"
+    ]
+
+    private static let validClientColumns: Set<String> = [
+        "id", "bubble_id", "company_id", "name", "email",
+        "phone_number", "address", "latitude", "longitude",
+        "notes", "profile_image_url",
+        "deleted_at", "created_at", "updated_at"
+    ]
+
+    private static let validTaskTypeColumns: Set<String> = [
+        "id", "bubble_id", "company_id", "display", "color",
+        "icon", "is_default", "display_order", "dependencies",
+        "default_team_member_ids",
+        "deleted_at", "created_at", "updated_at"
+    ]
+
+    private static let validDeckDesignColumns: Set<String> = [
+        "id", "company_id", "project_id", "title", "drawing_data",
+        "thumbnail_url", "version", "created_by",
+        "deleted_at", "created_at", "updated_at"
     ]
 
     private static let validCompanyColumns: Set<String> = [
@@ -427,16 +462,17 @@ final class OutboundProcessor {
 
     private func handleUser(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
         let repo = UserRepository(companyId: companyId)
+        let sanitizedPayload = payload.filter { Self.validUserColumns.contains($0.key) }
 
         switch operationType {
         case "create":
             // UserRepository doesn't have a generic create — use upsert approach
-            let jsonData = try JSONSerialization.data(withJSONObject: payload)
+            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
             let dto = try JSONDecoder().decode(SupabaseUserDTO.self, from: jsonData)
             try await repo.upsert(dto)
 
         case "update":
-            let fields = payloadToAnyJSON(payload)
+            let fields = payloadToAnyJSON(sanitizedPayload)
             try await repo.updateFields(userId: entityId, fields: fields)
 
         case "delete":
@@ -449,16 +485,17 @@ final class OutboundProcessor {
 
     private func handleClient(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
         let repo = ClientRepository(companyId: companyId)
+        let sanitizedPayload = payload.filter { Self.validClientColumns.contains($0.key) }
 
         switch operationType {
         case "create":
-            let jsonData = try JSONSerialization.data(withJSONObject: payload)
+            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
             let dto = try JSONDecoder().decode(SupabaseClientDTO.self, from: jsonData)
             _ = try await repo.create(dto)
 
         case "update":
             // ClientRepository doesn't have updateFields — use generic table push
-            let fields = payloadToAnyJSON(payload)
+            let fields = payloadToAnyJSON(sanitizedPayload)
             try await genericUpdateFields(table: "clients", entityId: entityId, fields: fields)
 
         case "delete":
@@ -502,16 +539,16 @@ final class OutboundProcessor {
 
     private func handleTaskType(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
         let repo = TaskTypeRepository(companyId: companyId)
+        let sanitizedPayload = payload.filter { Self.validTaskTypeColumns.contains($0.key) }
 
         switch operationType {
         case "create":
-            let jsonData = try JSONSerialization.data(withJSONObject: payload)
+            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
             let dto = try JSONDecoder().decode(SupabaseTaskTypeDTO.self, from: jsonData)
             _ = try await repo.create(dto)
 
         case "update":
-            // TaskTypeRepository doesn't have updateFields — use generic table push
-            let fields = payloadToAnyJSON(payload)
+            let fields = payloadToAnyJSON(sanitizedPayload)
             try await genericUpdateFields(table: "task_types", entityId: entityId, fields: fields)
 
         case "delete":
@@ -524,15 +561,16 @@ final class OutboundProcessor {
 
     private func handleDeckDesign(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
         let repo = DeckDesignRepository(companyId: companyId)
+        let sanitizedPayload = payload.filter { Self.validDeckDesignColumns.contains($0.key) }
 
         switch operationType {
         case "create":
-            let jsonData = try JSONSerialization.data(withJSONObject: payload)
+            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
             let dto = try JSONDecoder().decode(SupabaseDeckDesignDTO.self, from: jsonData)
             _ = try await repo.create(dto)
 
         case "update":
-            let fields = payloadToAnyJSON(payload)
+            let fields = payloadToAnyJSON(sanitizedPayload)
             try await repo.updateFields(entityId, fields: fields)
 
         case "delete":

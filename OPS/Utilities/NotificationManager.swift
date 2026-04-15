@@ -24,6 +24,7 @@ enum NotificationCategory: String {
     case projectCompletion = "PROJECT_COMPLETION_NOTIFICATION"
     case projectAdvance = "PROJECT_ADVANCE_NOTIFICATION"
     case projectPaymentReview = "PROJECT_PAYMENT_REVIEW_NOTIFICATION"
+    case projectTaskReview = "PROJECT_TASK_REVIEW_NOTIFICATION"
     case expenseApproved = "EXPENSE_APPROVED_NOTIFICATION"
     case expenseRejected = "EXPENSE_REJECTED_NOTIFICATION"
     case expenseSubmitted = "EXPENSE_SUBMITTED_NOTIFICATION"
@@ -418,6 +419,52 @@ class NotificationManager: NSObject, ObservableObject {
         }
 
         schedulePaymentReviewNotification(overdueCount: overdueCount)
+        UserDefaults.standard.set(Date(), forKey: lastNotifiedKey)
+    }
+
+    // MARK: - Task Review Notifications
+
+    /// Schedule a local notification for tasks stacking up in the completion review.
+    func scheduleTaskReviewNotification(taskCount: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "Tasks Need Review"
+        content.body = "\(taskCount) task\(taskCount == 1 ? "" : "s") past scheduled completion"
+        content.categoryIdentifier = NotificationCategory.projectTaskReview.rawValue
+        content.sound = .default
+        content.userInfo = ["type": "projectTaskReview"]
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+
+        let request = UNNotificationRequest(
+            identifier: "task-review-\(UUID().uuidString)",
+            content: content,
+            trigger: trigger
+        )
+
+        notificationCenter.add(request) { error in
+            if let error = error {
+                print("[NOTIFICATIONS] Failed to schedule task review notification: \(error)")
+            }
+        }
+    }
+
+    /// Check if a task review notification should be sent based on frequency settings,
+    /// and schedule one if enough time has elapsed since the last notification.
+    func checkAndScheduleTaskReviewNotifications(
+        taskCount: Int,
+        reminderFrequencyDays: Int
+    ) {
+        guard taskCount > 0 else { return }
+
+        let lastNotifiedKey = "lastTaskReviewNotification"
+        let lastNotified = UserDefaults.standard.object(forKey: lastNotifiedKey) as? Date
+
+        if let last = lastNotified {
+            let daysSince = Calendar.current.dateComponents([.day], from: last, to: Date()).day ?? 0
+            guard daysSince >= reminderFrequencyDays else { return }
+        }
+
+        scheduleTaskReviewNotification(taskCount: taskCount)
         UserDefaults.standard.set(Date(), forKey: lastNotifiedKey)
     }
 
@@ -907,6 +954,15 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
                     // Post notification for deep link handling
                     NotificationCenter.default.post(
                         name: Notification.Name("OpenPaymentReview"),
+                        object: nil
+                    )
+                }
+
+            case NotificationCategory.projectTaskReview.rawValue:
+                DispatchQueue.main.async {
+                    // Post notification for deep link handling
+                    NotificationCenter.default.post(
+                        name: Notification.Name("OpenTaskReview"),
                         object: nil
                     )
                 }

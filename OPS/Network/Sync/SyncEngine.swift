@@ -267,6 +267,32 @@ final class SyncEngine {
 
     // MARK: - Sync Triggers
 
+    /// Fetches just the company row and merges it into SwiftData.
+    ///
+    /// Used during login to guarantee the company is in SwiftData before
+    /// downstream features query it. Previously this was done via
+    /// `triggerSync()` (delta) which does NOT include the company entity,
+    /// so the company row only landed after a subsequent full sync and
+    /// features hitting `getCurrentUserCompany()` briefly saw nil.
+    ///
+    /// Intentionally does NOT acquire the `syncInProgress` lock — it's a
+    /// single-row fetch that is safe to run alongside other syncs.
+    func syncCompanyNow() async {
+        guard let modelContext, let inboundProcessor else {
+            print("[SYNC_ENGINE] syncCompanyNow: not configured")
+            return
+        }
+        guard connectivity?.shouldAttemptSync == true else {
+            print("[SYNC_ENGINE] syncCompanyNow: network unavailable — skipping")
+            return
+        }
+        do {
+            try await inboundProcessor.syncCompany(context: modelContext)
+        } catch {
+            print("[SYNC_ENGINE] syncCompanyNow error: \(error)")
+        }
+    }
+
     /// Triggers a full push-then-pull cycle, guarding against concurrent syncs.
     func triggerSync() async {
         guard !syncInProgress else {

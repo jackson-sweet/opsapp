@@ -20,6 +20,8 @@ struct CalendarUserEventDTO: Codable, Identifiable {
     let allDay: Bool
     let notes: String?
     let status: String
+    let address: String?
+    let teamMemberIds: [String]?
     let reviewedBy: String?
     let reviewedAt: Date?
     let createdAt: Date
@@ -37,6 +39,8 @@ struct CalendarUserEventDTO: Codable, Identifiable {
         case allDay = "all_day"
         case notes
         case status
+        case address
+        case teamMemberIds = "team_member_ids"
         case reviewedBy = "reviewed_by"
         case reviewedAt = "reviewed_at"
         case createdAt = "created_at"
@@ -54,7 +58,9 @@ struct CalendarUserEventDTO: Codable, Identifiable {
             startDate: startDate,
             endDate: endDate,
             allDay: allDay,
-            notes: notes
+            notes: notes,
+            address: address,
+            teamMemberIds: teamMemberIds
         )
         event.status = status
         event.reviewedBy = reviewedBy
@@ -79,6 +85,8 @@ struct CreateCalendarUserEventDTO: Codable {
     let allDay: Bool
     let notes: String?
     let status: String
+    var address: String? = nil
+    var teamMemberIds: [String]? = nil
 
     enum CodingKeys: String, CodingKey {
         case userId = "user_id"
@@ -90,6 +98,8 @@ struct CreateCalendarUserEventDTO: Codable {
         case allDay = "all_day"
         case notes
         case status
+        case address
+        case teamMemberIds = "team_member_ids"
     }
 }
 

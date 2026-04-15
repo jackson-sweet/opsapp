@@ -32,6 +32,8 @@ class CalendarUserEvent: Identifiable {
     var allDay: Bool
     var notes: String?
     var status: String          // CalendarUserEventStatus.rawValue
+    var address: String?
+    var teamMemberIds: [String]?
     var reviewedBy: String?
     var reviewedAt: Date?
     var createdAt: Date
@@ -51,7 +53,9 @@ class CalendarUserEvent: Identifiable {
         startDate: Date,
         endDate: Date,
         allDay: Bool = true,
-        notes: String? = nil
+        notes: String? = nil,
+        address: String? = nil,
+        teamMemberIds: [String]? = nil
     ) {
         self.id = id
         self.userId = userId
@@ -62,6 +66,8 @@ class CalendarUserEvent: Identifiable {
         self.endDate = endDate
         self.allDay = allDay
         self.notes = notes
+        self.address = address
+        self.teamMemberIds = teamMemberIds
         self.status = CalendarUserEventStatus.none.rawValue
         self.createdAt = Date()
     }

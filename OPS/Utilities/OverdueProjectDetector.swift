@@ -20,6 +20,7 @@ struct OverdueProjectDetector {
         let calendar = Calendar.current
 
         return projects
+            .filter { $0.deletedAt == nil }
             .filter { $0.status == .completed }
             .filter { project in
                 guard let completedAt = project.completedAt else {

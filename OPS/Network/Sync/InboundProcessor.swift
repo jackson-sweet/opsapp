@@ -282,7 +282,7 @@ final class InboundProcessor {
 
     // MARK: - Company Sync
 
-    private func syncCompany(context: ModelContext) async throws {
+    func syncCompany(context: ModelContext) async throws {
         guard !companyId.isEmpty else {
             print("[InboundProcessor] No companyId — skipping company sync")
             return
@@ -290,6 +290,9 @@ final class InboundProcessor {
 
         let dto = try await companyRepo.fetch(companyId: companyId)
         try mergeCompany(dto: dto, context: context)
+
+        // Refresh subscription status so seat/plan changes from web are reflected immediately
+        await SubscriptionManager.shared.checkSubscriptionStatus()
     }
 
     private func mergeCompany(dto: SupabaseCompanyDTO, context: ModelContext) throws {

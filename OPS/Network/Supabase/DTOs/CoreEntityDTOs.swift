@@ -174,7 +174,7 @@ struct SupabaseSubClientDTO: Codable, Identifiable {
 }
 
 // MARK: - TaskType DTO
-// Note: Supabase table is `task_types_v2`. Column is `display` (not `name`).
+// Note: Supabase table is `task_types`. Column is `display` (not `name`).
 
 struct SupabaseTaskTypeDTO: Codable, Identifiable {
     let id: String
@@ -221,6 +221,7 @@ struct SupabaseProjectDTO: Codable, Identifiable {
     let allDay: Bool?
     let teamMemberIds: [String]?
     let projectImages: [String]?
+    let completedAt: String?
     let deletedAt: String?
 
     enum CodingKeys: String, CodingKey {
@@ -234,6 +235,7 @@ struct SupabaseProjectDTO: Codable, Identifiable {
         case allDay         = "all_day"
         case teamMemberIds  = "team_member_ids"
         case projectImages  = "project_images"
+        case completedAt    = "completed_at"
         case deletedAt      = "deleted_at"
     }
 }

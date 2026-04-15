@@ -1262,6 +1262,7 @@ struct TaskFormSheet: View {
 
     private func saveTask() {
         guard isValid else { return }
+        guard !isSaving else { return }
 
         // Handle draft mode separately
         if mode.isDraft {
@@ -1271,69 +1272,83 @@ struct TaskFormSheet: View {
 
         isSaving = true
 
-        Task {
-            let task: ProjectTask
+        // Snapshot form state synchronously so the async work can't observe
+        // torn writes mid-flight (e.g. user editing notes after tapping Create).
+        let snapshotProjectId = selectedProjectId
+        let snapshotTaskTypeId = selectedTaskTypeId
+        let snapshotTaskType = selectedTaskType
+        let snapshotStatus = selectedStatus
+        let snapshotNotes = taskNotes
+        let snapshotTeamMemberIds = Array(selectedTeamMemberIds)
+        let snapshotStart = startDate
+        let snapshotEnd = endDate
+        let snapshotDependencyOverrides = dependencyOverrides
+        let snapshotCompanyId = dataController.currentUser?.companyId ?? ""
 
+        Task { @MainActor in
+            let task: ProjectTask
+            let isEditMode: Bool
+            let teamMembersChanged: Bool
+
+            // ----- Phase 1: Local SwiftData write (MainActor) -----
             do {
                 if case .edit(let existingTask) = mode {
                     task = existingTask
+                    isEditMode = true
+                    let previousTeamMemberIds = Set(task.getTeamMemberIds())
+                    teamMembersChanged = previousTeamMemberIds != Set(snapshotTeamMemberIds)
                 } else {
-                    let taskColor = selectedTaskType?.color ?? "#59779F"
-                    print("[TASK_CREATE] 🎨 Creating task with color: \(taskColor) from taskType: \(selectedTaskType?.display ?? "nil")")
+                    guard let projectId = snapshotProjectId,
+                          let taskTypeId = snapshotTaskTypeId else {
+                        isSaving = false
+                        errorMessage = "Missing project or task type."
+                        showingError = true
+                        return
+                    }
+                    let taskColor = snapshotTaskType?.color ?? "#59779F"
+                    print("[TASK_CREATE] 🎨 Creating task with color: \(taskColor) from taskType: \(snapshotTaskType?.display ?? "nil")")
 
-                    task = ProjectTask(
+                    let newTask = ProjectTask(
                         id: UUID().uuidString,
-                        projectId: selectedProjectId!,
-                        taskTypeId: selectedTaskTypeId!,
-                        companyId: dataController.currentUser?.companyId ?? "",
-                        status: selectedStatus,
+                        projectId: projectId,
+                        taskTypeId: taskTypeId,
+                        companyId: snapshotCompanyId,
+                        status: snapshotStatus,
                         taskColor: taskColor
                     )
-
-                    print("[TASK_CREATE] ✅ Task created locally with ID: \(task.id), color: \(task.taskColor)")
+                    // Insert into the context BEFORE wiring relationships so
+                    // SwiftData never sees a half-managed model referenced by
+                    // managed objects (a crash vector on iOS 18).
+                    modelContext.insert(newTask)
 
                     if let project = selectedProject {
-                        task.project = project
+                        newTask.project = project
                     }
-
-                    if let taskType = selectedTaskType {
-                        task.taskType = taskType
+                    if let taskType = snapshotTaskType {
+                        newTask.taskType = taskType
                     }
+                    newTask.setTeamMemberIds(snapshotTeamMemberIds)
 
-                    modelContext.insert(task)
+                    task = newTask
+                    isEditMode = false
+                    teamMembersChanged = false
+
+                    print("[TASK_CREATE] ✅ Task inserted locally with ID: \(task.id), color: \(task.taskColor)")
                 }
 
-                // Update task properties (for both create and edit modes)
-                task.status = selectedStatus
-                task.taskNotes = taskNotes.isEmpty ? nil : taskNotes
+                // Common writes (create + edit)
+                task.status = snapshotStatus
+                task.taskNotes = snapshotNotes.isEmpty ? nil : snapshotNotes
 
-                // Save dependency overrides (nil = inherit from task type)
-                if let overrides = dependencyOverrides {
+                if let overrides = snapshotDependencyOverrides {
                     task.setDependencyOverrides(overrides)
                 } else {
                     task.dependencyOverridesJSON = nil
                 }
 
-                // For edit mode, track if team members changed so we can use centralized update
-                let previousTeamMemberIds = Set(task.getTeamMemberIds())
-                let isEditMode: Bool
-                if case .edit = mode {
-                    isEditMode = true
-                } else {
-                    isEditMode = false
-                }
-                let teamMembersChanged = isEditMode && (previousTeamMemberIds != selectedTeamMemberIds)
-
-                // For create mode, set team member IDs directly
-                // For edit mode, we'll use centralized method below if changed
-                if !isEditMode {
-                    task.setTeamMemberIds(Array(selectedTeamMemberIds))
-                }
-
-                // Set scheduling dates directly on the task
-                task.startDate = startDate
-                task.endDate = endDate
-                if let start = startDate, let end = endDate {
+                task.startDate = snapshotStart
+                task.endDate = snapshotEnd
+                if let start = snapshotStart, let end = snapshotEnd {
                     let daysDiff = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
                     task.duration = daysDiff + 1
                 }
@@ -1342,29 +1357,29 @@ struct TaskFormSheet: View {
 
                 try modelContext.save()
                 print("[TASK_FORM] ✅ Task saved locally")
-
-                // For edit mode with team member changes, use centralized method
-                // This handles task + calendar event + project team updates
-                if isEditMode && teamMembersChanged {
-                    print("[TASK_FORM] 👥 Team members changed in edit mode, using centralized update...")
-                    try await dataController.updateTaskTeamMembers(task: task, memberIds: Array(selectedTeamMemberIds))
-                    print("[TASK_FORM] ✅ Team members updated via centralized method")
-                }
-
             } catch {
-                await MainActor.run {
-                    isSaving = false
-                    errorMessage = "Failed to save task locally: \(error.localizedDescription)"
-                    showingError = true
-                }
+                isSaving = false
+                errorMessage = "Failed to save task locally: \(error.localizedDescription)"
+                showingError = true
                 return
             }
 
-            var savedOffline = false
-
+            // ----- Phase 2: Queue sync + cascade project updates (MainActor) -----
+            // All DataController methods below are @MainActor and only perform
+            // local writes + enqueue sync operations via SyncEngine — no network
+            // calls block this path. Previously these were wrapped in a 5s
+            // Task.timeout(), which ran on the global executor and mutated
+            // SwiftData objects off the main actor (crash vector) while also
+            // spuriously flagging successful saves as "offline" (duplicate
+            // task bug when the sync queue replayed the same create op).
             do {
-                try await Task.timeout(seconds: 5) {
-                    print("[TASK_FORM] 🔵 Creating task on Supabase...")
+                if isEditMode && teamMembersChanged {
+                    print("[TASK_FORM] 👥 Team members changed in edit mode, using centralized update...")
+                    try await dataController.updateTaskTeamMembers(task: task, memberIds: snapshotTeamMemberIds)
+                    print("[TASK_FORM] ✅ Team members updated via centralized method")
+                }
+
+                if !isEditMode {
                     let supabaseTaskDTO = SupabaseProjectTaskDTO(
                         id: task.id,
                         bubbleId: nil,
@@ -1382,127 +1397,83 @@ struct TaskFormSheet: View {
                         startDate: task.startDate.map { ISO8601DateFormatter().string(from: $0) },
                         endDate: task.endDate.map { ISO8601DateFormatter().string(from: $0) },
                         duration: task.duration,
-                        dependencyOverrides: dependencyOverrides,
+                        dependencyOverrides: snapshotDependencyOverrides,
                         startTime: nil,
                         endTime: nil,
                         deletedAt: nil
                     )
-                    let createdTaskId = try await dataController.createTask(dto: supabaseTaskDTO)
-                    print("[TASK_FORM] ✅ Task created via DataController with ID: \(createdTaskId)")
-
-                    task.id = createdTaskId
-                    task.needsSync = false
-                    task.lastSyncedAt = Date()
-
-                    try modelContext.save()
-                    print("[TASK_FORM] ✅ Task saved to SwiftData")
-
-                    if let project = task.project {
-                        print("[TASK_FORM] 📅 Project dates automatically computed from tasks...")
-
-                        print("[TASK_FORM] 🔄 Syncing project dates...")
-                        try await dataController.updateProjectDates(
-                            project: project,
-                            startDate: project.startDate,
-                            endDate: project.endDate
-                        )
-                        print("[TASK_FORM] ✅ Project dates update complete")
-
-                        print("[TASK_FORM] 👥 Updating project team members from tasks...")
-                        await MainActor.run {
-                            project.updateTeamMembersFromTasks(in: modelContext)
-                            try? modelContext.save()
-                        }
-
-                        let teamMemberIds = project.getTeamMemberIds()
-                        print("[TASK_FORM] 🔄 Syncing project team members...")
-                        print("[TASK_FORM] Team member IDs: \(teamMemberIds)")
-                        try await dataController.updateProjectTeamMembers(
-                            project: project,
-                            memberIds: teamMemberIds
-                        )
-                        print("[TASK_FORM] ✅ Project team members update complete")
-
-                        // Recalculate task indices for the project
-                        try await dataController.recalculateTaskIndices(for: project)
-                    }
+                    // DataController.createTask is idempotent: it detects the
+                    // task we just inserted and only records the sync op.
+                    _ = try await dataController.createTask(dto: supabaseTaskDTO)
+                    print("[TASK_FORM] ✅ Task create op queued via DataController")
                 }
 
-            } catch is CancellationError {
-                // Timeout error - network is slow or unavailable
-                savedOffline = true
-                print("[TASK_FORM] ⏱️ Network timeout - task saved offline")
-            } catch let error as URLError {
-                // Network-related errors (no connection, timeout, etc.)
-                savedOffline = true
-                print("[TASK_FORM] ❌ Network error - task saved offline: \(error)")
-            } catch {
-                // Other unexpected errors
-                print("[TASK_FORM] ❌ Unexpected error during task creation: \(error)")
-                await MainActor.run {
-                    errorMessage = "Failed to create task: \(error.localizedDescription)"
-                    showingError = true
-                    isSaving = false
-                }
-                return
-            }
-
-            await MainActor.run {
-                if savedOffline {
-                    // Warning haptic feedback for offline save
-                    let generator = UINotificationFeedbackGenerator()
-                    generator.notificationOccurred(.warning)
-
-                    errorMessage = "Saved locally. Will sync when connection improves."
-                    showingError = true
-                    isSaving = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        onSave?(task)
-                        dismiss()
-                    }
-                } else {
-                    // Success haptic feedback
-                    let generator = UINotificationFeedbackGenerator()
-                    generator.notificationOccurred(.success)
-
-                    isSaving = false
-                    onSave?(task)
-
-                    // Track analytics for task creation/edit
-                    if case .create = mode {
-                        let hasSchedule = startDate != nil || endDate != nil
-                        AnalyticsManager.shared.trackTaskCreated(
-                            taskType: selectedTaskType?.display,
-                            hasSchedule: hasSchedule,
-                            teamSize: selectedTeamMemberIds.count
-                        )
-                        AnalyticsService.shared.track(
-                            eventType: .action,
-                            eventName: "task_created",
-                            properties: [
-                                "task_type": selectedTaskType?.display ?? "unknown",
-                                "has_schedule": hasSchedule,
-                                "team_size": selectedTeamMemberIds.count
-                            ]
-                        )
-                    } else if case .edit = mode {
-                        AnalyticsManager.shared.trackTaskEdited(taskId: task.id)
-                    }
-
-                    // Post notification for success message overlay
-                    let taskTypeName = selectedTaskType?.display ?? ""
-                    NotificationCenter.default.post(
-                        name: Notification.Name("TaskCreatedSuccess"),
-                        object: nil,
-                        userInfo: ["taskTypeName": taskTypeName]
+                if let project = task.project {
+                    print("[TASK_FORM] 📅 Syncing project dates...")
+                    try await dataController.updateProjectDates(
+                        project: project,
+                        startDate: project.startDate,
+                        endDate: project.endDate
                     )
 
-                    // Brief delay for graceful dismissal
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        dismiss()
-                    }
+                    print("[TASK_FORM] 👥 Rolling up project team members from tasks...")
+                    project.updateTeamMembersFromTasks(in: modelContext)
+                    try? modelContext.save()
+
+                    let teamMemberIds = project.getTeamMemberIds()
+                    try await dataController.updateProjectTeamMembers(
+                        project: project,
+                        memberIds: teamMemberIds
+                    )
+
+                    try await dataController.recalculateTaskIndices(for: project)
+                    print("[TASK_FORM] ✅ Project cascade updates complete")
                 }
+            } catch {
+                print("[TASK_FORM] ❌ Error during post-save cascade: \(error)")
+                // The local task is already saved, so this is a soft failure.
+                // Surface the message but do not roll back the task insert.
+                errorMessage = "Task saved. Some related updates will retry: \(error.localizedDescription)"
+                showingError = true
+                // Fall through to dismiss path so the user isn't stuck.
             }
+
+            // ----- Phase 3: Success path (MainActor) -----
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
+
+            isSaving = false
+            onSave?(task)
+
+            if case .create = mode {
+                let hasSchedule = snapshotStart != nil || snapshotEnd != nil
+                AnalyticsManager.shared.trackTaskCreated(
+                    taskType: snapshotTaskType?.display,
+                    hasSchedule: hasSchedule,
+                    teamSize: snapshotTeamMemberIds.count
+                )
+                AnalyticsService.shared.track(
+                    eventType: .action,
+                    eventName: "task_created",
+                    properties: [
+                        "task_type": snapshotTaskType?.display ?? "unknown",
+                        "has_schedule": hasSchedule,
+                        "team_size": snapshotTeamMemberIds.count
+                    ]
+                )
+            } else if case .edit = mode {
+                AnalyticsManager.shared.trackTaskEdited(taskId: task.id)
+            }
+
+            let taskTypeName = snapshotTaskType?.display ?? ""
+            NotificationCenter.default.post(
+                name: Notification.Name("TaskCreatedSuccess"),
+                object: nil,
+                userInfo: ["taskTypeName": taskTypeName]
+            )
+
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            dismiss()
         }
     }
 
@@ -1660,21 +1631,3 @@ private struct TemporarySchedulableTask: SchedulableTask {
     let schedulingProjectId: String
 }
 
-extension Task where Failure == Error {
-    static func timeout(seconds: TimeInterval, operation: @escaping @Sendable () async throws -> Success) async throws -> Success {
-        try await withThrowingTaskGroup(of: Success.self) { group in
-            group.addTask {
-                try await operation()
-            }
-
-            group.addTask {
-                try await Task<Never, Never>.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw _Concurrency.CancellationError()
-            }
-
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
-        }
-    }
-}

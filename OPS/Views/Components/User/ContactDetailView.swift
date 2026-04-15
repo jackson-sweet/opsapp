@@ -336,7 +336,7 @@ struct ContactDetailView: View {
                 DeletionSheet(
                     item: client,
                     itemType: "Client",
-                    childItems: client.projects.sorted { $0.title < $1.title },
+                    childItems: client.activeProjects.sorted { $0.title < $1.title },
                     childType: "Project",
                     availableReassignments: allClients,
                     getItemDisplay: { client in
@@ -375,8 +375,8 @@ struct ContactDetailView: View {
                                 getId: { $0.id },
                                 getDisplayText: { $0.name },
                                 getSubtitle: { client in
-                                    client.projects.count > 0
-                                        ? "\(client.projects.count) project\(client.projects.count == 1 ? "" : "s")"
+                                    client.activeProjects.count > 0
+                                        ? "\(client.activeProjects.count) project\(client.activeProjects.count == 1 ? "" : "s")"
                                         : nil
                                 }
                             )
@@ -384,7 +384,7 @@ struct ContactDetailView: View {
                     },
                     onDelete: { client, reassignments, deletions in
                         // Step 1: Handle projects (reassign or delete via Supabase)
-                        let clientProjects = client.projects.sorted { $0.title < $1.title }
+                        let clientProjects = client.activeProjects.sorted { $0.title < $1.title }
                         let availableClients = allClients.filter {
                             $0.id != client.id &&
                             !$0.id.contains("-")
@@ -1299,8 +1299,8 @@ struct ContactDetailView: View {
 
     private var relevantProjects: [Project] {
         if let client = client {
-            // For clients, show their projects
-            return Array(client.projects).sorted {
+            // For clients, show their non-deleted projects
+            return client.activeProjects.sorted {
                 ($0.startDate ?? Date.distantPast) > ($1.startDate ?? Date.distantPast)
             }
         } else if let user = user {

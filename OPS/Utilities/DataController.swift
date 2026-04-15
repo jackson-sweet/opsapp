@@ -3642,7 +3642,7 @@ class DataController: ObservableObject {
             "name": client.name
         ]
         if let email = client.email { changedFields["email"] = email }
-        if let phone = client.phoneNumber { changedFields["phone"] = phone }
+        if let phone = client.phoneNumber { changedFields["phone_number"] = phone }
         if let address = client.address { changedFields["address"] = address }
 
         syncEngine.recordOperation(

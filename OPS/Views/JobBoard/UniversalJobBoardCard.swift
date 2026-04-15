@@ -139,7 +139,7 @@ struct UniversalJobBoardCard: View {
                 DeletionSheet(
                     item: client,
                     itemType: "Client",
-                    childItems: client.projects.sorted { $0.title < $1.title },
+                    childItems: client.activeProjects.sorted { $0.title < $1.title },
                     childType: "Project",
                     availableReassignments: allClientsForDeletion,
                     getItemDisplay: { client in
@@ -178,15 +178,15 @@ struct UniversalJobBoardCard: View {
                                 getId: { $0.id },
                                 getDisplayText: { $0.name },
                                 getSubtitle: { client in
-                                    client.projects.count > 0
-                                        ? "\(client.projects.count) project\(client.projects.count == 1 ? "" : "s")"
+                                    client.activeProjects.count > 0
+                                        ? "\(client.activeProjects.count) project\(client.activeProjects.count == 1 ? "" : "s")"
                                         : nil
                                 }
                             )
                         )
                     },
                     onDelete: { client, reassignments, deletions in
-                        let clientProjects = client.projects.sorted { $0.title < $1.title }
+                        let clientProjects = client.activeProjects.sorted { $0.title < $1.title }
                         let availableClients = allClientsForDeletion.filter {
                             $0.id != client.id &&
                             !$0.id.contains("-")
@@ -1368,7 +1368,7 @@ struct UniversalJobBoardCard: View {
         case .project(let project):
             return project.effectiveClientName
         case .client(let client):
-            let projectCount = client.projects.count
+            let projectCount = client.activeProjects.count
             return "\(projectCount) \(projectCount == 1 ? "project" : "projects")"
         case .task(let task):
             if let project = dataController.getAllProjects().first(where: { $0.id == task.projectId }) {
@@ -1811,11 +1811,14 @@ struct UniversalJobBoardCard: View {
                 case .client(let client):
                     // Safety check: Clients with projects should NEVER be deleted directly
                     // They must go through ClientDeletionSheet to handle project reassignment/deletion
-                    guard client.projects.isEmpty else {
+                    // Only active (non-deleted) projects count here — soft-deleted rows are
+                    // tombstones and shouldn't block a client delete.
+                    let activeProjects = client.activeProjects
+                    guard activeProjects.isEmpty else {
                         await MainActor.run {
                             customAlert = CustomAlertConfig(
                                 title: "CANNOT DELETE CLIENT",
-                                message: "This client has \(client.projects.count) project(s). Use the Delete option from the menu to properly handle projects.",
+                                message: "This client has \(activeProjects.count) project(s). Use the Delete option from the menu to properly handle projects.",
                                 color: OPSStyle.Colors.errorStatus
                             )
                         }
@@ -1946,7 +1949,7 @@ struct ClientProjectBadges: View {
 
     private var statusCounts: [Status: Int] {
         var counts: [Status: Int] = [:]
-        for project in client.projects where project.status != .closed && project.status != .archived {
+        for project in client.activeProjects where project.status != .closed && project.status != .archived {
             counts[project.status, default: 0] += 1
         }
         return counts

@@ -81,14 +81,22 @@ extension Client {
     var displayName: String {
         return name
     }
-    
+
     /// Returns true if the client has any contact information
     var hasContactInfo: Bool {
         return email != nil || phoneNumber != nil
     }
-    
+
     /// Returns a formatted address string
     var formattedAddress: String? {
         return address
+    }
+
+    /// Projects owned by this client that have NOT been soft-deleted.
+    /// Use this anywhere user-facing UI needs to show a client's projects —
+    /// SwiftData relationships do not automatically filter by `deletedAt`,
+    /// so the raw `projects` array still contains tombstoned rows.
+    var activeProjects: [Project] {
+        projects.filter { $0.deletedAt == nil }
     }
 }

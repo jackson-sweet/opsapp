@@ -383,6 +383,23 @@ final class OutboundProcessor {
         "start_time", "end_time", "deleted_at", "created_at", "updated_at"
     ]
 
+    private static let validCompanyColumns: Set<String> = [
+        "id", "bubble_id", "name", "external_id", "description", "website",
+        "phone", "email", "address", "latitude", "longitude",
+        "open_hour", "close_hour", "logo_url", "default_project_color",
+        "industries", "company_size", "company_age", "referral_method",
+        "account_holder_id", "admin_ids", "seated_employee_ids", "max_seats",
+        "subscription_status", "subscription_plan", "subscription_end",
+        "subscription_period", "trial_start_date", "trial_end_date",
+        "seat_grace_start_date", "has_priority_support",
+        "data_setup_purchased", "data_setup_completed", "data_setup_scheduled",
+        "stripe_customer_id", "subscription_ids_json", "company_code",
+        "precise_scheduling_enabled", "skip_weekends_in_auto_schedule",
+        "weather_dependent", "industry", "client_comms_settings",
+        "timezone", "locale",
+        "deleted_at", "created_at", "updated_at"
+    ]
+
     private func handleProjectTask(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
         let repo = TaskRepository(companyId: companyId)
 
@@ -454,26 +471,21 @@ final class OutboundProcessor {
 
     private func handleCompany(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
         let repo = CompanyRepository()
+        let sanitizedPayload = payload.filter { Self.validCompanyColumns.contains($0.key) }
 
         switch operationType {
         case "create":
             // Company creation uses NewCompanyPayload — decode and insert
-            let jsonData = try JSONSerialization.data(withJSONObject: payload)
+            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
             let companyPayload = try JSONDecoder().decode(NewCompanyPayload.self, from: jsonData)
             _ = try await repo.insert(companyPayload)
 
         case "update":
-            // CompanyRepository.update takes [String: String] — convert payload
-            var updates: [String: String] = [:]
-            for (key, value) in payload {
-                if let stringValue = value as? String {
-                    updates[key] = stringValue
-                } else {
-                    // Convert non-string values to their string representations
-                    updates[key] = "\(value)"
-                }
-            }
-            try await repo.update(companyId: entityId, updates: updates)
+            // Use the generic AnyJSON path so array columns (e.g. admin_ids,
+            // seated_employee_ids, industries) serialize as Postgres arrays
+            // instead of being force-stringified into a malformed array literal.
+            let fields = payloadToAnyJSON(sanitizedPayload)
+            try await repo.updateFields(companyId: entityId, fields: fields)
 
         case "delete":
             // CompanyRepository has no softDelete — use generic approach

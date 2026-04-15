@@ -430,7 +430,7 @@ struct ClientDistributionCard: View {
 
     private var topClients: [(client: Client, projectCount: Int)] {
         clients.compactMap { client in
-            let count = client.projects.count
+            let count = client.activeProjects.count
             return count > 0 ? (client, count) : nil
         }
         .sorted { $0.projectCount > $1.projectCount }

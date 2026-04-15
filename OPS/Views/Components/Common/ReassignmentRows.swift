@@ -67,8 +67,8 @@ struct ProjectReassignmentRow: View {
                         getId: { $0.id },
                         getDisplayText: { $0.name },
                         getSubtitle: { client in
-                            client.projects.count > 0
-                                ? "\(client.projects.count) project\(client.projects.count == 1 ? "" : "s")"
+                            client.activeProjects.count > 0
+                                ? "\(client.activeProjects.count) project\(client.activeProjects.count == 1 ? "" : "s")"
                                 : nil
                         }
                     )

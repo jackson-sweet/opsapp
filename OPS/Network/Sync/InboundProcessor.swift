@@ -1112,13 +1112,14 @@ final class InboundProcessor {
                 entityType: .estimate,
                 entityId: id,
                 fields: [
-                    "estimateNumber", "title", "status", "subtotal", "taxRate",
+                    "companyId", "estimateNumber", "title", "status", "subtotal", "taxRate",
                     "taxAmount", "total", "internalNotes", "validUntil",
-                    "version", "clientId", "projectId", "opportunityId"
+                    "version", "clientId", "projectId", "opportunityId", "deletedAt"
                 ],
                 context: context
             )
 
+            if accept.contains("companyId") { existing.companyId = dto.companyId }
             if accept.contains("estimateNumber") { existing.estimateNumber = dto.estimateNumber ?? "" }
             if accept.contains("title") { existing.title = dto.title ?? "" }
             if accept.contains("status") {
@@ -1136,19 +1137,32 @@ final class InboundProcessor {
             if accept.contains("clientId") { existing.clientId = dto.clientId }
             if accept.contains("projectId") { existing.projectId = dto.projectId }
             if accept.contains("opportunityId") { existing.opportunityId = dto.opportunityId }
+            if accept.contains("deletedAt") {
+                existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+            }
 
             existing.updatedAt = SupabaseDate.parse(dto.updatedAt) ?? Date()
             existing.lastSyncedAt = Date()
             existing.needsSync = false
+
+            // Mark for targeted Spotlight update — deletion wins over upsert
+            if existing.deletedAt != nil {
+                spotlightTracker.markDeleted(domain: SpotlightDomain.estimate, id: id)
+            } else {
+                spotlightTracker.markDirty(domain: SpotlightDomain.estimate, id: id)
+            }
         } else {
             let model = dto.toModel()
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)
-        }
 
-        // Mark for targeted Spotlight update on sync completion
-        spotlightTracker.markDirty(domain: SpotlightDomain.estimate, id: id)
+            if model.deletedAt != nil {
+                spotlightTracker.markDeleted(domain: SpotlightDomain.estimate, id: id)
+            } else {
+                spotlightTracker.markDirty(domain: SpotlightDomain.estimate, id: id)
+            }
+        }
 
         try context.save()
     }
@@ -1196,14 +1210,15 @@ final class InboundProcessor {
                 entityType: .invoice,
                 entityId: id,
                 fields: [
-                    "invoiceNumber", "title", "status", "subtotal", "taxRate",
+                    "companyId", "invoiceNumber", "title", "status", "subtotal", "taxRate",
                     "taxAmount", "total", "amountPaid", "balanceDue",
                     "dueDate", "sentAt", "paidAt", "clientId", "projectId",
-                    "estimateId", "opportunityId"
+                    "estimateId", "opportunityId", "deletedAt"
                 ],
                 context: context
             )
 
+            if accept.contains("companyId") { existing.companyId = dto.companyId }
             if accept.contains("invoiceNumber") { existing.invoiceNumber = dto.invoiceNumber ?? "" }
             if accept.contains("title") { existing.title = dto.subject }
             if accept.contains("status") {
@@ -1222,19 +1237,32 @@ final class InboundProcessor {
             if accept.contains("projectId") { existing.projectId = dto.projectId }
             if accept.contains("estimateId") { existing.estimateId = dto.estimateId }
             if accept.contains("opportunityId") { existing.opportunityId = dto.opportunityId }
+            if accept.contains("deletedAt") {
+                existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+            }
 
             existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } ?? Date()
             existing.lastSyncedAt = Date()
             existing.needsSync = false
+
+            // Mark for targeted Spotlight update — deletion wins over upsert
+            if existing.deletedAt != nil {
+                spotlightTracker.markDeleted(domain: SpotlightDomain.invoice, id: id)
+            } else {
+                spotlightTracker.markDirty(domain: SpotlightDomain.invoice, id: id)
+            }
         } else {
             let model = dto.toModel()
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)
-        }
 
-        // Mark for targeted Spotlight update on sync completion
-        spotlightTracker.markDirty(domain: SpotlightDomain.invoice, id: id)
+            if model.deletedAt != nil {
+                spotlightTracker.markDeleted(domain: SpotlightDomain.invoice, id: id)
+            } else {
+                spotlightTracker.markDirty(domain: SpotlightDomain.invoice, id: id)
+            }
+        }
 
         try context.save()
     }

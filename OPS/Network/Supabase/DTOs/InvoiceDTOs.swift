@@ -29,6 +29,7 @@ struct InvoiceDTO: Codable, Identifiable {
     let notes: String?
     let createdAt: String?
     let updatedAt: String?
+    let deletedAt: String?
     let lineItems: [InvoiceLineItemDTO]?
     let payments: [PaymentDTO]?
 
@@ -54,6 +55,7 @@ struct InvoiceDTO: Codable, Identifiable {
         case notes
         case createdAt      = "created_at"
         case updatedAt      = "updated_at"
+        case deletedAt      = "deleted_at"
         case lineItems      = "line_items"
         case payments
     }
@@ -81,6 +83,7 @@ struct InvoiceDTO: Codable, Identifiable {
         if let dd = dueDate { inv.dueDate = SupabaseDate.parse(dd) }
         if let sa = sentAt { inv.sentAt = SupabaseDate.parse(sa) }
         if let pa = paidAt { inv.paidAt = SupabaseDate.parse(pa) }
+        if let da = deletedAt { inv.deletedAt = SupabaseDate.parse(da) }
         return inv
     }
 }

@@ -69,6 +69,9 @@ struct MainTabView: View {
     private let showAccessDeniedObserver = NotificationCenter.default
         .publisher(for: Notification.Name("ShowAccessDenied"))
 
+    private let spotlightReindexObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("SpotlightReindexRequested"))
+
     private let openScheduleObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenSchedule"))
 
@@ -396,6 +399,15 @@ struct MainTabView: View {
         .onReceive(showAccessDeniedObserver) { notification in
             let message = (notification.userInfo?["message"] as? String) ?? "Access denied."
             appState.presentAccessDenied(message: message)
+        }
+
+        // Role change → clear + rebuild Spotlight index under the new scope
+        .onReceive(spotlightReindexObserver) { _ in
+            guard let ctx = dataController.modelContext else { return }
+            Task { @MainActor in
+                await SpotlightIndexManager.shared.clearAll()
+                await SpotlightIndexManager.shared.backfill(context: ctx)
+            }
         }
 
         // Handle opening schedule view from push notification

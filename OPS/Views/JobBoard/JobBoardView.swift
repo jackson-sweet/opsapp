@@ -182,6 +182,11 @@ struct JobBoardView: View {
                         }()
                         AnalyticsManager.shared.trackScreenView(screenName: screenName, screenClass: "JobBoardView")
                     }
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SwitchToClientsSection"))) { _ in
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            selectedSection = .clients
+                        }
+                    }
 
                 }
 

@@ -544,7 +544,7 @@ struct ClientSheet: View {
                         NotificationCenter.default.post(
                             name: Notification.Name("ClientCreatedSuccess"),
                             object: nil,
-                            userInfo: ["clientName": name]
+                            userInfo: ["clientName": name, "clientId": newClient.id]
                         )
 
                         onSave(newClient)

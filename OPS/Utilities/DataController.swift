@@ -865,19 +865,27 @@ class DataController: ObservableObject {
         crashlytics.log("[AUTH] fetchUserFromAPI: syncEngine.reconfigureForCompany")
         syncEngine.reconfigureForCompany()
 
-        // IMPORTANT: Set isPerformingInitialSync BEFORE isAuthenticated
-        // This ensures the loading screen is ready when HomeView first appears
+        // Capture the authentication decision up-front but DO NOT flip
+        // isAuthenticated yet. Flipping it here — mid-chain, while the
+        // method is still running fetchCompanyData and fullSync below —
+        // triggers a SwiftUI cascade that tears down the onboarding
+        // coordinator and spins up MainTabView/HomeView *while* the
+        // InboundProcessor is still writing to the same SwiftData
+        // context. HomeView.onAppear then calls loadTodaysProjects and
+        // reads the context concurrently with the sync pipeline's
+        // writes, which SwiftData is not thread-safe against. The flip
+        // is deferred to the very end of this method, after the full
+        // sync completes and SwiftData is stable.
+        //
+        // The check preserves the original semantics: "has completed
+        // app onboarding OR has a company" — having a company is
+        // definitive proof of completed onboarding for pre-migration
+        // users whose onboarding_completed JSONB was never populated.
         await MainActor.run {
             isPerformingInitialSync = true
         }
-
-        // Set isAuthenticated if user has completed onboarding OR has a company
-        // (having a company is definitive proof of completed onboarding, even if the
-        // onboarding_completed JSONB column was never populated for pre-migration users).
         let hasCompany = !(user.companyId ?? "").isEmpty
-        if user.hasCompletedAppOnboarding || hasCompany {
-            self.isAuthenticated = true
-        }
+        let shouldFlipAuthentication = user.hasCompletedAppOnboarding || hasCompany
 
         // Fetch company data if needed
         if isConnected, let companyId = user.companyId, !companyId.isEmpty {
@@ -965,8 +973,22 @@ class DataController: ObservableObject {
                 syncStatusMessage = ""
             }
         }
+
+        // Deferred authentication flip: now that every branch above has
+        // finished loading data AND cleared isPerformingInitialSync,
+        // SwiftData is stable and safe to read. Flipping isAuthenticated
+        // here triggers ContentView's onChange handler to tear down the
+        // onboarding coordinator and render MainTabView — at which point
+        // HomeView's loadTodaysProjects can safely read the context
+        // without racing the InboundProcessor's writes.
+        if shouldFlipAuthentication {
+            crashlytics.log("[AUTH] fetchUserFromAPI: flipping isAuthenticated (post-sync)")
+            await MainActor.run {
+                self.isAuthenticated = true
+            }
+        }
     }
-    
+
     @MainActor
     func logout() {
         print("[LOGOUT] Starting logout process...")

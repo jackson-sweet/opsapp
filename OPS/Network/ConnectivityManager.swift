@@ -83,6 +83,13 @@ final class ConnectivityManager: ObservableObject {
     private var debounceTimer: Timer?
     private let debounceInterval: TimeInterval = 2.0
 
+    /// Tracks whether we've published at least one state change callback.
+    /// The first transition out of the default `.offline` state skips the
+    /// debounce so downstream consumers (DataController, ContentView) learn
+    /// the app is online immediately on launch instead of lagging by 2s.
+    /// Debounce still applies to subsequent flips to soak up flapping noise.
+    private var hasPublishedInitialState: Bool = false
+
     /// The REST health-check URL derived from SupabaseConfig.
     private let healthCheckURL: URL = {
         // Supabase REST endpoint — a lightweight HEAD to /rest/v1/ returns quickly.
@@ -264,7 +271,28 @@ final class ConnectivityManager: ObservableObject {
         isConnected = (status != .offline)
 
         if changed {
-            // Debounce both callbacks to prevent duplicate sync triggers from rapid flaps
+            // First transition out of the default offline state fires
+            // immediately — downstream consumers need to know the real
+            // connection state at launch, not 2 seconds later. Waiting for
+            // the debounce on the initial publish caused ContentView to
+            // render the offline gate for 2s on every cold launch even
+            // when the device was fully online.
+            if !hasPublishedInitialState {
+                hasPublishedInitialState = true
+                debounceTimer?.invalidate()
+                debounceTimer = nil
+                onStateChanged?(newState)
+                NotificationCenter.default.post(
+                    name: ConnectivityManager.connectivityChangedNotification,
+                    object: self,
+                    userInfo: ["state": newState]
+                )
+                return
+            }
+
+            // Subsequent flaps are debounced to soak up rapid transitions
+            // (WiFi ↔ cellular handoff, tunnel re-establish, etc.) so we
+            // don't spam the sync engine with duplicate triggers.
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.debounceTimer?.invalidate()

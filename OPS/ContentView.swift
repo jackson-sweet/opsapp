@@ -33,6 +33,27 @@ struct ContentView: View {
         UserDefaults.standard.bool(forKey: "onboarding_completed")
     }
 
+    /// `true` when this device has ever had a signed-in user. Used alongside
+    /// `hasCompletedOnboarding` to gate the offline screen — logout clears
+    /// `onboarding_completed`, so a returning user who logs out looks like a
+    /// fresh install to that flag alone. Checking SwiftData for any cached
+    /// User row gives us a stable "has been signed in before" signal that
+    /// survives logout's UserDefaults wipe (the SwiftData wipe runs after
+    /// a 1s delay, and the Firebase session also survives).
+    private var hasAnyCachedUser: Bool {
+        // Prefer the Firebase session as the authoritative signal.
+        if FirebaseAuthService.shared.firebaseUID != nil {
+            return true
+        }
+        // Fall back to SwiftData cache during the logout-wipe race window.
+        let descriptor = FetchDescriptor<User>()
+        if let users = try? dataController.modelContext?.fetch(descriptor),
+           !users.isEmpty {
+            return true
+        }
+        return false
+    }
+
     private var cachedAccountName: String? {
         guard let userId = UserDefaults.standard.string(forKey: "currentUserId"),
               !userId.isEmpty else { return nil }
@@ -58,7 +79,15 @@ struct ContentView: View {
                 // screen flashes for a fraction of a second before the
                 // initial auth+connectivity checks complete.
                 SplashLoadingView()
-            } else if !dataController.isConnected && !dataController.isAuthenticated && !hasCompletedOnboarding {
+            } else if !dataController.isConnected
+                && !dataController.isAuthenticated
+                && !hasCompletedOnboarding
+                && !hasAnyCachedUser {
+                // Offline gate ONLY for fresh installs with no cached account.
+                // Returning users who logged out keep a Firebase session (and
+                // usually a SwiftData cache during the 1s logout-wipe race)
+                // — they should see the landing/login page so they can sign
+                // back in, not get trapped in the offline lockout screen.
                 OfflineGateView(
                     cachedUserName: cachedAccountName,
                     onCachedLogin: loginWithCachedAccount

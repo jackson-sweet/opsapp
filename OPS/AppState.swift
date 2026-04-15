@@ -121,6 +121,43 @@ class AppState: ObservableObject {
     
     // Flag to control whether to show the project details - published so it can be observed
     @Published var showProjectDetails: Bool = false
+
+    // Spotlight / deep-link targets for detail sheets
+    @Published var selectedClientId: String?
+    @Published var showClientDetails: Bool = false
+
+    @Published var selectedInvoiceId: String?
+    @Published var showInvoiceDetails: Bool = false
+
+    @Published var selectedEstimateId: String?
+    @Published var showEstimateDetails: Bool = false
+
+    @Published var accessDeniedMessage: String?
+    @Published var showAccessDenied: Bool = false
+
+    @MainActor
+    func viewClientDetailsById(_ id: String) {
+        selectedClientId = id
+        showClientDetails = true
+    }
+
+    @MainActor
+    func viewInvoiceDetailsById(_ id: String) {
+        selectedInvoiceId = id
+        showInvoiceDetails = true
+    }
+
+    @MainActor
+    func viewEstimateDetailsById(_ id: String) {
+        selectedEstimateId = id
+        showEstimateDetails = true
+    }
+
+    @MainActor
+    func presentAccessDenied(message: String) {
+        accessDeniedMessage = message
+        showAccessDenied = true
+    }
     
     // Function to set a project for viewing details
     func viewProjectDetails(_ project: Project) {

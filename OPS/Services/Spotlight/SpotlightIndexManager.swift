@@ -49,6 +49,16 @@ final class SpotlightIndexManager {
 
     // MARK: - Full Backfill
 
+    /// Per-user backfill flag. Scoped to the current user so a shared device
+    /// (manager logging in on a field worker's phone) triggers a fresh backfill
+    /// for each account. Falls back to a legacy key if no user is available.
+    private var backfillFlagKey: String {
+        let userId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        return userId.isEmpty
+            ? "spotlight.initialBackfillComplete"
+            : "spotlight.initialBackfillComplete.\(userId)"
+    }
+
     /// Index all allowed entities from SwiftData. Called on first launch after
     /// feature deployment, or after major permission/role changes.
     func backfill(context: ModelContext, progress: ((Double, String) -> Void)? = nil) async {
@@ -86,11 +96,11 @@ final class SpotlightIndexManager {
             progress?(current / steps, "Estimates")
         }
 
-        UserDefaults.standard.set(true, forKey: "spotlight.initialBackfillComplete")
+        UserDefaults.standard.set(true, forKey: backfillFlagKey)
     }
 
     var hasCompletedInitialBackfill: Bool {
-        UserDefaults.standard.bool(forKey: "spotlight.initialBackfillComplete")
+        UserDefaults.standard.bool(forKey: backfillFlagKey)
     }
 
     // MARK: - Clear
@@ -105,7 +115,7 @@ final class SpotlightIndexManager {
                 continuation.resume()
             }
         }
-        UserDefaults.standard.removeObject(forKey: "spotlight.initialBackfillComplete")
+        UserDefaults.standard.removeObject(forKey: backfillFlagKey)
         print("[Spotlight] Cleared all indexed items")
     }
 

@@ -923,6 +923,14 @@ class DataController: ObservableObject {
                     isPerformingInitialSync = false
                     syncStatusMessage = ""
                 }
+
+                // Kick off Spotlight initial backfill (no-op if already complete).
+                // Runs async so it doesn't block the login flow.
+                if let ctx = self.modelContext {
+                    Task { @MainActor in
+                        await SpotlightBackfillCoordinator.shared.runIfNeeded(context: ctx)
+                    }
+                }
             } catch {
                 // Continue even if company data fetch fails - don't block authentication
                 // But still try to sync what we can
@@ -948,6 +956,12 @@ class DataController: ObservableObject {
                 await MainActor.run {
                     isPerformingInitialSync = false
                     syncStatusMessage = ""
+                }
+
+                if let ctx = self.modelContext {
+                    Task { @MainActor in
+                        await SpotlightBackfillCoordinator.shared.runIfNeeded(context: ctx)
+                    }
                 }
             }
         } else if !isConnected {

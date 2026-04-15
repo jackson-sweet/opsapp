@@ -3,6 +3,7 @@
 //  OPS
 //
 //  Card for expense list — shows merchant, amount, category, status badge, and date.
+//  Submitted expenses render with reduced opacity and a "SUBMITTED" overlay badge.
 //
 
 import SwiftUI
@@ -12,15 +13,39 @@ struct ExpenseCard: View {
     let categoryName: String?
     let categoryIcon: String?
     let onTap: () -> Void
+    let onEdit: (() -> Void)?
     let onSwipeRight: () -> Void
     let onSwipeLeft: () -> Void
 
     @State private var dragOffset: CGFloat = 0
+    @State private var showingActionSheet = false
+
+    init(
+        expense: ExpenseDTO,
+        categoryName: String?,
+        categoryIcon: String?,
+        onTap: @escaping () -> Void,
+        onEdit: (() -> Void)? = nil,
+        onSwipeRight: @escaping () -> Void,
+        onSwipeLeft: @escaping () -> Void
+    ) {
+        self.expense = expense
+        self.categoryName = categoryName
+        self.categoryIcon = categoryIcon
+        self.onTap = onTap
+        self.onEdit = onEdit
+        self.onSwipeRight = onSwipeRight
+        self.onSwipeLeft = onSwipeLeft
+    }
 
     private var swipeThreshold: CGFloat { 80 }
 
     private var expenseStatus: ExpenseStatus {
         ExpenseStatus(rawValue: expense.status) ?? .draft
+    }
+
+    private var isSubmitted: Bool {
+        expenseStatus == .submitted
     }
 
     private var canSwipeRight: Bool {
@@ -101,45 +126,92 @@ struct ExpenseCard: View {
                                 withAnimation(OPSStyle.Animation.faster) { dragOffset = 0 }
                             }
                         }
-                )
+            )
+        }
+        .confirmationDialog("", isPresented: $showingActionSheet, titleVisibility: .hidden) {
+            Button("View Details") {
+                onTap()
+            }
+            Button("Edit Expense") {
+                if let onEdit = onEdit {
+                    onEdit()
+                } else {
+                    onTap()
+                }
+            }
+            Button("Cancel", role: .cancel) { }
         }
     }
 
     private var cardContent: some View {
-        Button(action: onTap) {
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                // Row 1: merchant name + amount
-                HStack {
-                    Text(expense.merchantName ?? "UNKNOWN MERCHANT")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .lineLimit(1)
-                    Spacer()
-                    Text(expense.amount, format: .currency(code: expense.currency ?? "USD").precision(.fractionLength(2)))
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-
-                // Row 2: category icon + name
-                HStack(spacing: OPSStyle.Layout.spacing1) {
-                    if let icon = categoryIcon, !icon.isEmpty {
-                        Image(systemName: icon)
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
+        Button(action: {
+            if isSubmitted {
+                showingActionSheet = true
+            } else {
+                onTap()
+            }
+        }) {
+            ZStack {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    // Row 1: merchant name + amount
+                    HStack {
+                        Text(expense.merchantName ?? "UNKNOWN MERCHANT")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(expense.amount, format: .currency(code: expense.currency ?? "USD").precision(.fractionLength(2)))
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
                     }
-                    Text(categoryName ?? "UNCATEGORIZED")
-                        .font(OPSStyle.Typography.smallBody)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .lineLimit(1)
-                }
 
-                // Row 3: status badge + date
-                HStack {
-                    statusBadge
-                    Spacer()
-                    Text(formattedDate)
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    // Row 2: category icon + name
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
+                        if let icon = categoryIcon, !icon.isEmpty {
+                            Image(systemName: icon)
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                        Text(categoryName ?? "UNCATEGORIZED")
+                            .font(OPSStyle.Typography.smallBody)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
+                    }
+
+                    // Row 3: status badge + date
+                    HStack {
+                        statusBadge
+                        Spacer()
+                        Text(formattedDate)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+                .opacity(isSubmitted ? 0.5 : 1.0)
+
+                // Submitted overlay badge
+                if isSubmitted {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Image(systemName: "paperplane.fill")
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                Text("SUBMITTED")
+                                    .font(OPSStyle.Typography.microLabel)
+                            }
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
+                            .background(
+                                OPSStyle.Colors.primaryAccent.opacity(0.15)
+                            )
+                            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+                            Spacer()
+                        }
+                        Spacer()
+                    }
                 }
             }
             .padding(OPSStyle.Layout.spacing3)
@@ -147,7 +219,10 @@ struct ExpenseCard: View {
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    .stroke(
+                        isSubmitted ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.cardBorder,
+                        lineWidth: OPSStyle.Layout.Border.standard
+                    )
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -158,7 +233,7 @@ struct ExpenseCard: View {
         return HStack(spacing: 4) {
             Circle()
                 .fill(color)
-                .frame(width: 8, height: 8)
+                .frame(width: OPSStyle.Layout.Indicator.dotMD, height: OPSStyle.Layout.Indicator.dotMD)
             Text(expenseStatus.displayName)
                 .font(OPSStyle.Typography.smallCaption)
                 .fontWeight(.medium)

@@ -239,6 +239,7 @@ class ExpenseRepository {
             .from("expenses")
             .select("*, expense_project_allocations(*), expense_categories(*)")
             .eq("batch_id", value: batchId)
+            .is("deleted_at", value: nil)
             .order("created_at", ascending: false)
             .execute()
             .value
@@ -288,6 +289,18 @@ class ExpenseRepository {
         }
     }
 
+    /// Clear the batch assignment for an expense (set batch_id to null)
+    func clearBatchId(_ expenseId: String) async throws {
+        struct NullBatch: Encodable {
+            let batch_id: String? = nil
+        }
+        try await client
+            .from("expenses")
+            .update(NullBatch())
+            .eq("id", value: expenseId)
+            .execute()
+    }
+
     func fetchBatchesByUser(_ userId: String) async throws -> [ExpenseBatchDTO] {
         try await client
             .from("expense_batches")
@@ -329,14 +342,16 @@ class ExpenseRepository {
     }
 
     func unflagExpense(_ expenseId: String) async throws -> ExpenseDTO {
-        struct UnflagUpdate: Encodable {
-            let flag_comment: String? = nil
-            let flagged_by: String? = nil
-            let flagged_at: String? = nil
-        }
+        // Use AnyJSON.null to explicitly send JSON null values — Swift optionals
+        // set to nil are skipped by Codable's encodeIfPresent, producing an empty
+        // update body that PostgREST rejects with "cannot coerce to single json object".
         return try await client
             .from("expenses")
-            .update(UnflagUpdate())
+            .update([
+                "flag_comment": AnyJSON.null,
+                "flagged_by": AnyJSON.null,
+                "flagged_at": AnyJSON.null
+            ] as [String: AnyJSON])
             .eq("id", value: expenseId)
             .select("*, expense_project_allocations(*), expense_categories(*)")
             .single()
@@ -352,6 +367,7 @@ class ExpenseRepository {
             .eq("submitted_by", value: userId)
             .is("batch_id", value: nil)
             .is("deleted_at", value: nil)
+            .in("status", values: [ExpenseStatus.draft.rawValue])
             .gte("expense_date", value: periodStart)
             .lte("expense_date", value: periodEnd)
             .order("expense_date", ascending: true)

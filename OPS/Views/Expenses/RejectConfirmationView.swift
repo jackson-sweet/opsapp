@@ -125,6 +125,7 @@ struct RejectConfirmationView: View {
             // Unflag button
             Button {
                 let expenseId = expense.id
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 Task {
                     await viewModel.unflagExpense(expenseId)
                 }
@@ -190,6 +191,7 @@ struct RejectConfirmationView: View {
                 // All items unflagged — offer approve all
                 Button {
                     let userId = dataController.currentUser?.id ?? ""
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
                     Task {
                         await viewModel.approveInvoice(batch.id, reviewedBy: userId)
                         dismiss()
@@ -198,7 +200,7 @@ struct RejectConfirmationView: View {
                 } label: {
                     Text("APPROVE ALL")
                         .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.buttonText)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                         .background(OPSStyle.Colors.successStatus)
@@ -210,6 +212,7 @@ struct RejectConfirmationView: View {
                 Button {
                     let userId = dataController.currentUser?.id ?? ""
                     let notes = reviewNotes.isEmpty ? nil : reviewNotes
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
                     Task {
                         await viewModel.sendRevisions(
                             batchId: batch.id,
@@ -224,7 +227,7 @@ struct RejectConfirmationView: View {
                     let count = flaggedExpenses.count
                     Text("SEND \(count) REVISION\(count == 1 ? "" : "S")")
                         .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(.white)
+                        .foregroundColor(OPSStyle.Colors.buttonText)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                         .background(OPSStyle.Colors.errorStatus)

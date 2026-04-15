@@ -249,6 +249,32 @@ class ExpenseViewModel: ObservableObject {
         }
     }
 
+    /// Reset an expense's batch assignment (used when editing a submitted expense)
+    func resetExpenseBatch(_ expenseId: String) async {
+        guard let repo = repository else { return }
+        do {
+            try await repo.clearBatchId(expenseId)
+            // Refresh the expense in our local list
+            let updated = try await repo.fetchOne(expenseId)
+            if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
+                expenses[idx] = updated
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// Fetch expenses for a specific batch from the network (used by admin review)
+    func fetchBatchExpenses(batchId: String) async -> [ExpenseDTO] {
+        guard let repo = repository else { return [] }
+        do {
+            return try await repo.fetchBatchExpenses(batchId)
+        } catch {
+            self.error = "Failed to load batch expenses: \(error.localizedDescription)"
+            return []
+        }
+    }
+
     func deleteExpense(_ expenseId: String) async {
         guard let repo = repository else { return }
         do {
@@ -384,15 +410,23 @@ class ExpenseViewModel: ObservableObject {
 
     // MARK: - Invoice Bundling
 
-    func bundleInvoice(userId: String, userName: String, periodStart: Date, periodEnd: Date) async throws {
+    func bundleInvoice(userId: String, userName: String, periodStart: Date, periodEnd: Date, selectedExpenseIds: Set<String>? = nil) async throws {
         guard let repo = repository else { return }
-        let iso = ISO8601DateFormatter()
-        let startStr = iso.string(from: periodStart)
-        let endStr = iso.string(from: periodEnd)
+        // Use date-only format (YYYY-MM-DD) to match the expense_date column type in Postgres
+        let dateFmt = DateFormatter()
+        dateFmt.dateFormat = "yyyy-MM-dd"
+        let startStr = dateFmt.string(from: periodStart)
+        let endStr = dateFmt.string(from: periodEnd)
 
-        let unbatched = try await repo.fetchUnbatchedExpenses(
+        var unbatched = try await repo.fetchUnbatchedExpenses(
             userId: userId, periodStart: startStr, periodEnd: endStr
         )
+
+        // Filter to only selected expenses if a selection was provided
+        if let selectedIds = selectedExpenseIds {
+            unbatched = unbatched.filter { selectedIds.contains($0.id) }
+        }
+
         guard !unbatched.isEmpty else { return }
 
         let total = unbatched.reduce(0.0) { $0 + $1.amount }
@@ -431,6 +465,11 @@ class ExpenseViewModel: ObservableObject {
             for expense in unbatched {
                 _ = try await repo.approve(expense.id, approvedBy: "auto")
                 await repo.triggerAccountingSync(expenseId: expense.id)
+            }
+        } else {
+            // Mark each expense as "submitted" so the UI reflects the correct state
+            for expense in unbatched {
+                _ = try await repo.updateStatus(expense.id, status: .submitted)
             }
         }
 
@@ -481,6 +520,7 @@ class ExpenseViewModel: ObservableObject {
         }
 
         await loadBatches()
+        await loadExpenses()
     }
 
     // MARK: - Invoice Review

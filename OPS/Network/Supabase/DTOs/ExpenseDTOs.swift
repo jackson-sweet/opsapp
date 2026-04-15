@@ -125,6 +125,8 @@ struct UpdateExpenseDTO: Codable {
     var paymentMethod: String?
     var receiptImageUrl: String?
     var receiptThumbnailUrl: String?
+    var status: String?
+    var batchId: String?
 
     enum CodingKeys: String, CodingKey {
         case categoryId           = "category_id"
@@ -136,6 +138,8 @@ struct UpdateExpenseDTO: Codable {
         case paymentMethod        = "payment_method"
         case receiptImageUrl      = "receipt_image_url"
         case receiptThumbnailUrl  = "receipt_thumbnail_url"
+        case status
+        case batchId              = "batch_id"
     }
 }
 

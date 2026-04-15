@@ -46,7 +46,7 @@ struct CrewInvoiceHistoryView: View {
         ScrollView {
             if crewBatches.isEmpty {
                 VStack(spacing: OPSStyle.Layout.spacing3) {
-                    Spacer().frame(height: 80)
+                    Spacer().frame(height: OPSStyle.Layout.spacing5 * 2.5)
                     Image(systemName: "doc.text")
                         .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -249,7 +249,7 @@ struct CrewInvoiceHistoryView: View {
             .font(OPSStyle.Typography.smallCaption)
             .foregroundColor(color)
             .padding(.horizontal, OPSStyle.Layout.spacing2)
-            .padding(.vertical, 4)
+            .padding(.vertical, OPSStyle.Layout.spacing1)
             .background(color.opacity(0.12))
             .cornerRadius(OPSStyle.Layout.cornerRadius)
     }

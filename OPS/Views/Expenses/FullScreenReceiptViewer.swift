@@ -36,7 +36,7 @@ struct FullScreenReceiptViewer: View {
             switch phase {
             case .empty:
                 ProgressView()
-                    .tint(.white)
+                    .tint(OPSStyle.Colors.loadingSpinner)
 
             case .success(let image):
                 image
@@ -56,7 +56,7 @@ struct FullScreenReceiptViewer: View {
 
             @unknown default:
                 ProgressView()
-                    .tint(.white)
+                    .tint(OPSStyle.Colors.loadingSpinner)
             }
         }
     }
@@ -64,9 +64,9 @@ struct FullScreenReceiptViewer: View {
     // MARK: - Error State
 
     private var errorState: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 40))
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.warningStatus)
 
             Text("Failed to load receipt")
@@ -84,15 +84,15 @@ struct FullScreenReceiptViewer: View {
                 Button {
                     dismiss()
                 } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 36, height: 36)
-                        .background(Color.white.opacity(0.2))
+                    Image(systemName: OPSStyle.Icons.xmark)
+                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .bold))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                        .background(OPSStyle.Colors.overlayMedium)
                         .clipShape(Circle())
                 }
-                .padding(.top, 60)
-                .padding(.trailing, 20)
+                .padding(.top, OPSStyle.Layout.spacing5 + OPSStyle.Layout.spacing4)
+                .padding(.trailing, OPSStyle.Layout.spacing3_5)
             }
             Spacer()
         }

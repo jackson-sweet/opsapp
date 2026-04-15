@@ -356,6 +356,12 @@ struct ExpenseFormSheet: View {
                         Text("ADD RECEIPT PHOTO")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                        if viewModel.settings?.requireReceiptPhoto == true {
+                            Text("REQUIRED FOR SUBMISSION")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.warningStatus)
+                        }
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 120)
@@ -537,6 +543,19 @@ struct ExpenseFormSheet: View {
 
     private var allocationContent: some View {
         VStack(spacing: 0) {
+            if projectAllocations.isEmpty && viewModel.settings?.requireProjectAssignment == true {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
+                    Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    Text("REQUIRED FOR SUBMISSION")
+                        .font(OPSStyle.Typography.smallCaption)
+                }
+                .foregroundColor(OPSStyle.Colors.warningStatus)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
+            }
+
             ForEach(projectAllocations.indices, id: \.self) { index in
                 if index > 0 {
                     Rectangle()
@@ -802,10 +821,6 @@ struct ExpenseFormSheet: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.vertical, OPSStyle.Layout.spacing3)
-        .background(
-            OPSStyle.Colors.cardBackgroundDark
-                .shadow(color: Color.black.opacity(0.3), radius: 8, x: 0, y: -4)
-        )
     }
 
     // MARK: - Approval Banner
@@ -938,7 +953,8 @@ struct ExpenseFormSheet: View {
             errors.append("Date cannot be more than 5 years ago")
         }
 
-        if expenseDate > Date() {
+        let endOfToday = Calendar.current.startOfDay(for: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date())
+        if expenseDate >= endOfToday {
             errors.append("Date cannot be in the future")
         }
 
@@ -965,6 +981,8 @@ struct ExpenseFormSheet: View {
         let ocrConfidence = lastOCRResult != nil ? Double(lastOCRResult!.overallConfidence) : nil
 
         if let exp = editing {
+            // If editing a submitted expense, reset status to draft and clear batch
+            let wasSubmitted = ExpenseStatus(rawValue: exp.status) == .submitted
             let fields = UpdateExpenseDTO(
                 categoryId: selectedCategoryId,
                 merchantName: merchantName.isEmpty ? nil : merchantName,
@@ -972,9 +990,15 @@ struct ExpenseFormSheet: View {
                 amount: amountValue,
                 taxAmount: taxValue,
                 expenseDate: dateString,
-                paymentMethod: paymentMethod.rawValue
+                paymentMethod: paymentMethod.rawValue,
+                status: wasSubmitted ? ExpenseStatus.draft.rawValue : nil
             )
             await viewModel.updateExpense(exp.id, fields: fields)
+
+            // Reset batch assignment separately if the expense was submitted
+            if wasSubmitted {
+                await viewModel.resetExpenseBatch(exp.id)
+            }
 
             // Upload receipt if new image captured (not already uploaded)
             if viewModel.error == nil, !receiptQueue.isEmpty, exp.receiptImageUrl == nil {

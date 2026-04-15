@@ -19,6 +19,13 @@ struct MyExpensesView: View {
     @State private var expandedMonths: Set<String> = []
     @State private var expandedProjects: Set<String> = []
     @State private var isSubmitting = false
+    @State private var showSubmitLoadingOverlay = false
+    @State private var submitLoadingComplete = false
+    @State private var showEditWarning = false
+    @State private var pendingEditExpense: ExpenseDTO? = nil
+    @AppStorage("hideExpenseEditWarning") private var hideEditWarning = false
+    @State private var showSubmitSelectionSheet = false
+    @State private var selectedExpenseIdsForSubmit: Set<String> = []
 
     private static var currentMonthKey: String {
         let fmt = DateFormatter()
@@ -47,7 +54,7 @@ struct MyExpensesView: View {
                     emptyState
                 } else {
                     ScrollView {
-                        VStack(spacing: 20) {
+                        VStack(spacing: OPSStyle.Layout.spacing3_5) {
                             // Search + filter
                             searchAndFilter
 
@@ -61,8 +68,8 @@ struct MyExpensesView: View {
                                 expensesList
                             }
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 16)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.top, OPSStyle.Layout.spacing3)
                         .padding(.bottom, 100)
                     }
                     .refreshable {
@@ -76,11 +83,21 @@ struct MyExpensesView: View {
         }
         .trackScreen("MyExpenses")
         .navigationBarBackButtonHidden(true)
+        .overlay {
+            if showSubmitLoadingOverlay {
+                submitLoadingOverlay
+                    .transition(.opacity)
+                    .zIndex(100)
+            }
+        }
         .sheet(item: $editingExpense) { expense in
             ExpenseFormSheet(viewModel: viewModel, editing: expense)
         }
         .sheet(isPresented: $showNewExpenseSheet) {
             ExpenseFormSheet(viewModel: viewModel)
+        }
+        .sheet(isPresented: $showSubmitSelectionSheet) {
+            submitSelectionSheet
         }
         .alert("Error", isPresented: Binding(
             get: { viewModel.error != nil },
@@ -89,6 +106,28 @@ struct MyExpensesView: View {
             Button("OK") { viewModel.error = nil }
         } message: {
             Text(viewModel.error ?? "")
+        }
+        .confirmationDialog(
+            "Editing will cancel your current submission. You will need to resubmit after making changes.",
+            isPresented: $showEditWarning,
+            titleVisibility: .visible
+        ) {
+            Button("Edit Anyway") {
+                if let expense = pendingEditExpense {
+                    editingExpense = expense
+                    pendingEditExpense = nil
+                }
+            }
+            Button("Edit & Don't Ask Again") {
+                hideEditWarning = true
+                if let expense = pendingEditExpense {
+                    editingExpense = expense
+                    pendingEditExpense = nil
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                pendingEditExpense = nil
+            }
         }
         .task {
             if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
@@ -105,47 +144,328 @@ struct MyExpensesView: View {
 
     // MARK: - Submit for Review
 
-    private var submitForReviewButton: some View {
-        Button {
-            guard !isSubmitting else { return }
-            isSubmitting = true
-            Task {
-                let userId = dataController.currentUser?.id ?? ""
-                let firstName = dataController.currentUser?.firstName ?? ""
-                let lastName = dataController.currentUser?.lastName ?? ""
-                let userName = "\(firstName) \(lastName)".trimmingCharacters(in: .whitespaces)
+    /// All draft expenses eligible for submission
+    private var draftExpenses: [ExpenseDTO] {
+        viewModel.expenses.filter { $0.status == ExpenseStatus.draft.rawValue }
+    }
 
-                let calendar = Calendar.current
-                let now = Date()
-                let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
-                let endOfMonth = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: startOfMonth)!
+    /// Selected expenses that are missing required fields (photo or project)
+    private var selectedExpensesWithIssues: [(expense: ExpenseDTO, missingPhoto: Bool, missingProject: Bool)] {
+        let requirePhoto = viewModel.settings?.requireReceiptPhoto ?? false
+        let requireProject = viewModel.settings?.requireProjectAssignment ?? false
+        guard requirePhoto || requireProject else { return [] }
 
-                try? await viewModel.bundleInvoice(
-                    userId: userId,
-                    userName: userName,
-                    periodStart: startOfMonth,
-                    periodEnd: endOfMonth
-                )
-                isSubmitting = false
+        return draftExpenses
+            .filter { selectedExpenseIdsForSubmit.contains($0.id) }
+            .compactMap { expense in
+                let missingPhoto = requirePhoto && (expense.receiptImageUrl == nil || expense.receiptImageUrl!.isEmpty)
+                let missingProject = requireProject && (expense.allocations == nil || expense.allocations!.isEmpty)
+                guard missingPhoto || missingProject else { return nil }
+                return (expense, missingPhoto, missingProject)
             }
+    }
+
+    private var canSubmitSelected: Bool {
+        !selectedExpenseIdsForSubmit.isEmpty && selectedExpensesWithIssues.isEmpty
+    }
+
+    private var submitForReviewButton: some View {
+        let count = draftExpenses.count
+
+        return Button {
+            guard !isSubmitting, count > 0 else { return }
+            // Pre-select all draft expenses
+            selectedExpenseIdsForSubmit = Set(draftExpenses.map { $0.id })
+            showSubmitSelectionSheet = true
         } label: {
-            HStack(spacing: 8) {
-                if isSubmitting {
-                    ProgressView()
-                        .tint(OPSStyle.Colors.primaryText)
-                }
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: "paperplane.fill")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                Text(isSubmitting ? "SUBMITTING..." : "SUBMIT FOR REVIEW")
+                Text("SUBMIT EXPENSES")
                     .font(OPSStyle.Typography.captionBold)
+                if count > 0 {
+                    Text("(\(count))")
+                        .font(OPSStyle.Typography.captionBold)
+                }
             }
-            .foregroundColor(OPSStyle.Colors.primaryText)
+            .foregroundColor(count > 0 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(OPSStyle.Colors.primaryAccent)
+            .padding(.vertical, OPSStyle.Layout.spacing3)
+            .background(count > 0 ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.2))
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
-        .disabled(isSubmitting)
+        .disabled(isSubmitting || count == 0)
+    }
+
+    private func submitExpensesForReview() {
+        isSubmitting = true
+        showSubmitLoadingOverlay = true
+        submitLoadingComplete = false
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        let startTime = Date()
+
+        Task {
+            let userId = dataController.currentUser?.id ?? ""
+            let firstName = dataController.currentUser?.firstName ?? ""
+            let lastName = dataController.currentUser?.lastName ?? ""
+            let userName = "\(firstName) \(lastName)".trimmingCharacters(in: .whitespaces)
+
+            let calendar = Calendar.current
+            let now = Date()
+            let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
+            let endOfMonth = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: startOfMonth)!
+
+            try? await viewModel.bundleInvoice(
+                userId: userId,
+                userName: userName,
+                periodStart: startOfMonth,
+                periodEnd: endOfMonth,
+                selectedExpenseIds: selectedExpenseIdsForSubmit.isEmpty ? nil : selectedExpenseIdsForSubmit
+            )
+
+            // Ensure minimum 3 seconds of loading display
+            let elapsed = Date().timeIntervalSince(startTime)
+            let remaining = max(0, 3.0 - elapsed)
+            if remaining > 0 {
+                try? await Task.sleep(for: .seconds(remaining))
+            }
+
+            await MainActor.run {
+                withAnimation(OPSStyle.Animation.standard) {
+                    submitLoadingComplete = true
+                }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+
+                // Dismiss overlay after showing success briefly
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    withAnimation(OPSStyle.Animation.standard) {
+                        showSubmitLoadingOverlay = false
+                        isSubmitting = false
+                    }
+                }
+            }
+        }
+    }
+
+    /// Full-screen loading overlay for submit action
+    private var submitLoadingOverlay: some View {
+        ZStack {
+            OPSStyle.Colors.background.opacity(0.95)
+                .ignoresSafeArea()
+
+            VStack(spacing: OPSStyle.Layout.spacing4) {
+                Spacer()
+
+                if submitLoadingComplete {
+                    // Success state
+                    Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xxl))
+                        .foregroundColor(OPSStyle.Colors.successStatus)
+                        .transition(.scale.combined(with: .opacity))
+
+                    Text("EXPENSES SUBMITTED")
+                        .font(OPSStyle.Typography.headingBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .transition(.opacity)
+
+                    Text("Your expenses are now under review.")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .transition(.opacity)
+                } else {
+                    // Loading state
+                    TacticalLoadingBarAnimated()
+                        .frame(width: 120)
+
+                    Text("SUBMITTING EXPENSES")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .tracking(1)
+                }
+
+                Spacer()
+            }
+        }
+        .animation(OPSStyle.Animation.standard, value: submitLoadingComplete)
+    }
+
+    // MARK: - Submit Selection Sheet
+
+    private var submitSelectionSheet: some View {
+        ZStack {
+            OPSStyle.Colors.backgroundGradient
+                .edgesIgnoringSafeArea(.all)
+
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Button { showSubmitSelectionSheet = false } label: {
+                        Text("CANCEL")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                    .frame(height: OPSStyle.Layout.touchTargetMin)
+
+                    Spacer()
+
+                    Text("REVIEW SUBMISSION")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    Spacer()
+
+                    // Select/deselect all
+                    Button {
+                        if selectedExpenseIdsForSubmit.count == draftExpenses.count {
+                            selectedExpenseIdsForSubmit.removeAll()
+                        } else {
+                            selectedExpenseIdsForSubmit = Set(draftExpenses.map { $0.id })
+                        }
+                    } label: {
+                        Text(selectedExpenseIdsForSubmit.count == draftExpenses.count ? "NONE" : "ALL")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                    .frame(height: OPSStyle.Layout.touchTargetMin)
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing3)
+
+                // Count summary
+                HStack {
+                    Text("\(selectedExpenseIdsForSubmit.count) of \(draftExpenses.count) expenses selected")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    Spacer()
+
+                    let selectedTotal = draftExpenses
+                        .filter { selectedExpenseIdsForSubmit.contains($0.id) }
+                        .reduce(0.0) { $0 + $1.amount }
+                    Text(selectedTotal, format: .currency(code: "USD").precision(.fractionLength(2)))
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
+
+                Rectangle()
+                    .fill(OPSStyle.Colors.separator)
+                    .frame(height: 1)
+
+                // Expense list
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(draftExpenses) { expense in
+                            let isSelected = selectedExpenseIdsForSubmit.contains(expense.id)
+
+                            Button {
+                                withAnimation(OPSStyle.Animation.fast) {
+                                    if isSelected {
+                                        selectedExpenseIdsForSubmit.remove(expense.id)
+                                    } else {
+                                        selectedExpenseIdsForSubmit.insert(expense.id)
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: OPSStyle.Layout.spacing3) {
+                                    // Selection indicator
+                                    Image(systemName: isSelected ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.circle)
+                                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                                        .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+
+                                    // Expense details
+                                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                                        Text(expense.merchantName ?? "Unknown")
+                                            .font(OPSStyle.Typography.body)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
+                                            .lineLimit(1)
+
+                                        if let categoryName = expense.category?.name {
+                                            Text(categoryName)
+                                                .font(OPSStyle.Typography.smallCaption)
+                                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                        }
+
+                                        // Missing required fields warning
+                                        if isSelected, let issue = selectedExpensesWithIssues.first(where: { $0.expense.id == expense.id }) {
+                                            HStack(spacing: OPSStyle.Layout.spacing1) {
+                                                Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                                let missing = [
+                                                    issue.missingPhoto ? "receipt photo" : nil,
+                                                    issue.missingProject ? "project" : nil
+                                                ].compactMap { $0 }.joined(separator: ", ")
+                                                Text("Missing \(missing)")
+                                                    .font(OPSStyle.Typography.smallCaption)
+                                            }
+                                            .foregroundColor(OPSStyle.Colors.warningStatus)
+                                        }
+                                    }
+
+                                    Spacer()
+
+                                    Text(expense.amount, format: .currency(code: expense.currency ?? "USD").precision(.fractionLength(2)))
+                                        .font(OPSStyle.Typography.bodyBold)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                }
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                                .opacity(isSelected ? 1.0 : 0.5)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+
+                            Rectangle()
+                                .fill(OPSStyle.Colors.separator)
+                                .frame(height: 1)
+                                .padding(.leading, OPSStyle.Layout.spacing5 + OPSStyle.Layout.spacing4)
+                        }
+                    }
+                    .padding(.bottom, OPSStyle.Layout.spacing4)
+                }
+
+                // Submission blocker message
+                if !selectedExpensesWithIssues.isEmpty {
+                    let issueCount = selectedExpensesWithIssues.count
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        Text("\(issueCount) expense\(issueCount == 1 ? " is" : "s are") missing required fields")
+                            .font(OPSStyle.Typography.smallCaption)
+                    }
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.top, OPSStyle.Layout.spacing2)
+                }
+
+                // Submit button
+                Button {
+                    isSubmitting = true
+                    showSubmitSelectionSheet = false
+                    submitExpensesForReview()
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Image(systemName: "paperplane.fill")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        Text("SUBMIT \(selectedExpenseIdsForSubmit.count) EXPENSE\(selectedExpenseIdsForSubmit.count == 1 ? "" : "S")")
+                            .font(OPSStyle.Typography.bodyBold)
+                    }
+                    .foregroundColor(OPSStyle.Colors.invertedText)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: OPSStyle.Layout.touchTargetStandard)
+                    .background(canSubmitSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryAccent.opacity(0.3))
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                }
+                .disabled(!canSubmitSelected)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.bottom, OPSStyle.Layout.spacing4)
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
     }
 
     // MARK: - Expenses List
@@ -164,8 +484,8 @@ struct MyExpensesView: View {
     private func monthSection(_ monthGroup: ExpenseViewModel.ExpenseMonthGroup) -> some View {
         let isExpanded = expandedMonths.contains(monthGroup.id)
 
-        VStack(spacing: 12) {
-            HStack(spacing: 8) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
                 Text("[ \(monthGroup.monthLabel) ]")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -182,7 +502,7 @@ struct MyExpensesView: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
             .contentShape(Rectangle())
             .onTapGesture {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -218,7 +538,7 @@ struct MyExpensesView: View {
         let projectName = allProjects.first(where: { $0.id == projectGroup.projectId })?.title ?? projectGroup.projectId
 
         VStack(spacing: OPSStyle.Layout.spacing2) {
-            HStack(spacing: 6) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: OPSStyle.Icons.folderFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -235,11 +555,11 @@ struct MyExpensesView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
 
                 Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs - 2, weight: .medium))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.leading, OPSStyle.Layout.spacing2)
-            .padding(.vertical, 4)
+            .padding(.vertical, OPSStyle.Layout.spacing1)
             .contentShape(Rectangle())
             .onTapGesture {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -273,6 +593,15 @@ struct MyExpensesView: View {
             categoryName: expense.category?.name,
             categoryIcon: expense.category?.icon,
             onTap: { editingExpense = expense },
+            onEdit: {
+                let status = ExpenseStatus(rawValue: expense.status) ?? .draft
+                if status == .submitted && !hideEditWarning {
+                    pendingEditExpense = expense
+                    showEditWarning = true
+                } else {
+                    editingExpense = expense
+                }
+            },
             onSwipeRight: {
                 if expense.status == ExpenseStatus.draft.rawValue {
                     Task { await viewModel.submitExpense(expense.id) }
@@ -280,7 +609,8 @@ struct MyExpensesView: View {
             },
             onSwipeLeft: {
                 let status = ExpenseStatus(rawValue: expense.status)
-                guard status != .approved && status != .reimbursed else { return }
+                // Only allow deletion of draft and rejected expenses — not submitted, approved, or reimbursed
+                guard status == .draft || status == .rejected else { return }
                 Task { await viewModel.deleteExpense(expense.id) }
             }
         )
@@ -368,9 +698,12 @@ struct MyExpensesView: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, OPSStyle.Layout.spacing4)
-            Button("NEW EXPENSE") { showNewExpenseSheet = true }
-                .opsPrimaryButtonStyle()
-                .padding(.horizontal, OPSStyle.Layout.spacing4)
+            Button(action: { showNewExpenseSheet = true }) {
+                Text("NEW EXPENSE")
+                    .font(OPSStyle.Typography.bodyBold)
+            }
+            .opsPrimaryButtonStyle()
+            .padding(.horizontal, OPSStyle.Layout.spacing4)
             Spacer()
         }
     }
@@ -385,7 +718,7 @@ struct MyExpensesView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
+        .padding(.vertical, OPSStyle.Layout.spacing5)
     }
 
     // MARK: - FAB

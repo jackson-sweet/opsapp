@@ -2,59 +2,72 @@
 //  ExpensesListView.swift
 //  OPS
 //
-//  Review Expenses hub — segmented picker for Review / History tabs,
-//  settings gear in header, expense settings link at bottom.
+//  Admin expense review hub — period filter, hero summary,
+//  full-width batch rows, tab toggle (Needs Review / History).
 //
 
 import SwiftUI
+import SwiftData
 
 struct ExpensesListView: View {
     var embedded: Bool = false
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel = ExpenseViewModel()
     @EnvironmentObject private var dataController: DataController
-    @State private var selectedTab: ReviewTab = .review
+    @Query private var teamMembers: [TeamMember]
+
+    @State private var selectedTab: ReviewTab = .needsReview
+    @State private var selectedPeriod: String = ""
+    @State private var availablePeriods: [String] = []
     @State private var showExpenseSettings = false
     @State private var showAddExpense = false
+    @State private var hasAppeared = false
 
     enum ReviewTab: String, CaseIterable {
-        case review = "REVIEW"
+        case needsReview = "NEEDS REVIEW"
         case history = "HISTORY"
     }
 
-    // MARK: - Filtered Batches
+    // MARK: - Period Filtering
 
-    private var selectedPeriodBatches: [ExpenseBatchDTO] {
-        viewModel.reviewBatches
+    private var batchesForPeriod: [ExpenseBatchDTO] {
+        viewModel.reviewBatches.filter { batch in
+            guard !selectedPeriod.isEmpty else { return true }
+            return periodKey(for: batch) == selectedPeriod
+        }
     }
 
+    // MARK: - Tab Sections
+
     private var needsReviewBatches: [ExpenseBatchDTO] {
-        selectedPeriodBatches.filter { batchStatus($0).needsReview }
+        batchesForPeriod.filter { batchStatus($0).needsReview }
     }
 
     private var autoApprovedBatches: [ExpenseBatchDTO] {
-        selectedPeriodBatches.filter { batchStatus($0) == .autoApproved }
+        batchesForPeriod.filter { batchStatus($0) == .autoApproved }
     }
 
     private var approvedBatches: [ExpenseBatchDTO] {
-        selectedPeriodBatches.filter {
+        batchesForPeriod.filter {
             let s = batchStatus($0)
             return s == .approved || s == .partiallyApproved
         }
     }
 
     private var rejectedBatches: [ExpenseBatchDTO] {
-        selectedPeriodBatches.filter { batchStatus($0) == .rejected }
+        batchesForPeriod.filter { batchStatus($0) == .rejected }
     }
 
-    // Hero summary
+    // MARK: - Hero Summary
+
     private var totalCrewExpenses: Double {
-        selectedPeriodBatches.compactMap(\.totalAmount).reduce(0, +)
+        batchesForPeriod.compactMap(\.totalAmount).reduce(0, +)
     }
 
     private var approvedTotal: Double {
-        selectedPeriodBatches.compactMap(\.approvedAmount).reduce(0, +)
+        batchesForPeriod.compactMap(\.approvedAmount).reduce(0, +)
     }
 
     private var pendingTotal: Double {
@@ -70,76 +83,25 @@ struct ExpensesListView: View {
 
     var body: some View {
         ZStack {
-            if !embedded {
-                OPSStyle.Colors.backgroundGradient
-                    .edgesIgnoringSafeArea(.all)
-            }
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header with gear button
-                if !embedded {
-                    HStack {
-                        Button(action: { dismiss() }) {
-                            Image(systemName: OPSStyle.Icons.chevronLeft)
-                                .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                        }
-                        .frame(width: 44, height: 44)
-
-                        Spacer()
-
-                        Text("REVIEW EXPENSES")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-
-                        Spacer()
-
-                        Button(action: { showExpenseSettings = true }) {
-                            Image(systemName: "gearshape")
-                                .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                        .frame(width: 44, height: 44)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
-                }
-
-                // Segmented picker
+                if !embedded { header }
+                periodFilterPills
+                heroSummaryCard
                 tabToggle
-                    .padding(.top, 16)
-
-                // Hero summary
-                heroSummaryBar
-                    .padding(.top, 12)
-
-                // Tab content
-                ScrollView {
-                    VStack(spacing: 20) {
-                        switch selectedTab {
-                        case .review:
-                            reviewContent
-                        case .history:
-                            historyContent
-                        }
-
-                        // Expense Settings at bottom
-                        expenseSettingsFooter
-                    }
-                    .padding(.top, 16)
-                    .padding(.bottom, 100)
-                }
+                batchList
             }
 
-            // FAB — add expense
+            // FAB
             VStack {
                 Spacer()
                 HStack {
                     Spacer()
                     addExpenseFAB
-                        .padding(.trailing, 36)
+                        .padding(.trailing, OPSStyle.Layout.spacing3)
+                        .padding(.bottom, OPSStyle.Layout.spacing3)
                 }
-                .padding(.bottom, 140)
             }
         }
         .trackScreen("Expenses")
@@ -156,7 +118,157 @@ struct ExpensesListView: View {
             if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
                 viewModel.setup(companyId: companyId)
                 await viewModel.loadBatchesForReview()
+                computeAvailablePeriods()
+                hasAppeared = true
             }
+        }
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack {
+            Button(action: { dismiss() }) {
+                Image(systemName: OPSStyle.Icons.chevronLeft)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+            .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+
+            Spacer()
+
+            Text("REVIEW EXPENSES")
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+
+            Spacer()
+
+            Button(action: { showExpenseSettings = true }) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+            .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing2_5)
+    }
+
+    // MARK: - Period Filter Pills
+
+    private var periodFilterPills: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                periodPill(label: "ALL", key: "")
+
+                ForEach(availablePeriods, id: \.self) { period in
+                    periodPill(label: periodDisplayLabel(period), key: period)
+                }
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+        }
+    }
+
+    private func periodPill(label: String, key: String) -> some View {
+        let isSelected = selectedPeriod == key
+        return Button {
+            withAnimation(OPSStyle.Animation.fast) {
+                selectedPeriod = key
+            }
+        } label: {
+            Text(label)
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                .padding(.vertical, OPSStyle.Layout.spacing1)
+                .background(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.25) : OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(
+                            isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                            lineWidth: OPSStyle.Layout.Border.standard
+                        )
+                )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Hero Summary Card
+
+    private var heroSummaryCard: some View {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("CREW EXPENSES")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Text(totalCrewExpenses, format: .currency(code: "USD").precision(.fractionLength(0)))
+                        .font(OPSStyle.Typography.title)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .contentTransition(.numericText())
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        legendDot(color: OPSStyle.Colors.successStatus, label: "APPROVED")
+                        legendDot(color: OPSStyle.Colors.primaryAccent, label: "PENDING")
+                    }
+                }
+            }
+
+            // Animated progress bar
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(OPSStyle.Colors.primaryAccent.opacity(0.3))
+                        .frame(height: 6)
+
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(OPSStyle.Colors.successStatus)
+                        .frame(width: geometry.size.width * approvedFraction, height: 6)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: approvedFraction)
+                }
+            }
+            .frame(height: 6)
+
+            HStack {
+                Text(approvedTotal, format: .currency(code: "USD").precision(.fractionLength(0)))
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.successStatus)
+                    .contentTransition(.numericText())
+                Text("approved")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Spacer()
+                Text(pendingTotal, format: .currency(code: "USD").precision(.fractionLength(0)))
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .contentTransition(.numericText())
+                Text("pending")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+    }
+
+    private func legendDot(color: Color, label: String) -> some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(color)
+                .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)
+            Text(label)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
     }
 
@@ -166,6 +278,7 @@ struct ExpensesListView: View {
         HStack(spacing: 0) {
             ForEach(ReviewTab.allCases, id: \.self) { tab in
                 Button {
+                    UISelectionFeedbackGenerator().selectionChanged()
                     withAnimation(OPSStyle.Animation.fast) {
                         selectedTab = tab
                     }
@@ -193,100 +306,48 @@ struct ExpensesListView: View {
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing3)
     }
 
-    // MARK: - Hero Summary Bar
+    // MARK: - Batch List
 
-    private var heroSummaryBar: some View {
-        VStack(spacing: OPSStyle.Layout.spacing2) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("CREW EXPENSES")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Text(totalCrewExpenses, format: .currency(code: "USD").precision(.fractionLength(0)))
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+    private var batchList: some View {
+        ScrollView {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
+                switch selectedTab {
+                case .needsReview:
+                    needsReviewContent
+                case .history:
+                    historyContent
                 }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    HStack(spacing: OPSStyle.Layout.spacing2) {
-                        legendDot(color: OPSStyle.Colors.successStatus, label: "APPROVED")
-                        legendDot(color: OPSStyle.Colors.primaryAccent, label: "PENDING")
-                    }
-                }
+
             }
-
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(OPSStyle.Colors.primaryAccent.opacity(0.3))
-                        .frame(height: 6)
-
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(OPSStyle.Colors.successStatus)
-                        .frame(width: geometry.size.width * approvedFraction, height: 6)
-                }
-            }
-            .frame(height: 6)
-
-            HStack {
-                Text(approvedTotal, format: .currency(code: "USD").precision(.fractionLength(0)))
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.successStatus)
-                Text("approved")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Spacer()
-                Text(pendingTotal, format: .currency(code: "USD").precision(.fractionLength(0)))
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                Text("pending")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-            }
-        }
-        .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .padding(.horizontal, 20)
-    }
-
-    private func legendDot(color: Color, label: String) -> some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(color)
-                .frame(width: 6, height: 6)
-            Text(label)
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            .padding(.top, OPSStyle.Layout.spacing3)
+            .padding(.bottom, 120)
         }
     }
 
-    // MARK: - Review Content
+    // MARK: - Needs Review Content
 
-    private var reviewContent: some View {
-        VStack(spacing: 20) {
+    private var needsReviewContent: some View {
+        Group {
             if needsReviewBatches.isEmpty && autoApprovedBatches.isEmpty {
-                reviewEmptyState
+                emptyState
             } else {
-                if !needsReviewBatches.isEmpty {
-                    batchSection(
-                        title: "\(needsReviewBatches.count) NEED REVIEW",
-                        batches: needsReviewBatches
-                    )
-                }
-
-                if !autoApprovedBatches.isEmpty {
-                    batchSection(
-                        title: "\(autoApprovedBatches.count) AUTO-APPROVED",
-                        batches: autoApprovedBatches
-                    )
+                VStack(spacing: OPSStyle.Layout.spacing3) {
+                    if !needsReviewBatches.isEmpty {
+                        batchSection(
+                            title: "\(needsReviewBatches.count) NEED REVIEW",
+                            batches: needsReviewBatches
+                        )
+                    }
+                    if !autoApprovedBatches.isEmpty {
+                        batchSection(
+                            title: "\(autoApprovedBatches.count) AUTO-APPROVED",
+                            batches: autoApprovedBatches
+                        )
+                    }
                 }
             }
         }
@@ -295,22 +356,17 @@ struct ExpensesListView: View {
     // MARK: - History Content
 
     private var historyContent: some View {
-        VStack(spacing: 20) {
+        Group {
             if approvedBatches.isEmpty && rejectedBatches.isEmpty {
-                reviewEmptyState
+                emptyState
             } else {
-                if !approvedBatches.isEmpty {
-                    batchSection(
-                        title: "APPROVED",
-                        batches: approvedBatches
-                    )
-                }
-
-                if !rejectedBatches.isEmpty {
-                    batchSection(
-                        title: "REJECTED",
-                        batches: rejectedBatches
-                    )
+                VStack(spacing: OPSStyle.Layout.spacing3) {
+                    if !approvedBatches.isEmpty {
+                        batchSection(title: "APPROVED", batches: approvedBatches)
+                    }
+                    if !rejectedBatches.isEmpty {
+                        batchSection(title: "REJECTED", batches: rejectedBatches)
+                    }
                 }
             }
         }
@@ -323,108 +379,95 @@ struct ExpensesListView: View {
             Text(title)
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2),
-                    GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2)
-                ],
-                spacing: OPSStyle.Layout.spacing2
-            ) {
-                ForEach(batches) { batch in
-                    NavigationLink(destination: ExpenseBatchReviewView(batch: batch, viewModel: viewModel)) {
-                        batchCard(batch)
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                ForEach(Array(batches.enumerated()), id: \.element.id) { index, batch in
+                    NavigationLink(destination: ExpenseBatchDetailView(batch: batch, viewModel: viewModel)) {
+                        batchRow(batch)
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(BatchRowButtonStyle())
+                    .opacity(hasAppeared ? 1 : 0)
+                    .offset(y: hasAppeared ? 0 : 8)
+                    .animation(
+                        reduceMotion
+                            ? .none
+                            : OPSStyle.Animation.fast.delay(Double(index) * 0.05),
+                        value: hasAppeared
+                    )
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
-    // MARK: - Batch Card
+    // MARK: - Batch Row
 
-    private func batchCard(_ batch: ExpenseBatchDTO) -> some View {
+    private func batchRow(_ batch: ExpenseBatchDTO) -> some View {
         let status = batchStatus(batch)
         let statusColor = batchStatusColor(status)
+        let crewName = resolveCrewName(batch.submittedBy)
 
-        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-            Text(batch.batchNumber)
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .lineLimit(1)
+        return HStack(spacing: OPSStyle.Layout.spacing2) {
+            // Crew avatar
+            Circle()
+                .fill(OPSStyle.Colors.primaryAccent.opacity(0.3))
+                .frame(width: 32, height: 32)
+                .overlay(
+                    Text(crewInitials(batch.submittedBy))
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                )
 
-            Text(batch.totalAmount ?? 0, format: .currency(code: "USD").precision(.fractionLength(0)))
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+            // Info column
+            VStack(alignment: .leading, spacing: 2) {
+                Text(crewName)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .lineLimit(1)
 
-            if let start = batch.periodStart {
-                Text(formatPeriodShort(start))
+                Text(batch.batchNumber)
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .lineLimit(1)
             }
 
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 6, height: 6)
-                Text(status.displayName)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(statusColor)
+            Spacer()
+
+            // Right column
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(batch.totalAmount ?? 0, format: .currency(code: "USD").precision(.fractionLength(0)))
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)
+                    Text(status.displayName)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(statusColor)
+
+                    Text("\u{00B7}")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                    Text(relativeTime(batch.createdAt))
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
             }
 
-            if let amendment = batch.amendmentNumber, amendment > 0 {
-                Text("AMENDMENT \(amendment)")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.warningStatus)
-            }
+            Image(systemName: OPSStyle.Icons.chevronRight)
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
-    }
-
-    // MARK: - Expense Settings Footer
-
-    private var expenseSettingsFooter: some View {
-        Button {
-            showExpenseSettings = true
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: OPSStyle.Layout.IconSize.md))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .frame(width: 28, alignment: .center)
-
-                Text("Expense Settings")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                Spacer()
-
-                Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-            }
-            .padding(.vertical, 14)
-            .padding(.horizontal, 16)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-        .padding(.horizontal, 20)
-        .padding(.top, 20)
     }
 
     // MARK: - FAB
@@ -434,34 +477,27 @@ struct ExpensesListView: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             showAddExpense = true
         } label: {
-            Image(systemName: "plus")
-                .font(.system(size: OPSStyle.Layout.IconSize.xl, weight: .semibold))
-                .foregroundColor(OPSStyle.Colors.buttonText)
-                .frame(width: 64, height: 64)
-                .background {
-                    Circle().fill(.ultraThinMaterial.opacity(0.8))
-                }
+            Image(systemName: OPSStyle.Icons.plus)
+                .font(.system(size: OPSStyle.Layout.IconSize.lg, weight: .medium))
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .frame(width: OPSStyle.Layout.touchTargetLarge, height: OPSStyle.Layout.touchTargetLarge)
+                .background(OPSStyle.Colors.primaryAccent)
                 .clipShape(Circle())
-                .overlay {
-                    Circle()
-                        .stroke(OPSStyle.Colors.buttonText, lineWidth: OPSStyle.Layout.Border.thick)
-                }
         }
+        .accessibilityLabel("New Expense")
     }
 
     // MARK: - Empty State
 
-    private var reviewEmptyState: some View {
+    private var emptyState: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             Image(systemName: "doc.text.magnifyingglass")
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-            Text("NO INVOICES")
+            Text("NO BATCHES TO REVIEW")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            Text("No expense invoices to show.")
+            Text("Submitted expense batches will appear here.")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .multilineTextAlignment(.center)
@@ -487,19 +523,86 @@ struct ExpensesListView: View {
         }
     }
 
-    private func formatPeriodShort(_ dateString: String) -> String {
+    private func resolveCrewName(_ userId: String?) -> String {
+        guard let userId = userId else { return "UNASSIGNED" }
+        if let member = teamMembers.first(where: { $0.id == userId }) {
+            return member.fullName.uppercased()
+        }
+        return userId.prefix(8).uppercased()
+    }
+
+    private func crewInitials(_ userId: String?) -> String {
+        guard let userId = userId else { return "?" }
+        if let member = teamMembers.first(where: { $0.id == userId }) {
+            return member.initials
+        }
+        return String(userId.prefix(2)).uppercased()
+    }
+
+    private func periodKey(for batch: ExpenseBatchDTO) -> String {
+        guard let start = batch.periodStart else { return "" }
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withFullDate]
         let isoFull = ISO8601DateFormatter()
-
         var date: Date?
-        date = iso.date(from: dateString)
-        if date == nil { date = isoFull.date(from: dateString) }
-        guard let resolved = date else { return dateString }
-
+        date = iso.date(from: start)
+        if date == nil { date = isoFull.date(from: start) }
+        guard let resolved = date else { return "" }
         let fmt = DateFormatter()
-        fmt.dateFormat = "MMM d"
+        fmt.dateFormat = "yyyy-MM"
         return fmt.string(from: resolved)
+    }
+
+    private func computeAvailablePeriods() {
+        var keys = Set<String>()
+        for batch in viewModel.reviewBatches {
+            let key = periodKey(for: batch)
+            if !key.isEmpty { keys.insert(key) }
+        }
+        availablePeriods = keys.sorted(by: >)
+    }
+
+    private func periodDisplayLabel(_ period: String) -> String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM"
+        guard let date = fmt.date(from: period) else { return period.uppercased() }
+        let display = DateFormatter()
+        display.dateFormat = "MMM yyyy"
+        return display.string(from: date).uppercased()
+    }
+
+    private func relativeTime(_ dateString: String) -> String {
+        let isoDate = ISO8601DateFormatter()
+        isoDate.formatOptions = [.withFullDate]
+        let isoFull = ISO8601DateFormatter()
+        var date: Date?
+        date = isoDate.date(from: dateString)
+        if date == nil { date = isoFull.date(from: dateString) }
+        guard let resolved = date else { return "" }
+
+        let interval = Date().timeIntervalSince(resolved)
+        let hours = Int(interval / 3600)
+        if hours < 1 { return "now" }
+        if hours < 24 { return "\(hours)h" }
+        let days = hours / 24
+        if days < 30 { return "\(days)d" }
+        let months = days / 30
+        return "\(months)mo"
+    }
+}
+
+// MARK: - Batch Row Button Style
+
+private struct BatchRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(OPSStyle.Animation.faster, value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, isPressed in
+                if isPressed {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            }
     }
 }
 

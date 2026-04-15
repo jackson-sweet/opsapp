@@ -2,7 +2,8 @@
 //  ExpenseSettingsView.swift
 //  OPS
 //
-//  Company-level expense settings — review frequency, thresholds, and policy toggles.
+//  Company-level expense settings — review frequency, thresholds,
+//  policy toggles, auto-approve rules, and category management.
 //
 
 import SwiftUI
@@ -18,40 +19,53 @@ struct ExpenseSettingsView: View {
     @State private var requireProjectAssignment = false
     @State private var isSaving = false
     @State private var showAddRuleSheet = false
+    @State private var hasChanges = false
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
+        ZStack {
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 SettingsHeader(
                     title: "Expense Settings",
-                    onBackTapped: { dismiss() }
+                    onBackTapped: {
+                        if hasChanges { Task { await saveSettings() } }
+                        dismiss()
+                    }
                 )
-                .padding(.bottom, OPSStyle.Layout.spacing3)
 
                 ScrollView {
-                    VStack(spacing: OPSStyle.Layout.spacing3) {
-                        // REVIEW FREQUENCY
-                        sectionHeader("REVIEW FREQUENCY")
-                        reviewFrequencyCard
+                    VStack(spacing: OPSStyle.Layout.spacing4) {
+
+                        // CATEGORIES (navigation link)
+                        categoriesLink
+                            .padding(.top, OPSStyle.Layout.spacing3)
+
+                        // REVIEW SCHEDULE
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                            sectionHeader("REVIEW SCHEDULE")
+                            reviewFrequencyRow
+                        }
 
                         // THRESHOLDS
-                        sectionHeader("AUTO-APPROVAL THRESHOLDS")
-                        thresholdsCard
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                            sectionHeader("APPROVAL THRESHOLDS")
+                            thresholdsCard
+                        }
+
+                        // SUBMISSION POLICY
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                            sectionHeader("SUBMISSION POLICY")
+                            policyCard
+                        }
 
                         // AUTO-APPROVE RULES
                         autoApproveRulesSection
 
-                        // POLICY TOGGLES
-                        sectionHeader("SUBMISSION POLICY")
-                        policyCard
                     }
-                    .padding(.bottom, 100)
+                    .padding(.bottom, OPSStyle.Layout.spacing5)
                 }
             }
-
-            saveFooter
         }
         .trackScreen("Settings.Expenses")
         .navigationBarBackButtonHidden(true)
@@ -60,6 +74,7 @@ struct ExpenseSettingsView: View {
                 viewModel.setup(companyId: companyId)
                 await viewModel.loadSettings()
                 await viewModel.loadAutoApproveRules()
+                await viewModel.loadCategories()
                 populateFromSettings()
             }
         }
@@ -76,48 +91,83 @@ struct ExpenseSettingsView: View {
         }
     }
 
-    // MARK: - Review Frequency Card
+    // MARK: - Categories Link
 
-    private var reviewFrequencyCard: some View {
-        VStack(spacing: 0) {
-            ForEach(ReviewFrequency.allCases, id: \.self) { freq in
-                Button {
-                    reviewFrequency = freq
-                } label: {
-                    HStack {
-                        Text(freq.displayName)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(
-                                reviewFrequency == freq
-                                ? OPSStyle.Colors.primaryText
-                                : OPSStyle.Colors.secondaryText
-                            )
-                        Spacer()
-                        if reviewFrequency == freq {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+    private var categoriesLink: some View {
+        NavigationLink(destination: ExpenseCategorySettingsView(viewModel: viewModel).environmentObject(dataController)) {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
+                Image(systemName: "tag.fill")
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .frame(width: OPSStyle.Layout.IconSize.lg)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Expense Categories")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    Text("\(viewModel.categories.count) categories")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+
+                Spacer()
+
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(OPSStyle.Layout.spacing3)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+    }
+
+    // MARK: - Review Frequency Row
+
+    private var reviewFrequencyRow: some View {
+        HStack {
+            Text("Review Period")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+
+            Spacer()
+
+            Menu {
+                ForEach(ReviewFrequency.allCases, id: \.self) { freq in
+                    Button {
+                        reviewFrequency = freq
+                        hasChanges = true
+                    } label: {
+                        HStack {
+                            Text(freq.displayName)
+                            if reviewFrequency == freq {
+                                Image(systemName: "checkmark")
+                            }
                         }
                     }
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
-                    .background(
-                        reviewFrequency == freq
-                        ? OPSStyle.Colors.primaryAccent.opacity(0.08)
-                        : Color.clear
-                    )
                 }
-                .buttonStyle(PlainButtonStyle())
-
-                if freq != ReviewFrequency.allCases.last {
-                    Divider().background(OPSStyle.Colors.cardBorder)
+            } label: {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
+                    Text(reviewFrequency.displayName)
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    Image(systemName: OPSStyle.Icons.chevronDown)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
             }
         }
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -127,92 +177,109 @@ struct ExpenseSettingsView: View {
 
     private var thresholdsCard: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                HStack {
-                    Text("AUTO-APPROVE UNDER")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Spacer()
-                    HStack(spacing: 4) {
-                        Text("$")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        TextField("0", text: $autoApproveThreshold)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .multilineTextAlignment(.trailing)
-                            .keyboardType(.decimalPad)
-                            .frame(width: 80)
-                    }
-                }
-                Text("Expenses under this amount are automatically approved.")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
+            // Auto-approve threshold
+            thresholdRow(
+                label: "Auto-Approve Under",
+                hint: "Expenses below this are automatically approved",
+                text: $autoApproveThreshold
+            )
 
             Divider().background(OPSStyle.Colors.cardBorder)
 
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                HStack {
-                    Text("ADMIN APPROVAL OVER")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Spacer()
-                    HStack(spacing: 4) {
-                        Text("$")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        TextField("0", text: $adminApprovalThreshold)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .multilineTextAlignment(.trailing)
-                            .keyboardType(.decimalPad)
-                            .frame(width: 80)
-                    }
-                }
-                Text("Expenses over this amount require admin approval.")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
+            // Admin approval threshold
+            thresholdRow(
+                label: "Admin Approval Over",
+                hint: "Expenses above this require admin sign-off",
+                text: $adminApprovalThreshold
+            )
         }
         .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .padding(.horizontal, OPSStyle.Layout.spacing3)
+    }
+
+    private func thresholdRow(label: String, hint: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            HStack {
+                Text(label)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Spacer()
+                HStack(spacing: OPSStyle.Layout.spacing1) {
+                    Text("$")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    TextField("0", text: text)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .multilineTextAlignment(.trailing)
+                        .keyboardType(.decimalPad)
+                        .frame(width: 80)
+                        .onChange(of: text.wrappedValue) { _, _ in hasChanges = true }
+                }
+            }
+            Text(hint)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
     }
 
     // MARK: - Policy Card
 
     private var policyCard: some View {
         VStack(spacing: 0) {
-            SettingsToggle(
+            policyToggle(
                 title: "Require Receipt Photo",
-                description: "Expenses must include a photo of the receipt.",
+                hint: "Crew must attach a receipt image",
                 isOn: $requireReceiptPhoto
             )
 
             Divider().background(OPSStyle.Colors.cardBorder)
 
-            SettingsToggle(
+            policyToggle(
                 title: "Require Project Assignment",
-                description: "Expenses must be assigned to at least one project.",
+                hint: "Expenses must be assigned to a project",
                 isOn: $requireProjectAssignment
             )
         }
         .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .padding(.horizontal, OPSStyle.Layout.spacing3)
+    }
+
+    private func policyToggle(title: String, hint: String, isOn: Binding<Bool>) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Text(hint)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { isOn.wrappedValue },
+                set: { newValue in
+                    isOn.wrappedValue = newValue
+                    hasChanges = true
+                }
+            ))
+            .labelsHidden()
+            .tint(OPSStyle.Colors.primaryAccent)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
     }
 
     // MARK: - Auto-Approve Rules Section
@@ -221,25 +288,21 @@ struct ExpenseSettingsView: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             sectionHeader("AUTO-APPROVE RULES")
 
-            ForEach(viewModel.autoApproveRules, id: \.id) { rule in
-                autoApproveRuleRow(rule)
-            }
-
-            Button {
-                showAddRuleSheet = true
-            } label: {
-                HStack {
-                    Image(systemName: "plus")
-                    Text("ADD RULE")
+            if viewModel.autoApproveRules.isEmpty {
+                // Empty state
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    Text("No auto-approve rules configured.")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    addRuleButton
                 }
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                )
+                .padding(.vertical, OPSStyle.Layout.spacing3)
+            } else {
+                ForEach(viewModel.autoApproveRules, id: \.id) { rule in
+                    autoApproveRuleRow(rule)
+                }
+                addRuleButton
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -248,16 +311,16 @@ struct ExpenseSettingsView: View {
     private func autoApproveRuleRow(_ rule: AutoApproveRuleDTO) -> some View {
         let pillColor = rule.ruleType == "invoice" ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.warningStatus
         let typeLabel = AutoApproveRuleType(rawValue: rule.ruleType)?.displayName ?? rule.ruleType.uppercased()
-        let memberLabel = rule.appliesToAll ? "ALL MEMBERS" : "\(rule.members?.count ?? 0) MEMBERS"
+        let memberLabel = rule.appliesToAll ? "All members" : "\(rule.members?.count ?? 0) members"
 
-        return HStack(spacing: 12) {
+        return HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Text(typeLabel)
                 .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(.white)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
+                .foregroundColor(OPSStyle.Colors.buttonText)
+                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                .padding(.vertical, OPSStyle.Layout.spacing1)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
                         .fill(pillColor)
                 )
 
@@ -281,14 +344,46 @@ struct ExpenseSettingsView: View {
             .labelsHidden()
             .tint(OPSStyle.Colors.successStatus)
         }
-        .padding(14)
+        .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
+
+    private var addRuleButton: some View {
+        Button {
+            showAddRuleSheet = true
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                Image(systemName: OPSStyle.Icons.plus)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                Text("ADD RULE")
+                    .font(OPSStyle.Typography.captionBold)
+            }
+            .foregroundColor(OPSStyle.Colors.primaryAccent)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Section Header
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(OPSStyle.Typography.captionBold)
+            .foregroundColor(OPSStyle.Colors.secondaryText)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+    }
+
+    // MARK: - Helpers
 
     private func formatRuleCurrency(_ amount: Double) -> String {
         let formatter = NumberFormatter()
@@ -297,47 +392,16 @@ struct ExpenseSettingsView: View {
         return formatter.string(from: NSNumber(value: amount)) ?? "$\(amount)"
     }
 
-    // MARK: - Save Footer
-
-    private var saveFooter: some View {
-        HStack {
-            if isSaving {
-                ProgressView()
-                    .tint(OPSStyle.Colors.primaryAccent)
-                    .frame(maxWidth: .infinity)
-            } else {
-                Button("SAVE SETTINGS") {
-                    Task { await saveSettings() }
-                }
-                .opsPrimaryButtonStyle()
-            }
-        }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.background)
-    }
-
-    // MARK: - Section Header
-
-    private func sectionHeader(_ title: String) -> some View {
-        HStack {
-            Text(title)
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-            Spacer()
-        }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-    }
-
     // MARK: - Data
 
     private func populateFromSettings() {
         guard let s = viewModel.settings else { return }
         reviewFrequency = ReviewFrequency(rawValue: s.reviewFrequency ?? "") ?? .weekly
-        autoApproveThreshold = s.autoApproveThreshold.map { String(format: "%.2f", $0) } ?? ""
-        adminApprovalThreshold = s.adminApprovalThreshold.map { String(format: "%.2f", $0) } ?? ""
+        autoApproveThreshold = s.autoApproveThreshold.map { String(format: "%.0f", $0) } ?? ""
+        adminApprovalThreshold = s.adminApprovalThreshold.map { String(format: "%.0f", $0) } ?? ""
         requireReceiptPhoto = s.requireReceiptPhoto ?? true
         requireProjectAssignment = s.requireProjectAssignment ?? false
+        hasChanges = false
     }
 
     private func saveSettings() async {
@@ -353,5 +417,6 @@ struct ExpenseSettingsView: View {
             requireProjectAssignment: requireProjectAssignment
         )
         await viewModel.saveSettings(dto)
+        hasChanges = false
     }
 }

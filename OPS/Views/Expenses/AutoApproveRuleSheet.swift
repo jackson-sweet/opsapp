@@ -118,7 +118,7 @@ struct AutoApproveRuleSheet: View {
     // MARK: - Threshold Card
 
     private var thresholdCard: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
             Text("$")
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.secondaryText)

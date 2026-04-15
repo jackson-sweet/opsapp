@@ -1004,6 +1004,9 @@ class DataController: ObservableObject {
         // Clear on-disk client avatar cache
         ClientAvatarCache.shared.clearAll()
 
+        // Clear Spotlight index
+        Task { await SpotlightIndexManager.shared.clearAll() }
+
         // First, clear the current user reference to prevent views from accessing it
         self.currentUser = nil
 

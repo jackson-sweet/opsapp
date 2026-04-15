@@ -40,7 +40,7 @@ struct DayCell: View {
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                     .stroke(
-                        isToday ? Color(red: 89/255, green: 119/255, blue: 148/255) : Color.clear,
+                        isToday ? OPSStyle.Colors.primaryAccent : Color.clear,
                         lineWidth: 1
                     )
             )
@@ -71,7 +71,7 @@ struct DayCell: View {
         Group {
             if isToday {
                 // Today gets a subtle tinted background fill
-                Color(red: 89/255, green: 119/255, blue: 148/255).opacity(0.20)
+                OPSStyle.Colors.primaryAccent.opacity(0.20)
             } else if isSelected {
                 // Selected gets transparent background (outline only)
                 Color.clear

@@ -556,6 +556,7 @@ struct UserEventSheet: View {
     // MARK: - Save
 
     private func save() {
+        guard !isSaving else { return }
         guard let userId = dataController.currentUser?.id,
               let companyId = dataController.currentUser?.companyId else { return }
 
@@ -588,7 +589,9 @@ struct UserEventSheet: View {
             startDate: selectedStartDate,
             endDate: selectedEndDate,
             allDay: isAllDay,
-            notes: eventNotes
+            notes: eventNotes,
+            address: nil,
+            teamMemberIds: nil
         )
         event.status = eventStatus
         event.needsSync = true
@@ -613,7 +616,9 @@ struct UserEventSheet: View {
                 endDate: iso.string(from: selectedEndDate),
                 allDay: isAllDay,
                 notes: eventNotes,
-                status: eventStatus
+                status: eventStatus,
+                address: nil,
+                teamMemberIds: nil
             )
             if let saved = try? await repo.create(dto) {
                 await MainActor.run {

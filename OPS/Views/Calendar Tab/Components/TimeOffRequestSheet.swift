@@ -145,7 +145,9 @@ struct TimeOffRequestSheet: View {
             startDate: startDate,
             endDate: endDate,
             allDay: true,
-            notes: reason.isEmpty ? nil : reason
+            notes: reason.isEmpty ? nil : reason,
+            address: nil,
+            teamMemberIds: nil
         )
         event.status = CalendarUserEventStatus.pending.rawValue
         event.needsSync = true
@@ -166,7 +168,9 @@ struct TimeOffRequestSheet: View {
                 endDate: iso.string(from: endDate),
                 allDay: true,
                 notes: reason.isEmpty ? nil : reason,
-                status: "pending"
+                status: "pending",
+                address: nil,
+                teamMemberIds: nil
             )
             if let saved = try? await repo.create(dto) {
                 await MainActor.run {

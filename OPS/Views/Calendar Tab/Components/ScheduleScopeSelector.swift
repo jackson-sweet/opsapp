@@ -54,12 +54,12 @@ struct ScheduleScopeSelector: View {
             .padding(.leading, 6)
             .padding(.trailing, 10)
             .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                     .fill(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBackgroundDark)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(Color.white.opacity(isSelected ? 0 : 0.10), lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .stroke(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
     }

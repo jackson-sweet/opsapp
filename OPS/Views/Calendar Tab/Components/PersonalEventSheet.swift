@@ -17,6 +17,9 @@ struct PersonalEventSheet: View {
     @State private var endDate: Date
     @State private var allDay: Bool = true
     @State private var notes: String = ""
+    @State private var address: String = ""
+    @State private var selectedTeamMemberIds: Set<String> = []
+    @State private var showingTeamPicker: Bool = false
     @State private var isSaving: Bool = false
 
     init(isPresented: Binding<Bool>, viewModel: CalendarViewModel) {
@@ -84,6 +87,54 @@ struct PersonalEventSheet: View {
                         .padding(.horizontal, 20)
                         .padding(.bottom, 20)
 
+                        // Address
+                        sectionLabel("ADDRESS (OPTIONAL)")
+                        TextField("", text: $address)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .placeholder(when: address.isEmpty) {
+                                Text("ADDRESS")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                            .padding(14)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 2)
+                                    .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                            )
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 20)
+
+                        // Team assignment
+                        sectionLabel("TEAM (OPTIONAL)")
+                        Button(action: { showingTeamPicker = true }) {
+                            HStack {
+                                if selectedTeamMemberIds.isEmpty {
+                                    Text("ASSIGN TEAM MEMBERS")
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                } else {
+                                    Text("\(selectedTeamMemberIds.count) MEMBER\(selectedTeamMemberIds.count == 1 ? "" : "S") ASSIGNED")
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+                            .padding(14)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 2)
+                                    .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
+
                         // Notes
                         sectionLabel("NOTES (OPTIONAL)")
                         TextEditor(text: $notes)
@@ -133,6 +184,17 @@ struct PersonalEventSheet: View {
             }
         }
         .colorScheme(.dark)
+        .sheet(isPresented: $showingTeamPicker) {
+            if let companyId = dataController.currentUser?.companyId {
+                let members = dataController.getTeamMembers(companyId: companyId)
+                    .map { TeamMember.fromUser($0) }
+                    .sorted { $0.fullName < $1.fullName }
+                TeamMemberPickerSheet(
+                    selectedTeamMemberIds: $selectedTeamMemberIds,
+                    allTeamMembers: members
+                )
+            }
+        }
     }
 
     private func sectionLabel(_ text: String) -> some View {
@@ -144,11 +206,13 @@ struct PersonalEventSheet: View {
     }
 
     private func save() {
+        guard !isSaving else { return }
         guard let userId = dataController.currentUser?.id,
               let companyId = dataController.currentUser?.companyId else { return }
 
         isSaving = true
 
+        let teamIds = selectedTeamMemberIds.isEmpty ? nil : Array(selectedTeamMemberIds)
         let event = CalendarUserEvent(
             userId: userId,
             companyId: companyId,
@@ -157,7 +221,9 @@ struct PersonalEventSheet: View {
             startDate: startDate,
             endDate: endDate,
             allDay: allDay,
-            notes: notes.isEmpty ? nil : notes
+            notes: notes.isEmpty ? nil : notes,
+            address: address.isEmpty ? nil : address,
+            teamMemberIds: teamIds
         )
         event.needsSync = true
 
@@ -178,7 +244,9 @@ struct PersonalEventSheet: View {
                 endDate: iso.string(from: endDate),
                 allDay: allDay,
                 notes: notes.isEmpty ? nil : notes,
-                status: "none"
+                status: "none",
+                address: address.isEmpty ? nil : address,
+                teamMemberIds: teamIds
             )
             if let saved = try? await repo.create(dto) {
                 await MainActor.run {

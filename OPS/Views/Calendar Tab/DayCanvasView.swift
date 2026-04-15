@@ -507,17 +507,151 @@ struct DayPageView: View {
 
     // MARK: - Empty State
 
+    /// True when the company has zero projects at all (first-time user) and hasn't dismissed the prompt
+    private var hasNoProjectsAtAll: Bool {
+        !UserDefaults.standard.bool(forKey: "hasDismissedScheduleWizardPrompt") &&
+        dataController.getAllProjects().isEmpty
+    }
+
     private var emptyState: some View {
-        VStack(spacing: 24) {
+        Group {
+            if hasNoProjectsAtAll {
+                firstTimeSchedulePrompt
+            } else {
+                // Standard empty state for a day with no tasks
+                VStack(spacing: 24) {
+                    Spacer()
+                    Text(emptyStateMessage)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(Color.white.opacity(0.30))
+                        .tracking(1)
+                        .multilineTextAlignment(.center)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    /// Wizard-styled prompt for users with zero projects
+    private var firstTimeSchedulePrompt: some View {
+        VStack(spacing: 0) {
             Spacer()
-            Text(emptyStateMessage)
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(Color.white.opacity(0.30))
-                .tracking(1)
-                .multilineTextAlignment(.center)
+
+            VStack(alignment: .leading, spacing: 0) {
+                // Icon + Title
+                HStack(spacing: 12) {
+                    Image(systemName: OPSStyle.Icons.schedule)
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                        .foregroundColor(OPSStyle.Colors.wizardAccent)
+
+                    Text("YOUR SCHEDULE")
+                        .font(OPSStyle.Typography.cardTitle)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                .padding(.bottom, 16)
+
+                // Description
+                Text("Projects, tasks, and meetings show up here as you create them. Your crew sees their schedule the moment they open OPS.")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineSpacing(4)
+                    .padding(.bottom, 20)
+
+                // Bullet points
+                VStack(alignment: .leading, spacing: 0) {
+                    wizardBullet(index: 1, text: "Create your first project")
+                    Rectangle()
+                        .fill(OPSStyle.Colors.cardBorderSubtle)
+                        .frame(height: 1)
+                        .padding(.leading, 30)
+                    wizardBullet(index: 2, text: "Add tasks and assign your crew")
+                    Rectangle()
+                        .fill(OPSStyle.Colors.cardBorderSubtle)
+                        .frame(height: 1)
+                        .padding(.leading, 30)
+                    wizardBullet(index: 3, text: "Schedule it on the calendar")
+                }
+                .padding(.bottom, 24)
+
+                // CTA button
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    // Trigger the project lifecycle wizard
+                    if let wizard = WizardRegistry.contextualWizard(for: "project_lifecycle") {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WizardStartRequested"),
+                            object: nil,
+                            userInfo: ["wizardId": wizard.wizardId]
+                        )
+                    } else {
+                        // Fallback: open project creation via FAB
+                        NotificationCenter.default.post(
+                            name: Notification.Name("CreateNewProject"),
+                            object: nil
+                        )
+                    }
+                } label: {
+                    HStack {
+                        Text("CREATE YOUR FIRST PROJECT")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.buttonText)
+
+                        Spacer()
+
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.buttonText)
+                    }
+                    .padding(.horizontal, 20)
+                    .frame(height: OPSStyle.Layout.touchTargetStandard)
+                    .background(OPSStyle.Colors.wizardAccent)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                }
+                .padding(.bottom, 12)
+
+                // Dismiss option
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    UserDefaults.standard.set(true, forKey: "hasDismissedScheduleWizardPrompt")
+                    // Force view refresh
+                    viewModel.objectWillChange.send()
+                } label: {
+                    Text("I'LL EXPLORE ON MY OWN")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: OPSStyle.Layout.touchTargetMin)
+                }
+            }
+            .padding(28)
+            .background(
+                BlurView(style: .systemUltraThinMaterialDark)
+                    .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.7))
+            )
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+            .padding(.horizontal, 20)
+
             Spacer()
         }
-        .frame(maxWidth: .infinity)
+    }
+
+    private func wizardBullet(index: Int, text: String) -> some View {
+        HStack(spacing: 10) {
+            Text("\(index)")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.wizardAccent)
+                .frame(width: 20, alignment: .center)
+
+            Text(text)
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+        }
+        .padding(.vertical, 10)
     }
 
     /// Context-aware empty state: shows team member name when filtering by member

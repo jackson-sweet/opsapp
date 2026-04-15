@@ -31,6 +31,11 @@ struct MainTabView: View {
     @ObservedObject private var inProgressManager = InProgressManager.shared
     @State private var userRole: UserRole? = nil // Track user role changes explicitly
 
+    // member_joined push → AssignMemberRoleSheet state
+    @State private var showAssignRoleSheet = false
+    @State private var assignRoleMemberId: String?
+    @State private var assignRoleWasSeated: Bool = false
+
     // Track inventory access for conditional tab
     private var hasInventoryAccess: Bool {
         permissionStore.can("inventory.view", requiredScope: "all")
@@ -65,7 +70,10 @@ struct MainTabView: View {
 
     private let openSubscriptionObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenSubscription"))
-    
+
+    private let openMemberRoleAssignmentObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenMemberRoleAssignment"))
+
     // Keyboard observers
     private let keyboardWillShow = NotificationCenter.default
         .publisher(for: UIResponder.keyboardWillShowNotification)
@@ -327,6 +335,22 @@ struct MainTabView: View {
             print("[PUSH_NAVIGATION] Opening job board")
             withAnimation(OPSStyle.Animation.fast) {
                 selectedTab = jobBoardTabIndex
+            }
+        }
+
+        // Handle member_joined push → present AssignMemberRoleSheet
+        .onReceive(openMemberRoleAssignmentObserver) { notification in
+            guard let userInfo = notification.userInfo,
+                  let memberId = userInfo["memberId"] as? String else { return }
+            print("[PUSH_NAVIGATION] Opening member role assignment for \(memberId)")
+            assignRoleMemberId = memberId
+            assignRoleWasSeated = (userInfo["wasSeated"] as? Bool) ?? false
+            showAssignRoleSheet = true
+        }
+        .sheet(isPresented: $showAssignRoleSheet) {
+            if let memberId = assignRoleMemberId {
+                AssignMemberRoleSheet(memberId: memberId, wasSeated: assignRoleWasSeated)
+                    .environmentObject(dataController)
             }
         }
 

@@ -1018,8 +1018,14 @@ class DataController: ObservableObject {
         // Clear on-disk client avatar cache
         ClientAvatarCache.shared.clearAll()
 
+        // Capture the current user id BEFORE clearAuthentication() wipes it,
+        // so SpotlightIndexManager.clearAll can remove the user-scoped backfill
+        // flag. Without this, the async Task below would read a nil currentUserId
+        // and clear the legacy unscoped key instead, leaking the user-scoped flag.
+        let spotlightUserId = UserDefaults.standard.string(forKey: "currentUserId")
+
         // Clear Spotlight index
-        Task { await SpotlightIndexManager.shared.clearAll() }
+        Task { await SpotlightIndexManager.shared.clearAll(forUserId: spotlightUserId) }
 
         // First, clear the current user reference to prevent views from accessing it
         self.currentUser = nil

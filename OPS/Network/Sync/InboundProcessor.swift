@@ -1279,7 +1279,7 @@ final class InboundProcessor {
                 predicate: #Predicate { $0.id == liId }
             )
             if let existing = try context.fetch(descriptor).first {
-                // Update fields from server
+                // Update fields from server. `invoiceId` is immutable so not written.
                 let fresh = liDTO.toModel()
                 existing.name = fresh.name
                 existing.itemDescription = fresh.itemDescription
@@ -1287,6 +1287,7 @@ final class InboundProcessor {
                 existing.unit = fresh.unit
                 existing.unitPrice = fresh.unitPrice
                 existing.lineTotal = fresh.lineTotal
+                existing.type = fresh.type
                 existing.displayOrder = fresh.displayOrder
                 existing.parentLineItemId = fresh.parentLineItemId
             } else {

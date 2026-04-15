@@ -52,11 +52,11 @@ final class SpotlightIndexManager {
     /// Per-user backfill flag. Scoped to the current user so a shared device
     /// (manager logging in on a field worker's phone) triggers a fresh backfill
     /// for each account. Falls back to a legacy key if no user is available.
-    private var backfillFlagKey: String {
-        let userId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
-        return userId.isEmpty
+    private func backfillFlagKey(forUserId userId: String? = nil) -> String {
+        let id = userId ?? UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        return id.isEmpty
             ? "spotlight.initialBackfillComplete"
-            : "spotlight.initialBackfillComplete.\(userId)"
+            : "spotlight.initialBackfillComplete.\(id)"
     }
 
     /// Index all allowed entities from SwiftData. Called on first launch after
@@ -96,17 +96,24 @@ final class SpotlightIndexManager {
             progress?(current / steps, "Estimates")
         }
 
-        UserDefaults.standard.set(true, forKey: backfillFlagKey)
+        UserDefaults.standard.set(true, forKey: backfillFlagKey())
     }
 
     var hasCompletedInitialBackfill: Bool {
-        UserDefaults.standard.bool(forKey: backfillFlagKey)
+        UserDefaults.standard.bool(forKey: backfillFlagKey())
     }
 
     // MARK: - Clear
 
     /// Clear the entire OPS Spotlight index. Called on logout and role change.
-    func clearAll() async {
+    ///
+    /// Callers from logout paths must pass `forUserId` explicitly because
+    /// `currentUserId` in `UserDefaults` may already be cleared by the time
+    /// the async body runs (logout tears down auth state synchronously, then
+    /// the `Task { await clearAll() }` wakes up on a later tick). Without an
+    /// explicit user id, the backfill flag for the logged-out user would leak
+    /// in `UserDefaults` indefinitely.
+    func clearAll(forUserId explicitUserId: String? = nil) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             index.deleteSearchableItems(withDomainIdentifiers: SpotlightDomain.all) { error in
                 if let error = error {
@@ -115,7 +122,7 @@ final class SpotlightIndexManager {
                 continuation.resume()
             }
         }
-        UserDefaults.standard.removeObject(forKey: backfillFlagKey)
+        UserDefaults.standard.removeObject(forKey: backfillFlagKey(forUserId: explicitUserId))
         print("[Spotlight] Cleared all indexed items")
     }
 

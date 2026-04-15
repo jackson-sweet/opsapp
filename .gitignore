@@ -5,3 +5,6 @@ build/
 Secrets.xcconfig
 **/Secrets.xcconfig
 *.xcconfig.local
+
+# Git worktrees
+.worktrees/

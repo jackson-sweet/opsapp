@@ -188,20 +188,44 @@ struct TaskRescheduleSheet: View {
     // MARK: - Apply
 
     private func applyReschedule(newStart: Date, newEnd: Date) {
-        task.startDate = newStart
-        task.endDate = newEnd
-        task.needsSync = true
-        onRescheduled()
-        dismiss()
+        // Canonical path — saves context, records SyncOperation, and sends
+        // schedule-change notifications to assigned team members. Direct
+        // mutation was losing every reschedule because neither the save nor
+        // the outbound push was running.
+        Task {
+            do {
+                try await dataController.updateTaskSchedule(
+                    task: task,
+                    startDate: newStart,
+                    endDate: newEnd
+                )
+            } catch {
+                print("[TASK_RESCHEDULE] Failed to apply reschedule: \(error)")
+            }
+            await MainActor.run {
+                onRescheduled()
+                dismiss()
+            }
+        }
     }
 
     private func applyCascade(_ cascadeResult: SchedulingEngine.CascadeResult) {
         let projectTasks = getProjectTasks()
-        for change in cascadeResult.changes {
-            if let affectedTask = projectTasks.first(where: { $0.id == change.id }) {
-                affectedTask.startDate = change.newStartDate
-                affectedTask.endDate = change.newEndDate
-                affectedTask.needsSync = true
+        // Resolve each affected task on the main actor, then dispatch one
+        // canonical update per change. Sequential to preserve ordering and
+        // avoid race conditions on the shared sync queue.
+        Task {
+            for change in cascadeResult.changes {
+                guard let affectedTask = projectTasks.first(where: { $0.id == change.id }) else { continue }
+                do {
+                    try await dataController.updateTaskSchedule(
+                        task: affectedTask,
+                        startDate: change.newStartDate,
+                        endDate: change.newEndDate
+                    )
+                } catch {
+                    print("[TASK_RESCHEDULE] Cascade update failed for \(change.id): \(error)")
+                }
             }
         }
     }

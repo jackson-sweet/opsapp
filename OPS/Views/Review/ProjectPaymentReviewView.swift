@@ -13,6 +13,7 @@ struct ProjectPaymentReviewView: View {
     @Environment(\.wizardStateManager) private var wizardStateManager
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var permissionStore: PermissionStore
+    @EnvironmentObject var dataController: DataController
 
     let overdueProjects: [Project]
     let completedProjects: [Project]
@@ -174,7 +175,7 @@ struct ProjectPaymentReviewView: View {
             Spacer()
 
             VStack(spacing: 2) {
-                Text("COMPLETION REVIEW")
+                Text("CLOSE OUT REVIEW")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 if !activeProjects.isEmpty {
@@ -399,9 +400,16 @@ struct ProjectPaymentReviewView: View {
     }
 
     private func executeClose(_ project: Project) {
-        guard project.modelContext != nil else { return }
-        project.status = .closed
-        project.needsSync = true
+        // Canonical path — saves context, records SyncOperation, and pushes
+        // immediately. Direct mutation was losing every swipe-right because
+        // no outbound operation was being recorded.
+        Task {
+            do {
+                try await dataController.updateProjectStatus(project: project, to: .closed)
+            } catch {
+                print("[PaymentReview] Failed to close project: \(error)")
+            }
+        }
     }
 
     private func executeSendReminder(_ project: Project) {
@@ -410,13 +418,15 @@ struct ProjectPaymentReviewView: View {
     }
 
     private func executeWriteOff(_ project: Project) {
-        guard project.modelContext != nil else { return }
-        project.status = .closed
-        project.needsSync = true
+        Task {
+            do {
+                try await dataController.updateProjectStatus(project: project, to: .closed)
+            } catch {
+                print("[PaymentReview] Failed to close project for write-off: \(error)")
+            }
 
-        // Write off outstanding invoices if user has financial access
-        if hasFinancialAccess {
-            Task {
+            // Write off outstanding invoices if user has financial access
+            if hasFinancialAccess {
                 await writeOffOutstandingInvoices(for: project)
             }
         }

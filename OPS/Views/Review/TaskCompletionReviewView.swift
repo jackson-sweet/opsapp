@@ -14,6 +14,7 @@ struct TaskCompletionReviewView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.wizardStateManager) private var wizardStateManager
     @EnvironmentObject var permissionStore: PermissionStore
+    @EnvironmentObject var dataController: DataController
 
     let tasks: [ProjectTask]
 
@@ -118,8 +119,15 @@ struct TaskCompletionReviewView: View {
             }
             Button("Cancel Task", role: .destructive) {
                 if let task = pendingCancelTask {
-                    task.status = .cancelled
-                    task.needsSync = true
+                    // Canonical path — updates locally, saves context, records
+                    // SyncOperation, and triggers immediate push if online.
+                    Task {
+                        do {
+                            try await dataController.updateTaskStatus(task: task, to: .cancelled)
+                        } catch {
+                            print("[TASK_REVIEW] Failed to cancel task: \(error)")
+                        }
+                    }
                 }
                 reviewedCount += 1
                 pendingCancelTask = nil
@@ -334,9 +342,17 @@ struct TaskCompletionReviewView: View {
 
         switch direction {
         case .right:
-            // Complete
-            task.status = .completed
-            task.needsSync = true
+            // Complete — go through DataController so the change is saved,
+            // a SyncOperation is recorded, and the push fires immediately.
+            // Direct mutation was losing every swipe because autosave didn't
+            // fire before view dismissal and no outbound push was recorded.
+            Task {
+                do {
+                    try await dataController.updateTaskStatus(task: task, to: .completed)
+                } catch {
+                    print("[TASK_REVIEW] Failed to complete task: \(error)")
+                }
+            }
             NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedRight"), object: nil)
         case .left:
             // Skip — no changes

@@ -32,8 +32,7 @@ struct UnscheduledTaskReviewView: View {
     @State private var showAllDone: Bool = false
     @State private var celebrationScale: CGFloat = 0
     @State private var celebrationOpacity: Double = 0
-
-    @Query private var allTeamMembers: [TeamMember]
+    @State private var fetchedTeamMembers: [TeamMember] = []
 
     /// Tracks why the crew picker was opened
     private enum CrewPickerSource {
@@ -43,7 +42,7 @@ struct UnscheduledTaskReviewView: View {
 
     private var activeTeamMembers: [TeamMember] {
         var seen = Set<String>()
-        return allTeamMembers.filter { member in
+        return fetchedTeamMembers.filter { member in
             guard !seen.contains(member.id) else { return false }
             seen.insert(member.id)
             return true
@@ -150,8 +149,14 @@ struct UnscheduledTaskReviewView: View {
             }
             Button("Cancel Task", role: .destructive) {
                 if let task = pendingCancelTask {
-                    task.status = .cancelled
-                    task.needsSync = true
+                    // Canonical path — saves, records SyncOperation, pushes.
+                    Task {
+                        do {
+                            try await dataController.updateTaskStatus(task: task, to: .cancelled)
+                        } catch {
+                            print("[UNSCHEDULED_REVIEW] Failed to cancel task: \(error)")
+                        }
+                    }
                 }
                 reviewedCount += 1
                 pendingCancelTask = nil
@@ -159,6 +164,14 @@ struct UnscheduledTaskReviewView: View {
             }
         } message: {
             Text("This will cancel the task. You can reactivate it later if needed.")
+        }
+        .onAppear {
+            // Fetch team members from User objects (same pattern as TaskFormSheet)
+            if let companyId = dataController.currentUser?.companyId {
+                fetchedTeamMembers = dataController.getTeamMembers(companyId: companyId)
+                    .map { TeamMember.fromUser($0) }
+                    .sorted { $0.fullName < $1.fullName }
+            }
         }
     }
 
@@ -427,22 +440,24 @@ struct UnscheduledTaskReviewView: View {
             anchorDate: Date()
         )
 
-        if let placement = plan.placements.first {
-            task.startDate = placement.startDate
-            task.endDate = placement.endDate
-            task.needsSync = true
+        guard let placement = plan.placements.first else { return }
 
-            dataController.syncEngine.recordOperation(
-                entityType: .projectTask,
-                entityId: task.id,
-                operationType: "update",
-                changedFields: [
-                    "start_date": ISO8601DateFormatter().string(from: placement.startDate),
-                    "end_date": ISO8601DateFormatter().string(from: placement.endDate)
-                ]
-            )
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        // Canonical path — saves context, computes duration, records the
+        // SyncOperation, and fires schedule-change notifications to team
+        // members. Previous inline write skipped duration, the save, and
+        // the notifications.
+        Task {
+            do {
+                try await dataController.updateTaskSchedule(
+                    task: task,
+                    startDate: placement.startDate,
+                    endDate: placement.endDate
+                )
+            } catch {
+                print("[UNSCHEDULED_REVIEW] Failed to auto-schedule task: \(error)")
+            }
         }
     }
 

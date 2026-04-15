@@ -13,15 +13,20 @@ struct JobBoardKanbanView: View {
     @EnvironmentObject private var dataController: DataController
     @Query private var allProjects: [Project]
     @State private var expandedStatus: Status? = nil
+    var assignedToMe: Bool = false
 
     /// Active statuses only (no Closed, Archived)
     private let displayStatuses: [Status] = [
         .rfq, .estimated, .accepted, .inProgress, .completed
     ]
 
-    /// Projects excluding Closed and Archived
+    /// Projects excluding Closed, Archived, and soft-deleted
     private var activeProjects: [Project] {
-        allProjects.filter { $0.status != .closed && $0.status != .archived }
+        var filtered = allProjects.filter { $0.status != .closed && $0.status != .archived && $0.deletedAt == nil }
+        if assignedToMe, let userId = dataController.currentUser?.id {
+            filtered = filtered.filter { $0.getTeamMemberIds().contains(userId) }
+        }
+        return filtered
     }
 
     private var totalCount: Int { max(activeProjects.count, 1) }

@@ -16,6 +16,7 @@ enum ProjectDetailTab: String, CaseIterable {
     case activity = "ACTIVITY"
     case details = "DETAILS"
     case expenses = "EXPENSES"
+    case deck = "DECK"
 }
 
 @MainActor
@@ -301,8 +302,8 @@ class ProjectDetailsViewModel: ObservableObject {
         let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
         impactFeedback.impactOccurred()
 
-        Task {
-            let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled }
+        Task { @MainActor in
+            let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled && $0.deletedAt == nil }
             for task in incompleteTasks {
                 do {
                     try await dataController?.updateTaskStatus(task: task, to: .completed)
@@ -310,10 +311,15 @@ class ProjectDetailsViewModel: ObservableObject {
                     print("[PROJECT_COMPLETE] Failed to complete task \(task.id): \(error)")
                 }
             }
-            try? await dataController?.updateProjectStatus(
-                project: project,
-                to: .completed
-            )
+            do {
+                try await dataController?.updateProjectStatus(
+                    project: project,
+                    to: .completed
+                )
+                print("[PROJECT_COMPLETE] ✅ Project marked complete: \(project.title)")
+            } catch {
+                print("[PROJECT_COMPLETE] ❌ Failed to mark project complete: \(error)")
+            }
         }
     }
 
@@ -321,12 +327,17 @@ class ProjectDetailsViewModel: ObservableObject {
         let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
         impactFeedback.impactOccurred()
 
-        Task {
+        Task { @MainActor in
             try? await Task.sleep(nanoseconds: 100_000_000)
-            try? await dataController?.updateProjectStatus(
-                project: project,
-                to: .closed
-            )
+            do {
+                try await dataController?.updateProjectStatus(
+                    project: project,
+                    to: .closed
+                )
+                print("[PROJECT_CLOSE] Project marked closed: \(project.title)")
+            } catch {
+                print("[PROJECT_CLOSE] ❌ Failed to mark project closed: \(error)")
+            }
         }
     }
 

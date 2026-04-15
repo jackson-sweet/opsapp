@@ -398,6 +398,10 @@ struct JobBoardView: View {
                 computeReviewProjects()
                 showPaymentReview = true
             }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenTaskReview"))) { _ in
+                computeReviewableTasks()
+                showTaskReview = true
+            }
         }
 
     // MARK: - Payment Review
@@ -414,7 +418,7 @@ struct JobBoardView: View {
         let overdue = OverdueProjectDetector.overdueProjects(from: allProjects, thresholdDays: threshold)
         overdueCount = overdue.count
         overdueProjects = overdue
-        completedProjects = allProjects.filter { $0.status == .completed }
+        completedProjects = allProjects.filter { $0.status == .completed && $0.deletedAt == nil }
     }
 
     // MARK: - Task Review
@@ -435,12 +439,16 @@ struct JobBoardView: View {
         }
 
         reviewableTasks = allTasks.filter { task in
-            task.status == .active
-                && task.deletedAt == nil
-                && task.startDate != nil
-                && task.startDate! < endOfToday
+            guard task.status == .active, task.deletedAt == nil else { return false }
+            // Prefer scheduled completion (endDate), fall back to startDate if unavailable
+            guard let scheduledDate = task.endDate ?? task.startDate else { return false }
+            return scheduledDate < endOfToday
         }
-        .sorted { ($0.startDate ?? .distantPast) < ($1.startDate ?? .distantPast) }
+        .sorted {
+            let a = $0.endDate ?? $0.startDate ?? .distantPast
+            let b = $1.endDate ?? $1.startDate ?? .distantPast
+            return a < b
+        }
 
         reviewableTaskCount = reviewableTasks.count
     }

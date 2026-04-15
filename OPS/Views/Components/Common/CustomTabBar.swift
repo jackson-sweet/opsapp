@@ -19,10 +19,24 @@ struct CustomTabBar: View {
     // Tutorial mode support
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
+    @Environment(\.wizardStateManager) private var wizardStateManager
 
     /// Whether tab bar should be disabled during tutorial drag step
     private var isDisabledForTutorial: Bool {
         tutorialMode && tutorialPhase == .dragToAccepted
+    }
+
+    /// Indicator color — switches to wizard accent when the selected tab's wizard step is active
+    private var indicatorColor: Color {
+        guard let manager = wizardStateManager,
+              manager.isActive,
+              let currentStep = manager.currentStep,
+              selectedTab < tabs.count,
+              let stepId = tabs[selectedTab].wizardStepId,
+              currentStep.id == stepId else {
+            return OPSStyle.Colors.primaryAccent
+        }
+        return OPSStyle.Colors.wizardAccent
     }
 
     var body: some View {
@@ -40,7 +54,7 @@ struct CustomTabBar: View {
                 // Sliding indicator bar - sized to match icon width
                 HStack {
                     Rectangle()
-                        .fill(OPSStyle.Colors.primaryAccent)
+                        .fill(indicatorColor)
                         .frame(width: iconWidth, height: 3)
                         .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                         .offset(x: selectedIndicatorOffset)
@@ -145,14 +159,24 @@ struct TabBarItem: View {
     let tab: TabItem
     let isSelected: Bool
     let action: () -> Void
-    
+    @Environment(\.wizardStateManager) private var wizardStateManager
+
+    /// Whether this tab's wizard step is currently active
+    private var isWizardHighlighted: Bool {
+        guard let manager = wizardStateManager,
+              manager.isActive,
+              let currentStep = manager.currentStep,
+              let stepId = tab.wizardStepId else { return false }
+        return currentStep.id == stepId
+    }
+
     var body: some View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: tab.iconName)
                     .font(.system(size: OPSStyle.Layout.tabBarIconSize, weight: .medium))
-                    .foregroundColor(isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
-                
+                    .foregroundColor(isWizardHighlighted ? OPSStyle.Colors.wizardAccent : (isSelected ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText))
+
                 if let title = tab.title {
                     Text(title)
                         .font(OPSStyle.Typography.smallCaption)
@@ -170,10 +194,12 @@ struct TabItem: Identifiable {
     let id = UUID()
     let iconName: String
     let title: String?
-    
-    init(iconName: String, title: String? = nil) {
+    let wizardStepId: String?
+
+    init(iconName: String, title: String? = nil, wizardStepId: String? = nil) {
         self.iconName = iconName
         self.title = title
+        self.wizardStepId = wizardStepId
     }
 }
 

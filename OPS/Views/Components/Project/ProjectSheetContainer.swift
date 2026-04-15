@@ -10,6 +10,7 @@ import SwiftUI
 struct ProjectSheetContainer: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @Environment(\.wizardStateManager) private var wizardStateManager
     @State private var selectedTaskDetail: TaskDetailInfo? = nil
     
     var body: some View {
@@ -28,6 +29,8 @@ struct ProjectSheetContainer: View {
                         }
                 }
                 .interactiveDismissDisabled(true)
+                .wizardBannerIfAvailable(stateManager: wizardStateManager)
+                .wizardOverlayIfAvailable(stateManager: wizardStateManager)
             } else {
                 // Fallback if project isn't available (should rarely happen)
                 VStack {
@@ -74,6 +77,8 @@ struct ProjectSheetContainer: View {
                         }
                 }
                 .interactiveDismissDisabled(true)
+                .wizardBannerIfAvailable(stateManager: wizardStateManager)
+                .wizardOverlayIfAvailable(stateManager: wizardStateManager)
             } else {
                 VStack {
                     Text("Task no longer available")

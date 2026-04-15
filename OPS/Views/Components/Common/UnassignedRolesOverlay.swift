@@ -39,10 +39,19 @@ struct UnassignedRolesOverlay: View {
     @State private var errorMessage: String?
     @State private var expandedUserId: String?
 
+    /// Assignable roles — excludes .unassigned (that's a state, not a role to pick)
+    private var assignableRoles: [UserRole] {
+        UserRole.allCases
+            .filter { $0 != .unassigned }
+            .sorted(by: { $0.hierarchy < $1.hierarchy })
+    }
+
     var body: some View {
         ZStack {
-            // Pure black background
-            OPSStyle.Colors.overlayHeavy
+            // Frosted glass background
+            BlurView(style: .systemUltraThinMaterialDark)
+                .ignoresSafeArea()
+                .overlay(Color.black.opacity(0.3))
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -148,9 +157,9 @@ struct UnassignedRolesOverlay: View {
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                 } else {
-                    Text("SELECT")
+                    Text("UNASSIGNED")
                         .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .foregroundColor(OPSStyle.Colors.warningStatus)
                 }
 
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
@@ -170,10 +179,10 @@ struct UnassignedRolesOverlay: View {
                 }
             }
 
-            // Expanded role selection
+            // Expanded role selection — only assignable roles (no "unassigned")
             if isExpanded {
                 VStack(spacing: 16) {
-                    ForEach(UserRole.allCases.sorted(by: { $0.hierarchy < $1.hierarchy }), id: \.rawValue) { role in
+                    ForEach(assignableRoles, id: \.rawValue) { role in
                         roleOption(
                             title: role.displayName.uppercased(),
                             description: role.roleDescription,
@@ -238,8 +247,9 @@ struct UnassignedRolesOverlay: View {
 
     private var footerView: some View {
         VStack(spacing: 20) {
-            // Save button - white on black, only enabled when all assigned
+            // Save button — enabled when at least one role is assigned
             Button(action: {
+                guard !isSaving else { return }
                 Task {
                     await saveRoleAssignments()
                 }
@@ -256,10 +266,10 @@ struct UnassignedRolesOverlay: View {
                 .foregroundColor(OPSStyle.Colors.invertedText)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(allRolesAssigned ? OPSStyle.Colors.primaryText : OPSStyle.Colors.pinDotNeutral)
+                .background(hasAnyRoleAssigned ? OPSStyle.Colors.primaryText : OPSStyle.Colors.pinDotNeutral)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)
             }
-            .disabled(!allRolesAssigned || isSaving)
+            .disabled(!hasAnyRoleAssigned || isSaving)
             .padding(.horizontal, 24)
 
             // Later button
@@ -273,8 +283,9 @@ struct UnassignedRolesOverlay: View {
 
     // MARK: - Computed Properties
 
-    private var allRolesAssigned: Bool {
-        unassignedUsers.allSatisfy { $0.selectedRole != nil }
+    /// At least one user has a role assigned — allows partial saves
+    private var hasAnyRoleAssigned: Bool {
+        unassignedUsers.contains { $0.selectedRole != nil }
     }
 
     // MARK: - Actions
@@ -285,7 +296,7 @@ struct UnassignedRolesOverlay: View {
     }
 
     private func saveRoleAssignments() async {
-        guard allRolesAssigned else { return }
+        guard hasAnyRoleAssigned else { return }
 
         await MainActor.run {
             isSaving = true
@@ -293,7 +304,8 @@ struct UnassignedRolesOverlay: View {
         }
 
         do {
-            for user in unassignedUsers {
+            // Only save users who have a role assigned — leave others as unassigned
+            for user in unassignedUsers where user.selectedRole != nil {
                 guard let role = user.selectedRole else { continue }
 
                 let employeeTypeValue = role.displayName

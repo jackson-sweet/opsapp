@@ -540,6 +540,7 @@ struct ClientSheet: View {
     }
     
     private func saveClient() {
+        guard !isSaving else { return }
         isSaving = true
 
         Task {
@@ -657,44 +658,41 @@ struct ClientSheet: View {
             notes: notes.isEmpty ? nil : notes
         )
 
-        // Set profile image URL if uploaded
-        if let imageURL = profileImageURL {
-            tempClient.profileImageURL = imageURL
-        }
+        // Create via DataController (local-first with SyncEngine) — single source of truth
+        let dto = SupabaseClientDTO(
+            id: tempClient.id,
+            bubbleId: nil,
+            companyId: companyId,
+            name: tempClient.name,
+            email: tempClient.email,
+            phoneNumber: tempClient.phoneNumber,
+            address: tempClient.address,
+            latitude: nil,
+            longitude: nil,
+            notes: tempClient.notes,
+            profileImageUrl: profileImageURL,
+            deletedAt: nil
+        )
 
-        // Save to data controller first
-        tempClient.needsSync = true
-        await MainActor.run {
-            dataController.saveClient(tempClient)
-        }
-
-        // Create via DataController (local-first with SyncEngine)
         do {
-            let dto = SupabaseClientDTO(
-                id: tempClient.id,
-                bubbleId: nil,
-                companyId: companyId,
-                name: tempClient.name,
-                email: tempClient.email,
-                phoneNumber: tempClient.phoneNumber,
-                address: tempClient.address,
-                latitude: nil,
-                longitude: nil,
-                notes: tempClient.notes,
-                profileImageUrl: tempClient.profileImageURL,
-                deletedAt: nil
-            )
             let _ = try await dataController.createClient(dto: dto)
             print("[CLIENT_CREATE] ✅ Client created via DataController: \(tempClient.id)")
-            await MainActor.run {
-                tempClient.needsSync = false
-                tempClient.lastSyncedAt = Date()
-            }
         } catch {
-            print("[CLIENT_CREATE] ⚠️ Failed to create client: \(error)")
+            print("[CLIENT_CREATE] ⚠️ DataController create failed, inserting locally: \(error)")
+            // Fallback: insert directly so client is at least available locally
+            if let imageURL = profileImageURL { tempClient.profileImageURL = imageURL }
+            tempClient.needsSync = true
+            await MainActor.run {
+                dataController.saveClient(tempClient)
+            }
             dataController.triggerBackgroundSync()
+            return tempClient
         }
 
+        // Return the context-managed client inserted by createClient
+        if let created = dataController.getAllClients(for: companyId).first(where: { $0.id == tempClient.id }) {
+            return created
+        }
         return tempClient
     }
     

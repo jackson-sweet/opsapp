@@ -249,9 +249,14 @@ struct ProjectFormSheet: View {
         return TutorialInputHighlight(isHighlighted: isHighlighted, animatePulse: tutorialHighlightPulse)
     }
 
-    init(mode: Mode, preselectedClient: Client? = nil, onSave: @escaping (Project) -> Void) {
+    init(mode: Mode, preselectedClient: Client? = nil, initialTitle: String? = nil, onSave: @escaping (Project) -> Void) {
         self.mode = mode
         self.onSave = onSave
+
+        // Pre-fill title if provided (e.g., from task form "New Project" action)
+        if let initialTitle = initialTitle, mode.isCreate {
+            _title = State(initialValue: initialTitle)
+        }
 
         if case .edit(let project) = mode {
             _title = State(initialValue: project.title)
@@ -781,10 +786,50 @@ struct ProjectFormSheet: View {
 
     private var titleField: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("PROJECT NAME")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(titleHighlight.labelColor)
-                .modifier(TutorialPulseModifier(isHighlighted: titleHighlight.isHighlighted))
+            HStack(spacing: 12) {
+                Text("PROJECT NAME")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(titleHighlight.labelColor)
+                    .modifier(TutorialPulseModifier(isHighlighted: titleHighlight.isHighlighted))
+
+                Spacer()
+
+                if !tutorialMode {
+                    // Client name prefill button
+                    Button {
+                        if let name = selectedClient?.name {
+                            title = name
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: OPSStyle.Icons.client)
+                                .font(.system(size: 10))
+                            Text("CLIENT")
+                                .font(OPSStyle.Typography.microLabel)
+                        }
+                        .foregroundColor(selectedClient != nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    }
+                    .disabled(selectedClient == nil)
+
+                    // Address prefill button
+                    Button {
+                        if let street = extractStreetNumber(from: address) {
+                            title = street
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: OPSStyle.Icons.locationFill)
+                                .font(.system(size: 10))
+                            Text("ADDRESS")
+                                .font(OPSStyle.Typography.microLabel)
+                        }
+                        .foregroundColor(!address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    }
+                    .disabled(address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
 
             TextField("Enter project name", text: $title)
                 .font(OPSStyle.Typography.body)
@@ -1770,6 +1815,7 @@ struct ProjectFormSheet: View {
                 allDay: project.allDay,
                 teamMemberIds: Array(allTeamMemberIds),
                 projectImages: nil,
+                completedAt: nil,
                 deletedAt: nil
             )
 

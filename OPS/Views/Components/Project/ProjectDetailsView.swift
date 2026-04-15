@@ -44,6 +44,9 @@ struct ProjectDetailsView: View {
     @State private var allTeamMembers: [TeamMember] = []
     @State private var showingClientPicker = false
     @State private var dismissDragOffset: CGFloat = 0
+    @State private var isKeyboardVisible = false
+    @State private var shareSource: ProjectShareItemSource?
+    @State private var isPreparingShare = false
 
     init(project: Project, isEditMode: Bool = false, initialSelectedTask: ProjectTask? = nil) {
         self._project = Bindable(wrappedValue: project)
@@ -110,6 +113,12 @@ struct ProjectDetailsView: View {
                     }
                     .sheet(isPresented: $viewModel.showingClientContact) {
                         clientContactSheet
+                    }
+                    .sheet(item: $shareSource) { source in
+                        // Item-driven sheet: `source` arrives as a parameter so
+                        // SwiftUI never renders this body with an empty items
+                        // array (the root cause of the blank-first-tap bug).
+                        ActivityView(items: [source])
                     }
                     .sheet(isPresented: $showingClientPicker) {
                         ClientPickerSheet(
@@ -343,8 +352,8 @@ struct ProjectDetailsView: View {
             projectNavBar
                 .zIndex(20)
 
-            // Layer 5: Floating toolbar — quick actions (hidden when composing notes)
-            if !isNoteComposing {
+            // Layer 5: Floating toolbar — quick actions (hidden when composing notes or keyboard visible)
+            if !isNoteComposing && !isKeyboardVisible {
                 VStack {
                     Spacer()
                     ProjectQuickActionsBar(
@@ -363,7 +372,14 @@ struct ProjectDetailsView: View {
                         onReschedule: { viewModel.showingTaskScheduler = true },
                         onContact: { viewModel.showingClientContact = true },
                         onAddTask: { viewModel.showingAddTaskSheet = true },
-                        onDeckDesign: permissionStore.isFeatureEnabled("deck_builder") ? { showingDeckCreationPicker = true } : nil
+                        onDeckDesign: permissionStore.isFeatureEnabled("deck_builder") ? { showingDeckCreationPicker = true } : nil,
+                        onShare: { shareProject() },
+                        allTasksComplete: {
+                            let activeTasks = project.tasks.filter { $0.deletedAt == nil && $0.status != .cancelled }
+                            return !activeTasks.isEmpty && activeTasks.allSatisfy { $0.status == .completed }
+                        }(),
+                        projectIsActive: project.status != .completed && project.status != .closed && project.status != .archived,
+                        onCompleteProject: { viewModel.handleProjectCompletion() }
                     )
                     .padding(.bottom, 16)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -372,6 +388,12 @@ struct ProjectDetailsView: View {
             }
         }
         .background(OPSStyle.Colors.background.edgesIgnoringSafeArea(.all))
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            withAnimation(OPSStyle.Animation.fast) { isKeyboardVisible = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(OPSStyle.Animation.fast) { isKeyboardVisible = false }
+        }
         .offset(y: dismissDragOffset)
         .opacity(dismissDragOffset > 0 ? 1.0 - Double(dismissDragOffset) / 600.0 : 1.0)
         .simultaneousGesture(
@@ -531,11 +553,21 @@ struct ProjectDetailsView: View {
                 onSaveTitle: { viewModel.saveTitle() },
                 onClientLongPress: { showingClientPicker = true }
             )
-            ProjectDetailsTabBar(selectedTab: $viewModel.selectedTab)
+            ProjectDetailsTabBar(selectedTab: $viewModel.selectedTab, visibleTabs: visibleTabs)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 4)
         }
         .background(OPSStyle.Colors.background)
+    }
+
+    // MARK: - Tab Visibility
+
+    private var visibleTabs: [ProjectDetailTab] {
+        var tabs: [ProjectDetailTab] = [.activity, .details, .expenses]
+        if permissionStore.isFeatureEnabled("deck_builder") && permissionStore.can("deck_builder.view") {
+            tabs.append(.deck)
+        }
+        return tabs
     }
 
     // MARK: - Tab Content
@@ -612,6 +644,13 @@ struct ProjectDetailsView: View {
                 expenseViewModel: expenseViewModel,
                 onAddExpense: { openNewExpenseSheet() },
                 onTapExpense: { expense in editingExpense = expense }
+            )
+
+        case .deck:
+            DeckTabView(
+                project: project,
+                onCreateDeckDesign: { showingDeckCreationPicker = true },
+                onEditDeckDesign: { design in deckDesignToOpen = design }
             )
         }
     }
@@ -914,6 +953,44 @@ struct ProjectDetailsView: View {
 
     private func openNewExpenseSheet() {
         showNewExpenseSheet = true
+    }
+
+    /// Builds a project deep link and presents the system share sheet with a
+    /// rich preview card (project title + first project image as thumbnail).
+    /// The image loads asynchronously off the main thread. Setting
+    /// `shareSource` (not a separate isPresented flag) drives `.sheet(item:)`,
+    /// which passes the source directly to the content builder — that avoids
+    /// the stale-snapshot race where the first presentation rendered with an
+    /// empty items array.
+    private func shareProject() {
+        guard !isPreparingShare, shareSource == nil else { return }
+        guard let url = ProjectShareLinkBuilder.url(for: project) else { return }
+
+        let title = project.title
+        let subtitle = project.effectiveClientName.isEmpty ? nil : project.effectiveClientName
+
+        isPreparingShare = true
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+        Task { @MainActor in
+            let thumbnail = await ProjectShareImageLoader.loadFirstImage(for: project)
+            shareSource = ProjectShareItemSource(
+                url: url,
+                title: title,
+                subtitle: subtitle,
+                image: thumbnail
+            )
+            isPreparingShare = false
+
+            AnalyticsService.shared.track(
+                eventType: .action,
+                eventName: "project_shared",
+                properties: [
+                    "project_id": project.id,
+                    "has_thumbnail": thumbnail != nil
+                ]
+            )
+        }
     }
 
     private func loadAvailableTeamMembers() {

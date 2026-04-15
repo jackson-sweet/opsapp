@@ -96,6 +96,7 @@ struct TaskFormSheet: View {
     @State private var datesExistedBeforeScheduler = false  // Track if dates existed before opening scheduler
     @State private var schedulerConfirmed = false  // Track if scheduler was confirmed vs cancelled
     @State private var showingCreateTaskType = false
+    @State private var showingTaskTypeList = false
     @State private var projectSearchText: String = ""
     @State private var showingProjectSuggestions = false
     @State private var showingTeamPicker = false
@@ -380,6 +381,17 @@ struct TaskFormSheet: View {
                 )
                 .environmentObject(dataController)
             }
+        }
+        .sheet(isPresented: $showingNewProjectFromSearch) {
+            ProjectFormSheet(mode: .create, initialTitle: newProjectNameFromSearch) { newProject in
+                // Select the newly created project
+                withAnimation(OPSStyle.Animation.fast) {
+                    selectedProjectId = newProject.id
+                    projectSearchText = newProject.title
+                    showingProjectSuggestions = false
+                }
+            }
+            .environmentObject(dataController)
         }
         .alert("Error", isPresented: $showingError) {
             Button("OK", role: .cancel) { }
@@ -735,10 +747,25 @@ struct TaskFormSheet: View {
             ZStack(alignment: .topLeading) {
                 VStack(spacing: 0) {
                     TextField("Search or select project", text: $projectSearchText, onEditingChanged: { isEditing in
-                        withAnimation(OPSStyle.Animation.fast) {
-                            showingProjectSuggestions = isEditing
+                        // Only expand dropdown if no project is already selected
+                        if selectedProject == nil || !isEditing {
+                            withAnimation(OPSStyle.Animation.fast) {
+                                showingProjectSuggestions = isEditing
+                            }
                         }
                     })
+                    .onChange(of: projectSearchText) { _, newValue in
+                        // Don't expand dropdown if text matches an already-selected project (e.g. preselected on appear)
+                        if let selected = selectedProject, newValue == selected.title {
+                            return
+                        }
+                        // Ensure suggestions show while typing (onEditingChanged only fires on focus change)
+                        if !newValue.isEmpty && !showingProjectSuggestions {
+                            withAnimation(OPSStyle.Animation.fast) {
+                                showingProjectSuggestions = true
+                            }
+                        }
+                    }
                     .frame(height: selectedProject != nil && !showingProjectSuggestions ? 64 : 44)
                     .padding(.horizontal, 16)
                     .background(OPSStyle.Colors.cardBackgroundDark)
@@ -758,25 +785,62 @@ struct TaskFormSheet: View {
                     .textInputAutocapitalization(.words)
                     .animation(OPSStyle.Animation.fast, value: selectedProject != nil)
 
-                    if showingProjectSuggestions && !filteredProjects.isEmpty {
+                    if showingProjectSuggestions {
                         VStack(spacing: 0) {
-                            ForEach(Array(filteredProjects.prefix(5).enumerated()), id: \.element.id) { index, project in
+                            if !filteredProjects.isEmpty {
+                                ForEach(Array(filteredProjects.prefix(5).enumerated()), id: \.element.id) { index, project in
+                                    Button(action: {
+                                        withAnimation(OPSStyle.Animation.fast) {
+                                            selectedProjectId = project.id
+                                            projectSearchText = project.title
+                                            showingProjectSuggestions = false
+                                        }
+                                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                                    }) {
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(project.title)
+                                                    .font(OPSStyle.Typography.bodyBold)
+                                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                                Text(project.effectiveClientName)
+                                                    .font(OPSStyle.Typography.caption)
+                                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                            }
+                                            Spacer()
+                                        }
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 12)
+                                        .background(OPSStyle.Colors.cardBackgroundDark)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+
+                                    Divider()
+                                        .background(OPSStyle.Colors.cardBorder)
+                                }
+                            }
+
+                            // "New Project" option — always visible when searching, allows quick creation
+                            if !projectSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                 Button(action: {
                                     withAnimation(OPSStyle.Animation.fast) {
-                                        selectedProjectId = project.id
-                                        projectSearchText = project.title
                                         showingProjectSuggestions = false
                                     }
                                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                                    createNewProjectFromSearch()
                                 }) {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(project.title)
-                                                .font(OPSStyle.Typography.bodyBold)
-                                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                            Text(project.effectiveClientName)
+                                    HStack(spacing: 10) {
+                                        Image(systemName: OPSStyle.Icons.plusCircleFill)
+                                            .font(.system(size: OPSStyle.Layout.IconSize.md))
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("NEW PROJECT")
+                                                .font(OPSStyle.Typography.captionBold)
+                                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            Text("\"\(projectSearchText.trimmingCharacters(in: .whitespacesAndNewlines))\"")
                                                 .font(OPSStyle.Typography.caption)
-                                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                                .lineLimit(1)
                                         }
                                         Spacer()
                                     }
@@ -785,12 +849,6 @@ struct TaskFormSheet: View {
                                     .background(OPSStyle.Colors.cardBackgroundDark)
                                 }
                                 .buttonStyle(PlainButtonStyle())
-
-                                // Divider between items (not after last)
-                                if index < min(filteredProjects.count, 5) - 1 {
-                                    Divider()
-                                        .background(OPSStyle.Colors.cardBorder)
-                                }
                             }
                         }
                         .background(OPSStyle.Colors.cardBackgroundDark)
@@ -857,66 +915,93 @@ struct TaskFormSheet: View {
                 .opacity(tutorialMode ? 0.5 : 1.0)
             }
 
-            // Task type picker with colored left border
-            HStack(spacing: 0) {
-                // Colored left border (4pt width) - task type color
-                Rectangle()
-                    .fill(selectedTaskType.map { Color(hex: $0.color) ?? OPSStyle.Colors.primaryAccent } ?? OPSStyle.Colors.cardBorder)
-                    .frame(width: 4)
+            // Task type picker with colored left border — inline expandable
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    // Colored left border (4pt width) - task type color
+                    Rectangle()
+                        .fill(selectedTaskType.map { Color(hex: $0.color) ?? OPSStyle.Colors.primaryAccent } ?? OPSStyle.Colors.cardBorder)
+                        .frame(width: 4)
 
-                Menu {
-                    ForEach(availableTaskTypes.sorted(by: { $0.display < $1.display })) { taskType in
-                        Button(action: {
-                            selectedTaskTypeId = taskType.id
-                            // Wizard system: notify task type selected
-                            NotificationCenter.default.post(
-                                name: Notification.Name("WizardTaskTypeSelected"),
-                                object: nil
-                            )
-                            // Tutorial mode: notify task type selected
-                            if tutorialMode {
+                    Button(action: {
+                        withAnimation(OPSStyle.Animation.fast) {
+                            showingTaskTypeList.toggle()
+                        }
+                    }) {
+                        HStack {
+                            if let taskType = selectedTaskType {
+                                Text(taskType.display.uppercased())
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                            } else {
+                                Text("Select Task Type")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: showingTaskTypeList ? "chevron.up" : "chevron.down")
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(showingTaskTypeList ? 0 : OPSStyle.Layout.cornerRadius)
+
+                if showingTaskTypeList {
+                    VStack(spacing: 0) {
+                        ForEach(availableTaskTypes.sorted(by: { $0.display < $1.display })) { taskType in
+                            Button(action: {
+                                withAnimation(OPSStyle.Animation.fast) {
+                                    selectedTaskTypeId = taskType.id
+                                    showingTaskTypeList = false
+                                }
+                                // Wizard system: notify task type selected
                                 NotificationCenter.default.post(
-                                    name: Notification.Name("TutorialTaskTypeSelected"),
+                                    name: Notification.Name("WizardTaskTypeSelected"),
                                     object: nil
                                 )
-                            }
-                        }) {
-                            HStack {
-                                // Colored dot in menu
-                                Circle()
-                                    .fill(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
-                                    .frame(width: 12, height: 12)
-                                Text(taskType.display.uppercased())
-                                if selectedTaskTypeId == taskType.id {
-                                    Image(systemName: "checkmark")
+                                // Tutorial mode: notify task type selected
+                                if tutorialMode {
+                                    NotificationCenter.default.post(
+                                        name: Notification.Name("TutorialTaskTypeSelected"),
+                                        object: nil
+                                    )
                                 }
+                            }) {
+                                HStack(spacing: 10) {
+                                    Circle()
+                                        .fill(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
+                                        .frame(width: 12, height: 12)
+                                    Text(taskType.display.uppercased())
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                    Spacer()
+                                    if selectedTaskTypeId == taskType.id {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    }
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 12)
                             }
+                            .buttonStyle(PlainButtonStyle())
+
+                            Divider()
+                                .background(OPSStyle.Colors.cardBorder)
                         }
                     }
-                } label: {
-                    HStack {
-                        if let taskType = selectedTaskType {
-                            Text(taskType.display.uppercased())
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                        } else {
-                            Text("Select Task Type")
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-
-                        Spacer()
-
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: .infinity)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -1259,6 +1344,17 @@ struct TaskFormSheet: View {
     }
 
     // MARK: - Actions
+
+    @State private var showingNewProjectFromSearch = false
+    @State private var newProjectNameFromSearch = ""
+
+    /// Creates a new project inline from the search text and selects it
+    private func createNewProjectFromSearch() {
+        let trimmed = projectSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        newProjectNameFromSearch = trimmed
+        showingNewProjectFromSearch = true
+    }
 
     private func saveTask() {
         guard isValid else { return }

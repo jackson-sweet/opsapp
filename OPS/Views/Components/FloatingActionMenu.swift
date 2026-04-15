@@ -82,6 +82,15 @@ struct FloatingActionMenu: View {
     @State private var showPaymentReviewIntroFAB: Bool = false
     @State private var showTaskReviewIntroFAB: Bool = false
 
+    // Cached review counts — computed on appear, not every render
+    @State private var cachedTaskReviewCount: Int = 0
+    @State private var cachedUnassignedCount: Int = 0
+    @State private var cachedCompletionReviewCount: Int = 0
+    @State private var cachedIsTaskReviewLocked: Bool = true
+    @State private var cachedIsPaymentReviewLocked: Bool = true
+    @State private var cachedCompletedTaskCount: Int = 0
+    @State private var cachedCompletedProjectCount: Int = 0
+
     // Sheet presentation states
     @State private var showingCreateProject = false
     @State private var showingCreateClient = false
@@ -96,10 +105,15 @@ struct FloatingActionMenu: View {
     @State private var showingTimeOffSheet = false
     @State private var showingLogActivity = false
 
-    // View models
+    // View models — lazily created only when their sheets open
     @StateObject private var expenseViewModel = ExpenseViewModel()
     @StateObject private var estimateViewModel = EstimateViewModel()
     @StateObject private var calendarViewModel = CalendarViewModel()
+
+    // Cached decoded values — avoids JSON decode on every render
+    @State private var cachedHiddenItemIds: Set<String> = []
+    @State private var cachedStoredOrder: [String] = []
+    @State private var cachedSectionOrder: [String] = []
 
     // Parameters
     let currentTab: Int
@@ -112,38 +126,53 @@ struct FloatingActionMenu: View {
     // MARK: - Hidden Items
 
     private var hiddenItemIds: Set<String> {
-        (try? JSONDecoder().decode(Set<String>.self, from: hiddenItemsData)) ?? []
+        cachedHiddenItemIds
     }
 
     private func setHiddenItems(_ ids: Set<String>) {
         hiddenItemsData = (try? JSONEncoder().encode(ids)) ?? Data()
+        cachedHiddenItemIds = ids
+    }
+
+    private func refreshHiddenItemsCache() {
+        cachedHiddenItemIds = (try? JSONDecoder().decode(Set<String>.self, from: hiddenItemsData)) ?? []
     }
 
     // MARK: - Item Order
 
     private var storedOrder: [String] {
-        (try? JSONDecoder().decode([String].self, from: itemOrderData)) ?? []
+        cachedStoredOrder
     }
 
     private func setStoredOrder(_ order: [String]) {
         itemOrderData = (try? JSONEncoder().encode(order)) ?? Data()
+        cachedStoredOrder = order
     }
 
     // MARK: - Section Order
 
     private var sectionOrder: [String] {
-        let stored = (try? JSONDecoder().decode([String].self, from: sectionOrderData)) ?? []
-        if stored.isEmpty { return menuGroups.map(\.id) }
-        let allGroupIds = menuGroups.map(\.id)
-        var result = stored.filter { allGroupIds.contains($0) }
-        for id in allGroupIds where !result.contains(id) {
-            result.append(id)
-        }
-        return result
+        cachedSectionOrder
     }
 
     private func setSectionOrder(_ order: [String]) {
         sectionOrderData = (try? JSONEncoder().encode(order)) ?? Data()
+        cachedSectionOrder = order
+    }
+
+    private func refreshOrderCaches() {
+        cachedStoredOrder = (try? JSONDecoder().decode([String].self, from: itemOrderData)) ?? []
+        let stored = (try? JSONDecoder().decode([String].self, from: sectionOrderData)) ?? []
+        if stored.isEmpty {
+            cachedSectionOrder = menuGroups.map(\.id)
+        } else {
+            let allGroupIds = menuGroups.map(\.id)
+            var result = stored.filter { allGroupIds.contains($0) }
+            for id in allGroupIds where !result.contains(id) {
+                result.append(id)
+            }
+            cachedSectionOrder = result
+        }
     }
 
     // MARK: - Item Lookup
@@ -385,17 +414,17 @@ struct FloatingActionMenu: View {
             ])
         )
 
-        let completedTaskCount = dataController.getAllTasks().filter { $0.status == .completed }.count
-        let completedProjectCount = dataController.getProjects().filter { $0.status == .completed || $0.status == .closed }.count
+        // Use cached review counts (refreshed on appear / data change, not every render)
+        let completedTaskCount = cachedCompletedTaskCount
+        let completedProjectCount = cachedCompletedProjectCount
         let taskReviewThreshold = 5
         let paymentReviewThreshold = 5
-        let isTaskReviewLocked = completedTaskCount < taskReviewThreshold
-        let isPaymentReviewLocked = completedProjectCount < paymentReviewThreshold
+        let isTaskReviewLocked = cachedIsTaskReviewLocked
+        let isPaymentReviewLocked = cachedIsPaymentReviewLocked
 
-        // Compute review counts for badges
-        let taskReviewCount = isTaskReviewLocked ? 0 : computeFABReviewableTasks().count
-        let unassignedReviewCount = computeFABIncompleteTasks().count
-        let completionReviewCount = isPaymentReviewLocked ? 0 : (computeFABOverdueProjects().count + computeFABCompletedProjects().count)
+        let taskReviewCount = cachedTaskReviewCount
+        let unassignedReviewCount = cachedUnassignedCount
+        let completionReviewCount = cachedCompletionReviewCount
 
         groups.append(
             FABMenuGroup(id: "review", title: "REVIEW", items: [
@@ -715,7 +744,32 @@ struct FloatingActionMenu: View {
         }
         .onAppear {
             calendarViewModel.setDataController(dataController)
+            refreshHiddenItemsCache()
+            refreshOrderCaches()
+            refreshReviewCounts()
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("DataSyncCompleted"))) { _ in
+            refreshReviewCounts()
+        }
+    }
+
+    // MARK: - Review Count Refresh
+
+    private func refreshReviewCounts() {
+        let taskReviewThreshold = 5
+        let paymentReviewThreshold = 5
+
+        let completedTasks = dataController.getAllTasks().filter { $0.status == .completed }.count
+        let completedProjects = dataController.getProjects().filter { $0.status == .completed || $0.status == .closed }.count
+
+        cachedCompletedTaskCount = completedTasks
+        cachedCompletedProjectCount = completedProjects
+        cachedIsTaskReviewLocked = completedTasks < taskReviewThreshold
+        cachedIsPaymentReviewLocked = completedProjects < paymentReviewThreshold
+
+        cachedTaskReviewCount = cachedIsTaskReviewLocked ? 0 : computeFABReviewableTasks().count
+        cachedUnassignedCount = computeFABIncompleteTasks().count
+        cachedCompletionReviewCount = cachedIsPaymentReviewLocked ? 0 : (computeFABOverdueProjects().count + computeFABCompletedProjects().count)
     }
 
     // MARK: - Review Badge Count
@@ -723,11 +777,7 @@ struct FloatingActionMenu: View {
     /// Total outstanding review items across all review types (for FAB badge)
     private var totalReviewBadgeCount: Int {
         guard !tutorialMode else { return 0 }
-        let taskReviewItems = computeFABReviewableTasks().count
-        let unassignedItems = computeFABIncompleteTasks().count
-        let overdueItems = computeFABOverdueProjects().count
-        let completedItems = computeFABCompletedProjects().count
-        return taskReviewItems + unassignedItems + overdueItems + completedItems
+        return cachedTaskReviewCount + cachedUnassignedCount + cachedCompletionReviewCount
     }
 
     // MARK: - FAB Button
@@ -966,12 +1016,16 @@ struct FloatingActionMenu: View {
         }
 
         return allTasks.filter { task in
-            task.status == .active
-                && task.deletedAt == nil
-                && task.startDate != nil
-                && task.startDate! < endOfToday
+            guard task.status == .active, task.deletedAt == nil else { return false }
+            // Prefer scheduled completion (endDate), fall back to startDate if unavailable
+            guard let scheduledDate = task.endDate ?? task.startDate else { return false }
+            return scheduledDate < endOfToday
         }
-        .sorted { ($0.startDate ?? .distantPast) < ($1.startDate ?? .distantPast) }
+        .sorted {
+            let a = $0.endDate ?? $0.startDate ?? .distantPast
+            let b = $1.endDate ?? $1.startDate ?? .distantPast
+            return a < b
+        }
     }
 
     private func computeFABOverdueProjects() -> [Project] {
@@ -987,7 +1041,7 @@ struct FloatingActionMenu: View {
     }
 
     private func computeFABCompletedProjects() -> [Project] {
-        return dataController.getProjects().filter { $0.status == .completed }
+        return dataController.getProjects().filter { $0.status == .completed && $0.deletedAt == nil }
     }
 
     private func computeFABIncompleteTasks() -> [ProjectTask] {

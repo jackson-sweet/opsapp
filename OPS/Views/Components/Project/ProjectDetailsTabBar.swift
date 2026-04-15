@@ -10,10 +10,11 @@ import SwiftUI
 
 struct ProjectDetailsTabBar: View {
     @Binding var selectedTab: ProjectDetailTab
+    var visibleTabs: [ProjectDetailTab] = ProjectDetailTab.allCases
 
     var body: some View {
         GeometryReader { geometry in
-            let tabWidth = geometry.size.width / CGFloat(ProjectDetailTab.allCases.count)
+            let tabWidth = geometry.size.width / CGFloat(visibleTabs.count)
 
             ZStack(alignment: .bottomLeading) {
                 // Background line
@@ -25,7 +26,7 @@ struct ProjectDetailsTabBar: View {
 
                 // Tab labels
                 HStack(spacing: 0) {
-                    ForEach(ProjectDetailTab.allCases, id: \.self) { tab in
+                    ForEach(visibleTabs, id: \.self) { tab in
                         Button(action: {
                             withAnimation(OPSStyle.Animation.fast) {
                                 selectedTab = tab
@@ -44,7 +45,6 @@ struct ProjectDetailsTabBar: View {
                                 .padding(.vertical, 12)
                         }
                         .buttonStyle(PlainButtonStyle())
-                        // No wizard targets needed on tabs — Documentation wizard skips tab navigation
                     }
                 }
 
@@ -52,7 +52,7 @@ struct ProjectDetailsTabBar: View {
                 Rectangle()
                     .fill(OPSStyle.Colors.primaryAccent)
                     .frame(width: tabWidth, height: 2)
-                    .offset(x: tabWidth * CGFloat(ProjectDetailTab.allCases.firstIndex(of: selectedTab) ?? 0))
+                    .offset(x: tabWidth * CGFloat(visibleTabs.firstIndex(of: selectedTab) ?? 0))
                     .animation(OPSStyle.Animation.fast, value: selectedTab)
             }
         }

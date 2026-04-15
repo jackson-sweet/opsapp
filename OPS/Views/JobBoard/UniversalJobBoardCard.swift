@@ -23,6 +23,7 @@ struct UniversalJobBoardCard: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.wizardStateManager) private var wizardStateManager
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
     @State private var allClientsForDeletion: [Client] = []
@@ -304,6 +305,92 @@ struct UniversalJobBoardCard: View {
             }
         }
         .frame(height: compact ? 72 : 80)
+        .onTapGesture {
+            // Block tap to open details during projectListSwipe tutorial phase
+            if tutorialMode && tutorialPhase == .projectListSwipe {
+                NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
+                return
+            }
+            showingDetails = true
+        }
+        .onLongPressGesture(minimumDuration: 0.3) {
+            // Block long press during projectListSwipe tutorial phase
+            if tutorialMode && tutorialPhase == .projectListSwipe {
+                NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
+                return
+            }
+            showingMoreActions = true
+        } onPressingChanged: { pressing in
+            if pressing {
+                isLongPressing = true
+                hasTriggeredLongPressHaptic = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    if isLongPressing && !hasTriggeredLongPressHaptic {
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                        impactFeedback.impactOccurred()
+                        hasTriggeredLongPressHaptic = true
+                    }
+                }
+            } else {
+                isLongPressing = false
+                hasTriggeredLongPressHaptic = false
+            }
+        }
+        .confirmationDialog("Actions", isPresented: $showingMoreActions, titleVisibility: .hidden) {
+            moreActionsContent
+        }
+        .sheet(isPresented: $showingDetails) {
+            detailsSheet
+                .interactiveDismissDisabled(true)
+        }
+        .sheet(isPresented: $showingTaskForm) {
+            if case .project(let project) = cardType {
+                TaskFormSheet(mode: .create, preselectedProjectId: project.id) { _ in }
+            } else {
+                TaskFormSheet(mode: .create) { _ in }
+            }
+        }
+        .sheet(isPresented: $showingProjectForm) {
+            if case .client(let client) = cardType {
+                ProjectFormSheet(mode: .create, preselectedClient: client) { _ in }
+                    .environmentObject(dataController)
+            } else {
+                ProjectFormSheet(mode: .create) { _ in }
+                    .environmentObject(dataController)
+            }
+        }
+        .sheet(isPresented: $showingScheduler) {
+            schedulerSheet
+        }
+        .sheet(isPresented: $showingTaskPicker) {
+            taskPickerSheet
+        }
+        .sheet(isPresented: $showingStatusPicker) {
+            if case .project(let project) = cardType {
+                ProjectStatusChangeSheet(project: project)
+                    .environmentObject(dataController)
+            }
+        }
+        .sheet(isPresented: $showingTeamPicker) {
+            if case .project(let project) = cardType {
+                ProjectTeamChangeSheet(project: project)
+                    .environmentObject(dataController)
+            }
+        }
+        .deleteConfirmation(
+            isPresented: $showingDeleteConfirmation,
+            itemName: deleteItemName,
+            onConfirm: deleteItem
+        )
+        .customAlert($customAlert)
+        .alert("No Tasks to Reschedule", isPresented: $showingNoTasksAlert) {
+            Button("Create Task") {
+                showingTaskForm = true
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This project has no tasks. Create one to schedule work.")
+        }
     }
 
     /// Whether to show tutorial shimmer for swipe hint
@@ -443,6 +530,7 @@ struct UniversalJobBoardCard: View {
                     subtitleText
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.trailing, 100) // Reserve space for status/assigned-to-me badges
 
                 metadataRow
             }
@@ -489,8 +577,26 @@ struct UniversalJobBoardCard: View {
         .overlay(
             Group {
                 if case .project(let project) = cardType {
-                    // Status badge — top right
-                    VStack {
+                    // Status badge + assigned-to-me badge — top right
+                    HStack(spacing: 6) {
+                        if permissionStore.hasFullAccess("projects.view"),
+                           let userId = dataController.currentUser?.id,
+                           project.getTeamMemberIds().contains(userId) {
+                            Text("ASSIGNED TO ME")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                        .fill(.ultraThinMaterial)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: OPSStyle.Layout.Border.standard)
+                                )
+                        }
+
                         Text(project.status.displayName.uppercased())
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(project.status.color)
@@ -538,95 +644,10 @@ struct UniversalJobBoardCard: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                         .padding(8)
                     }
+
                 }
             }
         )
-        .onTapGesture {
-            // Block tap to open details during projectListSwipe tutorial phase
-            if tutorialMode && tutorialPhase == .projectListSwipe {
-                NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
-                return
-            }
-            showingDetails = true
-        }
-        .onLongPressGesture(minimumDuration: 0.3) {
-            // Block long press during projectListSwipe tutorial phase
-            if tutorialMode && tutorialPhase == .projectListSwipe {
-                NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
-                return
-            }
-            showingMoreActions = true
-        } onPressingChanged: { pressing in
-            if pressing {
-                isLongPressing = true
-                hasTriggeredLongPressHaptic = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    if isLongPressing && !hasTriggeredLongPressHaptic {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                        impactFeedback.impactOccurred()
-                        hasTriggeredLongPressHaptic = true
-                    }
-                }
-            } else {
-                isLongPressing = false
-                hasTriggeredLongPressHaptic = false
-            }
-        }
-        .confirmationDialog("Actions", isPresented: $showingMoreActions, titleVisibility: .hidden) {
-            moreActionsContent
-        }
-        .sheet(isPresented: $showingDetails) {
-            detailsSheet
-                .interactiveDismissDisabled(true)
-        }
-        .sheet(isPresented: $showingTaskForm) {
-            if case .project(let project) = cardType {
-                TaskFormSheet(mode: .create, preselectedProjectId: project.id) { _ in }
-            } else {
-                TaskFormSheet(mode: .create) { _ in }
-            }
-        }
-        .sheet(isPresented: $showingProjectForm) {
-            if case .client(let client) = cardType {
-                ProjectFormSheet(mode: .create, preselectedClient: client) { _ in }
-                    .environmentObject(dataController)
-            } else {
-                ProjectFormSheet(mode: .create) { _ in }
-                    .environmentObject(dataController)
-            }
-        }
-        .sheet(isPresented: $showingScheduler) {
-            schedulerSheet
-        }
-        .sheet(isPresented: $showingTaskPicker) {
-            taskPickerSheet
-        }
-        .sheet(isPresented: $showingStatusPicker) {
-            if case .project(let project) = cardType {
-                ProjectStatusChangeSheet(project: project)
-                    .environmentObject(dataController)
-            }
-        }
-        .sheet(isPresented: $showingTeamPicker) {
-            if case .project(let project) = cardType {
-                ProjectTeamChangeSheet(project: project)
-                    .environmentObject(dataController)
-            }
-        }
-        .deleteConfirmation(
-            isPresented: $showingDeleteConfirmation,
-            itemName: deleteItemName,
-            onConfirm: deleteItem
-        )
-        .customAlert($customAlert)
-        .alert("No Tasks to Reschedule", isPresented: $showingNoTasksAlert) {
-            Button("Create Task") {
-                showingTaskForm = true
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("This project has no tasks. Create one to schedule work.")
-        }
     }
 
     private var deleteItemName: String {
@@ -703,21 +724,42 @@ struct UniversalJobBoardCard: View {
             Group {
                 if case .task(let task) = cardType {
                     ZStack {
-                        Text(task.status.displayName.uppercased())
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(task.status.color)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .fill(task.status.color.opacity(0.1))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .stroke(task.status.color, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                            .padding(8)
+                        // Status badge + assigned-to-me badge — top right
+                        HStack(spacing: 6) {
+                            if permissionStore.hasFullAccess("tasks.view"),
+                               let userId = dataController.currentUser?.id,
+                               task.getTeamMemberIds().contains(userId) {
+                                Text("ASSIGNED TO ME")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                            .fill(.ultraThinMaterial)
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: OPSStyle.Layout.Border.standard)
+                                    )
+                            }
+
+                            Text(task.status.displayName.uppercased())
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(task.status.color)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                        .fill(task.status.color.opacity(0.1))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                        .stroke(task.status.color, lineWidth: OPSStyle.Layout.Border.standard)
+                                )
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .padding(8)
 
                         if task.startDate == nil {
                             Text("UNSCHEDULED")
@@ -823,6 +865,8 @@ struct UniversalJobBoardCard: View {
                         ProjectDetailsView(project: project)
                     }
                     .interactiveDismissDisabled(true)
+                    .wizardBannerIfAvailable(stateManager: wizardStateManager)
+                    .wizardOverlayIfAvailable(stateManager: wizardStateManager)
                 }
             }
         }

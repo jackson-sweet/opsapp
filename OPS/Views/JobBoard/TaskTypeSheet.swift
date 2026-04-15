@@ -792,6 +792,7 @@ struct TaskTypeSheet: View {
     }
 
     private func saveNewTaskType(onSave: @escaping (TaskType) -> Void) {
+        guard !isSaving else { return }
         guard let companyId = dataController.currentUser?.companyId else {
             errorMessage = "No company ID found"
             showingError = true

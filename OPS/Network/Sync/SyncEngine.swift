@@ -152,6 +152,41 @@ final class SyncEngine {
         await realtimeProcessor?.stopListening()
     }
 
+    /// Synchronously halts the parts of the sync engine that can fire
+    /// autonomously — the retry timer and the notification observers.
+    /// Must be called from `DataController.logout()` BEFORE the data wipe
+    /// so the timer can't fire mid-wipe and access invalidated SwiftData
+    /// models, and so a connectivity flip during logout can't re-arm the
+    /// retry cycle. The realtime Supabase listener is stopped separately
+    /// via `stopForLogoutAsync()` because it's an async call.
+    ///
+    /// Safe to call multiple times.
+    func stopForLogoutSync() {
+        print("[SYNC_ENGINE] stopForLogoutSync — halting timer + observers")
+
+        syncRetryTimer?.invalidate()
+        syncRetryTimer = nil
+
+        NotificationCenter.default.removeObserver(self, name: .realtimeNeedsCatchUp, object: nil)
+        NotificationCenter.default.removeObserver(self, name: ConnectivityManager.connectivityChangedNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .permissionsChanged, object: nil)
+
+        // Clear the in-memory sync state so any view that re-reads the
+        // pending count during view transition sees zero.
+        isSyncing = false
+        syncInProgress = false
+        pendingOperationCount = 0
+        statusText = ""
+        isPerformingInitialSync = false
+    }
+
+    /// Tears down the realtime Supabase subscription. Called after
+    /// `stopForLogoutSync()` as a fire-and-forget async step.
+    func stopForLogoutAsync() async {
+        await realtimeProcessor?.stopListening()
+        print("[SYNC_ENGINE] stopForLogoutAsync complete — realtime stopped")
+    }
+
     /// Registers BGTaskScheduler tasks. Call from AppDelegate.
     func registerBackgroundTasks() {
         backgroundScheduler?.registerTasks()

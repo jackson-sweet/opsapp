@@ -971,7 +971,19 @@ class DataController: ObservableObject {
     func logout() {
         print("[LOGOUT] Starting logout process...")
 
-        // Flip auth state FIRST so ContentView tears down PINGatedView before
+        // Halt the sync engine's timer and observers FIRST — before flipping
+        // isAuthenticated, before wiping data, and before SwiftUI starts
+        // tearing down the view hierarchy. Without this step, the retry
+        // timer could fire mid-wipe and crash accessing invalidated SwiftData
+        // models, and connectivity/permission observers could re-arm sync
+        // activity while deletions are in flight.
+        syncEngine.stopForLogoutSync()
+        // Fire-and-forget the realtime teardown; it doesn't block logout.
+        Task { @MainActor [weak self] in
+            await self?.syncEngine.stopForLogoutAsync()
+        }
+
+        // Flip auth state so ContentView tears down PINGatedView before
         // any downstream state mutations. Prevents a one-frame render of
         // MainTabView when the lockout screen is dismissed by resetForLogout()
         // while ContentView still sees isAuthenticated = true.
@@ -1053,71 +1065,91 @@ class DataController: ObservableObject {
             return
         }
 
+        // Belt-and-suspenders: re-halt the sync engine in case logout() ran
+        // before stopForLogoutSync landed, or something rearmed it.
+        syncEngine.stopForLogoutSync()
+
         print("[LOGOUT] Deleting all SwiftData models...")
 
-        // Phase 1: Bulk-delete standalone/leaf models (no inbound relationships)
-        let leafModels: [(any PersistentModel.Type, String)] = [
-            (WizardState.self, "WizardState"),
-            (SyncOperation.self, "SyncOperation"),
-            (LocalPhoto.self, "LocalPhoto"),
-            (PhotoAnnotation.self, "PhotoAnnotation"),
-            (SignatureCapture.self, "SignatureCapture"),
-            (FormSubmission.self, "FormSubmission"),
-            (TimeEntry.self, "TimeEntry"),
-            (Activity.self, "Activity"),
-            (FollowUp.self, "FollowUp"),
-            (StageTransition.self, "StageTransition"),
-            (SiteVisit.self, "SiteVisit"),
-            (CalendarUserEvent.self, "CalendarUserEvent"),
-            (ProjectNote.self, "ProjectNote"),
-            (EstimateLineItem.self, "EstimateLineItem"),
-            (InvoiceLineItem.self, "InvoiceLineItem"),
-            (Estimate.self, "Estimate"),
-            (Invoice.self, "Invoice"),
-            (Payment.self, "Payment"),
-            (InventorySnapshotItem.self, "InventorySnapshotItem"),
-            (InventorySnapshot.self, "InventorySnapshot"),
-            (InventoryItem.self, "InventoryItem"),
-            (InventoryTag.self, "InventoryTag"),
-            (InventoryUnit.self, "InventoryUnit"),
-            (Opportunity.self, "Opportunity"),
-            (Product.self, "Product"),
-            (OpsContact.self, "OpsContact"),
-            (TaskStatusOption.self, "TaskStatusOption"),
-            (SubClient.self, "SubClient"),
-        ]
-
-        for (modelType, name) in leafModels {
-            do {
-                try context.delete(model: modelType)
-                print("[LOGOUT] Deleted all \(name)")
-            } catch {
-                print("[LOGOUT] Error deleting \(name): \(error)")
-            }
-        }
-
-        // Phase 2: Delete core models with relationship clearing (order matters)
+        // Use iterative fetch+delete everywhere instead of the
+        // `context.delete(model:)` bulk API. The bulk API posts a single
+        // change notification that still-mounted @Query views react to on
+        // the same run loop — and because it also fires SwiftData's cascade
+        // delete paths under the hood, it has historically crashed during
+        // logout when a view reaches into an invalidated model's relationship.
+        // Iterative deletion plus a final save gives us one controlled
+        // notification point and lets us handle each entity class in an
+        // order that respects our inverse relationships.
         autoreleasepool {
+            // Phase 1: leaf entities (no inbound relationships from other
+            // entities we care about during logout). Deleting these first
+            // makes Phase 2 cascade semantics predictable.
+            deleteAll(FetchDescriptor<WizardState>(), label: "WizardState", in: context)
+            deleteAll(FetchDescriptor<SyncOperation>(), label: "SyncOperation", in: context)
+            deleteAll(FetchDescriptor<LocalPhoto>(), label: "LocalPhoto", in: context)
+            deleteAll(FetchDescriptor<PhotoAnnotation>(), label: "PhotoAnnotation", in: context)
+            deleteAll(FetchDescriptor<SignatureCapture>(), label: "SignatureCapture", in: context)
+            deleteAll(FetchDescriptor<FormSubmission>(), label: "FormSubmission", in: context)
+            deleteAll(FetchDescriptor<TimeEntry>(), label: "TimeEntry", in: context)
+            deleteAll(FetchDescriptor<Activity>(), label: "Activity", in: context)
+            deleteAll(FetchDescriptor<FollowUp>(), label: "FollowUp", in: context)
+            deleteAll(FetchDescriptor<StageTransition>(), label: "StageTransition", in: context)
+            deleteAll(FetchDescriptor<SiteVisit>(), label: "SiteVisit", in: context)
+            deleteAll(FetchDescriptor<CalendarUserEvent>(), label: "CalendarUserEvent", in: context)
+            deleteAll(FetchDescriptor<ProjectNote>(), label: "ProjectNote", in: context)
+            deleteAll(FetchDescriptor<EstimateLineItem>(), label: "EstimateLineItem", in: context)
+            deleteAll(FetchDescriptor<InvoiceLineItem>(), label: "InvoiceLineItem", in: context)
+            deleteAll(FetchDescriptor<Estimate>(), label: "Estimate", in: context)
+            deleteAll(FetchDescriptor<Invoice>(), label: "Invoice", in: context)
+            deleteAll(FetchDescriptor<Payment>(), label: "Payment", in: context)
+            deleteAll(FetchDescriptor<InventorySnapshotItem>(), label: "InventorySnapshotItem", in: context)
+            deleteAll(FetchDescriptor<InventorySnapshot>(), label: "InventorySnapshot", in: context)
+            deleteAll(FetchDescriptor<InventoryItem>(), label: "InventoryItem", in: context)
+            deleteAll(FetchDescriptor<InventoryTag>(), label: "InventoryTag", in: context)
+            deleteAll(FetchDescriptor<InventoryUnit>(), label: "InventoryUnit", in: context)
+            deleteAll(FetchDescriptor<Opportunity>(), label: "Opportunity", in: context)
+            deleteAll(FetchDescriptor<Product>(), label: "Product", in: context)
+            deleteAll(FetchDescriptor<OpsContact>(), label: "OpsContact", in: context)
+            deleteAll(FetchDescriptor<TaskStatusOption>(), label: "TaskStatusOption", in: context)
+            deleteAll(FetchDescriptor<SubClient>(), label: "SubClient", in: context)
+
+            // Phase 2: core entities in dependency order. We clear inverse
+            // relationships BEFORE calling delete so SwiftData's cascade
+            // rules don't try to re-delete already-deleted children.
             if let tasks = try? context.fetch(FetchDescriptor<ProjectTask>()) {
-                for task in tasks { context.delete(task) }
+                for task in tasks {
+                    task.project = nil
+                    task.taskType = nil
+                    task.teamMembers.removeAll()
+                    context.delete(task)
+                }
                 print("[LOGOUT] Deleted \(tasks.count) tasks")
             }
 
             if let taskTypes = try? context.fetch(FetchDescriptor<TaskType>()) {
-                for taskType in taskTypes { context.delete(taskType) }
+                for taskType in taskTypes {
+                    taskType.tasks.removeAll()
+                    context.delete(taskType)
+                }
                 print("[LOGOUT] Deleted \(taskTypes.count) task types")
             }
 
             if let projects = try? context.fetch(FetchDescriptor<Project>()) {
                 for project in projects {
                     project.teamMembers.removeAll()
+                    project.tasks.removeAll()
+                    project.client = nil
                     context.delete(project)
                 }
                 print("[LOGOUT] Deleted \(projects.count) projects")
             }
 
             if let clients = try? context.fetch(FetchDescriptor<Client>()) {
-                for client in clients { context.delete(client) }
+                for client in clients {
+                    client.projects.removeAll()
+                    client.subClients.removeAll()
+                    context.delete(client)
+                }
                 print("[LOGOUT] Deleted \(clients.count) clients")
             }
 
@@ -1159,6 +1191,25 @@ class DataController: ObservableObject {
 
         // Clear any cached data
         clearAllCaches()
+    }
+
+    /// Fetch all instances of a model and delete them individually.
+    /// Isolated helper so performCompleteDataWipe reads like a list of
+    /// entity types rather than repeated try? / fetch / for-loop blocks.
+    private func deleteAll<Model: PersistentModel>(
+        _ descriptor: FetchDescriptor<Model>,
+        label: String,
+        in context: ModelContext
+    ) {
+        guard let rows = try? context.fetch(descriptor) else {
+            print("[LOGOUT] Fetch failed for \(label) — skipping")
+            return
+        }
+        guard !rows.isEmpty else { return }
+        for row in rows {
+            context.delete(row)
+        }
+        print("[LOGOUT] Deleted \(rows.count) \(label)")
     }
     
     /// Clears all cached data

@@ -23,7 +23,7 @@ struct OPSButtonStyle {
         }
     }
     
-    /// Secondary button style with outlined appearance
+    /// Secondary button style with ultrathin material dark fill
     struct Secondary: ButtonStyle {
         func makeBody(configuration: Configuration) -> some View {
             configuration.label
@@ -31,13 +31,12 @@ struct OPSButtonStyle {
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-                .cornerRadius(OPSStyle.Layout.buttonRadius)
+                .background(.ultraThinMaterial.opacity(configuration.isPressed ? 0.6 : 1.0), in: RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
+                .environment(\.colorScheme, .dark)
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
                 )
-                .opacity(configuration.isPressed ? 0.8 : 1.0)
                 .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
                 .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
         }

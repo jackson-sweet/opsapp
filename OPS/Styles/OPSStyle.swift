@@ -65,10 +65,10 @@ enum OPSStyle {
         static let accountingOverdue = Color("Accounting/AccountingOverdue") // Deep red (#93321A)
 
         // Wizard highlight color
-        static let wizardAccent = Color(red: 0.92, green: 0.55, blue: 0.15) // Tactical orange (#EB8C26)
+        static let wizardAccent = Color(red: 0.85, green: 0.68, blue: 0.35) // Muted warm amber (#D9AD59)
 
         // UI state colors
-        static let placeholderText = Color(red: 0.6, green: 0.6, blue: 0.6)  // #999999 (medium gray)
+        static let placeholderText = Color(red: 0.4, green: 0.4, blue: 0.4)  // #666666 (matches tertiaryText — clearly distinguishable from content)
 
         // Button-specific colors
         static let buttonText = Color.white  // For text on accent backgrounds
@@ -199,6 +199,11 @@ enum OPSStyle {
         static let displayLarge = Font.displayLarge
         static let displayQuantity = Font.displayQuantity
         static let displayXL = Font.displayXL
+
+        // Monospaced numeric display — for dimensions, measurements, stair specs
+        static let headlineMono = SwiftUI.Font.system(size: 24, weight: .bold, design: .monospaced)
+        static let titleMono = SwiftUI.Font.system(size: 20, weight: .bold, design: .monospaced)
+        static let monoValue = SwiftUI.Font.system(size: 14, weight: .bold, design: .monospaced)
     }
 
     // MARK: - Layout

@@ -268,6 +268,69 @@ class AppState: ObservableObject {
 
         // Check for overdue invoices and notify admin/office users
         checkOverdueInvoices(dataController: dataController)
+
+        // Check for projects stuck in the estimated phase — the "rotting
+        // quote" problem where a quote is sent and never followed up.
+        checkStaleEstimates(dataController: dataController, frequencyDays: frequency)
+    }
+
+    // MARK: - Stale Estimate Check
+
+    /// Find projects stuck in .estimated status past the staleness threshold
+    /// and surface an in-app notification so the admin can follow up before
+    /// the lead goes cold. Runs on the same periodic review-check cadence.
+    func checkStaleEstimates(dataController: DataController, frequencyDays: Int) {
+        let allProjects = dataController.getProjects()
+        let companyId = dataController.currentUser?.companyId
+        let company: Company? = companyId.flatMap { dataController.getCompany(id: $0) }
+        let threshold = company?.staleEstimateThresholdDays ?? 30
+
+        let staleCount = StaleEstimateDetector.staleEstimatedProjects(
+            from: allProjects,
+            thresholdDays: threshold
+        ).count
+        guard staleCount > 0 else { return }
+
+        // Throttle: only create a new in-app notification once per
+        // frequency window so the bell rail doesn't accumulate duplicates
+        // on every app launch.
+        let throttleKey = "lastStaleEstimateInAppNotification"
+        if let last = UserDefaults.standard.object(forKey: throttleKey) as? Date {
+            let daysSince = Calendar.current.dateComponents([.day], from: last, to: Date()).day ?? 0
+            guard daysSince >= frequencyDays else { return }
+        }
+
+        guard let userId = dataController.currentUser?.id,
+              let resolvedCompanyId = companyId else { return }
+
+        UserDefaults.standard.set(Date(), forKey: throttleKey)
+
+        let body: String
+        if staleCount == 1 {
+            body = "1 estimate sitting \(threshold)+ days without follow-up"
+        } else {
+            body = "\(staleCount) estimates sitting \(threshold)+ days without follow-up"
+        }
+
+        Task {
+            let dto = NotificationRepository.CreateNotificationDTO(
+                userId: userId,
+                companyId: resolvedCompanyId,
+                type: "stale_estimate_review",
+                title: "Stale Estimates",
+                body: body,
+                deepLinkType: "jobBoard"
+            )
+            do {
+                try await NotificationRepository().createNotification(dto)
+                await MainActor.run {
+                    self.refreshUnreadCount()
+                }
+                print("[STALE_ESTIMATE] In-app notification created for \(staleCount) stale estimate(s)")
+            } catch {
+                print("[STALE_ESTIMATE] Failed to create in-app notification: \(error)")
+            }
+        }
     }
 
     // MARK: - Overdue Invoice Check

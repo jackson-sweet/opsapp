@@ -32,6 +32,7 @@ struct SettingsView: View {
         case permissions
         case tutorialExperience, tutorialV2
         case wizardManagement
+        case trash
 
         var id: String { rawValue }
     }
@@ -436,6 +437,16 @@ struct SettingsView: View {
                                         action: { activeDestination = .reviewExpenses }
                                     )
                                 }
+
+                                if isAdminOrOffice {
+                                    sectionDivider
+
+                                    settingsRow(
+                                        icon: "trash",
+                                        title: "Trash",
+                                        action: { activeDestination = .trash }
+                                    )
+                                }
                             }
                             .padding(.horizontal, 20)
 
@@ -696,6 +707,11 @@ struct SettingsView: View {
                 AllPhotosGalleryView()
                     .environmentObject(dataController)
                     .environmentObject(appState)
+            }
+        case .trash:
+            NavigationStack {
+                TrashView()
+                    .environmentObject(dataController)
             }
         case .myExpenses:
             NavigationStack {

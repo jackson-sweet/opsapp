@@ -64,6 +64,9 @@ final class Company {
     var overdueReviewThresholdDays: Int = 14
     var overdueReminderFrequencyDays: Int = 7
     var matchInvoicePaymentTerms: Bool = false
+    // Days an estimate can sit untouched before it's flagged as stale
+    // and surfaced in the admin review rail.
+    var staleEstimateThresholdDays: Int = 30
 
     // Auto-scheduling window configuration
     var schedulingWindowMode: String = "companyHours"  // "companyHours", "custom", "daylight"

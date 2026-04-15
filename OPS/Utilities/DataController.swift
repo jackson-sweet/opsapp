@@ -3910,6 +3910,59 @@ class DataController: ObservableObject {
         print("[DataController] Task deleted: \(taskId)")
     }
 
+    // MARK: - Restore Operations (Trash / Undo)
+
+    /// Clear the soft-delete tombstone on a project and push the change.
+    /// Used by Settings > Trash to let admins bring back accidentally
+    /// deleted projects. Sync op uses NSNull() so PostgREST writes an
+    /// actual SQL NULL instead of the string "null".
+    @MainActor
+    func restoreProject(_ project: Project) async throws {
+        project.deletedAt = nil
+        project.needsSync = true
+        try? modelContext?.save()
+
+        syncEngine.recordOperation(
+            entityType: .project,
+            entityId: project.id,
+            operationType: "update",
+            changedFields: ["deleted_at": NSNull()]
+        )
+        print("[DataController] Project restored: \(project.id)")
+    }
+
+    /// Clear the soft-delete tombstone on a client and push the change.
+    @MainActor
+    func restoreClient(_ client: Client) async throws {
+        client.deletedAt = nil
+        client.needsSync = true
+        try? modelContext?.save()
+
+        syncEngine.recordOperation(
+            entityType: .client,
+            entityId: client.id,
+            operationType: "update",
+            changedFields: ["deleted_at": NSNull()]
+        )
+        print("[DataController] Client restored: \(client.id)")
+    }
+
+    /// Clear the soft-delete tombstone on a task and push the change.
+    @MainActor
+    func restoreTask(_ task: ProjectTask) async throws {
+        task.deletedAt = nil
+        task.needsSync = true
+        try? modelContext?.save()
+
+        syncEngine.recordOperation(
+            entityType: .projectTask,
+            entityId: task.id,
+            operationType: "update",
+            changedFields: ["deleted_at": NSNull()]
+        )
+        print("[DataController] Task restored: \(task.id)")
+    }
+
     /// Update task - SINGLE SOURCE OF TRUTH
     @MainActor
     func updateTask(task: ProjectTask) async throws {

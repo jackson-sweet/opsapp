@@ -1343,13 +1343,50 @@ struct TeamInviteSheet: View {
                 roleId: selectedRoleId
             )
 
+            // Persist an in-app notification for the admin so the notification
+            // rail has a record of the invite being sent. Email/SMS delivery
+            // is sent from the backend but previously there was no in-app
+            // confirmation — the admin had to trust the success toast alone.
+            let totalSent = validEmails.count + validPhones.count
+            if totalSent > 0,
+               let userId = dataController.currentUser?.id,
+               !companyId.isEmpty {
+                let recipientSummary = buildRecipientSummary(
+                    emails: validEmails,
+                    phones: validPhones
+                )
+                let notificationBody: String
+                if totalSent == 1 {
+                    notificationBody = "Invitation sent to \(recipientSummary)."
+                } else {
+                    notificationBody = "\(totalSent) invitations sent to \(recipientSummary)."
+                }
+                let notificationDTO = NotificationRepository.CreateNotificationDTO(
+                    userId: userId,
+                    companyId: companyId,
+                    type: "team_invite_sent",
+                    title: "TEAM INVITES SENT",
+                    body: notificationBody,
+                    deepLinkType: "team",
+                    persistent: false,
+                    actionUrl: "ops://settings/organization/team",
+                    actionLabel: "VIEW TEAM"
+                )
+                do {
+                    try await NotificationRepository().createNotification(notificationDTO)
+                    print("[TEAM_INVITE] Created in-app notification for admin: \(userId)")
+                } catch {
+                    print("[TEAM_INVITE] ⚠️ Failed to create in-app notification: \(error)")
+                    // Non-fatal — invites still sent successfully
+                }
+            }
+
             await MainActor.run {
                 isLoading = false
 
                 let generator = UINotificationFeedbackGenerator()
                 generator.notificationOccurred(.success)
 
-                let totalSent = validEmails.count + validPhones.count
                 NotificationCenter.default.post(
                     name: Notification.Name("TeamInvitesSent"),
                     object: nil,
@@ -1372,6 +1409,18 @@ struct TeamInviteSheet: View {
             }
             print("[TEAM_INVITE] Error sending invitations: \(error)")
         }
+    }
+
+    /// Build a human-readable summary of invite recipients for the
+    /// in-app notification body. Shows the first recipient by name and
+    /// "+ N more" for additional ones so long lists don't bloat the rail.
+    private func buildRecipientSummary(emails: [String], phones: [String]) -> String {
+        let all = emails + phones
+        guard let first = all.first else { return "" }
+        if all.count == 1 {
+            return first
+        }
+        return "\(first) + \(all.count - 1) more"
     }
 }
 

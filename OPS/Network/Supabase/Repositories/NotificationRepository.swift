@@ -29,6 +29,15 @@ class NotificationRepository {
         let expenseId: String?
         let batchId: String?
         let deepLinkType: String?
+        /// Persistent notifications stay in the rail until explicitly
+        /// resolved — used for long-running background tasks where the
+        /// user is actively waiting for completion.
+        let persistent: Bool?
+        /// Destination when the user taps the notification's action button.
+        /// Either a deep-link URL the app can resolve internally or a web URL.
+        let actionUrl: String?
+        /// Label for the action button on the notification card.
+        let actionLabel: String?
 
         enum CodingKeys: String, CodingKey {
             case userId      = "user_id"
@@ -41,6 +50,39 @@ class NotificationRepository {
             case expenseId   = "expense_id"
             case batchId     = "batch_id"
             case deepLinkType = "deep_link_type"
+            case persistent
+            case actionUrl   = "action_url"
+            case actionLabel = "action_label"
+        }
+
+        init(
+            userId: String,
+            companyId: String,
+            type: String,
+            title: String,
+            body: String,
+            projectId: String? = nil,
+            noteId: String? = nil,
+            expenseId: String? = nil,
+            batchId: String? = nil,
+            deepLinkType: String? = nil,
+            persistent: Bool? = nil,
+            actionUrl: String? = nil,
+            actionLabel: String? = nil
+        ) {
+            self.userId = userId
+            self.companyId = companyId
+            self.type = type
+            self.title = title
+            self.body = body
+            self.projectId = projectId
+            self.noteId = noteId
+            self.expenseId = expenseId
+            self.batchId = batchId
+            self.deepLinkType = deepLinkType
+            self.persistent = persistent
+            self.actionUrl = actionUrl
+            self.actionLabel = actionLabel
         }
     }
 

@@ -50,14 +50,19 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if !dataController.isConnected && !dataController.isAuthenticated && !hasCompletedOnboarding {
+            if isCheckingAuth {
+                // Show the splash loading view first, BEFORE evaluating the
+                // offline gate. On a fresh launch `isConnected` defaults to
+                // false until the first connectivity check completes — if
+                // the offline gate check runs first, the "NO CONNECTION"
+                // screen flashes for a fraction of a second before the
+                // initial auth+connectivity checks complete.
+                SplashLoadingView()
+            } else if !dataController.isConnected && !dataController.isAuthenticated && !hasCompletedOnboarding {
                 OfflineGateView(
                     cachedUserName: cachedAccountName,
                     onCachedLogin: loginWithCachedAccount
                 )
-            } else if isCheckingAuth {
-                // Show a simple loading view while checking authentication
-                SplashLoadingView()
             } else if showABTestOnboarding && variantManager.isReady, let manager = onboardingManagerInstance {
                 // A/B/C test onboarding for new users
                 OnboardingABTestCoordinator(

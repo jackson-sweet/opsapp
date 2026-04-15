@@ -220,7 +220,8 @@ struct ProjectNotesView: View {
             companyId: companyId,
             currentUserId: user.id,
             teamMembers: dataController.getTeamMembers(companyId: companyId).map { TeamMember.fromUser($0) },
-            modelContext: modelContext
+            modelContext: modelContext,
+            dataController: dataController
         )
     }
 }

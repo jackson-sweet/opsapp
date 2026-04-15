@@ -17,6 +17,11 @@ struct PhotoItem: Identifiable {
     let date: Date
     let authorId: String?
     let note: String?
+    /// Pre-computed lowercased blob of every project field the user might
+    /// search against (title, client name, address, description, notes,
+    /// status, task type names). Built once at construction time so the
+    /// filter pass is a single substring check instead of N field lookups.
+    let searchHaystack: String
 
     private static let monthKeyFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -99,8 +104,19 @@ struct AllPhotosGalleryView: View {
         return allProjects
             .filter { $0.deletedAt == nil }
             .flatMap { project -> [PhotoItem] in
-                project.getProjectImages().map { url in
+                let haystack = Self.buildSearchHaystack(for: project)
+                return project.getProjectImages().map { url in
                     let annotation = annotationMap[url]?.first(where: { $0.projectId == project.id }) ?? annotationMap[url]?.first
+                    let noteText = annotation?.note.isEmpty == false ? annotation?.note : nil
+                    // Fold the photo's annotation note into the haystack
+                    // so a comment typed on one specific photo is still
+                    // searchable alongside the project-level fields.
+                    let perPhotoHaystack: String
+                    if let noteText = noteText {
+                        perPhotoHaystack = haystack + " " + noteText.lowercased()
+                    } else {
+                        perPhotoHaystack = haystack
+                    }
                     return PhotoItem(
                         id: "\(project.id)-\(url)",
                         url: url,
@@ -108,24 +124,45 @@ struct AllPhotosGalleryView: View {
                         projectTitle: project.title,
                         date: annotation?.createdAt ?? project.startDate ?? Date(),
                         authorId: annotation?.authorId,
-                        note: annotation?.note.isEmpty == false ? annotation?.note : nil
+                        note: noteText,
+                        searchHaystack: perPhotoHaystack
                     )
                 }
             }
             .sorted { $0.date > $1.date }
     }
 
+    /// Collect every project field worth searching for the photo gallery's
+    /// free-text search, lowercased and joined into a single blob. Called
+    /// once per project during item construction so each filter pass is
+    /// a single `contains` check instead of N field lookups.
+    private static func buildSearchHaystack(for project: Project) -> String {
+        var parts: [String] = []
+        parts.append(project.title)
+        parts.append(project.effectiveClientName)
+        if let address = project.address, !address.isEmpty { parts.append(address) }
+        if let notes = project.notes, !notes.isEmpty { parts.append(notes) }
+        if let description = project.projectDescription, !description.isEmpty { parts.append(description) }
+        parts.append(project.status.rawValue)
+        // Task type display names on the project are a common lookup target
+        // (e.g. searching for "rail" to find all projects with rail tasks).
+        for task in project.tasks where task.deletedAt == nil {
+            if let typeName = task.taskType?.display { parts.append(typeName) }
+            if let customTitle = task.customTitle, !customTitle.isEmpty { parts.append(customTitle) }
+        }
+        return parts.joined(separator: " ").lowercased()
+    }
+
     /// Apply search and filters
     private var filteredPhotoItems: [PhotoItem] {
         var items = allPhotoItems
 
-        // Search filter (project title or note)
+        // Search filter — matches against the pre-built haystack so any
+        // relevant project field (title, client, address, notes, status,
+        // task types) or per-photo annotation note can surface results.
         if !searchText.isEmpty {
             let query = searchText.lowercased()
-            items = items.filter {
-                $0.projectTitle.lowercased().contains(query) ||
-                ($0.note?.lowercased().contains(query) ?? false)
-            }
+            items = items.filter { $0.searchHaystack.contains(query) }
         }
 
         // Uploader filter
@@ -220,31 +257,38 @@ struct AllPhotosGalleryView: View {
                     )
                 }
 
-                if filteredPhotoItems.isEmpty && !allPhotoItems.isEmpty {
-                    // Filtered empty state
-                    filteredEmptyState
-                } else if allPhotoItems.isEmpty {
-                    // No photos at all
+                if allPhotoItems.isEmpty {
+                    // No photos at all — no search bar because there's nothing to search
                     emptyState
                 } else {
                     ScrollView {
                         VStack(spacing: OPSStyle.Layout.spacing3) {
-                            // Search + filter row
+                            // Search + filter row — always visible so the
+                            // user can refine or clear their search without
+                            // the no-results state hijacking the whole view.
                             searchFilterRow
 
-                            // Group toggle
-                            groupToggleRow
+                            if filteredPhotoItems.isEmpty {
+                                // Inline no-results card: keeps the search
+                                // field in place and shows the exact query
+                                // that came up empty, so the user can just
+                                // edit the text instead of bouncing back.
+                                inlineNoResultsCard
+                            } else {
+                                // Group toggle
+                                groupToggleRow
 
-                            // Summary
-                            summaryRow
+                                // Summary
+                                summaryRow
 
-                            // Month sections
-                            ForEach(monthGroups) { monthGroup in
-                                monthSection(monthGroup)
+                                // Month sections
+                                ForEach(monthGroups) { monthGroup in
+                                    monthSection(monthGroup)
+                                }
+
+                                // Storage row
+                                storageRow
                             }
-
-                            // Storage row
-                            storageRow
                         }
                         .padding(.vertical, OPSStyle.Layout.spacing3)
                     }
@@ -798,23 +842,43 @@ struct AllPhotosGalleryView: View {
         .padding(.horizontal, 20)
     }
 
-    private var filteredEmptyState: some View {
-        VStack(spacing: OPSStyle.Layout.spacing3) {
-            Spacer()
+    /// Inline no-results card rendered beneath the search bar so the user
+    /// never loses the ability to edit their query. Echoes the exact search
+    /// term back to them and exposes a Clear action in the same tap target.
+    private var inlineNoResultsCard: some View {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
+                .font(.system(size: OPSStyle.Layout.IconSize.xl))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Text("NO MATCHING PHOTOS")
-                .font(OPSStyle.Typography.subtitle)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-            Button(action: clearAllFilters) {
-                Text("Clear Filters")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+            if !searchText.isEmpty {
+                Text("NO RESULTS FOR \"\(searchText.uppercased())\"")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("NO MATCHING PHOTOS")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            Spacer()
+
+            if hasActiveFilters || !searchText.isEmpty {
+                Button(action: clearAllFilters) {
+                    Text("CLEAR")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .tracking(0.8)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                        )
+                }
+            }
         }
         .frame(maxWidth: .infinity)
+        .padding(.vertical, OPSStyle.Layout.spacing4)
         .padding(.horizontal, 20)
     }
 

@@ -266,6 +266,14 @@ struct HomeContentView: View {
                     .padding(.bottom, 120) // Add padding for tab bar
             }
         }
+        // Drive a synchronized animation on project-mode transitions so the
+        // AppHeader's insertion/removal runs on the same timeline as the
+        // OPSMapContainer top project overlay's animation. Previously the
+        // header toggled instantly (no animation driver on the parent),
+        // so when exiting project mode the AppHeader appeared immediately
+        // while the map overlay was still animating out — the two headers
+        // visually stacked for the duration of the overlay animation.
+        .animation(OPSStyle.Animation.standard, value: appState.isInProjectMode)
     }
 
     private var headerView: some View {

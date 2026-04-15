@@ -26,6 +26,7 @@ class ProjectNotesViewModel: ObservableObject {
     private var currentUserId: String?
     private var allTeamMembers: [TeamMember] = []
     private var modelContext: ModelContext?
+    private weak var dataController: DataController?
     private var notificationObserver: NSObjectProtocol?
 
     init(projectId: String) {
@@ -38,11 +39,12 @@ class ProjectNotesViewModel: ObservableObject {
         }
     }
 
-    func setup(companyId: String, currentUserId: String, teamMembers: [TeamMember], modelContext: ModelContext) {
+    func setup(companyId: String, currentUserId: String, teamMembers: [TeamMember], modelContext: ModelContext, dataController: DataController? = nil) {
         self.companyId = companyId
         self.currentUserId = currentUserId
         self.allTeamMembers = teamMembers
         self.modelContext = modelContext
+        self.dataController = dataController
         self.repository = ProjectNoteRepository(companyId: companyId)
 
         // Listen for realtime note updates
@@ -162,6 +164,12 @@ class ProjectNotesViewModel: ObservableObject {
                 return
             }
             isUploading = false
+
+            // Also surface comment attachments in the project photo gallery.
+            // Without this the image lives only on the note and never appears
+            // in the project photo grid — which users expect as the single
+            // place to see every photo taken on a project.
+            await addAttachmentsToProjectGallery(attachmentURLs)
         }
 
         let noteContent = text.isEmpty ? (hasImages ? "Photo" : "") : text
@@ -233,6 +241,49 @@ class ProjectNotesViewModel: ObservableObject {
                 }
             }
             loadNotesFromLocal()
+        }
+    }
+
+    // MARK: - Gallery Sync
+
+    /// Append note-comment attachments to the project's photo gallery and
+    /// queue a Supabase sync op so the gallery stays in sync on other
+    /// devices. Called from `postNote()` after the note images upload
+    /// successfully. No-op when called with an empty URL list.
+    private func addAttachmentsToProjectGallery(_ urls: [String]) async {
+        guard !urls.isEmpty, let context = modelContext else { return }
+
+        let pid = projectId
+        let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == pid })
+        guard let project = try? context.fetch(descriptor).first else { return }
+
+        var gallery = project.getProjectImageURLs()
+        var added = false
+        for url in urls where !gallery.contains(url) {
+            gallery.append(url)
+            added = true
+        }
+        guard added else { return }
+
+        project.setProjectImageURLs(gallery)
+        project.needsSync = true
+        project.syncPriority = 2
+        try? context.save()
+
+        // Queue a Supabase update op via DataController if it was injected.
+        // We build the AnyJSON directly here because updateProjectFields'
+        // local-apply switch doesn't know about project_images yet — the
+        // local write above already covers that side.
+        guard let dataController = dataController else { return }
+        do {
+            try await dataController.updateProjectFields(
+                projectId: pid,
+                fields: [
+                    "project_images": .array(gallery.map { .string($0) })
+                ]
+            )
+        } catch {
+            print("[NOTES] Failed to queue project_images sync op: \(error)")
         }
     }
 

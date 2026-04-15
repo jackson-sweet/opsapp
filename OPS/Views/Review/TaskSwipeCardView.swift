@@ -8,9 +8,19 @@
 
 import SwiftUI
 
+/// Scheduling state shown on a task review swipe card.
+/// Distinguishes "scheduled but stale" (days-ago badge) from the two
+/// meaningless-day states — unscheduled (no dates) and unassigned (no
+/// crew) — so the badge reports the actual blocker instead of "0 DAYS AGO".
+enum TaskScheduleStatus: Equatable {
+    case scheduledDaysAgo(Int)
+    case unscheduled
+    case unassigned
+}
+
 struct TaskSwipeCardView: View {
     let task: ProjectTask
-    let scheduledDaysAgo: Int
+    let scheduleStatus: TaskScheduleStatus
     let onTap: () -> Void
     var badgeOverride: (text: String, color: Color)? = nil
 
@@ -97,21 +107,31 @@ struct TaskSwipeCardView: View {
 
     private var dateBadgeText: String {
         if let override = badgeOverride { return override.text }
-        if scheduledDaysAgo == 0 {
-            return "TODAY"
-        } else {
-            return "\(scheduledDaysAgo) DAYS AGO"
+        switch scheduleStatus {
+        case .unscheduled:
+            return "UNSCHEDULED"
+        case .unassigned:
+            return "UNASSIGNED"
+        case .scheduledDaysAgo(let days):
+            return days == 0 ? "TODAY" : "\(days) DAYS AGO"
         }
     }
 
     private var dateBadgeColor: Color {
         if let override = badgeOverride { return override.color }
-        if scheduledDaysAgo == 0 {
-            return OPSStyle.Colors.successStatus
-        } else if scheduledDaysAgo < 7 {
+        switch scheduleStatus {
+        case .unscheduled, .unassigned:
+            // Unscheduled and unassigned tasks are blockers — flag them as warnings
+            // so they stand out in the review stack.
             return OPSStyle.Colors.warningStatus
-        } else {
-            return OPSStyle.Colors.errorStatus
+        case .scheduledDaysAgo(let days):
+            if days == 0 {
+                return OPSStyle.Colors.successStatus
+            } else if days < 7 {
+                return OPSStyle.Colors.warningStatus
+            } else {
+                return OPSStyle.Colors.errorStatus
+            }
         }
     }
 

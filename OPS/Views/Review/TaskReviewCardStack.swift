@@ -36,7 +36,7 @@ struct TaskReviewCardStack: View {
                     ZStack {
                         TaskSwipeCardView(
                             task: tasks[index],
-                            scheduledDaysAgo: daysSinceScheduled(tasks[index]),
+                            scheduleStatus: scheduleStatus(for: tasks[index]),
                             onTap: { onTapCard(tasks[index]) },
                             badgeOverride: badgeProvider?(tasks[index])
                         )
@@ -186,8 +186,19 @@ struct TaskReviewCardStack: View {
 
     // MARK: - Helpers
 
-    private func daysSinceScheduled(_ task: ProjectTask) -> Int {
-        guard let endDate = task.endDate else { return 0 }
-        return max(0, Calendar.current.dateComponents([.day], from: endDate, to: Date()).day ?? 0)
+    /// Compute the review-card badge state for a task.
+    /// Unscheduled (no start/end dates) and unassigned (no crew) tasks are
+    /// called out explicitly instead of being squashed into a meaningless
+    /// "0 DAYS AGO" label when the underlying day count is zero.
+    private func scheduleStatus(for task: ProjectTask) -> TaskScheduleStatus {
+        // Prefer scheduled completion (endDate), fall back to startDate if unavailable
+        guard let scheduledDate = task.endDate ?? task.startDate else {
+            return .unscheduled
+        }
+        if task.getTeamMemberIds().isEmpty {
+            return .unassigned
+        }
+        let days = max(0, Calendar.current.dateComponents([.day], from: scheduledDate, to: Date()).day ?? 0)
+        return .scheduledDaysAgo(days)
     }
 }

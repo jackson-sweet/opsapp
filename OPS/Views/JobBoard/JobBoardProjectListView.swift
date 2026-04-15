@@ -18,9 +18,12 @@ struct JobBoardProjectListView: View {
     @Binding var showingFilters: Bool
     @Binding var showingFilterSheet: Bool
     var activeOnly: Bool = false
+    var assignedToMe: Bool = false
     @State private var selectedStatuses: Set<Status> = []
     @State private var selectedTeamMemberIds: Set<String> = []
-    @State private var sortOption: ProjectSortOption = .statusAscending
+    // Default to most-recently-edited so freshly touched projects float to
+    // the top — matches how users think about "what needs attention now".
+    @State private var sortOption: ProjectSortOption = .latestEdited
     @State private var showingCreateProject = false
     @State private var showingClosedSheet = false
     @State private var showingArchivedSheet = false
@@ -41,7 +44,7 @@ struct JobBoardProjectListView: View {
     }
 
     private var filteredProjects: [Project] {
-        var filtered = allProjects
+        var filtered = allProjects.filter { $0.deletedAt == nil }
 
         // Tutorial mode only shows demo projects
         if tutorialMode {
@@ -51,6 +54,13 @@ struct JobBoardProjectListView: View {
         // Active-only toggle: in progress + accepted
         if activeOnly {
             filtered = filtered.filter { $0.status.isActive }
+        }
+
+        // Assigned to me: only projects where current user is a team member
+        if assignedToMe, let userId = dataController.currentUser?.id {
+            filtered = filtered.filter { project in
+                project.getTeamMemberIds().contains(userId)
+            }
         }
 
         if !selectedStatuses.isEmpty {
@@ -74,6 +84,22 @@ struct JobBoardProjectListView: View {
         }
 
         switch sortOption {
+        case .latestEdited:
+            return filtered.sorted { p1, p2 in
+                // Proxy "last edited" as the most recent of lastSyncedAt
+                // (updated on every outbound sync) or the scheduled start
+                // date. lastSyncedAt alone is populated by inbound syncs
+                // too, but for the user it still represents "recency".
+                let p1Stamp = p1.lastSyncedAt ?? p1.startDate ?? Date.distantPast
+                let p2Stamp = p2.lastSyncedAt ?? p2.startDate ?? Date.distantPast
+                return p1Stamp > p2Stamp
+            }
+        case .earliestEdited:
+            return filtered.sorted { p1, p2 in
+                let p1Stamp = p1.lastSyncedAt ?? p1.startDate ?? Date.distantFuture
+                let p2Stamp = p2.lastSyncedAt ?? p2.startDate ?? Date.distantFuture
+                return p1Stamp < p2Stamp
+            }
         case .scheduledDateDescending:
             return filtered.sorted { p1, p2 in
                 let p1Unscheduled = (p1.startDate == nil || p1.endDate == nil) && p1.status != .closed && p1.status != .archived

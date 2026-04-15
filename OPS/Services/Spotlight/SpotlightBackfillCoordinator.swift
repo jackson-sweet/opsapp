@@ -99,8 +99,10 @@ final class SpotlightBackfillCoordinator {
     }
 
     private func updateProgressNotification(title: String, body: String) async {
-        // Replace existing notification by removing + re-adding with same id
-        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [notificationId])
+        // iOS replaces a delivered notification in-place when a new request is
+        // added with the same identifier — no need to remove first. Removing
+        // before re-adding creates a brief flicker on the lock screen where
+        // the banner disappears and reappears.
         await postProgressNotification(title: title, body: body)
     }
 

@@ -92,6 +92,25 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         // Delay routing to allow app to fully initialize if cold-launched
         // This gives time for view observers to be set up
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            // member_joined carries additionalData fields that aren't part of
+            // routeByType's signature (memberId / wasSeated / roleAssigned),
+            // so handle it at the onClick level and post directly.
+            if notificationType == "member_joined",
+               let memberId = additionalData?["memberId"] as? String {
+                let wasSeated = (additionalData?["wasSeated"] as? Bool) ?? false
+                let roleAssigned = (additionalData?["roleAssigned"] as? Bool) ?? false
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenMemberRoleAssignment"),
+                    object: nil,
+                    userInfo: [
+                        "memberId": memberId,
+                        "wasSeated": wasSeated,
+                        "roleAssigned": roleAssigned
+                    ]
+                )
+                return
+            }
+
             if let screen = screen {
                 self.routeToScreen(screen, projectId: projectId, taskId: taskId)
             } else if let type = notificationType {

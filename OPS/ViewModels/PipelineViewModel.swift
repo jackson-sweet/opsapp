@@ -94,7 +94,7 @@ class PipelineViewModel: ObservableObject {
         }
     }
 
-    func createOpportunity(contactName: String, contactEmail: String?, contactPhone: String?, jobDescription: String?, estimatedValue: Double?, source: String?, companyId: String) async {
+    func createOpportunity(contactName: String, contactEmail: String?, contactPhone: String?, jobDescription: String?, estimatedValue: Double?, source: String?, quoteDeliveryMethod: QuoteDeliveryMethod? = nil, companyId: String) async {
         guard let repo = repository else { return }
         let dto = CreateOpportunityDTO(
             companyId: companyId,
@@ -103,7 +103,8 @@ class PipelineViewModel: ObservableObject {
             contactPhone: contactPhone,
             jobDescription: jobDescription,
             estimatedValue: estimatedValue,
-            source: source
+            source: source,
+            quoteDeliveryMethod: quoteDeliveryMethod?.rawValue
         )
         do {
             let created = try await repo.create(dto)
@@ -114,7 +115,7 @@ class PipelineViewModel: ObservableObject {
         }
     }
 
-    func updateOpportunity(_ opportunity: Opportunity, contactName: String, contactEmail: String?, contactPhone: String?, jobDescription: String?, estimatedValue: Double?, source: String?) async {
+    func updateOpportunity(_ opportunity: Opportunity, contactName: String, contactEmail: String?, contactPhone: String?, jobDescription: String?, estimatedValue: Double?, source: String?, quoteDeliveryMethod: QuoteDeliveryMethod? = nil) async {
         guard let repo = repository else { return }
         let dto = UpdateOpportunityDTO(
             contactName: contactName,
@@ -122,7 +123,8 @@ class PipelineViewModel: ObservableObject {
             contactPhone: contactPhone,
             jobDescription: jobDescription,
             estimatedValue: estimatedValue,
-            source: source
+            source: source,
+            quoteDeliveryMethod: quoteDeliveryMethod?.rawValue
         )
         do {
             _ = try await repo.update(opportunity.id, fields: dto)
@@ -132,6 +134,7 @@ class PipelineViewModel: ObservableObject {
             opportunity.jobDescription = jobDescription
             opportunity.estimatedValue = estimatedValue
             opportunity.source = source
+            opportunity.quoteDeliveryMethod = quoteDeliveryMethod
         } catch {
             self.error = error.localizedDescription
         }

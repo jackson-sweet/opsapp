@@ -138,6 +138,17 @@ struct OpportunityDetailView: View {
                         .foregroundColor(OPSStyle.Colors.warningStatus)
                 }
             }
+
+            if let method = opportunity.quoteDeliveryMethod {
+                HStack(spacing: 6) {
+                    Image(systemName: method.icon)
+                        .font(.system(size: 12))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Text("[QUOTED VIA \(method.displayName)]")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+            }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.top, OPSStyle.Layout.spacing3)

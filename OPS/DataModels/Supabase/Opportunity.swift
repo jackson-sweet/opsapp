@@ -22,6 +22,7 @@ class Opportunity: Identifiable {
     var projectId: String?
     var clientId: String?
     var lossReason: String?
+    var quoteDeliveryMethod: QuoteDeliveryMethod?
     var createdAt: Date
     var updatedAt: Date
     var lastActivityAt: Date?

@@ -20,6 +20,7 @@ struct OpportunityFormSheet: View {
     @State private var jobDescription = ""
     @State private var estimatedValue = ""
     @State private var source = ""
+    @State private var quoteDeliveryMethod: QuoteDeliveryMethod? = nil
     @State private var isSaving = false
 
     private var isValid: Bool {
@@ -57,6 +58,8 @@ struct OpportunityFormSheet: View {
                         formField("Estimated Value", text: $estimatedValue, placeholder: "$0", keyboardType: .decimalPad)
                         Divider().background(Color.white.opacity(0.1))
                         sourcePickerRow
+                        Divider().background(Color.white.opacity(0.1))
+                        deliveryMethodRow
                     }
                     .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
                     .cornerRadius(OPSStyle.Layout.cardCornerRadius)
@@ -97,6 +100,7 @@ struct OpportunityFormSheet: View {
                     jobDescription = opp.jobDescription ?? ""
                     estimatedValue = opp.estimatedValue.map { String(format: "%.0f", $0) } ?? ""
                     source = opp.source ?? ""
+                    quoteDeliveryMethod = opp.quoteDeliveryMethod
                 }
             }
         }
@@ -157,6 +161,46 @@ struct OpportunityFormSheet: View {
         .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
     }
 
+    private var deliveryMethodRow: some View {
+        HStack {
+            Text("Quote Sent Via")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .frame(width: 120, alignment: .leading)
+            Spacer()
+            Menu {
+                Button("None") { quoteDeliveryMethod = nil }
+                ForEach(QuoteDeliveryMethod.allCases, id: \.self) { method in
+                    Button {
+                        quoteDeliveryMethod = method
+                    } label: {
+                        Label(method.displayName, systemImage: method.icon)
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    if let method = quoteDeliveryMethod {
+                        Image(systemName: method.icon)
+                            .font(.system(size: 12))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        Text(method.displayName)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    } else {
+                        Text("Select")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+    }
+
     // MARK: - Save
 
     private func save() {
@@ -174,7 +218,8 @@ struct OpportunityFormSheet: View {
                     contactPhone: contactPhone.isEmpty ? nil : contactPhone,
                     jobDescription: jobDescription.isEmpty ? nil : jobDescription,
                     estimatedValue: value,
-                    source: source.isEmpty ? nil : source
+                    source: source.isEmpty ? nil : source,
+                    quoteDeliveryMethod: quoteDeliveryMethod
                 )
                 isSaving = false
                 if viewModel.error == nil { dismiss() }
@@ -188,6 +233,7 @@ struct OpportunityFormSheet: View {
                     jobDescription: jobDescription.isEmpty ? nil : jobDescription,
                     estimatedValue: value,
                     source: source.isEmpty ? nil : source,
+                    quoteDeliveryMethod: quoteDeliveryMethod,
                     companyId: companyId
                 )
                 isSaving = false

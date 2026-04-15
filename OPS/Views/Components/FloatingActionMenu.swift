@@ -2,7 +2,7 @@
 //  FloatingActionMenu.swift
 //  OPS
 //
-//  Reusable floating action button menu for creating projects, tasks, clients, and task types
+//  Reusable floating action button menu for creating projects, tasks, clients, task types, and leads
 //  Only visible to Office Crew and Admin roles
 //
 
@@ -17,6 +17,8 @@ struct FloatingActionMenu: View {
     @State private var showingCreateClient = false
     @State private var showingCreateTaskType = false
     @State private var showingCreateTask = false
+    @State private var showingCreateLead = false
+    @StateObject private var pipelineVM = PipelineViewModel()
 
     // Check if current user can see FAB
     private var canShowFAB: Bool {
@@ -70,9 +72,9 @@ struct FloatingActionMenu: View {
                                         showingCreateTaskType = true
                                     }
                                 )
-                                .offset(x: -10) // Center 48pt icon over 64pt main button
+                                .offset(x: -10)
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(.easeInOut(duration: 0.3).delay(0.8), value: showCreateMenu)
+                                .animation(.easeInOut(duration: 0.3).delay(1.0), value: showCreateMenu)
                                 .opacity(tutorialMode ? 0.4 : 1.0)
                                 .allowsHitTesting(!tutorialMode)
 
@@ -85,9 +87,9 @@ struct FloatingActionMenu: View {
                                         showingCreateTask = true
                                     }
                                 )
-                                .offset(x: -10) // Center 48pt icon over 64pt main button
+                                .offset(x: -10)
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(.easeInOut(duration: 0.3).delay(0.6), value: showCreateMenu)
+                                .animation(.easeInOut(duration: 0.3).delay(0.8), value: showCreateMenu)
                                 .opacity(tutorialMode ? 0.4 : 1.0)
                                 .allowsHitTesting(!tutorialMode)
 
@@ -98,7 +100,6 @@ struct FloatingActionMenu: View {
                                     action: {
                                         showCreateMenu = false
                                         if tutorialMode {
-                                            // In tutorial mode, post notification for wrapper to handle
                                             NotificationCenter.default.post(
                                                 name: Notification.Name("TutorialCreateProjectTapped"),
                                                 object: nil
@@ -108,9 +109,9 @@ struct FloatingActionMenu: View {
                                         }
                                     }
                                 )
-                                .offset(x: -10) // Center 48pt icon over 64pt main button
+                                .offset(x: -10)
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
-                                .animation(.easeInOut(duration: 0.3).delay(0.4), value: showCreateMenu)
+                                .animation(.easeInOut(duration: 0.3).delay(0.6), value: showCreateMenu)
 
                                 // Create Client - disabled in tutorial mode
                                 FloatingActionItem(
@@ -121,7 +122,25 @@ struct FloatingActionMenu: View {
                                         showingCreateClient = true
                                     }
                                 )
-                                .offset(x: -10) // Center 48pt icon over 64pt main button
+                                .offset(x: -10)
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                                .animation(.easeInOut(duration: 0.3).delay(0.4), value: showCreateMenu)
+                                .opacity(tutorialMode ? 0.4 : 1.0)
+                                .allowsHitTesting(!tutorialMode)
+
+                                // New Lead - disabled in tutorial mode
+                                FloatingActionItem(
+                                    icon: OPSStyle.Icons.opportunity,
+                                    label: "New Lead",
+                                    action: {
+                                        showCreateMenu = false
+                                        if let companyId = dataController.currentUser?.companyId {
+                                            pipelineVM.setup(companyId: companyId)
+                                        }
+                                        showingCreateLead = true
+                                    }
+                                )
+                                .offset(x: -10)
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
                                 .animation(.easeInOut(duration: 0.3).delay(0.2), value: showCreateMenu)
                                 .opacity(tutorialMode ? 0.4 : 1.0)
@@ -180,6 +199,9 @@ struct FloatingActionMenu: View {
         }
         .sheet(isPresented: $showingCreateTask) {
             TaskFormSheet(mode: .create) { _ in }
+        }
+        .sheet(isPresented: $showingCreateLead) {
+            OpportunityFormSheet(viewModel: pipelineVM)
         }
     }
 }

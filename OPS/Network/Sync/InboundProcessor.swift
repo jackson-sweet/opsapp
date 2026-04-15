@@ -1268,32 +1268,74 @@ final class InboundProcessor {
     }
 
     private func mergeInvoiceLineItems(dto: InvoiceDTO, context: ModelContext) throws {
-        guard let lineItems = dto.lineItems else { return }
-        for liDTO in lineItems {
+        let freshItems = dto.lineItems ?? []
+        let freshIds: Set<String> = Set(freshItems.map { $0.id })
+        let invoiceId = dto.id
+
+        // Upsert: insert new, update existing
+        for liDTO in freshItems {
             let liId = liDTO.id
             let descriptor = FetchDescriptor<InvoiceLineItem>(
                 predicate: #Predicate { $0.id == liId }
             )
-            if try context.fetch(descriptor).first == nil {
-                let model = liDTO.toModel()
-                context.insert(model)
+            if let existing = try context.fetch(descriptor).first {
+                // Update fields from server
+                let fresh = liDTO.toModel()
+                existing.name = fresh.name
+                existing.itemDescription = fresh.itemDescription
+                existing.quantity = fresh.quantity
+                existing.unit = fresh.unit
+                existing.unitPrice = fresh.unitPrice
+                existing.lineTotal = fresh.lineTotal
+                existing.displayOrder = fresh.displayOrder
+                existing.parentLineItemId = fresh.parentLineItemId
+            } else {
+                context.insert(liDTO.toModel())
             }
         }
+
+        // Delete: any local item for this invoice no longer on the server
+        let localDescriptor = FetchDescriptor<InvoiceLineItem>(
+            predicate: #Predicate { $0.invoiceId == invoiceId }
+        )
+        let local = (try? context.fetch(localDescriptor)) ?? []
+        for item in local where !freshIds.contains(item.id) {
+            context.delete(item)
+        }
+
         try context.save()
     }
 
     private func mergeInvoicePayments(dto: InvoiceDTO, context: ModelContext) throws {
-        guard let payments = dto.payments else { return }
-        for pDTO in payments {
+        let freshPayments = dto.payments ?? []
+        let freshIds: Set<String> = Set(freshPayments.map { $0.id })
+        let invoiceId = dto.id
+
+        for pDTO in freshPayments {
             let pId = pDTO.id
             let descriptor = FetchDescriptor<Payment>(
                 predicate: #Predicate { $0.id == pId }
             )
-            if try context.fetch(descriptor).first == nil {
-                let model = pDTO.toModel()
-                context.insert(model)
+            if let existing = try context.fetch(descriptor).first {
+                let fresh = pDTO.toModel()
+                existing.amount = fresh.amount
+                existing.method = fresh.method
+                existing.paidAt = fresh.paidAt
+                existing.notes = fresh.notes
+            } else {
+                context.insert(pDTO.toModel())
             }
         }
+
+        // Delete local payments the server has removed
+        let localDescriptor = FetchDescriptor<Payment>(
+            predicate: #Predicate { $0.invoiceId == invoiceId }
+        )
+        let local = (try? context.fetch(localDescriptor)) ?? []
+        for payment in local where !freshIds.contains(payment.id) {
+            context.delete(payment)
+        }
+
         try context.save()
     }
 

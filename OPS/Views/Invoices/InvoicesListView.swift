@@ -12,6 +12,7 @@ struct InvoicesListView: View {
 
     @StateObject private var viewModel = InvoiceViewModel()
     @EnvironmentObject private var dataController: DataController
+    @Environment(\.modelContext) private var modelContext
 
     @State private var selectedInvoice: Invoice? = nil
     @State private var showPaymentSheet = false
@@ -143,7 +144,7 @@ struct InvoicesListView: View {
         }
         .task {
             if let companyId = dataController.currentUser?.companyId {
-                viewModel.setup(companyId: companyId)
+                viewModel.setup(companyId: companyId, modelContext: modelContext)
                 await viewModel.loadInvoices()
             }
         }

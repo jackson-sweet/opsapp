@@ -237,6 +237,13 @@ struct OPSApp: App {
                         break
                     }
                 }
+                .onChange(of: dataController.isAuthenticated) { _, isAuth in
+                    // Request notification permission once user is authenticated
+                    // (onAppear fires before auth completes, so this catches the transition)
+                    if isAuth {
+                        notificationManager.requestPermission()
+                    }
+                }
                 .onReceive(NotificationCenter.default.publisher(for: ConnectivityManager.connectivityChangedNotification)) { _ in
                     // Trigger sync on connectivity change via new engine
                     if let connectivity = dataController.connectivity,
@@ -247,8 +254,61 @@ struct OPSApp: App {
                         }
                     }
                 }
+                // MARK: - Universal Links
+                // Apple-validated https://app.opsapp.co/* links open the app directly
+                // (via Associated Domains entitlement + AASA file on OPS-Web). Route
+                // project deep links through the existing OpenProjectDetails handler
+                // so the auth/sync/fetch path is shared with push notifications.
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    guard let url = activity.webpageURL else { return }
+                    handleUniversalLink(url)
+                }
+                // Custom URL schemes — kept for future ops:// fallback. No-op today
+                // since only Google Sign-In is registered.
+                .onOpenURL { url in
+                    handleUniversalLink(url)
+                }
         }
         .modelContainer(sharedModelContainer)
+    }
+
+    // MARK: - Deep Link Routing
+
+    /// Parses an incoming Universal Link / custom-scheme URL and dispatches it
+    /// to the appropriate in-app handler. Currently handles:
+    ///   - https://app.opsapp.co/projects/{id}  → OpenProjectDetails notification
+    ///
+    /// Posts the same notifications that push notification deep links use so
+    /// MainTabView's existing routing code handles sync + presentation.
+    private func handleUniversalLink(_ url: URL) {
+        print("[DEEP_LINK] Received: \(url.absoluteString)")
+
+        // Accept either the production host or any future alias.
+        let host = url.host?.lowercased()
+        let isOPSHost = host == "app.opsapp.co"
+        let isCustomScheme = url.scheme == "ops"
+        guard isOPSHost || isCustomScheme else {
+            print("[DEEP_LINK] Ignoring URL with unrecognized host/scheme: \(url.absoluteString)")
+            return
+        }
+
+        // Path components: first is "/" for https URLs, so drop empty segments.
+        let segments = url.pathComponents.filter { $0 != "/" && !$0.isEmpty }
+
+        // /projects/{id}
+        if segments.count >= 2, segments[0] == "projects" {
+            let projectId = segments[1]
+            guard !projectId.isEmpty else { return }
+            print("[DEEP_LINK] Routing to project: \(projectId)")
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenProjectDetails"),
+                object: nil,
+                userInfo: ["projectId": projectId]
+            )
+            return
+        }
+
+        print("[DEEP_LINK] No route matched for: \(url.absoluteString)")
     }
 
     /// Performs health check when app becomes active

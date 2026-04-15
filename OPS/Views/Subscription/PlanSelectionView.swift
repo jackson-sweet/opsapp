@@ -13,7 +13,9 @@ struct PlanSelectionView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var subscriptionManager: SubscriptionManager
     @EnvironmentObject var dataController: DataController
-    
+
+    var initialPromoCode: String? = nil
+
     @State var selectedPlan: SubscriptionPlan? = nil
     @State var selectedSchedule: PaymentSchedule = .monthly
     @State var isProcessingPayment = false
@@ -137,6 +139,13 @@ struct PlanSelectionView: View {
                 selectedPlan = recommendedPlan
             } else {
                 selectedPlan = currentPlan ?? .starter
+            }
+
+            // Auto-apply promo code from deep link (e.g., trial expiry notification)
+            if let code = initialPromoCode, !code.isEmpty {
+                promoCode = code
+                showPromoField = true
+                validatePromoCode()
             }
         }
         .onDisappear {

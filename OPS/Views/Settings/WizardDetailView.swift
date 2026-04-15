@@ -51,7 +51,7 @@ struct WizardDetailView: View {
             HStack(spacing: 12) {
                 Image(systemName: wizard.iconName)
                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .foregroundColor(OPSStyle.Colors.wizardAccent)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(wizard.displayName)
@@ -104,31 +104,45 @@ struct WizardDetailView: View {
                 case .inProgress:
                     VStack(spacing: 12) {
                         primaryButton(title: "RESUME", icon: "play.fill") {
-                            stateManager?.startWizardDirectly(wizard)
-                            dismiss()
+                            launchWizard(isRestart: false)
                         }
                         secondaryButton(title: "RESTART") {
-                            stateManager?.startWizardDirectly(wizard, isRestart: true)
-                            dismiss()
+                            launchWizard(isRestart: true)
                         }
                     }
                 case .completed:
                     secondaryButton(title: "RESTART GUIDE") {
-                        stateManager?.startWizardDirectly(wizard, isRestart: true)
-                        dismiss()
+                        launchWizard(isRestart: true)
                     }
                 case .notStarted, .dismissed:
                     primaryButton(title: "START GUIDE", icon: "arrow.right") {
-                        stateManager?.startWizardDirectly(wizard)
-                        dismiss()
+                        launchWizard(isRestart: false)
                     }
                 }
             } else {
                 primaryButton(title: "START GUIDE", icon: "arrow.right") {
-                    stateManager?.startWizardDirectly(wizard)
-                    dismiss()
+                    launchWizard(isRestart: false)
                 }
             }
+        }
+    }
+
+    /// Dismiss the entire Settings cover stack, then start the wizard.
+    /// The wizard's own navigation (navigateToCurrentStep + requestDeepNavigation)
+    /// handles getting the user to the correct screen.
+    private func launchWizard(isRestart: Bool) {
+        // Dismiss this detail view first
+        dismiss()
+        // Dismiss the Settings fullScreenCover so the wizard can navigate freely
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardDismissSettingsCovers"),
+                object: nil
+            )
+        }
+        // Start the wizard after covers have dismissed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            stateManager?.startWizardDirectly(wizard, isRestart: isRestart)
         }
     }
 
@@ -215,7 +229,7 @@ struct WizardDetailView: View {
                         }
                     }
                 ))
-                .tint(OPSStyle.Colors.primaryAccent)
+                .tint(OPSStyle.Colors.wizardAccent)
             }
             .padding(.vertical, 14)
             .padding(.horizontal, 16)
@@ -243,7 +257,7 @@ struct WizardDetailView: View {
         } else {
             Text("\(index + 1)")
                 .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(index == currentStep ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                .foregroundColor(index == currentStep ? OPSStyle.Colors.wizardAccent : OPSStyle.Colors.tertiaryText)
                 .frame(width: 28, alignment: .center)
         }
     }

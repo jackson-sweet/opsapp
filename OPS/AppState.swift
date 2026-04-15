@@ -45,6 +45,10 @@ class AppState: ObservableObject {
     // MARK: - Payment Review
     @Published var showPaymentReview: Bool = false
 
+    // MARK: - Subscription
+    @Published var showingPlanSelection: Bool = false
+    @Published var pendingPromoCode: String? = nil
+
     // MARK: - Bug Reporting
     @Published var showingBugReport: Bool = false
     @Published var bugReportScreenshot: UIImage?
@@ -266,8 +270,25 @@ class AppState: ObservableObject {
             reminderFrequencyDays: frequency
         )
 
+        // Mirror the local push as an in-app notification (bell rail)
+        // so the user sees a persistent badge until they review.
+        if overdueCount > 0 {
+            createInAppReviewNotification(
+                dataController: dataController,
+                throttleKey: "lastPaymentReviewInAppNotification",
+                frequencyDays: frequency,
+                type: "payment_review_overdue",
+                title: "Close Out Review",
+                body: "\(overdueCount) project\(overdueCount == 1 ? "" : "s") overdue for payment review",
+                deepLinkType: "paymentReview"
+            )
+        }
+
         // Check for overdue invoices and notify admin/office users
         checkOverdueInvoices(dataController: dataController)
+
+        // Check for tasks stacking up in the completion review queue
+        checkOverdueTasks(dataController: dataController, frequencyDays: frequency)
 
         // Check for projects stuck in the estimated phase — the "rotting
         // quote" problem where a quote is sent and never followed up.
@@ -283,52 +304,107 @@ class AppState: ObservableObject {
         let allProjects = dataController.getProjects()
         let companyId = dataController.currentUser?.companyId
         let company: Company? = companyId.flatMap { dataController.getCompany(id: $0) }
+        // Re-use the same threshold config as overdue review for now; the
+        // UX intent is identical — "nothing has moved in N days, act on it".
+        // Defaults to 30 days when the company hasn't configured a value.
         let threshold = company?.staleEstimateThresholdDays ?? 30
 
-        let staleCount = StaleEstimateDetector.staleEstimatedProjects(
+        let staleProjects = StaleEstimateDetector.staleEstimatedProjects(
             from: allProjects,
             thresholdDays: threshold
-        ).count
+        )
+        let staleCount = staleProjects.count
         guard staleCount > 0 else { return }
 
-        // Throttle: only create a new in-app notification once per
-        // frequency window so the bell rail doesn't accumulate duplicates
-        // on every app launch.
-        let throttleKey = "lastStaleEstimateInAppNotification"
+        createInAppReviewNotification(
+            dataController: dataController,
+            throttleKey: "lastStaleEstimateInAppNotification",
+            frequencyDays: frequencyDays,
+            type: "stale_estimate_review",
+            title: "Stale Estimates",
+            body: "\(staleCount) estimate\(staleCount == 1 ? "" : "s") sitting \(threshold)+ days without follow-up",
+            deepLinkType: "jobBoard"
+        )
+    }
+
+    // MARK: - Overdue Task Review Check
+
+    /// Check for tasks past their scheduled completion date and notify if there are any
+    /// stacking up in the completion review queue. Called from checkOverdueProjects.
+    func checkOverdueTasks(dataController: DataController, frequencyDays: Int) {
+        let allTasks = dataController.getAllTasks()
+        let calendar = Calendar.current
+        let endOfToday = calendar.startOfDay(for: calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date())
+
+        // Match the filter used by JobBoardView.computeReviewableTasks and
+        // FloatingActionMenu so the count agrees with the badge.
+        let reviewableCount = allTasks.filter { task in
+            guard task.status == .active, task.deletedAt == nil else { return false }
+            guard let scheduledDate = task.endDate ?? task.startDate else { return false }
+            return scheduledDate < endOfToday
+        }.count
+
+        NotificationManager.shared.checkAndScheduleTaskReviewNotifications(
+            taskCount: reviewableCount,
+            reminderFrequencyDays: frequencyDays
+        )
+
+        if reviewableCount > 0 {
+            createInAppReviewNotification(
+                dataController: dataController,
+                throttleKey: "lastTaskReviewInAppNotification",
+                frequencyDays: frequencyDays,
+                type: "task_review_overdue",
+                title: "Tasks Need Review",
+                body: "\(reviewableCount) task\(reviewableCount == 1 ? "" : "s") past scheduled completion",
+                deepLinkType: "taskReview"
+            )
+        }
+    }
+
+    /// Creates an in-app notification for a review queue, throttled by frequencyDays
+    /// so the bell rail doesn't accumulate duplicate entries.
+    private func createInAppReviewNotification(
+        dataController: DataController,
+        throttleKey: String,
+        frequencyDays: Int,
+        type: String,
+        title: String,
+        body: String,
+        deepLinkType: String
+    ) {
+        // Throttle: only create a new in-app notification once per frequency window
         if let last = UserDefaults.standard.object(forKey: throttleKey) as? Date {
             let daysSince = Calendar.current.dateComponents([.day], from: last, to: Date()).day ?? 0
             guard daysSince >= frequencyDays else { return }
         }
 
         guard let userId = dataController.currentUser?.id,
-              let resolvedCompanyId = companyId else { return }
+              let companyId = dataController.currentUser?.companyId else { return }
 
         UserDefaults.standard.set(Date(), forKey: throttleKey)
-
-        let body: String
-        if staleCount == 1 {
-            body = "1 estimate sitting \(threshold)+ days without follow-up"
-        } else {
-            body = "\(staleCount) estimates sitting \(threshold)+ days without follow-up"
-        }
 
         Task {
             let dto = NotificationRepository.CreateNotificationDTO(
                 userId: userId,
-                companyId: resolvedCompanyId,
-                type: "stale_estimate_review",
-                title: "Stale Estimates",
+                companyId: companyId,
+                type: type,
+                title: title,
                 body: body,
-                deepLinkType: "jobBoard"
+                projectId: nil,
+                noteId: nil,
+                expenseId: nil,
+                batchId: nil,
+                deepLinkType: deepLinkType
             )
             do {
                 try await NotificationRepository().createNotification(dto)
                 await MainActor.run {
                     self.refreshUnreadCount()
                 }
-                print("[STALE_ESTIMATE] In-app notification created for \(staleCount) stale estimate(s)")
+                print("[REVIEW_NOTIF] In-app notification created: \(title)")
             } catch {
-                print("[STALE_ESTIMATE] Failed to create in-app notification: \(error)")
+                print("[REVIEW_NOTIF] Failed to create in-app notification: \(error)")
             }
         }
     }

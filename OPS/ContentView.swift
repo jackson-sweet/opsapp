@@ -301,6 +301,7 @@ struct PINGatedView: View {
                     .environment(\.wizardStateManager, wizardStateManager)
                     .environment(\.wizardTriggerService, wizardTriggerService)
                     .wizardBanner(stateManager: wizardStateManager)
+                    .wizardOverlay(stateManager: wizardStateManager)
                     .gracePeriodBanner() // Add grace period banner overlay
                     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                         // Reset wizard session tracking on return from background so wizards re-evaluate each session
@@ -545,6 +546,14 @@ struct PINGatedView: View {
                 )
                 .environmentObject(dataController)
             }
+        }
+        // MARK: - Subscription Plan Selection (deep linked from trial expiry notifications)
+        .sheet(isPresented: $appState.showingPlanSelection, onDismiss: {
+            appState.pendingPromoCode = nil
+        }) {
+            PlanSelectionView(initialPromoCode: appState.pendingPromoCode)
+                .environmentObject(dataController)
+                .environmentObject(subscriptionManager)
         }
         // MARK: - Bug Report Sheet (Shake-to-Report)
         .sheet(isPresented: $appState.showingBugReport, onDismiss: {

@@ -22,6 +22,7 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var activeTool: DrawingTool = .draw
     @Published var selection: SelectionState = SelectionState()
     @Published var alignmentGuides: [AlignmentGuide] = []
+    @Published var tapSelectFilter: Set<SelectableElementType> = Set(SelectableElementType.allCases)
 
     // MARK: - UI State
 
@@ -550,39 +551,40 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Selection
 
     func handleTap(at point: CGPoint, hitThreshold: Double = 25.0) {
-        // Check vertex first (higher priority, larger hit area)
-        if let vertexId = PolygonMath.findVertexAtPoint(point, vertices: activeVertices, hitThreshold: hitThreshold) {
-            selection.clear()
+        let additive = activeTool == .tapSelect
+
+        if tapSelectFilter.contains(.vertex),
+           let vertexId = PolygonMath.findVertexAtPoint(point, vertices: activeVertices, hitThreshold: hitThreshold) {
+            if !additive { selection.clear() }
             selection.toggleVertex(vertexId)
             editingVertexId = vertexId
             hapticLight()
             return
         }
 
-        // Check edge
-        if let edgeId = PolygonMath.findEdgeAtPoint(point, edges: activeEdges, vertices: activeVertices, hitThreshold: hitThreshold * 0.8) {
-            selection.clear()
+        if tapSelectFilter.contains(.edge),
+           let edgeId = PolygonMath.findEdgeAtPoint(point, edges: activeEdges, vertices: activeVertices, hitThreshold: hitThreshold * 0.8) {
+            if !additive { selection.clear() }
             selection.toggleEdge(edgeId)
             editingEdgeId = edgeId
             hapticLight()
-
-            // Apply buffered laser measurement if available
             applyBufferedMeasurementIfNeeded(toEdge: edgeId)
             return
         }
 
-        // Check area
-        if activeIsClosed && PolygonMath.pointInPolygon(point, vertices: activeOrderedPositions) {
-            selection.clear()
-            selection.selectedFootprint = true
+        if tapSelectFilter.contains(.face),
+           activeIsClosed && PolygonMath.pointInPolygon(point, vertices: activeOrderedPositions) {
+            if !additive { selection.clear() }
+            selection.selectedFootprint.toggle()
             hapticLight()
             return
         }
 
-        // Tap on empty space — clear selection
-        selection.clear()
-        editingEdgeId = nil
-        editingVertexId = nil
+        if !additive {
+            selection.clear()
+            editingEdgeId = nil
+            editingVertexId = nil
+        }
     }
 
     func handleLongPress(at point: CGPoint, hitThreshold: Double = 25.0) {

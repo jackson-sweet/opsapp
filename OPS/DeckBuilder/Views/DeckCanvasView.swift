@@ -941,7 +941,7 @@ struct DeckCanvasView: View {
                     case .lasso:
                         if !drawingStarted { drawingStarted = true; viewModel.beginLasso(at: startPoint) }
                         viewModel.updateLasso(to: point)
-                    case .none: break
+                    case .tapSelect, .none: break
                     }
                 default: break
                 }
@@ -960,7 +960,7 @@ struct DeckCanvasView: View {
                         }
                     case .select: viewModel.endMarquee()
                     case .lasso: viewModel.endLasso()
-                    case .none: break
+                    case .tapSelect, .none: break
                     }
                 default: break
                 }

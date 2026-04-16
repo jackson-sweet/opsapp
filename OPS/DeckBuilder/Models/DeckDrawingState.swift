@@ -7,7 +7,14 @@ enum DrawingTool: String {
     case draw           // tap-hold-drag to draw lines
     case select         // rectangular marquee
     case lasso          // freeform selection
+    case tapSelect      // tap to toggle elements in/out of selection
     case none           // long-press always works regardless
+}
+
+enum SelectableElementType: String, CaseIterable {
+    case vertex
+    case edge
+    case face
 }
 
 enum DrawingMode: Equatable {

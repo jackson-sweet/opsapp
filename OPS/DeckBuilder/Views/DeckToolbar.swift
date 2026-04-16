@@ -24,6 +24,58 @@ struct DeckToolbar: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if viewModel.activeTool == .tapSelect {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    let count = viewModel.selection.selectedEdgeIds.count + viewModel.selection.selectedVertexIds.count + (viewModel.selection.selectedFootprint ? 1 : 0)
+                    Text("\(count) selected")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    Spacer()
+
+                    Menu {
+                        ForEach(SelectableElementType.allCases, id: \.self) { type in
+                            Button {
+                                if viewModel.tapSelectFilter.contains(type) {
+                                    viewModel.tapSelectFilter.remove(type)
+                                } else {
+                                    viewModel.tapSelectFilter.insert(type)
+                                }
+                            } label: {
+                                HStack {
+                                    Text(type.rawValue.capitalized)
+                                    if viewModel.tapSelectFilter.contains(type) {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Text("FILTER")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    }
+
+                    Button {
+                        viewModel.activeTool = .draw
+                    } label: {
+                        Text("DONE")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.buttonText)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(OPSStyle.Colors.primaryAccent)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    }
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
+            }
+
             // Context-sensitive action bar — changes based on what's selected
             if canEdit, viewModel.selection.hasVertices {
                 vertexTools
@@ -56,6 +108,7 @@ struct DeckToolbar: View {
                     toolButton(icon: "pencil.and.outline", label: "Draw", tool: .draw)
                     toolButton(icon: "rectangle.dashed", label: "Select", tool: .select)
                     toolButton(icon: "lasso", label: "Lasso", tool: .lasso)
+                    toolButton(icon: "plus.square.dashed", label: "Tap+", tool: .tapSelect)
 
                     toolDivider
 

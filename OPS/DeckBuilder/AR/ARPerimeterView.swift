@@ -701,6 +701,7 @@ struct ARViewContainer: UIViewRepresentable {
         private var foregroundObserver: NSObjectProtocol?
         private let locationManager = CLLocationManager()
         private var hasTriggeredGeocode = false
+        private var billboardFrameCount: Int = 0
 
         init(viewModel: ARPerimeterViewModel) {
             self.viewModel = viewModel
@@ -947,8 +948,10 @@ struct ARViewContainer: UIViewRepresentable {
                 renderer.endRepositionPreview()
             }
 
-            // Billboard all labels to face the camera every frame
-            renderer.updateLabelOrientations(cameraPosition: cameraPosition)
+            billboardFrameCount += 1
+            if billboardFrameCount % 3 == 0 {
+                renderer.updateLabelOrientations(cameraPosition: cameraPosition)
+            }
         }
 
         // MARK: - Tap Handling

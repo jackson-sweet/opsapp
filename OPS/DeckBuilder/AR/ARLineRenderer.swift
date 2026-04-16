@@ -21,6 +21,10 @@ class ARLineRenderer {
     private var liveLabelEntity: ModelEntity?
     private var footprintEntity: ModelEntity?
 
+    private var textMeshCache: [String: MeshResource] = [:]
+    private var lastLiveLabelText: String = ""
+    private var lastLiveDashCount: Int = 0
+
     // MARK: - Colors — white default, no arbitrary blue
 
     private let edgeDefaultColor: UIColor = UIColor.white
@@ -32,6 +36,21 @@ class ARLineRenderer {
     // Vertex: tactical diamond/crosshair, not colored spheres
     private let vertexColor: UIColor = UIColor.white
     private let vertexFirstColor: UIColor = UIColor.white // same — no arbitrary blue for first vertex
+
+    private func cachedTextMesh(_ text: String, fontSize: CGFloat) -> MeshResource {
+        let key = "\(text)_\(fontSize)"
+        if let cached = textMeshCache[key] { return cached }
+        let mesh = MeshResource.generateText(
+            text,
+            extrusionDepth: 0.001,
+            font: .monospacedSystemFont(ofSize: fontSize, weight: .semibold),
+            containerFrame: .zero,
+            alignment: .center,
+            lineBreakMode: .byClipping
+        )
+        textMeshCache[key] = mesh
+        return mesh
+    }
 
     // MARK: - Geometry Constants
 
@@ -154,15 +173,24 @@ class ARLineRenderer {
     // MARK: - Live Line Operations
 
     func updateLiveLine(from: SIMD3<Float>, to: SIMD3<Float>, label: String) {
+        let distance = simd_distance(from, to)
+        let segmentLength: Float = 0.12
+        let gapLength: Float = 0.06
+        let stride = segmentLength + gapLength
+        let newDashCount = max(1, Int(distance / stride))
+
+        if newDashCount == lastLiveDashCount && label == lastLiveLabelText,
+           let existing = liveLineEntity {
+            existing.position = .zero
+            return
+        }
+        lastLiveDashCount = newDashCount
+        lastLiveLabelText = label
+
         liveLineEntity?.removeFromParent()
 
         let group = Entity()
         group.name = "live_line"
-
-        // Dashed line segments
-        let distance = simd_distance(from, to)
-        let segmentLength: Float = 0.12
-        let gapLength: Float = 0.06
         let direction = distance > 0.001 ? simd_normalize(to - from) : SIMD3<Float>(0, 0, 1)
 
         var d: Float = 0
@@ -451,13 +479,7 @@ class ARLineRenderer {
         color: UIColor = .white,
         showBadge: Bool = true
     ) -> ModelEntity {
-        let mesh = MeshResource.generateText(
-            text,
-            extrusionDepth: 0.001,
-            font: .monospacedSystemFont(ofSize: fontSize, weight: .semibold),
-            containerFrame: .zero,
-            alignment: .center,
-            lineBreakMode: .byClipping
+        let mesh = cachedTextMesh(text, fontSize: fontSize
         )
         let material = SimpleMaterial(color: color, isMetallic: false)
         let textEntity = ModelEntity(mesh: mesh, materials: [material])

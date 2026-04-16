@@ -17,6 +17,7 @@ struct DeckBuilderView: View {
     @State private var showing3DScreenshotShare = false
     @State private var screenshotImage: UIImage?
     @State private var editingTitleText: String = ""
+    @State private var titleBarHeight: CGFloat = 56
     @StateObject private var estimateVM = EstimateViewModel()
     @Query(sort: \TaskType.displayOrder) private var taskTypes: [TaskType]
 
@@ -116,7 +117,16 @@ struct DeckBuilderView: View {
                     // Floating title bar — compact header over the canvas
                     VStack(spacing: 0) {
                         titleBar
-                            .background(.ultraThinMaterial)
+                            .background(
+                                LinearGradient(
+                                    colors: [OPSStyle.Colors.background.opacity(0.92), OPSStyle.Colors.background.opacity(0.7)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .background(GeometryReader { geo in
+                                Color.clear.preference(key: DeckTitleBarHeightKey.self, value: geo.size.height)
+                            })
 
                         // AR accuracy banner
                         arAccuracyBanner
@@ -133,12 +143,13 @@ struct DeckBuilderView: View {
                     // Floating title — left-aligned, below header, gradient bg
                     VStack {
                         floatingTitlePill
-                            .padding(.top, 56) // below header bar
+                            .padding(.top, titleBarHeight + 4)
                             .padding(.leading, 16)
                         Spacer()
                     }
                     .allowsHitTesting(true)
                 } // end ZStack (top-aligned, floating title over canvas)
+                .onPreferenceChange(DeckTitleBarHeightKey.self) { titleBarHeight = $0 }
 
                 // Toolbar — below the canvas
                 DeckToolbar(viewModel: viewModel)
@@ -655,5 +666,12 @@ struct DeckBuilderView: View {
         .frame(maxWidth: .infinity)
         .background(color.opacity(0.15))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
+    }
+}
+
+private struct DeckTitleBarHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 56
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }

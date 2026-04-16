@@ -519,10 +519,15 @@ struct DeckCanvasView: View {
         let distance = SnapEngine.distance(startVertex.position, currentEnd)
         guard distance > 1 else { return }
 
-        // Dimension — always show length
-        let scale = viewModel.drawingData.scaleFactor ?? 1.0
-        let inches = distance / max(scale, 0.001)
-        let dimText = DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
+        // Dimension — show real-world length if calibrated, canvas distance if not
+        let dimText: String
+        if let scale = viewModel.drawingData.scaleFactor, scale > 0.001 {
+            let inches = distance / scale
+            dimText = DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
+        } else {
+            let rawFeet = distance / 20.0
+            dimText = String(format: "~%.0f'", rawFeet)
+        }
 
         // Angle — relative if extending from existing edge, else absolute
         let edges = viewModel.isMultiLevel ? (viewModel.activeLevel?.edges ?? []) : viewModel.drawingData.edges

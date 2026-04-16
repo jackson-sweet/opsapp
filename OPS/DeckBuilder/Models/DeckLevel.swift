@@ -63,7 +63,37 @@ struct DeckLevel: Identifiable, Codable, Equatable {
     }
 
     var orderedPositions: [CGPoint] {
-        vertices.map { $0.position }
+        guard vertices.count >= 3, edges.count >= 3 else {
+            return vertices.map { $0.position }
+        }
+
+        var adjacency: [String: Set<String>] = [:]
+        for edge in edges {
+            adjacency[edge.startVertexId, default: []].insert(edge.endVertexId)
+            adjacency[edge.endVertexId, default: []].insert(edge.startVertexId)
+        }
+
+        for vertex in vertices {
+            if (adjacency[vertex.id]?.count ?? 0) != 2 { return vertices.map { $0.position } }
+        }
+
+        guard let startId = vertices.first?.id else { return vertices.map { $0.position } }
+        var ordered: [CGPoint] = []
+        var visited: Set<String> = [startId]
+        var currentId = startId
+
+        if let v = vertex(byId: startId) { ordered.append(v.position) }
+
+        for _ in 0..<vertices.count - 1 {
+            guard let neighbors = adjacency[currentId] else { break }
+            guard let nextId = neighbors.subtracting(visited).first else { break }
+            visited.insert(nextId)
+            currentId = nextId
+            if let v = vertex(byId: nextId) { ordered.append(v.position) }
+        }
+
+        guard ordered.count == vertices.count else { return vertices.map { $0.position } }
+        return ordered
     }
 
     /// Effective elevation for a vertex (per-vertex if enabled, otherwise uniform)

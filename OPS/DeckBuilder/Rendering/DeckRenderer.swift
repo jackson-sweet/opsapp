@@ -70,7 +70,7 @@ struct DeckRenderer {
                         gc.move(to: transform(positions[0]))
                         for i in 1..<positions.count { gc.addLine(to: transform(positions[i])) }
                         gc.closePath()
-                        gc.fillPath()
+                        gc.fillPath(using: .evenOdd)
                     }
 
                     // Edges
@@ -139,7 +139,7 @@ struct DeckRenderer {
                     gc.move(to: transform(positions[0]))
                     for i in 1..<positions.count { gc.addLine(to: transform(positions[i])) }
                     gc.closePath()
-                    gc.fillPath()
+                    gc.fillPath(using: .evenOdd)
                 }
 
                 gc.setLineWidth(2.0)

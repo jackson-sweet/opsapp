@@ -7,6 +7,7 @@ import PhotosUI
 import Vision
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import AVFoundation
 
 // MARK: - DocumentScannerView (VisionKit Wrapper)
 
@@ -18,47 +19,156 @@ struct SketchDocumentScannerView: UIViewControllerRepresentable {
     let onCancel: () -> Void
     let onError: (Error) -> Void
 
-    func makeUIViewController(context: Context) -> VNDocumentCameraViewController {
-        let scanner = VNDocumentCameraViewController()
-        scanner.delegate = context.coordinator
-        return scanner
+    func makeUIViewController(context: Context) -> UINavigationController {
+        let vc = ManualSketchCaptureVC()
+        vc.onCapture = onCapture
+        vc.onCancel = onCancel
+        vc.onError = onError
+        let nav = UINavigationController(rootViewController: vc)
+        nav.isNavigationBarHidden = true
+        nav.modalPresentationStyle = .fullScreen
+        return nav
     }
 
-    func updateUIViewController(_ uiViewController: VNDocumentCameraViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {}
+}
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
+// MARK: - Manual Capture Camera (AVCaptureSession + shutter button)
+
+private class ManualSketchCaptureVC: UIViewController, AVCapturePhotoCaptureDelegate {
+    var onCapture: ((UIImage) -> Void)?
+    var onCancel: (() -> Void)?
+    var onError: ((Error) -> Void)?
+
+    private let session = AVCaptureSession()
+    private let photoOutput = AVCapturePhotoOutput()
+    private var previewLayer: AVCaptureVideoPreviewLayer?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        setupCamera()
+        setupUI()
     }
 
-    class Coordinator: NSObject, VNDocumentCameraViewControllerDelegate {
-        let parent: SketchDocumentScannerView
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.session.startRunning()
+        }
+    }
 
-        init(_ parent: SketchDocumentScannerView) {
-            self.parent = parent
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        session.stopRunning()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewLayer?.frame = view.bounds
+    }
+
+    private func setupCamera() {
+        session.sessionPreset = .photo
+
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+              let input = try? AVCaptureDeviceInput(device: device) else {
+            onError?(NSError(domain: "SketchCapture", code: 1, userInfo: [NSLocalizedDescriptionKey: "Camera not available"]))
+            return
         }
 
-        func documentCameraViewController(
-            _ controller: VNDocumentCameraViewController,
-            didFinishWith scan: VNDocumentCameraScan
-        ) {
-            // Take only the first page — a deck sketch is a single sheet
-            guard scan.pageCount > 0 else {
-                parent.onCancel()
-                return
-            }
-            let image = scan.imageOfPage(at: 0)
-            parent.onCapture(image)
+        if session.canAddInput(input) { session.addInput(input) }
+        if session.canAddOutput(photoOutput) { session.addOutput(photoOutput) }
+
+        let preview = AVCaptureVideoPreviewLayer(session: session)
+        preview.videoGravity = .resizeAspectFill
+        preview.frame = view.bounds
+        view.layer.addSublayer(preview)
+        previewLayer = preview
+    }
+
+    private func setupUI() {
+        // Instruction label
+        let label = UILabel()
+        label.text = "FRAME YOUR SKETCH"
+        label.font = .monospacedSystemFont(ofSize: 14, weight: .semibold)
+        label.textColor = .white.withAlphaComponent(0.8)
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(label)
+
+        // Shutter button
+        let shutter = UIButton(type: .system)
+        shutter.translatesAutoresizingMaskIntoConstraints = false
+        let outerSize: CGFloat = 72
+        let innerSize: CGFloat = 58
+        shutter.backgroundColor = .clear
+        shutter.layer.cornerRadius = outerSize / 2
+        shutter.layer.borderWidth = 4
+        shutter.layer.borderColor = UIColor.white.cgColor
+
+        let innerCircle = UIView()
+        innerCircle.backgroundColor = .white
+        innerCircle.layer.cornerRadius = innerSize / 2
+        innerCircle.isUserInteractionEnabled = false
+        innerCircle.translatesAutoresizingMaskIntoConstraints = false
+        shutter.addSubview(innerCircle)
+
+        shutter.addTarget(self, action: #selector(shutterTapped), for: .touchUpInside)
+        view.addSubview(shutter)
+
+        // Cancel button
+        let cancel = UIButton(type: .system)
+        cancel.setTitle("Cancel", for: .normal)
+        cancel.titleLabel?.font = .systemFont(ofSize: 17, weight: .regular)
+        cancel.setTitleColor(.white, for: .normal)
+        cancel.translatesAutoresizingMaskIntoConstraints = false
+        cancel.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+        view.addSubview(cancel)
+
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            label.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
+
+            shutter.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            shutter.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -30),
+            shutter.widthAnchor.constraint(equalToConstant: outerSize),
+            shutter.heightAnchor.constraint(equalToConstant: outerSize),
+
+            innerCircle.centerXAnchor.constraint(equalTo: shutter.centerXAnchor),
+            innerCircle.centerYAnchor.constraint(equalTo: shutter.centerYAnchor),
+            innerCircle.widthAnchor.constraint(equalToConstant: innerSize),
+            innerCircle.heightAnchor.constraint(equalToConstant: innerSize),
+
+            cancel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            cancel.centerYAnchor.constraint(equalTo: shutter.centerYAnchor),
+        ])
+    }
+
+    @objc private func shutterTapped() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let settings = AVCapturePhotoSettings()
+        photoOutput.capturePhoto(with: settings, delegate: self)
+    }
+
+    @objc private func cancelTapped() {
+        onCancel?()
+    }
+
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        if let error = error {
+            onError?(error)
+            return
+        }
+        guard let data = photo.fileDataRepresentation(),
+              let image = UIImage(data: data) else {
+            onError?(NSError(domain: "SketchCapture", code: 2, userInfo: [NSLocalizedDescriptionKey: "Could not process photo"]))
+            return
         }
 
-        func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {
-            parent.onCancel()
-        }
-
-        func documentCameraViewController(
-            _ controller: VNDocumentCameraViewController,
-            didFailWithError error: Error
-        ) {
-            parent.onError(error)
+        Task { @MainActor in
+            let corrected = await SketchPerspectiveCorrector.perspectiveCorrect(image: image)
+            onCapture?(corrected)
         }
     }
 }

@@ -300,14 +300,18 @@ class ARLineRenderer {
         }
     }
 
-    /// Billboard that faces camera but stays upright (no mirroring).
-    /// RealityKit text faces +Z. We rotate around Y so +Z points toward the camera.
-    /// Derivation: rotation by θ around Y transforms +Z to (−sin θ, 0, cos θ).
-    /// Setting that equal to the camera direction gives θ = atan2(−toCamera.x, toCamera.z).
     private func billboardToCamera(entity: ModelEntity, cameraPosition: SIMD3<Float>) {
         let toCamera = cameraPosition - entity.position
-        let angle = atan2(-toCamera.x, toCamera.z)
-        entity.orientation = simd_quatf(angle: angle, axis: SIMD3<Float>(0, 1, 0))
+        let horizontalDist = sqrt(toCamera.x * toCamera.x + toCamera.z * toCamera.z)
+
+        let yAngle = atan2(-toCamera.x, toCamera.z)
+        let yRotation = simd_quatf(angle: yAngle, axis: SIMD3<Float>(0, 1, 0))
+
+        let elevationAngle = atan2(toCamera.y, horizontalDist)
+        let clampedPitch = min(Float.pi / 6, max(0, elevationAngle))
+        let xRotation = simd_quatf(angle: -clampedPitch, axis: SIMD3<Float>(1, 0, 0))
+
+        entity.orientation = yRotation * xRotation
     }
 
     // MARK: - Reposition Preview

@@ -16,6 +16,11 @@ struct DeckCanvasView: View {
     // 4800 × 4800 pt workspace ≈ 400' × 400'
     private let canvasSize: CGFloat = 4800
 
+    private func scaledSize(_ basePt: CGFloat, min minPt: CGFloat = 8, max maxPt: CGFloat = 24) -> CGFloat {
+        let compensated = basePt / canvasScale
+        return Swift.min(maxPt, Swift.max(minPt, compensated))
+    }
+
     /// Grid spacing matches the snap increment at the current scale.
     /// Falls back to 20pt when no scale is set.
     private var gridSpacing: CGFloat {
@@ -172,7 +177,7 @@ struct DeckCanvasView: View {
         guard startCol <= endCol, startRow <= endRow else { return }
 
         // Dots at grid intersections — not lines
-        let dotRadius: CGFloat = 1.0
+        let dotRadius = scaledSize(1.0, min: 0.5, max: 2.0)
         let dotColor = Color.white.opacity(0.12)
         var dotPath = Path()
         for col in startCol...endCol {
@@ -553,15 +558,19 @@ struct DeckCanvasView: View {
         let midY = (startVertex.position.y + currentEnd.y) / 2
 
         // Dark pill background
-        let pillW: CGFloat = CGFloat(label.count) * 7.5 + 20
-        let pillH: CGFloat = 22
-        let pillRect = CGRect(x: midX - pillW / 2, y: midY - 30 - pillH / 2, width: pillW, height: pillH)
-        context.fill(Path(roundedRect: pillRect, cornerRadius: 4),
+        let aCharW = scaledSize(7.5, min: 5, max: 12)
+        let aPillW = CGFloat(label.count) * aCharW + scaledSize(20, min: 12, max: 28)
+        let aPillH = scaledSize(22, min: 14, max: 30)
+        let aOffset = scaledSize(30, min: 20, max: 44)
+        let aCR = scaledSize(4, min: 2, max: 6)
+        let pillRect = CGRect(x: midX - aPillW / 2, y: midY - aOffset - aPillH / 2, width: aPillW, height: aPillH)
+        context.fill(Path(roundedRect: pillRect, cornerRadius: aCR),
                      with: .color(OPSStyle.Colors.cardBackground.opacity(0.95)))
-        context.stroke(Path(roundedRect: pillRect, cornerRadius: 4),
+        context.stroke(Path(roundedRect: pillRect, cornerRadius: aCR),
                        with: .color(Color.white.opacity(0.1)), lineWidth: 0.5)
-        context.draw(Text(label).font(.system(size: 11, weight: .semibold, design: .monospaced))
-            .foregroundColor(Color.white), at: CGPoint(x: midX, y: midY - 30))
+        let aFontSize = scaledSize(11, min: 8, max: 18)
+        context.draw(Text(label).font(.system(size: aFontSize, weight: .semibold, design: .monospaced))
+            .foregroundColor(Color.white), at: CGPoint(x: midX, y: midY - aOffset))
     }
 
     // MARK: - Alignment Guides
@@ -648,8 +657,10 @@ struct DeckCanvasView: View {
 
         if let elevation = vertex.elevation {
             let label = DimensionEngine.formatImperial(elevation * 12)
-            context.draw(Text(label).font(OPSStyle.Typography.miniLabel)
-                .foregroundColor(OPSStyle.Colors.secondaryText), at: CGPoint(x: vertex.position.x, y: vertex.position.y + r + 12))
+            let elevFontSize = scaledSize(10, min: 7, max: 16)
+            let elevOffset = scaledSize(12, min: 8, max: 18)
+            context.draw(Text(label).font(.system(size: elevFontSize, weight: .medium))
+                .foregroundColor(OPSStyle.Colors.secondaryText), at: CGPoint(x: vertex.position.x, y: vertex.position.y + r + elevOffset))
         }
     }
 
@@ -669,25 +680,28 @@ struct DeckCanvasView: View {
         let dx = end.position.x - start.position.x
         let dy = end.position.y - start.position.y
         let len = sqrt(dx * dx + dy * dy)
-        let offsetDist: CGFloat = 18
+        let offsetDist = scaledSize(18, min: 12, max: 30)
         let perpX = len > 0 ? (-dy / len) * offsetDist : 0
         let perpY = len > 0 ? (dx / len) * offsetDist : -offsetDist
         let labelX = midX + perpX
         let labelY = midY + perpY
 
         // Dark pill background
-        let pillW = CGFloat(label.count) * 7.5 + 16
-        let pillH: CGFloat = 20
+        let charW = scaledSize(7.5, min: 5, max: 12)
+        let pillW = CGFloat(label.count) * charW + scaledSize(16, min: 10, max: 24)
+        let pillH = scaledSize(20, min: 14, max: 28)
+        let cr = scaledSize(4, min: 2, max: 6)
         let pillRect = CGRect(x: labelX - pillW / 2, y: labelY - pillH / 2, width: pillW, height: pillH)
         let pillColor: Color = hasAccuracy
             ? OPSStyle.Colors.warningStatus.opacity(0.15)
             : OPSStyle.Colors.cardBackground.opacity(0.95)
-        context.fill(Path(roundedRect: pillRect, cornerRadius: 4), with: .color(pillColor))
-        context.stroke(Path(roundedRect: pillRect, cornerRadius: 4),
+        context.fill(Path(roundedRect: pillRect, cornerRadius: cr), with: .color(pillColor))
+        context.stroke(Path(roundedRect: pillRect, cornerRadius: cr),
                        with: .color(Color.white.opacity(0.08)), lineWidth: 0.5)
 
+        let fontSize = scaledSize(11, min: 8, max: 18)
         let labelColor: Color = hasAccuracy ? OPSStyle.Colors.warningStatus : Color.white
-        context.draw(Text(label).font(.system(size: 11, weight: .medium, design: .monospaced))
+        context.draw(Text(label).font(.system(size: fontSize, weight: .medium, design: .monospaced))
             .foregroundColor(labelColor), at: CGPoint(x: labelX, y: labelY))
 
         // Secondary label below dimension: accuracy OR material/type
@@ -710,9 +724,10 @@ struct DeckCanvasView: View {
         }
 
         if let secText = secondaryLabel {
+            let secOffset = scaledSize(12, min: 8, max: 18)
             context.draw(Text(secText)
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                .foregroundColor(secondaryColor), at: CGPoint(x: labelX, y: labelY + 12))
+                .font(.system(size: scaledSize(9, min: 6, max: 14), weight: .medium, design: .monospaced))
+                .foregroundColor(secondaryColor), at: CGPoint(x: labelX, y: labelY + secOffset))
         }
     }
 

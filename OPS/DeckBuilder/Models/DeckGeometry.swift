@@ -16,6 +16,7 @@ struct DrawingConfig: Codable {
     var lengthSnapIncrement: Double = 6.0      // inches (or cm if metric)
     var snappingEnabled: Bool = true
     var endpointSnapRadius: Double = 20.0      // points (screen distance for magnetic snap)
+    var gridVisible: Bool = true
 }
 
 // MARK: - Core Geometry

@@ -156,6 +156,7 @@ struct DeckCanvasView: View {
     // MARK: - Grid (visible region only)
 
     private func drawGrid(context: GraphicsContext, size: CGSize) {
+        guard viewModel.drawingData.config.gridVisible else { return }
         let visMinX = max(0, -canvasOffset.width / canvasScale)
         let visMinY = max(0, -canvasOffset.height / canvasScale)
         let vpW = UIScreen.main.bounds.width / canvasScale

@@ -32,6 +32,7 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var showingAssignmentWheel: Bool = false
     @Published var showingMaterialPicker: Bool = false
     var taskTypes: [TaskType] = []
+    @Published var showingSettings: Bool = false
     @Published var showingClearConfirm: Bool = false
     @Published var isEditingTitle: Bool = false
     @Published var editingEdgeId: String?

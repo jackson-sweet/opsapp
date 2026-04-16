@@ -115,6 +115,19 @@ struct DeckToolbar: View {
                         .foregroundColor(OPSStyle.Colors.successStatus)
                         .frame(width: 28, height: OPSStyle.Layout.touchTargetMin)
                 }
+
+                Divider()
+                    .frame(height: 24)
+                    .overlay(OPSStyle.Colors.cardBorder)
+
+                Button {
+                    viewModel.showingSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2)

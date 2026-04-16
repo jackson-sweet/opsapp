@@ -145,6 +145,9 @@ struct DeckBuilderView: View {
             }
         }
         .background(OPSStyle.Colors.background)
+        .sheet(isPresented: $viewModel.showingSettings) {
+            DeckSettingsSheet(viewModel: viewModel)
+        }
         .sheet(isPresented: $viewModel.showingDimensionInput) {
             DimensionInputView(viewModel: viewModel)
         }

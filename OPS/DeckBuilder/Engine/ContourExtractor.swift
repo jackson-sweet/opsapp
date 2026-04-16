@@ -66,7 +66,7 @@ struct ContourExtractor {
     /// Returns points converted to image coordinates (origin top-left).
     private static func detectContours(image: CGImage, imageSize: CGSize) async -> [CGPoint] {
         let request = VNDetectContoursRequest()
-        request.contrastAdjustment = 1.5
+        request.contrastAdjustment = 2.0
         request.detectsDarkOnLight = true
 
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
@@ -110,7 +110,7 @@ struct ContourExtractor {
         guard let largest = bestContour else { return [] }
 
         // Simplify with polygon approximation
-        guard let simplified = try? largest.polygonApproximation(epsilon: 0.01) else {
+        guard let simplified = try? largest.polygonApproximation(epsilon: 0.005) else {
             return convertVisionPoints(largest.normalizedPoints, imageSize: imageSize)
         }
 
@@ -147,7 +147,7 @@ struct ContourExtractor {
         guard points.count >= 2 else { return [] }
 
         let diagonal = sqrt(imageSize.width * imageSize.width + imageSize.height * imageSize.height)
-        let minLength = Double(diagonal) * 0.03 // 3% of image diagonal
+        let minLength = Double(diagonal) * 0.015
 
         // Create segments between consecutive points (wrapping last→first)
         var rawSegments: [DetectedLineSegment] = []

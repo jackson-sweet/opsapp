@@ -52,7 +52,27 @@ class SketchScanPipeline: ObservableObject {
         )
 
         guard contourResult.vertices.count >= 3 else {
-            error = "Could not detect deck outline. Try a clearer sketch or use AI Assist."
+            // Vision-based extraction failed — attempt AI fallback
+            if let apiKey = UserDefaults.standard.string(forKey: "anthropic_api_key"), !apiKey.isEmpty {
+                stage = .extractingContours
+                progress = 0.40
+
+                do {
+                    let aiResult = try await SketchAIFallback.analyze(image: cgImage, apiKey: apiKey)
+                    stage = .recognizingText
+                    progress = 0.50
+
+                    let ocrResults = await SketchOCR.recognize(image: cgImage)
+                    result = aiResult
+                    stage = .complete
+                    progress = 1.0
+                    return
+                } catch {
+                    // AI also failed — fall through to error
+                }
+            }
+
+            error = "Could not detect deck outline. Try a clearer sketch with darker lines on white paper."
             stage = .failed
             return
         }

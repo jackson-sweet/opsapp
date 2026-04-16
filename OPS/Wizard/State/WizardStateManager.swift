@@ -198,9 +198,10 @@ class WizardStateManager: ObservableObject {
     func bannerLaunchTapped() {
         guard let wizard = pendingBannerWizard else { return }
 
-        // Guard against double-tap — clear immediately
-        pendingBannerWizard = nil
         showBanner = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.pendingBannerWizard = nil
+        }
 
         analytics.recordEvent(
             event: "wizard_banner_launch",
@@ -229,9 +230,10 @@ class WizardStateManager: ObservableObject {
         )
 
         showBanner = false
-        pendingBannerWizard = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.pendingBannerWizard = nil
+        }
 
-        // Track "not now" count — 2 = 24hr global cooldown
         incrementNotNowCount()
     }
 
@@ -256,9 +258,10 @@ class WizardStateManager: ObservableObject {
         }
 
         showBanner = false
-        pendingBannerWizard = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.pendingBannerWizard = nil
+        }
 
-        // 48hr global cooldown — no wizard banners for anyone
         setGlobalCooldown(hours: 48)
     }
 

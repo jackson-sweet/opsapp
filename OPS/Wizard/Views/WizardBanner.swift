@@ -146,9 +146,9 @@ struct WizardBannerModifier: ViewModifier {
                 )
                 .ignoresSafeArea()
                 .zIndex(998)
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: stateManager.showBanner)
             }
         }
+        .animation(OPSStyle.Animation.spring, value: stateManager.showBanner)
     }
 }
 

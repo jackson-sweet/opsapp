@@ -187,10 +187,10 @@ struct WizardInstructionBarModifier: ViewModifier {
                 if stateManager.isActive {
                     WizardInstructionBar(stateManager: stateManager)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: stateManager.isActive)
                         .zIndex(998)
                 }
             }
+            .animation(OPSStyle.Animation.spring, value: stateManager.isActive)
     }
 }
 

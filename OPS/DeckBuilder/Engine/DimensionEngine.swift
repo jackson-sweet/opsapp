@@ -119,9 +119,17 @@ struct DimensionEngine {
     }
 
     private static func parseImperialToInches(_ input: String) -> Double? {
-        // Pattern: "24' 6\"", "24'6\"", "24'", "6\"", "24.5'"
+        // Normalize Unicode quote variants to ASCII equivalents.
+        // iOS smart punctuation converts ' → \u{2019} and " → \u{201D}.
+        let normalized = input
+            .replacingOccurrences(of: "\u{2018}", with: "'")
+            .replacingOccurrences(of: "\u{2019}", with: "'")
+            .replacingOccurrences(of: "\u{02BC}", with: "'")
+            .replacingOccurrences(of: "\u{201C}", with: "\"")
+            .replacingOccurrences(of: "\u{201D}", with: "\"")
+
         var totalInches = 0.0
-        var remaining = input
+        var remaining = normalized
 
         // Extract feet
         if let feetRange = remaining.range(of: #"(\d+\.?\d*)\s*'"#, options: .regularExpression) {
@@ -137,6 +145,15 @@ struct DimensionEngine {
             let inchStr = remaining[inchRange].replacingOccurrences(of: "\"", with: "").trimmingCharacters(in: .whitespaces)
             if let inches = Double(inchStr) {
                 totalInches += inches
+            }
+        }
+
+        // Extract fraction (e.g., "1/2", "3/4", "1/8")
+        if let fracRange = remaining.range(of: #"(\d+)\s*/\s*(\d+)"#, options: .regularExpression) {
+            let fracStr = remaining[fracRange]
+            let parts = fracStr.split(separator: "/").map { $0.trimmingCharacters(in: .whitespaces) }
+            if parts.count == 2, let num = Double(parts[0]), let den = Double(parts[1]), den > 0 {
+                totalInches += num / den
             }
         } else if totalInches == 0, let plain = Double(remaining.trimmingCharacters(in: .whitespaces)) {
             // Plain number — assume feet

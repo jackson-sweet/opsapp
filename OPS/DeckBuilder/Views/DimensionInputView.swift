@@ -44,7 +44,17 @@ struct DimensionInputView: View {
                     .font(.system(size: 24, weight: .semibold, design: .monospaced))
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .keyboardType(.numbersAndPunctuation)
+                    .autocorrectionDisabled(true)
                     .focused($isFocused)
+                    .onChange(of: inputText) { _, newValue in
+                        let sanitized = newValue
+                            .replacingOccurrences(of: "\u{2018}", with: "'")
+                            .replacingOccurrences(of: "\u{2019}", with: "'")
+                            .replacingOccurrences(of: "\u{02BC}", with: "'")
+                            .replacingOccurrences(of: "\u{201C}", with: "\"")
+                            .replacingOccurrences(of: "\u{201D}", with: "\"")
+                        if sanitized != newValue { inputText = sanitized }
+                    }
                     .padding(OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.cardBackground)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)

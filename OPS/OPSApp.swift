@@ -286,6 +286,7 @@ struct OPSApp: App {
     /// Parses an incoming Universal Link / custom-scheme URL and dispatches it
     /// to the appropriate in-app handler. Currently handles:
     ///   - https://app.opsapp.co/projects/{id}  → OpenProjectDetails notification
+    ///   - https://app.opsapp.co/open[?from=*]  → OpenAppFromWeb notification
     ///
     /// Posts the same notifications that push notification deep links use so
     /// MainTabView's existing routing code handles sync + presentation.
@@ -303,6 +304,21 @@ struct OPSApp: App {
 
         // Path components: first is "/" for https URLs, so drop empty segments.
         let segments = url.pathComponents.filter { $0 != "/" && !$0.isEmpty }
+
+        // /open[/...] — web-to-app return bridge from /auth/action handler page
+        if let first = segments.first, first == "open" {
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let from = components?.queryItems?
+                .first(where: { $0.name == "from" })?
+                .value ?? ""
+            print("[DEEP_LINK] Routing to /open (from: \(from))")
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenAppFromWeb"),
+                object: nil,
+                userInfo: ["from": from]
+            )
+            return
+        }
 
         // /{entity}/{id}
         guard segments.count >= 2 else {

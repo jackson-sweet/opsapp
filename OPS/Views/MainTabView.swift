@@ -89,6 +89,9 @@ struct MainTabView: View {
     private let openMemberRoleAssignmentObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenMemberRoleAssignment"))
 
+    private let openAppFromWebObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenAppFromWeb"))
+
     // Keyboard observers
     private let keyboardWillShow = NotificationCenter.default
         .publisher(for: UIResponder.keyboardWillShowNotification)
@@ -368,10 +371,13 @@ struct MainTabView: View {
             }
         }
 
+        // Web-to-app return bridge
+        .onReceive(openAppFromWebObserver) { notification in
+            let from = (notification.userInfo?["from"] as? String) ?? ""
+            print("[OpenAppFromWeb] Received inside MainTabView (user already signed in), from=\(from)")
+        }
+
         // Handle opening task details from push notification or Spotlight tap.
-        // Push notifications include both taskId + projectId; Spotlight sends only taskId
-        // (since the Spotlight item ID encodes one entity). In that case we resolve the
-        // parent project from SwiftData before routing.
         .onReceive(openTaskDetailsObserver) { notification in
             guard let taskId = notification.userInfo?["taskId"] as? String else { return }
             let providedProjectId = notification.userInfo?["projectId"] as? String

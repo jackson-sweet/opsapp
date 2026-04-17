@@ -62,6 +62,21 @@ struct MainTabView: View {
     private let openTaskDetailsObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenTaskDetails"))
 
+    private let openClientDetailsObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenClientDetails"))
+
+    private let openInvoiceDetailsObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenInvoiceDetails"))
+
+    private let openEstimateDetailsObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenEstimateDetails"))
+
+    private let showAccessDeniedObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("ShowAccessDenied"))
+
+    private let spotlightReindexObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("SpotlightReindexRequested"))
+
     private let openScheduleObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenSchedule"))
 
@@ -249,6 +264,54 @@ struct MainTabView: View {
                 .environmentObject(dataController)
                 .environmentObject(appState)
         }
+        // Client detail sheet (from Spotlight / deep link)
+        .sheet(isPresented: $appState.showClientDetails) {
+            if let clientId = appState.selectedClientId,
+               let ctx = dataController.modelContext,
+               let client = try? ctx.fetch(FetchDescriptor<Client>(predicate: #Predicate { $0.id == clientId })).first {
+                ClientSheet(mode: .edit(client)) { _ in
+                    appState.showClientDetails = false
+                }
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
+            }
+        }
+        // Invoice detail sheet (from Spotlight / deep link)
+        .sheet(isPresented: $appState.showInvoiceDetails) {
+            if let invoiceId = appState.selectedInvoiceId,
+               let ctx = dataController.modelContext,
+               let invoice = try? ctx.fetch(FetchDescriptor<Invoice>(predicate: #Predicate { $0.id == invoiceId })).first,
+               let companyId = dataController.currentUser?.companyId {
+                NavigationStack {
+                    InvoiceDetailViewDeepLinkWrapper(
+                        invoice: invoice,
+                        companyId: companyId
+                    )
+                }
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
+            }
+        }
+        // Estimate detail sheet (from Spotlight / deep link)
+        .sheet(isPresented: $appState.showEstimateDetails) {
+            if let estimateId = appState.selectedEstimateId,
+               let ctx = dataController.modelContext,
+               let estimate = try? ctx.fetch(FetchDescriptor<Estimate>(predicate: #Predicate { $0.id == estimateId })).first,
+               let companyId = dataController.currentUser?.companyId {
+                NavigationStack {
+                    EstimateDetailViewDeepLinkWrapper(
+                        estimate: estimate,
+                        companyId: companyId
+                    )
+                }
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
+            }
+        }
+        // Access denied sheet (tapped result no longer permitted)
+        .sheet(isPresented: $appState.showAccessDenied) {
+            AccessDeniedSheet(message: appState.accessDeniedMessage ?? "Access denied.")
+        }
         // Add notification handler for project fetching
         .onReceive(fetchProjectObserver) { notification in
             if let projectID = notification.userInfo?["projectID"] as? String {
@@ -305,14 +368,67 @@ struct MainTabView: View {
             }
         }
 
-        // Handle opening task details from push notification
+        // Handle opening task details from push notification or Spotlight tap.
+        // Push notifications include both taskId + projectId; Spotlight sends only taskId
+        // (since the Spotlight item ID encodes one entity). In that case we resolve the
+        // parent project from SwiftData before routing.
         .onReceive(openTaskDetailsObserver) { notification in
-            if let taskId = notification.userInfo?["taskId"] as? String,
-               let projectId = notification.userInfo?["projectId"] as? String {
-                print("[PUSH_NAVIGATION] Opening task details - Task: \(taskId), Project: \(projectId)")
-                Task {
-                    await openTaskWithSync(taskId: taskId, projectId: projectId)
+            guard let taskId = notification.userInfo?["taskId"] as? String else { return }
+            let providedProjectId = notification.userInfo?["projectId"] as? String
+            Task {
+                let projectId: String
+                if let providedProjectId = providedProjectId {
+                    projectId = providedProjectId
+                } else if let resolved = await resolveProjectId(forTask: taskId) {
+                    projectId = resolved
+                } else {
+                    print("[PUSH_NAVIGATION] Task \(taskId) not found locally — showing access denied")
+                    await MainActor.run {
+                        appState.presentAccessDenied(message: "This task is no longer available.")
+                    }
+                    return
                 }
+                print("[PUSH_NAVIGATION] Opening task details - Task: \(taskId), Project: \(projectId)")
+                await openTaskWithSync(taskId: taskId, projectId: projectId)
+            }
+        }
+
+        // Handle opening client details (from Spotlight tap / universal link / push)
+        .onReceive(openClientDetailsObserver) { notification in
+            if let clientId = notification.userInfo?["clientId"] as? String {
+                print("[PUSH_NAVIGATION] Opening client details for: \(clientId)")
+                openClientWithSync(clientId: clientId)
+            }
+        }
+
+        // Handle opening invoice details
+        .onReceive(openInvoiceDetailsObserver) { notification in
+            if let invoiceId = notification.userInfo?["invoiceId"] as? String {
+                print("[PUSH_NAVIGATION] Opening invoice details for: \(invoiceId)")
+                openInvoiceWithSync(invoiceId: invoiceId)
+            }
+        }
+
+        // Handle opening estimate details
+        .onReceive(openEstimateDetailsObserver) { notification in
+            if let estimateId = notification.userInfo?["estimateId"] as? String {
+                print("[PUSH_NAVIGATION] Opening estimate details for: \(estimateId)")
+                openEstimateWithSync(estimateId: estimateId)
+            }
+        }
+
+        // Handle access denied presentations (tapped Spotlight result no longer permitted)
+        .onReceive(showAccessDeniedObserver) { notification in
+            let message = (notification.userInfo?["message"] as? String) ?? "Access denied."
+            appState.presentAccessDenied(message: message)
+        }
+
+        // Role change → clear + rebuild Spotlight index under the new scope
+        .onReceive(spotlightReindexObserver) { _ in
+            guard let ctx = dataController.modelContext else { return }
+            Task { @MainActor in
+                await SpotlightIndexManager.shared.clearAll()
+                await SpotlightIndexManager.shared.backfill(context: ctx)
             }
         }
 
@@ -729,6 +845,81 @@ struct MainTabView: View {
         // Project not found locally - sync first
         print("[PUSH_NAVIGATION] Project not found locally, triggering sync...")
         await syncAndOpenProject(projectId: projectId)
+    }
+
+    /// Resolve a task's parent project ID from SwiftData. Used when a Spotlight
+    /// tap arrives with only a taskId — we look up the task's project before
+    /// routing through `openTaskWithSync`.
+    @MainActor
+    private func resolveProjectId(forTask taskId: String) async -> String? {
+        guard let context = dataController.modelContext else { return nil }
+        let descriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate { $0.id == taskId }
+        )
+        if let task = try? context.fetch(descriptor).first {
+            return task.project?.id ?? task.projectId
+        }
+        return nil
+    }
+
+    /// Open a client detail sheet. Fetches from SwiftData; surfaces access-denied if stale.
+    @MainActor
+    private func openClientWithSync(clientId: String) {
+        guard let context = dataController.modelContext else { return }
+        let descriptor = FetchDescriptor<Client>(predicate: #Predicate { $0.id == clientId })
+        if (try? context.fetch(descriptor).first) != nil {
+            appState.viewClientDetailsById(clientId)
+        } else {
+            appState.presentAccessDenied(message: "This client is no longer available.")
+        }
+    }
+
+    /// Open an invoice detail sheet. Re-checks permissions at tap time; refreshes from server if stale.
+    /// Gated by `pipeline.view` — the same permission that controls access to the Money tab where
+    /// invoices normally live.
+    @MainActor
+    private func openInvoiceWithSync(invoiceId: String) {
+        guard permissionStore.can("pipeline.view") else {
+            appState.presentAccessDenied(message: "You don't have permission to view invoices.")
+            return
+        }
+        guard let context = dataController.modelContext else { return }
+        let descriptor = FetchDescriptor<Invoice>(predicate: #Predicate { $0.id == invoiceId })
+        if (try? context.fetch(descriptor).first) != nil {
+            appState.viewInvoiceDetailsById(invoiceId)
+        } else {
+            // Not in local store — trigger a sync and open afterwards
+            Task {
+                await dataController.triggerFullSync()
+                await MainActor.run {
+                    appState.viewInvoiceDetailsById(invoiceId)
+                }
+            }
+        }
+    }
+
+    /// Open an estimate detail sheet. Re-checks permissions at tap time.
+    /// Gated by `pipeline.view` (Money tab access) AND `estimates.view` if role defines it.
+    @MainActor
+    private func openEstimateWithSync(estimateId: String) {
+        let hasPipelineGate = permissionStore.can("pipeline.view")
+        let hasExplicitGate = permissionStore.can("estimates.view")
+        guard hasPipelineGate || hasExplicitGate else {
+            appState.presentAccessDenied(message: "You don't have permission to view estimates.")
+            return
+        }
+        guard let context = dataController.modelContext else { return }
+        let descriptor = FetchDescriptor<Estimate>(predicate: #Predicate { $0.id == estimateId })
+        if (try? context.fetch(descriptor).first) != nil {
+            appState.viewEstimateDetailsById(estimateId)
+        } else {
+            Task {
+                await dataController.triggerFullSync()
+                await MainActor.run {
+                    appState.viewEstimateDetailsById(estimateId)
+                }
+            }
+        }
     }
 
     /// Open task details, syncing first if the task/project isn't in the local database

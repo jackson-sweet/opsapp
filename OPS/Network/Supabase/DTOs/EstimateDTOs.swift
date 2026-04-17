@@ -28,6 +28,7 @@ struct EstimateDTO: Codable, Identifiable {
     let version: Int
     let createdAt: String
     let updatedAt: String
+    let deletedAt: String?
     let lineItems: [EstimateLineItemDTO]?
 
     enum CodingKeys: String, CodingKey {
@@ -51,6 +52,7 @@ struct EstimateDTO: Codable, Identifiable {
         case version
         case createdAt       = "created_at"
         case updatedAt       = "updated_at"
+        case deletedAt       = "deleted_at"
         case lineItems       = "line_items"
     }
 
@@ -75,6 +77,7 @@ struct EstimateDTO: Codable, Identifiable {
         est.clientId = clientId
         est.internalNotes = notes
         if let ed = expirationDate { est.validUntil = SupabaseDate.parse(ed) }
+        if let da = deletedAt { est.deletedAt = SupabaseDate.parse(da) }
         return est
     }
 }

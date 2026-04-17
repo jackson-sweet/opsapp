@@ -17,14 +17,39 @@ class EstimateRepository {
         self.companyId = companyId
     }
 
-    func fetchAll() async throws -> [EstimateDTO] {
-        try await client
+    func fetchAll(since: Date? = nil) async throws -> [EstimateDTO] {
+        var query = client
             .from("estimates")
             .select("*, line_items(*)")
             .eq("company_id", value: companyId)
+
+        if let since = since {
+            query = query.gte("updated_at", value: isoString(since))
+        }
+
+        return try await query
             .order("created_at", ascending: false)
             .execute()
             .value
+    }
+
+    func fetchDeletedIds(since: Date) async throws -> [String] {
+        struct IdRow: Codable { let id: String }
+        let rows: [IdRow] = try await client
+            .from("estimates")
+            .select("id")
+            .eq("company_id", value: companyId)
+            .not("deleted_at", operator: .is, value: "null")
+            .gte("deleted_at", value: isoString(since))
+            .execute()
+            .value
+        return rows.map { $0.id }
+    }
+
+    private func isoString(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
     }
 
     func fetchOne(_ estimateId: String) async throws -> EstimateDTO {

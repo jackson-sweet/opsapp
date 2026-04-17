@@ -2,10 +2,12 @@
 //  InvoiceViewModel.swift
 //  OPS
 //
-//  ViewModel for Invoices — manages invoice list, filtering, payments, and status actions.
+//  ViewModel for Invoices — reads from SwiftData (populated via InboundProcessor),
+//  performs server mutations, and refreshes local records from the server when needed.
 //
 
 import SwiftUI
+import SwiftData
 
 @MainActor
 class InvoiceViewModel: ObservableObject {
@@ -16,8 +18,7 @@ class InvoiceViewModel: ObservableObject {
     @Published var error: String? = nil
 
     private var repository: InvoiceRepository?
-    private var lineItemDTOs: [String: [InvoiceLineItemDTO]] = [:]
-    private var paymentDTOs: [String: [PaymentDTO]] = [:]
+    private var modelContext: ModelContext?
 
     enum InvoiceFilter: String, CaseIterable {
         case all      = "ALL"
@@ -43,33 +44,50 @@ class InvoiceViewModel: ObservableObject {
         return result
     }
 
-    func setup(companyId: String) {
-        repository = InvoiceRepository(companyId: companyId)
+    func setup(companyId: String, modelContext: ModelContext) {
+        self.repository = InvoiceRepository(companyId: companyId)
+        self.modelContext = modelContext
+        reloadFromLocal()
     }
 
+    /// Re-read invoices from the local SwiftData store. Call after a sync or mutation.
+    ///
+    /// Runs on the main thread because SwiftData's ModelContext is not thread-safe.
+    /// A fetch limit caps the worst-case hitch for companies with very large invoice
+    /// histories — 500 most-recent invoices is plenty for the list UI, and any deeper
+    /// history is reachable via search (which queries SwiftData directly) or pagination.
+    func reloadFromLocal() {
+        guard let ctx = modelContext else { return }
+        var descriptor = FetchDescriptor<Invoice>(
+            predicate: #Predicate { $0.deletedAt == nil },
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 500
+        invoices = (try? ctx.fetch(descriptor)) ?? []
+    }
+
+    /// Legacy entry point — kept for callers that expect an explicit load.
+    /// Now just re-reads from SwiftData; server sync is owned by InboundProcessor.
     func loadInvoices() async {
-        guard let repo = repository else { return }
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            let dtos = try await repo.fetchAll()
-            invoices = dtos.map { dto in
-                let inv = dto.toModel()
-                lineItemDTOs[inv.id] = dto.lineItems
-                paymentDTOs[inv.id] = dto.payments
-                return inv
-            }
-        } catch {
-            if !error.isCancellation { self.error = error.localizedDescription }
-        }
+        reloadFromLocal()
     }
 
     func lineItems(for invoiceId: String) -> [InvoiceLineItem] {
-        lineItemDTOs[invoiceId]?.map { $0.toModel() } ?? []
+        guard let ctx = modelContext else { return [] }
+        let descriptor = FetchDescriptor<InvoiceLineItem>(
+            predicate: #Predicate { $0.invoiceId == invoiceId },
+            sortBy: [SortDescriptor(\.displayOrder)]
+        )
+        return (try? ctx.fetch(descriptor)) ?? []
     }
 
     func payments(for invoiceId: String) -> [Payment] {
-        paymentDTOs[invoiceId]?.map { $0.toModel() } ?? []
+        guard let ctx = modelContext else { return [] }
+        let descriptor = FetchDescriptor<Payment>(
+            predicate: #Predicate { $0.invoiceId == invoiceId },
+            sortBy: [SortDescriptor(\.paidAt, order: .reverse)]
+        )
+        return (try? ctx.fetch(descriptor)) ?? []
     }
 
     func recordPayment(invoiceId: String, companyId: String, clientId: String, amount: Double, method: PaymentMethod, notes: String?) async {
@@ -85,7 +103,6 @@ class InvoiceViewModel: ObservableObject {
         )
         do {
             _ = try await repo.recordPayment(dto)
-            // CRITICAL: Re-fetch invoice to get DB-trigger-updated balance/status
             await refreshInvoice(invoiceId)
         } catch {
             self.error = error.localizedDescription
@@ -98,6 +115,7 @@ class InvoiceViewModel: ObservableObject {
         invoice.status = .void
         do {
             try await repo.voidInvoice(invoice.id)
+            await refreshInvoice(invoice.id)
         } catch {
             invoice.status = originalStatus
             self.error = error.localizedDescription
@@ -118,21 +136,71 @@ class InvoiceViewModel: ObservableObject {
         invoice.status = status
         do {
             try await repo.updateStatus(invoice.id, status: status)
+            await refreshInvoice(invoice.id)
         } catch {
             invoice.status = originalStatus
             self.error = error.localizedDescription
         }
     }
 
+    /// Targeted refresh from server — used for Spotlight taps that land on a stale
+    /// local copy or after a mutation that should immediately reflect server state.
+    func refreshFromServer(invoiceId: String) async {
+        await refreshInvoice(invoiceId)
+    }
+
     private func refreshInvoice(_ invoiceId: String) async {
-        guard let repo = repository else { return }
+        guard let repo = repository, let ctx = modelContext else { return }
         do {
             let dto = try await repo.fetchOne(invoiceId)
-            if let idx = invoices.firstIndex(where: { $0.id == invoiceId }) {
-                invoices[idx] = dto.toModel()
+            let descriptor = FetchDescriptor<Invoice>(
+                predicate: #Predicate { $0.id == invoiceId }
+            )
+            if let existing = try ctx.fetch(descriptor).first {
+                let fresh = dto.toModel()
+                existing.status = fresh.status
+                existing.subtotal = fresh.subtotal
+                existing.taxAmount = fresh.taxAmount
+                existing.total = fresh.total
+                existing.amountPaid = fresh.amountPaid
+                existing.balanceDue = fresh.balanceDue
+                existing.dueDate = fresh.dueDate
+                existing.sentAt = fresh.sentAt
+                existing.paidAt = fresh.paidAt
+                existing.updatedAt = fresh.updatedAt
+                existing.lastSyncedAt = Date()
+            } else {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                ctx.insert(model)
             }
-            lineItemDTOs[invoiceId] = dto.lineItems
-            paymentDTOs[invoiceId] = dto.payments
+
+            // Merge fresh line items and payments
+            if let lineItems = dto.lineItems {
+                for liDTO in lineItems {
+                    let liId = liDTO.id
+                    let liDescriptor = FetchDescriptor<InvoiceLineItem>(
+                        predicate: #Predicate { $0.id == liId }
+                    )
+                    if try ctx.fetch(liDescriptor).first == nil {
+                        ctx.insert(liDTO.toModel())
+                    }
+                }
+            }
+            if let payments = dto.payments {
+                for pDTO in payments {
+                    let pId = pDTO.id
+                    let pDescriptor = FetchDescriptor<Payment>(
+                        predicate: #Predicate { $0.id == pId }
+                    )
+                    if try ctx.fetch(pDescriptor).first == nil {
+                        ctx.insert(pDTO.toModel())
+                    }
+                }
+            }
+
+            try ctx.save()
+            reloadFromLocal()
         } catch {
             // Silently fail on refresh
         }

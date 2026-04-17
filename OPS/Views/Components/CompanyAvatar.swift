@@ -125,31 +125,36 @@ struct CompanyAvatar: View {
             return
         }
         
-        // Check cache first (use original URL string as key)
+        // Check in-memory cache first (fast path)
         if let cachedImage = ImageCache.shared.get(forKey: urlString) {
             self.loadedImage = cachedImage
             return
         }
-        
-        // Download image
+
+        // Check disk cache second (survives cold starts)
+        if let diskImage = ClientAvatarCache.shared.loadImage(for: urlString) {
+            self.loadedImage = diskImage
+            ImageCache.shared.set(diskImage, forKey: urlString)
+            return
+        }
+
+        // Download image — persists to both memory and disk
         isLoading = true
-        
+
         Task {
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let image = UIImage(data: data) {
-                    await MainActor.run {
-                        self.loadedImage = image
-                        self.isLoading = false
-                        // Cache the image using original URL as key
-                        ImageCache.shared.set(image, forKey: urlString)
-                    }
+            if let data = await ClientAvatarCache.shared.ensureCached(remoteURL: urlString),
+               let image = UIImage(data: data) {
+                await MainActor.run {
+                    self.loadedImage = image
+                    self.isLoading = false
+                    ImageCache.shared.set(image, forKey: urlString)
                 }
-            } catch {
+            } else {
                 await MainActor.run {
                     self.isLoading = false
                 }
             }
+            _ = url // silence unused warning
         }
     }
 }

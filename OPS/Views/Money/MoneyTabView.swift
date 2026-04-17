@@ -155,8 +155,8 @@ struct MoneyTabView: View {
         guard let companyId = dataController.currentUser?.companyId,
               !companyId.isEmpty else { return }
         dashboardVM.setup(companyId: companyId, modelContext: modelContext)
-        estimateVM.setup(companyId: companyId)
-        invoiceVM.setup(companyId: companyId)
+        estimateVM.setup(companyId: companyId, modelContext: modelContext)
+        invoiceVM.setup(companyId: companyId, modelContext: modelContext)
         expenseVM.setup(companyId: companyId)
     }
 }

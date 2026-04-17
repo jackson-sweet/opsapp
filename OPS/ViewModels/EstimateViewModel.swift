@@ -2,10 +2,12 @@
 //  EstimateViewModel.swift
 //  OPS
 //
-//  ViewModel for Estimates — manages estimate list, filtering, line items, and status actions.
+//  ViewModel for Estimates — reads from SwiftData (populated via InboundProcessor),
+//  performs server mutations (line items, status changes), and refreshes local records.
 //
 
 import SwiftUI
+import SwiftData
 
 @MainActor
 class EstimateViewModel: ObservableObject {
@@ -16,7 +18,7 @@ class EstimateViewModel: ObservableObject {
     @Published var error: String? = nil
 
     private var repository: EstimateRepository?
-    private var lineItemDTOs: [String: [EstimateLineItemDTO]] = [:]
+    private var modelContext: ModelContext?
 
     enum EstimateFilter: String, CaseIterable {
         case all      = "ALL"
@@ -42,32 +44,40 @@ class EstimateViewModel: ObservableObject {
         return result
     }
 
-    func setup(companyId: String) {
-        repository = EstimateRepository(companyId: companyId)
+    func setup(companyId: String, modelContext: ModelContext) {
+        self.repository = EstimateRepository(companyId: companyId)
+        self.modelContext = modelContext
+        reloadFromLocal()
     }
 
+    /// Runs on the main thread (SwiftData's ModelContext is not thread-safe).
+    /// Capped to 500 most-recent estimates to bound worst-case hitch on large histories.
+    func reloadFromLocal() {
+        guard let ctx = modelContext else { return }
+        var descriptor = FetchDescriptor<Estimate>(
+            predicate: #Predicate { $0.deletedAt == nil },
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 500
+        estimates = (try? ctx.fetch(descriptor)) ?? []
+    }
+
+    /// Legacy entry point — preserved for existing callers. Now just re-reads local state.
     func loadEstimates() async {
-        guard let repo = repository else { return }
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            let dtos = try await repo.fetchAll()
-            estimates = dtos.map { dto in
-                let est = dto.toModel()
-                lineItemDTOs[est.id] = dto.lineItems
-                return est
-            }
-        } catch {
-            if !error.isCancellation { self.error = error.localizedDescription }
-        }
+        reloadFromLocal()
     }
 
     func lineItems(for estimateId: String) -> [EstimateLineItem] {
-        lineItemDTOs[estimateId]?.map { $0.toModel() } ?? []
+        guard let ctx = modelContext else { return [] }
+        let descriptor = FetchDescriptor<EstimateLineItem>(
+            predicate: #Predicate { $0.estimateId == estimateId },
+            sortBy: [SortDescriptor(\.displayOrder)]
+        )
+        return (try? ctx.fetch(descriptor)) ?? []
     }
 
     func createEstimate(title: String, companyId: String, opportunityId: String? = nil, clientId: String? = nil) async -> Estimate? {
-        guard let repo = repository else { return nil }
+        guard let repo = repository, let ctx = modelContext else { return nil }
         let dto = CreateEstimateDTO(
             companyId: companyId,
             opportunityId: opportunityId,
@@ -77,8 +87,15 @@ class EstimateViewModel: ObservableObject {
         do {
             let created = try await repo.create(dto)
             let est = created.toModel()
-            lineItemDTOs[est.id] = created.lineItems
-            estimates.insert(est, at: 0)
+            est.lastSyncedAt = Date()
+            ctx.insert(est)
+            if let lineItems = created.lineItems {
+                for liDTO in lineItems {
+                    ctx.insert(liDTO.toModel())
+                }
+            }
+            try ctx.save()
+            reloadFromLocal()
             return est
         } catch {
             self.error = error.localizedDescription
@@ -88,7 +105,8 @@ class EstimateViewModel: ObservableObject {
 
     func addLineItem(estimateId: String, description: String, type: LineItemType, quantity: Double, unitPrice: Double, isOptional: Bool, productId: String? = nil, taskTypeId: String? = nil) async {
         guard let repo = repository else { return }
-        let sortOrder = (lineItemDTOs[estimateId]?.count ?? 0)
+        let existing = lineItems(for: estimateId)
+        let sortOrder = existing.count
         let dto = CreateLineItemDTO(
             estimateId: estimateId,
             productId: productId,
@@ -105,9 +123,7 @@ class EstimateViewModel: ObservableObject {
             parentLineItemId: nil
         )
         do {
-            let created = try await repo.addLineItem(dto)
-            if lineItemDTOs[estimateId] == nil { lineItemDTOs[estimateId] = [] }
-            lineItemDTOs[estimateId]?.append(created)
+            _ = try await repo.addLineItem(dto)
             await refreshEstimate(estimateId)
         } catch {
             self.error = error.localizedDescription
@@ -123,10 +139,7 @@ class EstimateViewModel: ObservableObject {
             isOptional: isOptional
         )
         do {
-            let updated = try await repo.updateLineItem(id, fields: dto)
-            if let idx = lineItemDTOs[estimateId]?.firstIndex(where: { $0.id == id }) {
-                lineItemDTOs[estimateId]?[idx] = updated
-            }
+            _ = try await repo.updateLineItem(id, fields: dto)
             await refreshEstimate(estimateId)
         } catch {
             self.error = error.localizedDescription
@@ -137,7 +150,6 @@ class EstimateViewModel: ObservableObject {
         guard let repo = repository else { return }
         do {
             try await repo.deleteLineItem(id)
-            lineItemDTOs[estimateId]?.removeAll { $0.id == id }
             await refreshEstimate(estimateId)
         } catch {
             self.error = error.localizedDescription
@@ -145,12 +157,17 @@ class EstimateViewModel: ObservableObject {
     }
 
     func updateTitle(estimateId: String, title: String) async {
-        guard let repo = repository else { return }
+        guard let repo = repository, let ctx = modelContext else { return }
         do {
             try await repo.updateTitle(estimateId, title: title)
-            if let idx = estimates.firstIndex(where: { $0.id == estimateId }) {
-                estimates[idx].title = title
+            let descriptor = FetchDescriptor<Estimate>(
+                predicate: #Predicate { $0.id == estimateId }
+            )
+            if let existing = try ctx.fetch(descriptor).first {
+                existing.title = title
+                try ctx.save()
             }
+            reloadFromLocal()
         } catch {
             self.error = error.localizedDescription
         }
@@ -169,13 +186,13 @@ class EstimateViewModel: ObservableObject {
         do {
             _ = try await repo.convertToInvoice(estimateId: estimate.id)
             estimate.status = .converted
+            await refreshEstimate(estimate.id)
         } catch {
             self.error = error.localizedDescription
         }
     }
 
     /// Create an invoice from selected line items at specified percentages.
-    /// Uses the `create_progress_invoice` Supabase RPC — estimate stays approved.
     func createProgressInvoice(
         from estimate: Estimate,
         lineItemSelections: [(lineItemId: String, percentage: Double)]
@@ -194,6 +211,11 @@ class EstimateViewModel: ObservableObject {
         }
     }
 
+    /// Targeted refresh from server — used for Spotlight taps on stale local copies.
+    func refreshFromServer(estimateId: String) async {
+        await refreshEstimate(estimateId)
+    }
+
     private func updateStatus(_ estimate: Estimate, to status: EstimateStatus) async {
         guard let repo = repository else { return }
         let originalStatus = estimate.status
@@ -201,7 +223,7 @@ class EstimateViewModel: ObservableObject {
         do {
             let updated = try await repo.updateStatus(estimate.id, status: status)
             estimate.status = EstimateStatus(rawValue: updated.status) ?? status
-            lineItemDTOs[estimate.id] = updated.lineItems
+            await refreshEstimate(estimate.id)
         } catch {
             estimate.status = originalStatus
             self.error = error.localizedDescription
@@ -209,15 +231,53 @@ class EstimateViewModel: ObservableObject {
     }
 
     private func refreshEstimate(_ estimateId: String) async {
-        guard let repo = repository else { return }
+        guard let repo = repository, let ctx = modelContext else { return }
         do {
             let dto = try await repo.fetchOne(estimateId)
-            if let idx = estimates.firstIndex(where: { $0.id == estimateId }) {
-                estimates[idx] = dto.toModel()
+            let descriptor = FetchDescriptor<Estimate>(
+                predicate: #Predicate { $0.id == estimateId }
+            )
+            if let existing = try ctx.fetch(descriptor).first {
+                let fresh = dto.toModel()
+                existing.status = fresh.status
+                existing.subtotal = fresh.subtotal
+                existing.taxAmount = fresh.taxAmount
+                existing.total = fresh.total
+                existing.title = fresh.title
+                existing.updatedAt = fresh.updatedAt
+                existing.lastSyncedAt = Date()
+            } else {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                ctx.insert(model)
             }
-            lineItemDTOs[estimateId] = dto.lineItems
+
+            // Refresh line items: insert new ones, remove any that the server dropped
+            let freshLineItemIds: Set<String> = Set((dto.lineItems ?? []).map { $0.id })
+            if let lineItems = dto.lineItems {
+                for liDTO in lineItems {
+                    let liId = liDTO.id
+                    let liDescriptor = FetchDescriptor<EstimateLineItem>(
+                        predicate: #Predicate { $0.id == liId }
+                    )
+                    if try ctx.fetch(liDescriptor).first == nil {
+                        ctx.insert(liDTO.toModel())
+                    }
+                }
+            }
+            // Delete any local line items that are no longer on the server
+            let localDescriptor = FetchDescriptor<EstimateLineItem>(
+                predicate: #Predicate { $0.estimateId == estimateId }
+            )
+            let local = (try? ctx.fetch(localDescriptor)) ?? []
+            for item in local where !freshLineItemIds.contains(item.id) {
+                ctx.delete(item)
+            }
+
+            try ctx.save()
+            reloadFromLocal()
         } catch {
-            // Silently fail on refresh — estimate is still locally updated
+            // Silently fail on refresh
         }
     }
 }

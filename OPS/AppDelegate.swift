@@ -74,10 +74,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         let notificationType = additionalData?["type"] as? String
         let projectId = additionalData?["projectId"] as? String
         let taskId = additionalData?["taskId"] as? String
+        let clientId = additionalData?["clientId"] as? String
+        let invoiceId = additionalData?["invoiceId"] as? String
+        let estimateId = additionalData?["estimateId"] as? String
         let screen = additionalData?["screen"] as? String
 
         print("[ONESIGNAL] Type: \(notificationType ?? "unknown")")
         print("[ONESIGNAL] Project: \(projectId ?? "none"), Task: \(taskId ?? "none")")
+        print("[ONESIGNAL] Client: \(clientId ?? "none"), Invoice: \(invoiceId ?? "none"), Estimate: \(estimateId ?? "none")")
         print("[ONESIGNAL] Screen: \(screen ?? "none")")
 
         // Track push notification opened
@@ -107,6 +111,32 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                         "wasSeated": wasSeated,
                         "roleAssigned": roleAssigned
                     ]
+                )
+                return
+            }
+
+            // Check for client/invoice/estimate direct IDs — these short-circuit the rest
+            if let clientId = clientId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenClientDetails"),
+                    object: nil,
+                    userInfo: ["clientId": clientId]
+                )
+                return
+            }
+            if let invoiceId = invoiceId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenInvoiceDetails"),
+                    object: nil,
+                    userInfo: ["invoiceId": invoiceId]
+                )
+                return
+            }
+            if let estimateId = estimateId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenEstimateDetails"),
+                    object: nil,
+                    userInfo: ["estimateId": estimateId]
                 )
                 return
             }
@@ -142,9 +172,87 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         }
     }
 
-    // Handle URL for Google Sign-In
+    // Handle URL — Google Sign-In + ops:// deep links
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
-        return GoogleSignInManager.handle(url)
+        // Google Sign-In gets first chance
+        if GoogleSignInManager.handle(url) {
+            return true
+        }
+        // ops:// scheme deep links
+        if url.scheme == "ops" {
+            return handleDeepLink(url)
+        }
+        return false
+    }
+
+    /// Parse an `ops://<entity>/<id>` deep link and post the matching notification
+    /// that MainTabView observes. Supported entities: projects, clients, tasks, invoices, estimates.
+    @discardableResult
+    private func handleDeepLink(_ url: URL) -> Bool {
+        let components = url.pathComponents // "/projects/abc" → ["/", "projects", "abc"]
+        // Handle "ops://projects/abc" — host is "projects", path is "/abc"
+        // Also "ops:projects/abc" forms — be lenient
+        let entity: String
+        let id: String
+
+        if let host = url.host, !host.isEmpty {
+            entity = host
+            // Strip the leading "/" from path
+            let path = url.path
+            id = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        } else if components.count >= 3 {
+            entity = components[1]
+            id = components[2]
+        } else {
+            print("[DEEP_LINK] Malformed deep link: \(url)")
+            return false
+        }
+
+        guard !id.isEmpty else {
+            print("[DEEP_LINK] Missing id in deep link: \(url)")
+            return false
+        }
+
+        print("[DEEP_LINK] Routing \(entity)/\(id)")
+
+        switch entity {
+        case "projects":
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenProjectDetails"),
+                object: nil,
+                userInfo: ["projectId": id]
+            )
+            return true
+        case "clients":
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenClientDetails"),
+                object: nil,
+                userInfo: ["clientId": id]
+            )
+            return true
+        case "invoices":
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenInvoiceDetails"),
+                object: nil,
+                userInfo: ["invoiceId": id]
+            )
+            return true
+        case "estimates":
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenEstimateDetails"),
+                object: nil,
+                userInfo: ["estimateId": id]
+            )
+            return true
+        case "tasks":
+            // Task deep-links require a projectId — caller should use "ops://projects/<projectId>/tasks/<taskId>"
+            // For the simple two-segment form we cannot route — log and bail.
+            print("[DEEP_LINK] Task deep links require projectId context; unsupported in two-segment form")
+            return false
+        default:
+            print("[DEEP_LINK] Unknown entity: \(entity)")
+            return false
+        }
     }
     
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {

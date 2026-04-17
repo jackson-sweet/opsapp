@@ -14,14 +14,17 @@ struct UniversalSearchSheet: View {
     @EnvironmentObject private var permissionStore: PermissionStore
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
 
     // SwiftData queries
     @Query private var allProjects: [Project]
     @Query private var allClients: [Client]
     @Query private var allUsers: [User]
     @Query private var allInventoryItems: [InventoryItem]
+    @Query(filter: #Predicate<Invoice> { $0.deletedAt == nil }) private var allLocalInvoices: [Invoice]
+    @Query(filter: #Predicate<Estimate> { $0.deletedAt == nil }) private var allLocalEstimates: [Estimate]
 
-    // Supabase-backed ViewModels
+    // ViewModels — kept for mutation methods; list data now comes from @Query above
     @StateObject private var invoiceVM = InvoiceViewModel()
     @StateObject private var estimateVM = EstimateViewModel()
 
@@ -132,7 +135,7 @@ struct UniversalSearchSheet: View {
     private var matchingInvoices: [Invoice] {
         guard !query.isEmpty else { return [] }
         let q = query
-        return invoiceVM.invoices.filter {
+        return allLocalInvoices.filter {
             $0.invoiceNumber.localizedCaseInsensitiveContains(q) ||
             ($0.title?.localizedCaseInsensitiveContains(q) ?? false)
         }
@@ -141,7 +144,7 @@ struct UniversalSearchSheet: View {
     private var matchingEstimates: [Estimate] {
         guard !query.isEmpty else { return [] }
         let q = query
-        return estimateVM.estimates.filter {
+        return allLocalEstimates.filter {
             $0.estimateNumber.localizedCaseInsensitiveContains(q) ||
             ($0.title?.localizedCaseInsensitiveContains(q) ?? false)
         }
@@ -455,12 +458,8 @@ struct UniversalSearchSheet: View {
 
     private func loadSupabaseData() {
         guard let companyId = dataController.currentUser?.companyId else { return }
-        invoiceVM.setup(companyId: companyId)
-        estimateVM.setup(companyId: companyId)
-        Task {
-            await invoiceVM.loadInvoices()
-            await estimateVM.loadEstimates()
-        }
+        invoiceVM.setup(companyId: companyId, modelContext: modelContext)
+        estimateVM.setup(companyId: companyId, modelContext: modelContext)
     }
 
     private func formatCurrency(_ amount: Double) -> String {

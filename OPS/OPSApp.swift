@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 import UserNotifications
 import MapboxMaps
+import CoreSpotlight
 
 @main
 struct OPSApp: App {
@@ -263,9 +264,17 @@ struct OPSApp: App {
                     guard let url = activity.webpageURL else { return }
                     handleUniversalLink(url)
                 }
-                // Custom URL schemes — kept for future ops:// fallback. No-op today
-                // since only Google Sign-In is registered.
+                // Spotlight tap continuation — iPhone universal search result tapped
+                .onContinueUserActivity(CSSearchableItemActionType) { activity in
+                    _ = SpotlightTapRouter.handle(activity)
+                }
+                // HTTPS universal links that weren't intercepted by AppDelegate.
+                // Skip ops:// scheme URLs — AppDelegate.application(_:open:) handles
+                // those and posts the deep-link notification directly. Without this
+                // guard, every ops:// tap would double-route and attempt to present
+                // the destination sheet twice.
                 .onOpenURL { url in
+                    guard url.scheme != "ops" else { return }
                     handleUniversalLink(url)
                 }
         }
@@ -295,20 +304,55 @@ struct OPSApp: App {
         // Path components: first is "/" for https URLs, so drop empty segments.
         let segments = url.pathComponents.filter { $0 != "/" && !$0.isEmpty }
 
-        // /projects/{id}
-        if segments.count >= 2, segments[0] == "projects" {
-            let projectId = segments[1]
-            guard !projectId.isEmpty else { return }
-            print("[DEEP_LINK] Routing to project: \(projectId)")
-            NotificationCenter.default.post(
-                name: Notification.Name("OpenProjectDetails"),
-                object: nil,
-                userInfo: ["projectId": projectId]
-            )
+        // /{entity}/{id}
+        guard segments.count >= 2 else {
+            print("[DEEP_LINK] No route matched for: \(url.absoluteString)")
             return
         }
 
-        print("[DEEP_LINK] No route matched for: \(url.absoluteString)")
+        let entity = segments[0]
+        let id = segments[1]
+        guard !id.isEmpty else { return }
+
+        switch entity {
+        case "projects":
+            print("[DEEP_LINK] Routing to project: \(id)")
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenProjectDetails"),
+                object: nil,
+                userInfo: ["projectId": id]
+            )
+        case "clients":
+            print("[DEEP_LINK] Routing to client: \(id)")
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenClientDetails"),
+                object: nil,
+                userInfo: ["clientId": id]
+            )
+        case "invoices":
+            print("[DEEP_LINK] Routing to invoice: \(id)")
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenInvoiceDetails"),
+                object: nil,
+                userInfo: ["invoiceId": id]
+            )
+        case "estimates":
+            print("[DEEP_LINK] Routing to estimate: \(id)")
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenEstimateDetails"),
+                object: nil,
+                userInfo: ["estimateId": id]
+            )
+        case "tasks":
+            print("[DEEP_LINK] Routing to task: \(id)")
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenTaskDetails"),
+                object: nil,
+                userInfo: ["taskId": id]
+            )
+        default:
+            print("[DEEP_LINK] Unknown entity '\(entity)' in: \(url.absoluteString)")
+        }
     }
 
     /// Performs health check when app becomes active

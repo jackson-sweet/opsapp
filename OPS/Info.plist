@@ -14,6 +14,14 @@
 				<string>com.googleusercontent.apps.992104001932-rnec0iliev7mrnvh3c1ui5n3gbh9ddhf</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>co.opsapp.deeplink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>ops</string>
+			</array>
+		</dict>
 	</array>
 	<key>GIDClientID</key>
 	<string>992104001932-rnec0iliev7mrnvh3c1ui5n3gbh9ddhf.apps.googleusercontent.com</string>

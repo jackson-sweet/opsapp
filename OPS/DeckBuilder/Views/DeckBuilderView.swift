@@ -19,6 +19,7 @@ struct DeckBuilderView: View {
     @State private var editingTitleText: String = ""
     @State private var titleBarHeight: CGFloat = 56
     @StateObject private var estimateVM = EstimateViewModel()
+    @Environment(\.modelContext) private var env_modelContext
     @Query(sort: \TaskType.displayOrder) private var taskTypes: [TaskType]
 
     let projectId: String?
@@ -330,7 +331,7 @@ struct DeckBuilderView: View {
             if viewModel.estimateCreated, let number = viewModel.createdEstimateNumber {
                 Button {
                     viewModel.estimateCreated = false
-                    estimateVM.setup(companyId: companyId)
+                    estimateVM.setup(companyId: companyId, modelContext: env_modelContext)
                     showingEstimateDetail = true
                 } label: {
                     HStack(spacing: OPSStyle.Layout.spacing2_5) {

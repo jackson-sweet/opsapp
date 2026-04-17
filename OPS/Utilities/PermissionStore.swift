@@ -180,6 +180,11 @@ class PermissionStore: ObservableObject {
             let flagResult = await flagsFetch
 
             await MainActor.run {
+                // Detect role change to trigger Spotlight re-index with the new scope
+                let lastRoleKey = "spotlight.lastIndexedRoleId"
+                let previousRoleId = UserDefaults.standard.string(forKey: lastRoleKey)
+                let roleChanged = previousRoleId != nil && previousRoleId != payload.roleId
+
                 self.permissions = payload.permissions
                 self.roleName = payload.roleName
                 self.roleHierarchy = payload.roleHierarchy
@@ -188,8 +193,17 @@ class PermissionStore: ObservableObject {
                 self.disabledFlags = flagResult.disabledFlags
                 self.initialized = true
                 self.saveToCache(userId: userId)
+                UserDefaults.standard.set(payload.roleId, forKey: lastRoleKey)
 
                 print("[PERMISSIONS] Fetched \(payload.permissions.count) permissions from Supabase (role: \(payload.roleName), \(flagResult.blockedPermissions.count) flag-blocked, \(flagResult.disabledFlags.count) flags disabled)")
+
+                if roleChanged {
+                    print("[PERMISSIONS] Role changed from \(previousRoleId ?? "nil") to \(payload.roleId) — requesting Spotlight re-index")
+                    NotificationCenter.default.post(
+                        name: Notification.Name("SpotlightReindexRequested"),
+                        object: nil
+                    )
+                }
             }
         } catch {
             print("[PERMISSIONS] Failed to fetch permissions from Supabase: \(error)")

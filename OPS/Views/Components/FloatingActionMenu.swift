@@ -108,6 +108,7 @@ struct FloatingActionMenu: View {
     // View models — lazily created only when their sheets open
     @StateObject private var expenseViewModel = ExpenseViewModel()
     @StateObject private var estimateViewModel = EstimateViewModel()
+    @Environment(\.modelContext) private var modelContext
     @StateObject private var calendarViewModel = CalendarViewModel()
 
     // Cached decoded values — avoids JSON decode on every render
@@ -317,7 +318,7 @@ struct FloatingActionMenu: View {
                         action: {
                             showCreateMenu = false
                             if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
-                                estimateViewModel.setup(companyId: companyId)
+                                estimateViewModel.setup(companyId: companyId, modelContext: modelContext)
                             }
                             showingCreateEstimate = true
                         }

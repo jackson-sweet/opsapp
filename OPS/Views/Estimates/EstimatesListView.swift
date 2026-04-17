@@ -12,6 +12,7 @@ struct EstimatesListView: View {
 
     @StateObject private var viewModel = EstimateViewModel()
     @EnvironmentObject private var dataController: DataController
+    @Environment(\.modelContext) private var modelContext
     @State private var showNewEstimateSheet = false
     @State private var selectedEstimate: Estimate? = nil
     @State private var searchText = ""
@@ -101,7 +102,7 @@ struct EstimatesListView: View {
         }
         .task {
             if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
-                viewModel.setup(companyId: companyId)
+                viewModel.setup(companyId: companyId, modelContext: modelContext)
                 await viewModel.loadEstimates()
             }
         }

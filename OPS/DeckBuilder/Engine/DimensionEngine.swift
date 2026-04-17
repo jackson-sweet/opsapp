@@ -121,12 +121,16 @@ struct DimensionEngine {
     private static func parseImperialToInches(_ input: String) -> Double? {
         // Normalize Unicode quote variants to ASCII equivalents.
         // iOS smart punctuation converts ' → \u{2019} and " → \u{201D}.
+        // Strip word-unit suffixes (feet/ft) so "12ft" falls through to the plain-number
+        // branch as "12". Longest match first so "feet" isn't turned into "eet" by "ft".
         let normalized = input
             .replacingOccurrences(of: "\u{2018}", with: "'")
             .replacingOccurrences(of: "\u{2019}", with: "'")
             .replacingOccurrences(of: "\u{02BC}", with: "'")
             .replacingOccurrences(of: "\u{201C}", with: "\"")
             .replacingOccurrences(of: "\u{201D}", with: "\"")
+            .replacingOccurrences(of: "feet", with: "", options: .caseInsensitive)
+            .replacingOccurrences(of: "ft", with: "", options: .caseInsensitive)
 
         var totalInches = 0.0
         var remaining = normalized

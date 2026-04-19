@@ -20,6 +20,7 @@
 
 import Foundation
 import SwiftData
+import Supabase
 
 extension Notification.Name {
     /// Posted on MainActor after DataActor's ModelContext saves.
@@ -1424,6 +1425,575 @@ actor DataActor {
             return false
         }
     }
+
+    // MARK: - Per-Operation Execution
+
+    /// Executes a single SyncOperation against Supabase. Transitions status
+    /// inProgress → completed/failed/pending; each transition is wrapped in
+    /// its own transaction since Swift async/await precludes a single transaction
+    /// spanning the network call.
+    ///
+    /// Ported from OutboundProcessor.executeOperation. Context parameter removed;
+    /// state mutations now wrapped in `modelContext.transaction { }` blocks.
+    private func executeOperation(_ operation: SyncOperation) async throws {
+        print("[DataActor] Pushing \(operation.entityType) \(operation.entityId)...")
+
+        try? modelContext.transaction {
+            operation.status = "inProgress"
+            operation.lastAttemptedAt = Date()
+        }
+
+        do {
+            guard let payloadDict = decodePayload(operation.payload) else {
+                throw SyncError.decodingFailed(detail: "Could not decode payload for \(operation.entityType) \(operation.entityId)")
+            }
+
+            try await routeToRepository(
+                entityType: operation.entityType,
+                entityId: operation.entityId,
+                operationType: operation.operationType,
+                payload: payloadDict
+            )
+
+            try? modelContext.transaction {
+                operation.status = "completed"
+                operation.completedAt = Date()
+            }
+            print("[DataActor] Completed \(operation.entityType) \(operation.entityId)")
+
+        } catch {
+            let classified = classifySyncError(error)
+
+            if case .authExpired = classified {
+                try? modelContext.transaction {
+                    operation.lastError = classified.localizedDescription
+                    operation.status = "failed"
+                }
+                print("[DataActor] Auth expired — stopping sync for \(operation.entityType) \(operation.entityId)")
+
+                // AnalyticsService is @MainActor — hop for the track call.
+                let retryCount = operation.retryCount
+                let entityType = operation.entityType
+                let operationType = operation.operationType
+                await MainActor.run {
+                    AnalyticsService.shared.track(
+                        eventType: .error,
+                        eventName: "sync_failed",
+                        properties: [
+                            "error_type": "auth_expired",
+                            "retry_count": retryCount,
+                            "entity_type": entityType,
+                            "operation_type": operationType
+                        ]
+                    )
+                    NotificationCenter.default.post(name: .syncAuthExpired, object: nil)
+                }
+                throw error
+            }
+
+            try? modelContext.transaction {
+                operation.lastError = classified.localizedDescription
+                operation.retryCount += 1
+                if operation.retryCount >= Self.maxOutboundRetries {
+                    operation.status = "failed"
+                } else {
+                    operation.status = "pending"
+                }
+            }
+
+            if operation.retryCount >= Self.maxOutboundRetries {
+                print("[DataActor] Permanently failed \(operation.entityType) \(operation.entityId) after \(operation.retryCount) retries")
+
+                // AnalyticsService is @MainActor — hop for the track call.
+                let retryCount = operation.retryCount
+                let entityType = operation.entityType
+                let operationType = operation.operationType
+                let errorDescription = classified.localizedDescription
+                await MainActor.run {
+                    AnalyticsService.shared.track(
+                        eventType: .error,
+                        eventName: "sync_failed",
+                        properties: [
+                            "error_type": errorDescription,
+                            "retry_count": retryCount,
+                            "entity_type": entityType,
+                            "operation_type": operationType
+                        ]
+                    )
+                }
+            } else {
+                print("[DataActor] Retry \(operation.retryCount)/\(Self.maxOutboundRetries) for \(operation.entityType) \(operation.entityId): \(classified.localizedDescription)")
+            }
+
+            throw error
+        }
+    }
+
+    // MARK: - Repository Routing
+
+    /// Routes an operation to the correct Supabase repository based on entityType
+    /// and operationType. Ported verbatim from OutboundProcessor.routeToRepository —
+    /// no ModelContext usage, pure async Supabase calls.
+    private func routeToRepository(
+        entityType: String,
+        entityId: String,
+        operationType: String,
+        payload: [String: Any]
+    ) async throws {
+        let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
+
+        guard let syncEntityType = SyncEntityType(rawValue: entityType) else {
+            print("[DataActor] Unknown entity type: \(entityType) — using generic table push")
+            try await genericTablePush(entityType: entityType, entityId: entityId, operationType: operationType, payload: payload)
+            return
+        }
+
+        switch syncEntityType {
+        case .project:
+            try await handleProject(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
+        case .projectTask:
+            try await handleProjectTask(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
+        case .user:
+            try await handleUser(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
+        case .client:
+            try await handleClient(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
+        case .company:
+            try await handleCompany(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
+        case .taskType:
+            try await handleTaskType(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
+        case .deckDesign:
+            try await handleDeckDesign(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
+        default:
+            try await genericTablePush(
+                entityType: entityType,
+                entityId: entityId,
+                operationType: operationType,
+                payload: payload,
+                tableName: syncEntityType.supabaseTable
+            )
+        }
+    }
+
+    // MARK: - Entity Handlers
+
+    private func handleProject(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
+        let repo = ProjectRepository(companyId: companyId)
+        let sanitizedPayload = payload.filter { Self.validProjectColumns.contains($0.key) }
+
+        switch operationType {
+        case "create":
+            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
+            let dto = try JSONDecoder().decode(SupabaseProjectDTO.self, from: jsonData)
+            _ = try await repo.create(dto)
+
+        case "update":
+            let fields = payloadToAnyJSON(sanitizedPayload)
+            try await repo.updateFields(entityId, fields: fields)
+
+        case "delete":
+            try await repo.softDelete(entityId)
+
+        default:
+            print("[DataActor] Unknown operation type '\(operationType)' for project")
+        }
+    }
+
+    private func handleProjectTask(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
+        let repo = TaskRepository(companyId: companyId)
+        let sanitizedPayload = payload.filter { Self.validProjectTaskColumns.contains($0.key) }
+
+        switch operationType {
+        case "create":
+            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
+            let dto = try JSONDecoder().decode(SupabaseProjectTaskDTO.self, from: jsonData)
+            _ = try await repo.create(dto)
+
+        case "update":
+            let fields = payloadToAnyJSON(sanitizedPayload)
+            try await repo.updateFields(entityId, fields: fields)
+
+        case "delete":
+            try await repo.softDelete(entityId)
+
+        default:
+            print("[DataActor] Unknown operation type '\(operationType)' for projectTask")
+        }
+    }
+
+    private func handleUser(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
+        let repo = UserRepository(companyId: companyId)
+        let sanitizedPayload = payload.filter { Self.validUserColumns.contains($0.key) }
+
+        switch operationType {
+        case "create":
+            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
+            let dto = try JSONDecoder().decode(SupabaseUserDTO.self, from: jsonData)
+            try await repo.upsert(dto)
+
+        case "update":
+            let fields = payloadToAnyJSON(sanitizedPayload)
+            try await repo.updateFields(userId: entityId, fields: fields)
+
+        case "delete":
+            try await repo.softDelete(entityId)
+
+        default:
+            print("[DataActor] Unknown operation type '\(operationType)' for user")
+        }
+    }
+
+    private func handleClient(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
+        let repo = ClientRepository(companyId: companyId)
+        let sanitizedPayload = payload.filter { Self.validClientColumns.contains($0.key) }
+
+        switch operationType {
+        case "create":
+            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
+            let dto = try JSONDecoder().decode(SupabaseClientDTO.self, from: jsonData)
+            _ = try await repo.create(dto)
+
+        case "update":
+            let fields = payloadToAnyJSON(sanitizedPayload)
+            try await genericUpdateFields(table: "clients", entityId: entityId, fields: fields)
+
+        case "delete":
+            try await repo.softDelete(entityId)
+
+        default:
+            print("[DataActor] Unknown operation type '\(operationType)' for client")
+        }
+    }
+
+    private func handleCompany(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
+        let repo = CompanyRepository()
+        let sanitizedPayload = payload.filter { Self.validCompanyColumns.contains($0.key) }
+
+        switch operationType {
+        case "create":
+            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
+            let companyPayload = try JSONDecoder().decode(NewCompanyPayload.self, from: jsonData)
+            _ = try await repo.insert(companyPayload)
+
+        case "update":
+            let fields = payloadToAnyJSON(sanitizedPayload)
+            try await repo.updateFields(companyId: entityId, fields: fields)
+
+        case "delete":
+            let fields: [String: AnyJSON] = [
+                "deleted_at": .string(ISO8601DateFormatter().string(from: Date())),
+                "updated_at": .string(ISO8601DateFormatter().string(from: Date()))
+            ]
+            try await genericUpdateFields(table: "companies", entityId: entityId, fields: fields)
+
+        default:
+            print("[DataActor] Unknown operation type '\(operationType)' for company")
+        }
+    }
+
+    private func handleTaskType(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
+        let repo = TaskTypeRepository(companyId: companyId)
+        let sanitizedPayload = payload.filter { Self.validTaskTypeColumns.contains($0.key) }
+
+        switch operationType {
+        case "create":
+            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
+            let dto = try JSONDecoder().decode(SupabaseTaskTypeDTO.self, from: jsonData)
+            _ = try await repo.create(dto)
+
+        case "update":
+            let fields = payloadToAnyJSON(sanitizedPayload)
+            try await genericUpdateFields(table: "task_types", entityId: entityId, fields: fields)
+
+        case "delete":
+            try await repo.softDelete(entityId)
+
+        default:
+            print("[DataActor] Unknown operation type '\(operationType)' for taskType")
+        }
+    }
+
+    private func handleDeckDesign(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
+        let repo = DeckDesignRepository(companyId: companyId)
+        let sanitizedPayload = payload.filter { Self.validDeckDesignColumns.contains($0.key) }
+
+        switch operationType {
+        case "create":
+            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
+            let dto = try JSONDecoder().decode(SupabaseDeckDesignDTO.self, from: jsonData)
+            _ = try await repo.create(dto)
+
+        case "update":
+            let fields = payloadToAnyJSON(sanitizedPayload)
+            try await repo.updateFields(entityId, fields: fields)
+
+        case "delete":
+            try await repo.softDelete(entityId)
+
+        default:
+            print("[DataActor] Unknown operation type '\(operationType)' for deckDesign")
+        }
+    }
+
+    // MARK: - Generic Table Operations
+
+    /// Generic update for tables without a dedicated updateFields method.
+    /// Ported verbatim from OutboundProcessor.genericUpdateFields.
+    private func genericUpdateFields(table: String, entityId: String, fields: [String: AnyJSON]) async throws {
+        var payload = fields
+        payload["updated_at"] = .string(ISO8601DateFormatter().string(from: Date()))
+        try await SupabaseService.shared.client
+            .from(table)
+            .update(payload)
+            .eq("id", value: entityId)
+            .execute()
+    }
+
+    /// Generic fallback for entity types without a dedicated handler.
+    /// Ported verbatim from OutboundProcessor.genericTablePush.
+    private func genericTablePush(
+        entityType: String,
+        entityId: String,
+        operationType: String,
+        payload: [String: Any],
+        tableName: String? = nil
+    ) async throws {
+        let table = tableName ?? entityType
+        let client = SupabaseService.shared.client
+        let fields = payloadToAnyJSON(payload)
+
+        switch operationType {
+        case "create":
+            var insertPayload = fields
+            insertPayload["id"] = .string(entityId)
+            try await client
+                .from(table)
+                .insert(insertPayload)
+                .execute()
+
+        case "update":
+            try await genericUpdateFields(table: table, entityId: entityId, fields: fields)
+
+        case "delete":
+            let deletePayload: [String: AnyJSON] = [
+                "deleted_at": .string(ISO8601DateFormatter().string(from: Date())),
+                "updated_at": .string(ISO8601DateFormatter().string(from: Date()))
+            ]
+            try await client
+                .from(table)
+                .update(deletePayload)
+                .eq("id", value: entityId)
+                .execute()
+
+        default:
+            print("[DataActor] Unknown operation type '\(operationType)' for generic table \(table)")
+        }
+    }
+
+    // MARK: - Coalescing
+
+    /// Groups operations by (entityType, entityId) and merges redundant ops:
+    ///   - "create" + subsequent "update"s → merge changedFields into the create,
+    ///     keep latest payload
+    ///   - "delete" discards all preceding creates/updates for the same entity
+    ///   - Multiple "update"s → merge changedFields, keep latest payload, produce
+    ///     one operation
+    ///
+    /// Superseded ops are mutated to status="completed"; callers must wrap in
+    /// `modelContext.transaction { }` so those mutations persist.
+    ///
+    /// Ported verbatim from OutboundProcessor.coalesceOperations.
+    private func coalesceOperations(_ operations: [SyncOperation]) -> [SyncOperation] {
+        var groups: [String: [SyncOperation]] = [:]
+        for op in operations {
+            let key = "\(op.entityType)::\(op.entityId)"
+            groups[key, default: []].append(op)
+        }
+
+        var result: [SyncOperation] = []
+
+        for (_, ops) in groups {
+            guard !ops.isEmpty else { continue }
+
+            if ops.count == 1 {
+                result.append(ops[0])
+                continue
+            }
+
+            // Delete wins over everything.
+            if let deleteOp = ops.last(where: { $0.operationType == "delete" }) {
+                for op in ops where op.id != deleteOp.id {
+                    op.status = "completed"
+                    op.completedAt = Date()
+                }
+                result.append(deleteOp)
+                continue
+            }
+
+            // Create present — merge subsequent updates in.
+            if let createOp = ops.first(where: { $0.operationType == "create" }) {
+                var allChangedFields = Set(createOp.getChangedFields())
+                var latestPayload = createOp.payload
+
+                for op in ops where op.id != createOp.id {
+                    let fields = op.getChangedFields()
+                    allChangedFields.formUnion(fields)
+                    latestPayload = op.payload
+                    op.status = "completed"
+                    op.completedAt = Date()
+                }
+
+                if let mergedPayload = mergePayloads(base: createOp.payload, overlay: latestPayload) {
+                    createOp.payload = mergedPayload
+                }
+                createOp.changedFields = Array(allChangedFields).joined(separator: ",")
+                result.append(createOp)
+                continue
+            }
+
+            // All updates — merge into latest.
+            var allChangedFields = Set<String>()
+            for op in ops {
+                allChangedFields.formUnion(op.getChangedFields())
+            }
+            let survivor = ops.last!
+            survivor.changedFields = Array(allChangedFields).joined(separator: ",")
+
+            var mergedPayloadDict: [String: Any] = [:]
+            for op in ops {
+                if let dict = decodePayload(op.payload) {
+                    for (key, value) in dict {
+                        mergedPayloadDict[key] = value
+                    }
+                }
+                if op.id != survivor.id {
+                    op.status = "completed"
+                    op.completedAt = Date()
+                }
+            }
+            if let encoded = encodePayload(mergedPayloadDict) {
+                survivor.payload = encoded
+            }
+
+            result.append(survivor)
+        }
+
+        return result.sorted { a, b in
+            if a.priority != b.priority { return a.priority < b.priority }
+            return a.createdAt < b.createdAt
+        }
+    }
+
+    // MARK: - Payload Helpers (pure, ported verbatim)
+
+    private func decodePayload(_ data: Data) -> [String: Any]? {
+        try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    private func encodePayload(_ dict: [String: Any]) -> Data? {
+        try? JSONSerialization.data(withJSONObject: dict)
+    }
+
+    private func mergePayloads(base: Data, overlay: Data) -> Data? {
+        guard var baseDict = decodePayload(base) else { return overlay }
+        guard let overlayDict = decodePayload(overlay) else { return base }
+        for (key, value) in overlayDict {
+            baseDict[key] = value
+        }
+        return encodePayload(baseDict)
+    }
+
+    private func payloadToAnyJSON(_ payload: [String: Any]) -> [String: AnyJSON] {
+        var result: [String: AnyJSON] = [:]
+        for (key, value) in payload {
+            result[key] = convertToAnyJSON(value)
+        }
+        return result
+    }
+
+    private func convertToAnyJSON(_ value: Any) -> AnyJSON {
+        switch value {
+        case let string as String:
+            return .string(string)
+        case let int as Int:
+            return .integer(int)
+        case let double as Double:
+            return .double(double)
+        case let bool as Bool:
+            return .bool(bool)
+        case let array as [Any]:
+            return .array(array.map { convertToAnyJSON($0) })
+        case let dict as [String: Any]:
+            return .object(dict.mapValues { convertToAnyJSON($0) })
+        case is NSNull:
+            return .null
+        default:
+            return .string("\(value)")
+        }
+    }
+
+    // MARK: - Valid Supabase Column Sets
+
+    /// Used to filter payloads before push; strips local-only SwiftData properties
+    /// (e.g. needs_sync, task_index) that would cause "could not find column" errors
+    /// on PostgREST. Ported verbatim from OutboundProcessor.validXxxColumns.
+    private static let validProjectColumns: Set<String> = [
+        "id", "bubble_id", "company_id", "client_id", "opportunity_id",
+        "title", "status", "address", "latitude", "longitude",
+        "start_date", "end_date", "duration", "notes", "description",
+        "all_day", "team_member_ids", "project_images", "completed_at",
+        "deleted_at", "created_at", "updated_at"
+    ]
+
+    private static let validProjectTaskColumns: Set<String> = [
+        "id", "bubble_id", "company_id", "project_id", "task_type_id",
+        "custom_title", "task_notes", "status", "task_color", "display_order",
+        "team_member_ids", "source_line_item_id", "source_estimate_id",
+        "start_date", "end_date", "duration", "dependency_overrides",
+        "start_time", "end_time", "deleted_at", "created_at", "updated_at"
+    ]
+
+    private static let validUserColumns: Set<String> = [
+        "id", "bubble_id", "company_id", "first_name", "last_name",
+        "email", "phone_number", "role", "profile_image_url",
+        "deleted_at", "created_at", "updated_at"
+    ]
+
+    private static let validClientColumns: Set<String> = [
+        "id", "bubble_id", "company_id", "name", "email",
+        "phone_number", "address", "latitude", "longitude",
+        "notes", "profile_image_url",
+        "deleted_at", "created_at", "updated_at"
+    ]
+
+    private static let validTaskTypeColumns: Set<String> = [
+        "id", "bubble_id", "company_id", "display", "color",
+        "icon", "is_default", "display_order", "dependencies",
+        "default_team_member_ids",
+        "deleted_at", "created_at", "updated_at"
+    ]
+
+    private static let validDeckDesignColumns: Set<String> = [
+        "id", "company_id", "project_id", "title", "drawing_data",
+        "thumbnail_url", "version", "created_by",
+        "deleted_at", "created_at", "updated_at"
+    ]
+
+    private static let validCompanyColumns: Set<String> = [
+        "id", "bubble_id", "name", "external_id", "description", "website",
+        "phone", "email", "address", "latitude", "longitude",
+        "open_hour", "close_hour", "logo_url", "default_project_color",
+        "industries", "company_size", "company_age", "referral_method",
+        "account_holder_id", "admin_ids", "seated_employee_ids", "max_seats",
+        "subscription_status", "subscription_plan", "subscription_end",
+        "subscription_period", "trial_start_date", "trial_end_date",
+        "seat_grace_start_date", "has_priority_support",
+        "data_setup_purchased", "data_setup_completed", "data_setup_scheduled",
+        "stripe_customer_id", "subscription_ids_json", "company_code",
+        "precise_scheduling_enabled", "skip_weekends_in_auto_schedule",
+        "weather_dependent", "industry", "client_comms_settings",
+        "timezone", "locale",
+        "deleted_at", "created_at", "updated_at"
+    ]
 
     // MARK: - Relationship Linking
 

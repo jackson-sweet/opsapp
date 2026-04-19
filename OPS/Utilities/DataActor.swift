@@ -187,6 +187,41 @@ actor DataActor {
         onProgress?(.photoAnnotation, 1.0)
         print("[DataActor] ======== FULL SYNC COMPLETE ========")
     }
+
+    // MARK: - Delta Sync
+
+    /// Pull entities updated since the given timestamps and merge into local SwiftData.
+    /// Entity types with no timestamp in the map are SKIPPED (true delta — do not
+    /// backfill). Matches InboundProcessor.deltaSync behavior verbatim.
+    func deltaSync(
+        companyId: String,
+        since timestamps: [SyncEntityType: Date]
+    ) async throws {
+        guard !companyId.isEmpty else {
+            print("[DataActor] DELTA SYNC ABORTED — no companyId available")
+            return
+        }
+
+        print("[DataActor] ======== DELTA SYNC STARTED ========")
+
+        // Reset spotlight accumulator at start (matches InboundProcessor behavior).
+        spotlightDirty.removeAll()
+        spotlightDeleted.removeAll()
+
+        let repos = repositories(companyId: companyId)
+
+        for entityType in Self.syncOrder {
+            let sinceDate = timestamps[entityType]
+            guard sinceDate != nil else { continue }
+
+            print("[DataActor] Delta syncing \(entityType.rawValue) since \(sinceDate!)")
+            try await syncEntityType(entityType, since: sinceDate, repos: repos)
+        }
+
+        try linkAllRelationships()
+
+        print("[DataActor] ======== DELTA SYNC COMPLETE ========")
+    }
 }
 
 // MARK: - Inbound Repositories Helper

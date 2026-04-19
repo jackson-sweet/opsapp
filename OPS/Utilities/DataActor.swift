@@ -1207,6 +1207,104 @@ actor DataActor {
             markSpotlightDeleted(domain: SpotlightDomain.invoice, id: id)
         }
     }
+
+    // MARK: - Field-Level Merge Helpers
+
+    /// Returns true if the server value for `fieldName` should overwrite the local
+    /// value — false if there is a pending SyncOperation whose `changedFields`
+    /// includes this field (local wins until pushed).
+    /// Ported from InboundProcessor.shouldAcceptServerValue; `context` param removed
+    /// (actor uses its own modelContext).
+    private func shouldAcceptServerValue(
+        entityType: SyncEntityType,
+        entityId: String,
+        fieldName: String
+    ) -> Bool {
+        let entityTypeRaw = entityType.rawValue
+        let descriptor = FetchDescriptor<SyncOperation>(
+            predicate: #Predicate<SyncOperation> {
+                $0.entityType == entityTypeRaw &&
+                $0.entityId == entityId &&
+                $0.status == "pending"
+            }
+        )
+
+        guard let pendingOps = try? modelContext.fetch(descriptor) else {
+            return true
+        }
+
+        for op in pendingOps {
+            if op.getChangedFields().contains(fieldName) {
+                print("[DataActor] Field '\(fieldName)' on \(entityType.rawValue) \(entityId): keeping local (pending operation exists)")
+                return false
+            }
+        }
+
+        return true
+    }
+
+    /// Batch variant — returns the subset of `fields` that should accept server
+    /// values (i.e., fields without pending SyncOperations). One fetch per call.
+    /// Ported from InboundProcessor.acceptableFields.
+    private func acceptableFields(
+        entityType: SyncEntityType,
+        entityId: String,
+        fields: [String]
+    ) -> Set<String> {
+        let entityTypeRaw = entityType.rawValue
+        let descriptor = FetchDescriptor<SyncOperation>(
+            predicate: #Predicate<SyncOperation> {
+                $0.entityType == entityTypeRaw &&
+                $0.entityId == entityId &&
+                $0.status == "pending"
+            }
+        )
+
+        guard let pendingOps = try? modelContext.fetch(descriptor) else {
+            return Set(fields)
+        }
+
+        var pendingFields = Set<String>()
+        for op in pendingOps {
+            pendingFields.formUnion(op.getChangedFields())
+        }
+
+        var accepted = Set<String>()
+        for field in fields {
+            if pendingFields.contains(field) {
+                print("[DataActor] Field '\(field)' on \(entityType.rawValue) \(entityId): keeping local (pending operation exists)")
+            } else {
+                accepted.insert(field)
+            }
+        }
+        return accepted
+    }
+
+    /// Returns true if the entity has any pending SyncOperations.
+    /// Used by merges to decide whether `needsSync` should be cleared after a server merge.
+    /// Ported from InboundProcessor.hasPendingOperations.
+    private func hasPendingOperations(entityType: SyncEntityType, entityId: String) -> Bool {
+        let typeStr = entityType.rawValue
+        let predicate = #Predicate<SyncOperation> { op in
+            op.entityType == typeStr &&
+            op.entityId == entityId &&
+            op.status == "pending"
+        }
+        let descriptor = FetchDescriptor<SyncOperation>(predicate: predicate)
+        return (try? modelContext.fetchCount(descriptor)) ?? 0 > 0
+    }
+
+    // MARK: - Helpers
+
+    /// Parse an "HH:mm" string into a Date with today's date and that time.
+    /// Ported verbatim from InboundProcessor.parseTime.
+    private static func parseTime(_ timeString: String) -> Date? {
+        let parts = timeString.split(separator: ":")
+        guard parts.count >= 2,
+              let hour = Int(parts[0]),
+              let minute = Int(parts[1]) else { return nil }
+        return Calendar.current.date(from: DateComponents(hour: hour, minute: minute))
+    }
 }
 
 // MARK: - Inbound Repositories Helper

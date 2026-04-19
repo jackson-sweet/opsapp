@@ -169,8 +169,13 @@ class DataController: ObservableObject {
             setupConnectivityMonitoring()
         }
 
-        // Set up in proper sequence to avoid race conditions
-        Task {
+        // Set up in proper sequence to avoid race conditions.
+        // Pinned to @MainActor because modelContext is the main-queue context from
+        // sharedModelContainer.mainContext — SwiftData's ModelContext is not Sendable
+        // and off-main access corrupts its internal state (malloc double-free crash
+        // at the first context.fetch). See SwiftData runtime warning:
+        // "ModelContext: Unbinding from the main queue. … consider using a ModelActor."
+        Task { @MainActor in
             // First clean up any duplicate users that might exist
             await cleanupDuplicateUsers()
             await cleanupDuplicateProjects()
@@ -178,13 +183,10 @@ class DataController: ObservableObject {
             await cleanupDuplicateClients()
             await cleanupDuplicateTaskTypes()
 
-            // Only after cleanup is done, initialize sync manager if needed
-            await MainActor.run {
-                // Initialize sync manager if authenticated OR if we have a current user (onboarding)
-                // This ensures sync is available during company creation in onboarding
-                if isAuthenticated || currentUser != nil {
-                    initializeSyncManager()
-                }
+            // Initialize sync manager if authenticated OR if we have a current user (onboarding).
+            // This ensures sync is available during company creation in onboarding.
+            if isAuthenticated || currentUser != nil {
+                initializeSyncManager()
             }
         }
     }
@@ -1463,6 +1465,12 @@ class DataController: ObservableObject {
 
     /// Picks the "freshest" duplicate to keep based on local-edit state and sync recency.
     /// Returns the index of the winner in the input array.
+    ///
+    /// Pinned to @MainActor because the closures read properties from SwiftData
+    /// models bound to the main-queue context. Off-main property access on
+    /// main-queue-bound models corrupts context state (the same crash class
+    /// this helper supports cleaning up).
+    @MainActor
     private func pickFreshestIndex<T>(
         _ duplicates: [T],
         needsSync: (T) -> Bool,
@@ -1489,6 +1497,7 @@ class DataController: ObservableObject {
         return winnerIdx
     }
 
+    @MainActor
     func cleanupDuplicateProjects() async {
         guard let context = modelContext else { return }
 
@@ -1553,6 +1562,7 @@ class DataController: ObservableObject {
         }
     }
 
+    @MainActor
     func cleanupDuplicateTasks() async {
         guard let context = modelContext else { return }
 
@@ -1591,6 +1601,7 @@ class DataController: ObservableObject {
         }
     }
 
+    @MainActor
     func cleanupDuplicateClients() async {
         guard let context = modelContext else { return }
 
@@ -1650,6 +1661,7 @@ class DataController: ObservableObject {
     ///
     /// This runs on every launch (alongside the other cleanups) and is
     /// idempotent: it only touches duplicate groups and ignores clean data.
+    @MainActor
     func cleanupDuplicateTaskTypes() async {
         guard let context = modelContext else { return }
 
@@ -1936,6 +1948,7 @@ class DataController: ObservableObject {
     }
     
     /// Force refresh projects from backend
+    @MainActor
     func refreshProjectsFromBackend() async {
         guard isConnected, isAuthenticated else {
             return
@@ -2206,6 +2219,7 @@ class DataController: ObservableObject {
         }
     }
 
+    @MainActor
     func getProjectDetails(projectId: String) async throws -> Project {
         guard let context = modelContext else {
             throw NSError(domain: "DataController", code: 2,
@@ -2261,6 +2275,7 @@ class DataController: ObservableObject {
     
     
     
+    @MainActor
     func getProjectsForToday(user: User? = nil) async throws -> [Project] {
         let today = Calendar.current.startOfDay(for: Date())
         let _ = Calendar.current.date(byAdding: .day, value: 1, to: today)!
@@ -2984,6 +2999,7 @@ class DataController: ObservableObject {
     }
     
     /// Gets the count of all projects for the current user's company
+    @MainActor
     func getProjectCount() async -> Int {
         guard let context = modelContext,
               let companyId = currentUser?.companyId else {

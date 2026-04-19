@@ -146,6 +146,47 @@ actor DataActor {
     private func repositories(companyId: String) -> InboundRepositories {
         InboundRepositories(companyId: companyId)
     }
+
+    // MARK: - Full Sync
+
+    /// Pull ALL entities from Supabase in dependency order and merge into local SwiftData.
+    /// Runs on the actor's background context; main thread is not blocked.
+    /// After this returns, SyncEngine calls `extractAndResetSpotlight()` to dispatch
+    /// targeted Spotlight updates on main.
+    func fullSync(
+        companyId: String,
+        onProgress: (@Sendable (SyncEntityType, Double) -> Void)? = nil
+    ) async throws {
+        guard !companyId.isEmpty else {
+            print("[DataActor] FULL SYNC ABORTED — no companyId available")
+            return
+        }
+
+        print("[DataActor] ======== FULL SYNC STARTED ========")
+
+        // Reset spotlight accumulator at start (matches InboundProcessor behavior).
+        spotlightDirty.removeAll()
+        spotlightDeleted.removeAll()
+
+        let repos = repositories(companyId: companyId)
+        let order = Self.syncOrder
+        let totalSteps = Double(order.count)
+
+        for (index, entityType) in order.enumerated() {
+            let stepProgress = Double(index) / totalSteps
+            onProgress?(entityType, stepProgress)
+
+            print("[DataActor] Syncing \(entityType.rawValue)...")
+            try await syncEntityType(entityType, since: nil, repos: repos)
+            print("[DataActor] \(entityType.rawValue) complete")
+        }
+
+        // Link FK columns into SwiftData relationship references inside a transaction.
+        try linkAllRelationships()
+
+        onProgress?(.photoAnnotation, 1.0)
+        print("[DataActor] ======== FULL SYNC COMPLETE ========")
+    }
 }
 
 // MARK: - Inbound Repositories Helper

@@ -1312,6 +1312,278 @@ actor DataActor {
         return Calendar.current.date(from: DateComponents(hour: hour, minute: minute))
     }
 
+    // MARK: - Duplicate Cleanup Helpers
+
+    /// Picks the "freshest" duplicate to keep based on local-edit state and sync
+    /// recency. Returns the index of the winner in the input array.
+    /// Ported verbatim from DataController.pickFreshestIndex.
+    private func pickFreshestIndex<T>(
+        _ duplicates: [T],
+        needsSync: (T) -> Bool,
+        lastSyncedAt: (T) -> Date?
+    ) -> Int {
+        var winnerIdx = 0
+        for i in 1..<duplicates.count {
+            let cur = duplicates[i]
+            let win = duplicates[winnerIdx]
+
+            // Local edits (needsSync == true) win — never discard unsynced user changes.
+            let curNeedsSync = needsSync(cur)
+            let winNeedsSync = needsSync(win)
+            if curNeedsSync != winNeedsSync {
+                if curNeedsSync { winnerIdx = i }
+                continue
+            }
+
+            // Otherwise prefer the most recently synced row.
+            let curSync = lastSyncedAt(cur) ?? .distantPast
+            let winSync = lastSyncedAt(win) ?? .distantPast
+            if curSync > winSync { winnerIdx = i }
+        }
+        return winnerIdx
+    }
+
+    // MARK: - Cleanup: Users
+
+    /// Deduplicates local User rows. Merges assignedProjects from discarded duplicates
+    /// onto the winner and rewires Project.teamMembers references. Ported from
+    /// DataController.cleanupDuplicateUsers; `context` → `modelContext`; trailing
+    /// save → single transaction wrap.
+    func cleanupDuplicateUsers() async {
+        do {
+            let allUsers = try modelContext.fetch(FetchDescriptor<User>())
+            var usersByID: [String: [User]] = [:]
+            for user in allUsers {
+                usersByID[user.id, default: []].append(user)
+            }
+
+            let duplicateIDs = usersByID.filter { $0.value.count > 1 }.keys
+            guard !duplicateIDs.isEmpty else { return }
+
+            try modelContext.transaction {
+                for id in duplicateIDs {
+                    guard let duplicates = usersByID[id], duplicates.count > 1 else { continue }
+
+                    let sortedDuplicates = duplicates.sorted {
+                        guard let d1 = $0.lastSyncedAt, let d2 = $1.lastSyncedAt else {
+                            return $0.lastSyncedAt != nil
+                        }
+                        return d1 > d2
+                    }
+
+                    let userToKeep = sortedDuplicates[0]
+                    var allProjects = Set<Project>(userToKeep.assignedProjects)
+
+                    for i in 1..<sortedDuplicates.count {
+                        let dupe = sortedDuplicates[i]
+                        for project in dupe.assignedProjects {
+                            allProjects.insert(project)
+                            if let index = project.teamMembers.firstIndex(where: { $0.id == dupe.id }) {
+                                if !project.teamMembers.contains(where: { $0.id == userToKeep.id }) {
+                                    project.teamMembers.remove(at: index)
+                                    project.teamMembers.append(userToKeep)
+                                } else {
+                                    project.teamMembers.remove(at: index)
+                                }
+                            }
+                        }
+                        modelContext.delete(dupe)
+                    }
+                    userToKeep.assignedProjects = Array(allProjects)
+                }
+            }
+        } catch {
+            print("[DataActor] cleanupDuplicateUsers failed: \(error)")
+        }
+    }
+
+    // MARK: - Cleanup: Projects
+
+    /// Deduplicates local Project rows. Rewires tasks and team members from discarded
+    /// duplicates onto the winner before delete. Ported from
+    /// DataController.cleanupDuplicateProjects.
+    func cleanupDuplicateProjects() async {
+        do {
+            let allProjects = try modelContext.fetch(FetchDescriptor<Project>())
+            let grouped = Dictionary(grouping: allProjects, by: { $0.id })
+            let duplicateGroups = grouped.filter { $0.value.count > 1 }
+            guard !duplicateGroups.isEmpty else { return }
+
+            print("[DataActor] Found \(duplicateGroups.count) project IDs with duplicates")
+
+            try modelContext.transaction {
+                var totalDeleted = 0
+                for (id, copies) in duplicateGroups {
+                    let winnerIdx = pickFreshestIndex(
+                        copies,
+                        needsSync: { $0.needsSync },
+                        lastSyncedAt: { $0.lastSyncedAt }
+                    )
+                    let keep = copies[winnerIdx]
+                    let dupsToDelete = copies.enumerated()
+                        .filter { $0.offset != winnerIdx }
+                        .map { $0.element }
+
+                    // Snapshot tasks before mutating — inverse cascades would corrupt the
+                    // iteration otherwise. Also update task.projectId so DTOs don't leak
+                    // the stale id.
+                    let orphanedTasks = dupsToDelete.flatMap { Array($0.tasks) }
+                    for task in orphanedTasks {
+                        task.project = keep
+                        task.projectId = keep.id
+                    }
+
+                    // Same snapshot pattern for team members.
+                    let existingMemberIds = Set(keep.teamMembers.map { $0.id })
+                    let orphanedMembers = dupsToDelete.flatMap { Array($0.teamMembers) }
+                    for member in orphanedMembers where !existingMemberIds.contains(member.id) {
+                        keep.teamMembers.append(member)
+                    }
+
+                    for dup in dupsToDelete {
+                        modelContext.delete(dup)
+                        totalDeleted += 1
+                    }
+                    print("[DataActor] Deduped project \(id): kept lastSyncedAt=\(String(describing: keep.lastSyncedAt)), deleted \(copies.count - 1)")
+                }
+                print("[DataActor] Removed \(totalDeleted) duplicate Project rows total")
+            }
+        } catch {
+            print("[DataActor] cleanupDuplicateProjects failed: \(error)")
+        }
+    }
+
+    // MARK: - Cleanup: Tasks
+
+    /// Deduplicates local ProjectTask rows. No relationship rewiring needed — tasks
+    /// are leaves. Ported from DataController.cleanupDuplicateTasks.
+    func cleanupDuplicateTasks() async {
+        do {
+            let allTasks = try modelContext.fetch(FetchDescriptor<ProjectTask>())
+            let grouped = Dictionary(grouping: allTasks, by: { $0.id })
+            let duplicateGroups = grouped.filter { $0.value.count > 1 }
+            guard !duplicateGroups.isEmpty else { return }
+
+            print("[DataActor] Found \(duplicateGroups.count) task IDs with duplicates")
+
+            try modelContext.transaction {
+                var totalDeleted = 0
+                for (id, copies) in duplicateGroups {
+                    let winnerIdx = pickFreshestIndex(
+                        copies,
+                        needsSync: { $0.needsSync },
+                        lastSyncedAt: { $0.lastSyncedAt }
+                    )
+                    let dupsToDelete = copies.enumerated()
+                        .filter { $0.offset != winnerIdx }
+                        .map { $0.element }
+                    for dup in dupsToDelete {
+                        modelContext.delete(dup)
+                        totalDeleted += 1
+                    }
+                    print("[DataActor] Deduped task \(id): deleted \(copies.count - 1)")
+                }
+                print("[DataActor] Removed \(totalDeleted) duplicate ProjectTask rows total")
+            }
+        } catch {
+            print("[DataActor] cleanupDuplicateTasks failed: \(error)")
+        }
+    }
+
+    // MARK: - Cleanup: Clients
+
+    /// Deduplicates local Client rows. Rewires Project.client references before
+    /// delete. Ported from DataController.cleanupDuplicateClients.
+    func cleanupDuplicateClients() async {
+        do {
+            let allClients = try modelContext.fetch(FetchDescriptor<Client>())
+            let grouped = Dictionary(grouping: allClients, by: { $0.id })
+            let duplicateGroups = grouped.filter { $0.value.count > 1 }
+            guard !duplicateGroups.isEmpty else { return }
+
+            print("[DataActor] Found \(duplicateGroups.count) client IDs with duplicates")
+
+            try modelContext.transaction {
+                var totalDeleted = 0
+                for (id, copies) in duplicateGroups {
+                    let winnerIdx = pickFreshestIndex(
+                        copies,
+                        needsSync: { $0.needsSync },
+                        lastSyncedAt: { $0.lastSyncedAt }
+                    )
+                    let keep = copies[winnerIdx]
+                    let dupsToDelete = copies.enumerated()
+                        .filter { $0.offset != winnerIdx }
+                        .map { $0.element }
+
+                    // Snapshot referenced projects before mutating — setting
+                    // project.client triggers the inverse on dup.projects.
+                    let orphanedProjects = dupsToDelete.flatMap { Array($0.projects) }
+                    for project in orphanedProjects {
+                        project.client = keep
+                        project.clientId = keep.id
+                    }
+
+                    for dup in dupsToDelete {
+                        modelContext.delete(dup)
+                        totalDeleted += 1
+                    }
+                    print("[DataActor] Deduped client \(id): deleted \(copies.count - 1)")
+                }
+                print("[DataActor] Removed \(totalDeleted) duplicate Client rows total")
+            }
+        } catch {
+            print("[DataActor] cleanupDuplicateClients failed: \(error)")
+        }
+    }
+
+    // MARK: - Cleanup: TaskTypes
+
+    /// Deduplicates local TaskType rows. Rewires ProjectTask.taskType references
+    /// before delete. Ported from DataController.cleanupDuplicateTaskTypes.
+    func cleanupDuplicateTaskTypes() async {
+        do {
+            let allTaskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
+            let grouped = Dictionary(grouping: allTaskTypes, by: { $0.id })
+            let duplicateGroups = grouped.filter { $0.value.count > 1 }
+            guard !duplicateGroups.isEmpty else { return }
+
+            print("[DataActor] Found \(duplicateGroups.count) task type IDs with duplicates")
+
+            try modelContext.transaction {
+                var totalDeleted = 0
+                for (id, copies) in duplicateGroups {
+                    let winnerIdx = pickFreshestIndex(
+                        copies,
+                        needsSync: { $0.needsSync },
+                        lastSyncedAt: { $0.lastSyncedAt }
+                    )
+                    let keep = copies[winnerIdx]
+                    let dupsToDelete = copies.enumerated()
+                        .filter { $0.offset != winnerIdx }
+                        .map { $0.element }
+
+                    // Snapshot tasks before mutating — TaskType.tasks inverse would
+                    // cascade through the iteration otherwise.
+                    let orphanedTasks = dupsToDelete.flatMap { Array($0.tasks) }
+                    for task in orphanedTasks {
+                        task.taskType = keep
+                        task.taskTypeId = keep.id
+                    }
+
+                    for dup in dupsToDelete {
+                        modelContext.delete(dup)
+                        totalDeleted += 1
+                    }
+                    print("[DataActor] Deduped task type \(id) (\(keep.display)): deleted \(copies.count - 1)")
+                }
+                print("[DataActor] Removed \(totalDeleted) duplicate TaskType rows total")
+            }
+        } catch {
+            print("[DataActor] cleanupDuplicateTaskTypes failed: \(error)")
+        }
+    }
+
     // MARK: - Realtime Merge Entry Point
 
     /// Apply a single realtime upsert to SwiftData inside a transaction.

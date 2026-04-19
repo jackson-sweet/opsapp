@@ -167,28 +167,6 @@ class DataController: ObservableObject {
     func setModelContext(_ context: ModelContext) {
         self.modelContext = context
 
-        // Create background actor and refresh bridge if the feature flag is on.
-        // Gated so legacy @MainActor path remains testable and reversible.
-        if FeatureFlags.useDataActor && self.dataActor == nil {
-            let container = context.container
-            let actor = DataActor(modelContainer: container)
-            Task {
-                await actor.configure()
-                await MainActor.run {
-                    self.dataActor = actor
-
-                    // Bridge listens to .dataActorDidSave, which the actor
-                    // rebroadcasts on main after each save (see DataActor.configure).
-                    // Avoids crossing the actor boundary with a ModelContext reference.
-                    let bridge = MainContextRefreshBridge(
-                        mainContext: context,
-                        listeningTo: .dataActorDidSave
-                    )
-                    self.refreshBridge = bridge
-                }
-            }
-        }
-
         // Create sync engine and connectivity eagerly so they're never nil.
         // configure() is called later in initializeSyncManager() once auth is verified.
         if self.syncEngine == nil {
@@ -200,22 +178,49 @@ class DataController: ObservableObject {
             setupConnectivityMonitoring()
         }
 
-        // Set up in proper sequence to avoid race conditions.
-        // Pinned to @MainActor because modelContext is the main-queue context from
-        // sharedModelContainer.mainContext — SwiftData's ModelContext is not Sendable
-        // and off-main access corrupts its internal state (malloc double-free crash
-        // at the first context.fetch). See SwiftData runtime warning:
-        // "ModelContext: Unbinding from the main queue. … consider using a ModelActor."
+        // Single sequential Task:
+        //   1. Create DataActor + bridge (flag-gated) — must complete before cleanup
+        //      so cleanup can dispatch through the actor when the flag is on.
+        //   2. Dispatch duplicate cleanup via actor OR legacy @MainActor path.
+        //   3. initializeSyncManager() at end.
+        //
+        // Pinned to @MainActor for steps (2-legacy) and (3): mainContext is the
+        // main-queue context from sharedModelContainer.mainContext and SwiftData's
+        // ModelContext is not Sendable — off-main access corrupts its internal state.
         Task { @MainActor in
-            // First clean up any duplicate users that might exist
-            await cleanupDuplicateUsers()
-            await cleanupDuplicateProjects()
-            await cleanupDuplicateTasks()
-            await cleanupDuplicateClients()
-            await cleanupDuplicateTaskTypes()
+            // 1. Create actor + bridge when the flag is on.
+            if FeatureFlags.useDataActor && self.dataActor == nil {
+                let actor = DataActor(modelContainer: context.container)
+                await actor.configure()
 
-            // Initialize sync manager if authenticated OR if we have a current user (onboarding).
-            // This ensures sync is available during company creation in onboarding.
+                // Bridge listens to .dataActorDidSave, which the actor rebroadcasts
+                // on main after each save. Avoids crossing the actor boundary with
+                // a ModelContext reference.
+                let bridge = MainContextRefreshBridge(
+                    mainContext: context,
+                    listeningTo: .dataActorDidSave
+                )
+
+                self.dataActor = actor
+                self.refreshBridge = bridge
+            }
+
+            // 2. Dispatch cleanup — actor path if flag on AND actor created, else legacy.
+            if FeatureFlags.useDataActor, let actor = self.dataActor {
+                await actor.cleanupDuplicateUsers()
+                await actor.cleanupDuplicateProjects()
+                await actor.cleanupDuplicateTasks()
+                await actor.cleanupDuplicateClients()
+                await actor.cleanupDuplicateTaskTypes()
+            } else {
+                await cleanupDuplicateUsers()
+                await cleanupDuplicateProjects()
+                await cleanupDuplicateTasks()
+                await cleanupDuplicateClients()
+                await cleanupDuplicateTaskTypes()
+            }
+
+            // 3. Initialize sync manager if authenticated or in onboarding.
             if isAuthenticated || currentUser != nil {
                 initializeSyncManager()
             }

@@ -178,44 +178,45 @@ class DataController: ObservableObject {
             setupConnectivityMonitoring()
         }
 
-        // Single sequential Task:
-        //   1. Create DataActor + bridge (flag-gated) — must complete before cleanup
-        //      so cleanup can dispatch through the actor when the flag is on.
-        //   2. Dispatch duplicate cleanup via actor OR legacy @MainActor path.
-        //   3. initializeSyncManager() at end.
+        // Create the DataActor + refresh bridge SYNCHRONOUSLY (flag-gated).
         //
-        // Pinned to @MainActor for steps (2-legacy) and (3): mainContext is the
-        // main-queue context from sharedModelContainer.mainContext and SwiftData's
-        // ModelContext is not Sendable — off-main access corrupts its internal state.
+        // Must happen before any other code path can race to sync. Specifically:
+        //   - DataController.fetchUserFromAPI calls initializeSyncManager at
+        //     line 843 during auth check — configure() must see a non-nil
+        //     self.dataActor.
+        //   - ConnectivityManager.onStateChanged callbacks can trigger a sync
+        //     immediately upon connectivity restore; SyncEngine.dataActor
+        //     must be bound before that happens.
+        //
+        // The @ModelActor-synthesized init runs synchronously; only configure()
+        // is async. Actor methods are FIFO-serialized, so scheduling configure()
+        // first guarantees it runs before any queued cleanup/sync method.
+        if FeatureFlags.useDataActor && self.dataActor == nil {
+            let actor = DataActor(modelContainer: context.container)
+
+            let bridge = MainContextRefreshBridge(
+                mainContext: context,
+                listeningTo: .dataActorDidSave
+            )
+
+            self.dataActor = actor
+            self.refreshBridge = bridge
+
+            // Bind the actor to SyncEngine synchronously so the first sync
+            // trigger (network reconnect, auth completion) sees the actor path.
+            self.syncEngine.setDataActor(actor)
+
+            // configure() sets autosave off and installs the didSave → main
+            // rebroadcast observer. Runs async on the actor's executor; any
+            // subsequent actor method queues behind it.
+            Task { await actor.configure() }
+
+            print("[DATA_CONTROLLER] DataActor created — actor path is active for this session")
+        }
+
+        // Cleanup + initializeSyncManager remain in a Task because cleanup is
+        // async and we don't want to block setModelContext's caller.
         Task { @MainActor in
-            // 1. Create actor + bridge when the flag is on.
-            if FeatureFlags.useDataActor && self.dataActor == nil {
-                let actor = DataActor(modelContainer: context.container)
-                await actor.configure()
-
-                // Bridge listens to .dataActorDidSave, which the actor rebroadcasts
-                // on main after each save. Avoids crossing the actor boundary with
-                // a ModelContext reference.
-                let bridge = MainContextRefreshBridge(
-                    mainContext: context,
-                    listeningTo: .dataActorDidSave
-                )
-
-                self.dataActor = actor
-                self.refreshBridge = bridge
-
-                // Late-bind the actor to SyncEngine in case initializeSyncManager
-                // already ran from the auth path (DataController.fetchUserFromAPI
-                // calls it at line 843 before this Task block completes). Without
-                // this, SyncEngine.configure would have received dataActor=nil and
-                // subsequent initializeSyncManager calls early-return on the
-                // imageSyncManager guard, leaving the actor unwired in production.
-                self.syncEngine?.setDataActor(actor)
-
-                print("[DATA_CONTROLLER] DataActor created — actor path is active for this session")
-            }
-
-            // 2. Dispatch cleanup — actor path if flag on AND actor created, else legacy.
             if FeatureFlags.useDataActor, let actor = self.dataActor {
                 await actor.cleanupDuplicateUsers()
                 await actor.cleanupDuplicateProjects()
@@ -230,7 +231,6 @@ class DataController: ObservableObject {
                 await cleanupDuplicateTaskTypes()
             }
 
-            // 3. Initialize sync manager if authenticated or in onboarding.
             if isAuthenticated || currentUser != nil {
                 initializeSyncManager()
             }

@@ -280,7 +280,12 @@ actor DataActor {
         }
 
         // Refresh subscription status so seat/plan changes from web reflect immediately.
-        await SubscriptionManager.shared.checkSubscriptionStatus()
+        // Fire-and-forget to MainActor: syncCompany doesn't use the result, and the
+        // check publishes to @Published UI state which must write on main. Hopping
+        // here also avoids blocking sync completion on the subscription fetch.
+        Task { @MainActor in
+            await SubscriptionManager.shared.checkSubscriptionStatus()
+        }
     }
 
     private func mergeCompany(dto: SupabaseCompanyDTO) throws {

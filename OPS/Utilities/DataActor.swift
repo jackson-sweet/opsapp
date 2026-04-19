@@ -21,23 +21,60 @@
 import Foundation
 import SwiftData
 
+extension Notification.Name {
+    /// Posted on MainActor after DataActor's ModelContext saves.
+    /// userInfo keys: "inserted" / "updated" / "deleted" ([PersistentIdentifier]).
+    /// Subscribed to by MainContextRefreshBridge to close the iOS 18.2
+    /// @Query insert-auto-refresh gap without passing ModelContext across
+    /// actor boundaries (which would error under Swift 6 strict concurrency).
+    static let dataActorDidSave = Notification.Name("DataActorDidSave")
+}
+
 @ModelActor
 actor DataActor {
+    // MARK: - Observer State
+
+    private var didSaveObserver: NSObjectProtocol?
+
     // MARK: - Configuration
 
-    /// Called once after init to apply per-context configuration.
+    /// Called once after init to apply per-context configuration and install
+    /// the didSave observer that rebroadcasts a Sendable notification to main.
     /// Must be called before any transaction is run.
     func configure() {
         modelContext.autosaveEnabled = false
+
+        // Subscribe to self's didSave and re-broadcast a Sendable notification on main.
+        // This avoids passing the non-Sendable ModelContext across the actor boundary,
+        // which would error under Swift 6 strict concurrency. Sendable payload is the
+        // PersistentIdentifier arrays from userInfo.
+        didSaveObserver = NotificationCenter.default.addObserver(
+            forName: ModelContext.didSave,
+            object: modelContext,
+            queue: nil
+        ) { notification in
+            let userInfo = notification.userInfo ?? [:]
+            let inserted = (userInfo[ModelContext.NotificationKey.insertedIdentifiers.rawValue] as? [PersistentIdentifier]) ?? []
+            let updated = (userInfo[ModelContext.NotificationKey.updatedIdentifiers.rawValue] as? [PersistentIdentifier]) ?? []
+            let deleted = (userInfo[ModelContext.NotificationKey.deletedIdentifiers.rawValue] as? [PersistentIdentifier]) ?? []
+
+            Task { @MainActor in
+                NotificationCenter.default.post(
+                    name: .dataActorDidSave,
+                    object: nil,
+                    userInfo: [
+                        "inserted": inserted,
+                        "updated": updated,
+                        "deleted": deleted
+                    ]
+                )
+            }
+        }
     }
 
-    // MARK: - Context Accessor
-
-    /// Exposes the actor's ModelContext to the main-actor refresh bridge
-    /// for didSave subscription. DO NOT use for direct reads/writes from
-    /// outside the actor — that would re-introduce the thread-safety bug
-    /// this entire refactor is designed to eliminate.
-    func context() -> ModelContext {
-        modelContext
+    deinit {
+        if let observer = didSaveObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 }

@@ -177,15 +177,14 @@ class DataController: ObservableObject {
                 await MainActor.run {
                     self.dataActor = actor
 
-                    // Create bridge and subscribe to actor's context saves
-                    let bridge = MainContextRefreshBridge(mainContext: context)
+                    // Bridge listens to .dataActorDidSave, which the actor
+                    // rebroadcasts on main after each save (see DataActor.configure).
+                    // Avoids crossing the actor boundary with a ModelContext reference.
+                    let bridge = MainContextRefreshBridge(
+                        mainContext: context,
+                        listeningTo: .dataActorDidSave
+                    )
                     self.refreshBridge = bridge
-
-                    Task {
-                        // Retrieve the actor's context (via a helper we'll add)
-                        let actorContext = await actor.context()
-                        bridge.subscribe(to: actorContext)
-                    }
                 }
             }
         }

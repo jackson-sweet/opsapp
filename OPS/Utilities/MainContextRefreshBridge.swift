@@ -9,10 +9,15 @@
 //  feedback FB12689036, FB14750050, FB15092827 — confirmed by DTS, unfixed
 //  as of iOS 18.3).
 //
-//  This bridge subscribes to ModelContext.didSave notifications from the
-//  actor's context, forces registration of inserted persistentIdentifiers in
-//  the main context's object registry, and increments a @Published trigger
-//  that @Query-observing lists can bind to via .id() or .task(id:).
+//  This bridge subscribes to a Sendable notification rebroadcast by the
+//  owning background actor after each save. It forces registration of
+//  inserted persistentIdentifiers in the main context's object registry
+//  and increments a @Published trigger that @Query-observing lists can bind
+//  to via .id() or .task(id:).
+//
+//  The subscription-by-notification-name design avoids crossing the actor
+//  boundary with a non-Sendable ModelContext reference; the actor-side
+//  rebroadcast (see DataActor.configure) is the producer.
 //
 
 import Foundation
@@ -23,7 +28,7 @@ import Combine
 final class MainContextRefreshBridge: ObservableObject {
     // MARK: - Published State
 
-    /// Increments each time the actor context saves. Views bind to this via
+    /// Increments each time the background actor saves. Views bind to this via
     /// .id(refreshBridge.refreshCounter) or .task(id: refreshBridge.refreshCounter)
     /// to force a @Query re-evaluation after background inserts.
     @Published private(set) var refreshCounter: Int = 0
@@ -31,58 +36,41 @@ final class MainContextRefreshBridge: ObservableObject {
     // MARK: - Dependencies
 
     private let mainContext: ModelContext
-    private var didSaveCancellable: AnyCancellable?
+    private var cancellable: AnyCancellable?
 
     // MARK: - Init
 
-    init(mainContext: ModelContext) {
+    /// Subscribes to a Sendable notification posted by a background actor after save.
+    /// The notification's userInfo must contain "inserted" / "updated" / "deleted"
+    /// arrays of PersistentIdentifier. See DataActor.configure for the producer side.
+    init(mainContext: ModelContext, listeningTo notificationName: Notification.Name) {
         self.mainContext = mainContext
-    }
-
-    deinit {
-        didSaveCancellable?.cancel()
-    }
-
-    // MARK: - Subscription
-
-    /// Subscribes to a background ModelContext's didSave notifications.
-    /// Call once after the actor is created, passing the actor's context.
-    ///
-    /// Implementation: the actor exposes its context synchronously via a
-    /// helper; we capture the notification from NotificationCenter filtered
-    /// to that specific context instance.
-    func subscribe(to actorContext: ModelContext) {
-        didSaveCancellable?.cancel()
-
-        // NotificationCenter publisher for ModelContext.didSave notifications.
-        // SwiftData fires this on the queue the context is bound to (the actor's),
-        // so we explicitly hop to main before touching mainContext.
-        didSaveCancellable = NotificationCenter.default
-            .publisher(for: ModelContext.didSave, object: actorContext)
+        self.cancellable = NotificationCenter.default
+            .publisher(for: notificationName)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] notification in
                 self?.handleDidSave(notification)
             }
     }
 
+    deinit {
+        cancellable?.cancel()
+    }
+
     // MARK: - Refresh Handling
 
     private func handleDidSave(_ notification: Notification) {
-        // userInfo contains `insertedIdentifiers` / `updatedIdentifiers` /
-        // `deletedIdentifiers` arrays of PersistentIdentifier values. Keys
-        // are public constants on ModelContext.NotificationKey (iOS 17+).
         let userInfo = notification.userInfo ?? [:]
 
-        // Force-register inserted IDs in mainContext's object registry so
-        // @Query picks them up. This is the workaround for FB14750050.
-        if let insertedIds = userInfo[ModelContext.NotificationKey.insertedIdentifiers.rawValue]
-            as? [PersistentIdentifier] {
+        // Force-register inserted IDs in mainContext's object registry so @Query
+        // picks them up. This is the workaround for FB14750050 — no-op if Apple
+        // has fixed it (see Task 20 verification).
+        if let insertedIds = userInfo["inserted"] as? [PersistentIdentifier] {
             for id in insertedIds {
                 _ = mainContext.model(for: id)
             }
         }
 
-        // Bump the trigger so views bound to refreshCounter re-query.
         refreshCounter &+= 1  // wrap-safe overflow
     }
 }

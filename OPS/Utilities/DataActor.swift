@@ -263,6 +263,345 @@ actor DataActor {
             print("[DataActor] Entity type \(entityType.rawValue) not yet supported for inbound sync")
         }
     }
+
+    // MARK: - Sync: Company (single-row fetch)
+
+    /// Fetch and merge the company row identified by repos.companyId.
+    /// Also refreshes SubscriptionManager so seat/plan changes land immediately.
+    private func syncCompany(repos: InboundRepositories) async throws {
+        guard !repos.companyId.isEmpty else {
+            print("[DataActor] No companyId — skipping company sync")
+            return
+        }
+
+        let dto = try await repos.company.fetch(companyId: repos.companyId)
+        try modelContext.transaction {
+            try mergeCompany(dto: dto)
+        }
+
+        // Refresh subscription status so seat/plan changes from web reflect immediately.
+        await SubscriptionManager.shared.checkSubscriptionStatus()
+    }
+
+    private func mergeCompany(dto: SupabaseCompanyDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<Company>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .company,
+                entityId: id,
+                fields: [
+                    "name", "logoURL", "companyDescription", "website", "phone", "email",
+                    "address", "latitude", "longitude", "defaultProjectColor",
+                    "adminIdsString", "seatedEmployeeIds", "maxSeats",
+                    "subscriptionStatus", "subscriptionPlan", "subscriptionEnd",
+                    "subscriptionPeriod", "trialStartDate", "trialEndDate",
+                    "hasPrioritySupport", "stripeCustomerId", "externalId",
+                    "accountHolderId",
+                    "preciseSchedulingEnabled", "skipWeekendsInAutoSchedule", "deletedAt"
+                ]
+            )
+
+            if accept.contains("name") { existing.name = dto.name }
+            if accept.contains("logoURL") { existing.logoURL = dto.logoUrl }
+            if accept.contains("companyDescription") { existing.companyDescription = dto.description }
+            if accept.contains("website") { existing.website = dto.website }
+            if accept.contains("phone") { existing.phone = dto.phone }
+            if accept.contains("email") { existing.email = dto.email }
+            if accept.contains("address") { existing.address = dto.address }
+            if accept.contains("latitude") { existing.latitude = dto.latitude }
+            if accept.contains("longitude") { existing.longitude = dto.longitude }
+            if accept.contains("defaultProjectColor") { existing.defaultProjectColor = dto.defaultProjectColor ?? "#9CA3AF" }
+            if accept.contains("adminIdsString") { existing.adminIdsString = (dto.adminIds ?? []).joined(separator: ",") }
+            if accept.contains("seatedEmployeeIds") { existing.seatedEmployeeIds = (dto.seatedEmployeeIds ?? []).joined(separator: ",") }
+            if accept.contains("maxSeats") { existing.maxSeats = dto.maxSeats ?? 10 }
+            if accept.contains("subscriptionStatus") { existing.subscriptionStatus = dto.subscriptionStatus }
+            if accept.contains("subscriptionPlan") { existing.subscriptionPlan = dto.subscriptionPlan }
+            if accept.contains("subscriptionEnd") { existing.subscriptionEnd = dto.subscriptionEnd.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("subscriptionPeriod") { existing.subscriptionPeriod = dto.subscriptionPeriod }
+            if accept.contains("trialStartDate") { existing.trialStartDate = dto.trialStartDate.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("trialEndDate") { existing.trialEndDate = dto.trialEndDate.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("hasPrioritySupport") { existing.hasPrioritySupport = dto.hasPrioritySupport ?? false }
+            if accept.contains("stripeCustomerId") { existing.stripeCustomerId = dto.stripeCustomerId }
+            if accept.contains("externalId") { existing.externalId = dto.companyCode }
+            if accept.contains("accountHolderId") { existing.accountHolderId = dto.accountHolderId }
+            if accept.contains("preciseSchedulingEnabled") { existing.preciseSchedulingEnabled = dto.preciseSchedulingEnabled ?? false }
+            if accept.contains("skipWeekendsInAutoSchedule") { existing.skipWeekendsInAutoSchedule = dto.skipWeekendsInAutoSchedule ?? true }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+        }
+    }
+
+    // MARK: - Sync: Users
+
+    private func syncUsers(since: Date?, repos: InboundRepositories) async throws {
+        let dtos = try await repos.user.fetchAll(since: since)
+        guard !dtos.isEmpty else { return }
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeUser(dto: dto)
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) users")
+    }
+
+    private func mergeUser(dto: SupabaseUserDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<User>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .user,
+                entityId: id,
+                fields: [
+                    "firstName", "lastName", "email", "phone", "homeAddress",
+                    "profileImageURL", "userColor", "role", "userType",
+                    "hasCompletedAppOnboarding", "hasCompletedAppTutorial",
+                    "devPermission", "latitude", "longitude", "locationName",
+                    "isActive", "emergencyContactName", "emergencyContactPhone",
+                    "emergencyContactRelationship", "deletedAt"
+                ]
+            )
+
+            if accept.contains("firstName") { existing.firstName = dto.firstName }
+            if accept.contains("lastName") { existing.lastName = dto.lastName }
+            if accept.contains("email"), let email = dto.email { existing.email = email }
+            if accept.contains("phone") { existing.phone = dto.phone }
+            if accept.contains("homeAddress") { existing.homeAddress = dto.homeAddress }
+            if accept.contains("profileImageURL") { existing.profileImageURL = dto.profileImageUrl }
+            if accept.contains("userColor") { existing.userColor = dto.userColor }
+            if accept.contains("role") {
+                existing.role = dto.role.flatMap { UserRole(rawValue: $0) } ?? .crew
+            }
+            if accept.contains("userType") {
+                existing.userType = dto.userType.flatMap { UserType(rawValue: $0) }
+            }
+            if accept.contains("hasCompletedAppOnboarding") {
+                existing.hasCompletedAppOnboarding = dto.onboardingCompleted?["ios"] ?? false
+            }
+            if accept.contains("hasCompletedAppTutorial") {
+                existing.hasCompletedAppTutorial = dto.hasCompletedTutorial ?? false
+            }
+            if accept.contains("devPermission") { existing.devPermission = dto.devPermission ?? false }
+            if accept.contains("latitude") { existing.latitude = dto.latitude }
+            if accept.contains("longitude") { existing.longitude = dto.longitude }
+            if accept.contains("locationName") { existing.locationName = dto.locationName }
+            if accept.contains("isActive") { existing.isActive = dto.isActive ?? true }
+            if accept.contains("emergencyContactName") { existing.emergencyContactName = dto.emergencyContactName }
+            if accept.contains("emergencyContactPhone") { existing.emergencyContactPhone = dto.emergencyContactPhone }
+            if accept.contains("emergencyContactRelationship") { existing.emergencyContactRelationship = dto.emergencyContactRelationship }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+        }
+    }
+
+    // MARK: - Sync: Clients (permission-scoped)
+
+    private func syncClients(since: Date?, repos: InboundRepositories) async throws {
+        let scope = await MainActor.run {
+            PermissionStore.shared.scope(for: "clients.view") ?? "all"
+        }
+        let userId = await MainActor.run {
+            UserDefaults.standard.string(forKey: "currentUserId")
+        }
+
+        let dtos = try await repos.client.fetchAll(since: since, scope: scope, userId: userId)
+        guard !dtos.isEmpty else { return }
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeClient(dto: dto)
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) clients (scope: \(scope))")
+    }
+
+    private func mergeClient(dto: SupabaseClientDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<Client>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .client,
+                entityId: id,
+                fields: [
+                    "name", "email", "phoneNumber", "address",
+                    "latitude", "longitude", "profileImageURL",
+                    "notes", "companyId", "deletedAt"
+                ]
+            )
+
+            if accept.contains("name") { existing.name = dto.name }
+            if accept.contains("email") { existing.email = dto.email }
+            if accept.contains("phoneNumber") { existing.phoneNumber = dto.phoneNumber }
+            if accept.contains("address") { existing.address = dto.address }
+            if accept.contains("latitude") { existing.latitude = dto.latitude }
+            if accept.contains("longitude") { existing.longitude = dto.longitude }
+            if accept.contains("profileImageURL") { existing.profileImageURL = dto.profileImageUrl }
+            if accept.contains("notes") { existing.notes = dto.notes }
+            if accept.contains("companyId") { existing.companyId = dto.companyId }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+
+            if existing.deletedAt != nil {
+                markSpotlightDeleted(domain: SpotlightDomain.client, id: id)
+            } else {
+                markSpotlightDirty(domain: SpotlightDomain.client, id: id)
+            }
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+
+            if model.deletedAt != nil {
+                markSpotlightDeleted(domain: SpotlightDomain.client, id: id)
+            } else {
+                markSpotlightDirty(domain: SpotlightDomain.client, id: id)
+            }
+        }
+    }
+
+    // MARK: - Sync: SubClients
+
+    private func syncSubClients(since: Date?, repos: InboundRepositories) async throws {
+        let dtos = try await repos.client.fetchAllSubClients(since: since)
+        guard !dtos.isEmpty else { return }
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeSubClient(dto: dto)
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) sub-clients")
+    }
+
+    private func mergeSubClient(dto: SupabaseSubClientDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<SubClient>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .subClient,
+                entityId: id,
+                fields: [
+                    "name", "title", "email", "phoneNumber", "address", "deletedAt"
+                ]
+            )
+
+            if accept.contains("name") { existing.name = dto.name }
+            if accept.contains("title") { existing.title = dto.title }
+            if accept.contains("email") { existing.email = dto.email }
+            if accept.contains("phoneNumber") { existing.phoneNumber = dto.phoneNumber }
+            if accept.contains("address") { existing.address = dto.address }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            // Link parent client relationship
+            let parentId = dto.parentClientId
+            let clientDescriptor = FetchDescriptor<Client>(predicate: #Predicate { $0.id == parentId })
+            if let parentClient = try? modelContext.fetch(clientDescriptor).first {
+                existing.client = parentClient
+            }
+
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+
+            let parentId = dto.parentClientId
+            let clientDescriptor = FetchDescriptor<Client>(predicate: #Predicate { $0.id == parentId })
+            if let parentClient = try? modelContext.fetch(clientDescriptor).first {
+                model.client = parentClient
+            }
+
+            modelContext.insert(model)
+        }
+    }
+
+    // MARK: - Sync: TaskTypes
+
+    private func syncTaskTypes(since: Date?, repos: InboundRepositories) async throws {
+        let dtos = try await repos.taskType.fetchAll(since: since)
+        guard !dtos.isEmpty else { return }
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeTaskType(dto: dto)
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) task types")
+    }
+
+    private func mergeTaskType(dto: SupabaseTaskTypeDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<TaskType>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .taskType,
+                entityId: id,
+                fields: [
+                    "display", "color", "icon", "isDefault",
+                    "displayOrder", "dependenciesJSON", "defaultTeamMemberIdsString", "deletedAt"
+                ]
+            )
+
+            if accept.contains("display") { existing.display = dto.display }
+            if accept.contains("color") { existing.color = dto.color }
+            if accept.contains("icon") { existing.icon = dto.icon }
+            if accept.contains("isDefault") { existing.isDefault = dto.isDefault ?? false }
+            if accept.contains("displayOrder") { existing.displayOrder = dto.displayOrder ?? 0 }
+            if accept.contains("dependenciesJSON") {
+                if let deps = dto.dependencies, !deps.isEmpty,
+                   let data = try? JSONEncoder().encode(deps),
+                   let json = String(data: data, encoding: .utf8) {
+                    existing.dependenciesJSON = json
+                }
+            }
+            if accept.contains("defaultTeamMemberIdsString") {
+                existing.defaultTeamMemberIdsString = (dto.defaultTeamMemberIds ?? []).joined(separator: ",")
+            }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+        }
+    }
 }
 
 // MARK: - Inbound Repositories Helper
@@ -270,6 +609,10 @@ actor DataActor {
 /// Collects every Supabase repository needed by the inbound sync path.
 /// Initialized fresh from the current companyId at each sync's entry point.
 struct InboundRepositories {
+    /// Retained for single-row fetches like `CompanyRepository.fetch(companyId:)`
+    /// that need the raw id at call time, not baked into the repo.
+    let companyId: String
+
     let project: ProjectRepository
     let task: TaskRepository
     let user: UserRepository
@@ -283,6 +626,7 @@ struct InboundRepositories {
     let estimate: EstimateRepository
 
     init(companyId: String) {
+        self.companyId = companyId
         self.project = ProjectRepository(companyId: companyId)
         self.task = TaskRepository(companyId: companyId)
         self.user = UserRepository(companyId: companyId)

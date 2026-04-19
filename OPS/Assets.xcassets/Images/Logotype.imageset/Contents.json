@@ -1,17 +1,17 @@
 {
   "images" : [
     {
-      "filename" : "logo white fill full bleed 1.png",
+      "filename" : "Logotype.png",
       "idiom" : "universal",
       "scale" : "1x"
     },
     {
-      "filename" : "logo white fill full bleed 1@2x.png",
+      "filename" : "Logotype@2x.png",
       "idiom" : "universal",
       "scale" : "2x"
     },
     {
-      "filename" : "logo white fill full bleed 1@3x.png",
+      "filename" : "Logotype@3x.png",
       "idiom" : "universal",
       "scale" : "3x"
     }

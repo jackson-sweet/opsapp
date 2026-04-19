@@ -1312,6 +1312,89 @@ actor DataActor {
         return Calendar.current.date(from: DateComponents(hour: hour, minute: minute))
     }
 
+    // MARK: - Realtime Merge Entry Point
+
+    /// Apply a single realtime upsert to SwiftData inside a transaction.
+    /// Scope guards are enforced on the MainActor side (RealtimeProcessor) before
+    /// dispatch — this method trusts the payload.
+    ///
+    /// Non-throwing by design: realtime events are fire-and-forget from the caller's
+    /// perspective. A failed merge is logged and skipped; the next delta sync will
+    /// re-pull the affected row.
+    func handleRealtimeUpdate(_ update: RealtimeUpdate) async {
+        do {
+            try modelContext.transaction {
+                switch update {
+                case .project(let dto):           try mergeProject(dto: dto)
+                case .task(let dto):              try mergeTask(dto: dto)
+                case .user(let dto):              try mergeUser(dto: dto)
+                case .client(let dto):            try mergeClient(dto: dto)
+                case .company(let dto):           try mergeCompany(dto: dto)
+                case .taskType(let dto):          try mergeTaskType(dto: dto)
+                case .subClient(let dto):         try mergeSubClient(dto: dto)
+                case .projectNote(let dto):       try mergeProjectNote(dto: dto)
+                case .photoAnnotation(let dto):   try mergePhotoAnnotation(dto: dto)
+                }
+            }
+        } catch {
+            print("[DataActor] Realtime merge failed: \(error)")
+        }
+    }
+
+    // MARK: - Realtime Soft Delete Entry Point
+
+    /// Apply a realtime soft-delete by table name. Sets deletedAt on the matching row
+    /// inside a transaction. Non-throwing — a missing row or transaction failure is
+    /// logged; the next delta sync re-reconciles.
+    func softDeleteFromRealtime(table: String, id: String) async {
+        do {
+            try modelContext.transaction {
+                switch table {
+                case "projects":
+                    if let m = try modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "project_tasks":
+                    if let m = try modelContext.fetch(FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "users":
+                    if let m = try modelContext.fetch(FetchDescriptor<User>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "clients":
+                    if let m = try modelContext.fetch(FetchDescriptor<Client>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "companies":
+                    if let m = try modelContext.fetch(FetchDescriptor<Company>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "task_types":
+                    if let m = try modelContext.fetch(FetchDescriptor<TaskType>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "sub_clients":
+                    if let m = try modelContext.fetch(FetchDescriptor<SubClient>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "project_notes":
+                    if let m = try modelContext.fetch(FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "project_photo_annotations":
+                    if let m = try modelContext.fetch(FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                default:
+                    break
+                }
+            }
+        } catch {
+            print("[DataActor] Realtime soft-delete failed for \(table) \(id): \(error)")
+        }
+    }
+
     // MARK: - Outbound Push
 
     /// Maximum retry count before an operation is marked as permanently failed.
@@ -2067,6 +2150,23 @@ actor DataActor {
             print("[DataActor] Relationship linking failed: \(error) — skipping")
         }
     }
+}
+
+// MARK: - Realtime Update Dispatch
+
+/// Payload for a single realtime upsert routed from RealtimeProcessor to DataActor.
+/// Scope filtering has already been applied on the MainActor side before the update
+/// crosses the actor boundary — actor methods never need to consult PermissionStore.
+enum RealtimeUpdate: Sendable {
+    case project(SupabaseProjectDTO)
+    case task(SupabaseProjectTaskDTO)
+    case user(SupabaseUserDTO)
+    case client(SupabaseClientDTO)
+    case company(SupabaseCompanyDTO)
+    case taskType(SupabaseTaskTypeDTO)
+    case subClient(SupabaseSubClientDTO)
+    case projectNote(ProjectNoteDTO)
+    case photoAnnotation(PhotoAnnotationDTO)
 }
 
 // MARK: - Inbound Repositories Helper

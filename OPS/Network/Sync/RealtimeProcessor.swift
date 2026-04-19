@@ -47,6 +47,11 @@ final class RealtimeProcessor: ObservableObject {
     private var userId: String?
     private var disconnectedAt: Date?
 
+    /// Background data actor used when FeatureFlags.useDataActor is on.
+    /// Supabase's channel subscription must stay on @MainActor (this class),
+    /// but the SwiftData write inside each event handler dispatches to this actor.
+    private weak var dataActor: DataActor?
+
     private let supabase: SupabaseClient
     private let decoder = JSONDecoder()
 
@@ -66,6 +71,13 @@ final class RealtimeProcessor: ObservableObject {
 
     init(supabase: SupabaseClient = SupabaseService.shared.client) {
         self.supabase = supabase
+    }
+
+    /// Injects the background data actor. Called from SyncEngine.configure when
+    /// FeatureFlags.useDataActor is enabled. Absent this, handleUpsert/handleDelete
+    /// fall back to the legacy @MainActor path.
+    func setDataActor(_ actor: DataActor) {
+        self.dataActor = actor
     }
 
     // MARK: - Start Listening
@@ -194,6 +206,13 @@ final class RealtimeProcessor: ObservableObject {
     /// model, and performs a field-by-field update — skipping any field that has a
     /// pending SyncOperation (to preserve the local value until it syncs).
     private func handleUpsert(table: String, record: some HasRecord) {
+        // Actor path: decode on main, scope-guard on main, dispatch merge to DataActor.
+        // Legacy path follows below when the feature flag is off.
+        if FeatureFlags.useDataActor, let actor = dataActor {
+            dispatchUpsertToActor(table: table, record: record, actor: actor)
+            return
+        }
+
         guard let context = modelContext else { return }
 
         do {
@@ -331,6 +350,11 @@ final class RealtimeProcessor: ObservableObject {
     // MARK: - Soft Delete
 
     private func handleDelete(table: String, action: DeleteAction) {
+        if FeatureFlags.useDataActor, let actor = dataActor {
+            dispatchDeleteToActor(table: table, action: action, actor: actor)
+            return
+        }
+
         guard let context = modelContext else { return }
 
         struct IdPayload: Decodable { let id: String }
@@ -421,6 +445,123 @@ final class RealtimeProcessor: ObservableObject {
             }
         } catch {
             print("[RealtimeProcessor] Error handling delete on \(table): \(error)")
+        }
+    }
+
+    // MARK: - DataActor Dispatch (flag-gated)
+
+    /// Decodes the realtime payload on MainActor, applies scope guards (PermissionStore
+    /// reads are main-safe here), then hands a Sendable RealtimeUpdate case to the
+    /// background actor for transaction-wrapped merge.
+    ///
+    /// Filtering DTOs BEFORE the actor boundary avoids sending discarded records across
+    /// actors. Non-merge tables (expenses, calendar_user_events, notifications, permissions)
+    /// bypass the actor entirely — they just post NotificationCenter events on main.
+    private func dispatchUpsertToActor<R: HasRecord>(table: String, record: R, actor: DataActor) {
+        do {
+            switch table {
+            case "projects":
+                let dto = try record.decodeRecord(as: SupabaseProjectDTO.self, decoder: decoder)
+                let scope = PermissionStore.shared.scope(for: "projects.view") ?? "all"
+                if (scope == "assigned" || scope == "own"), let uid = self.userId {
+                    let teamIds = dto.teamMemberIds ?? []
+                    if !teamIds.contains(uid) {
+                        print("[RealtimeProcessor] Discarding project \(dto.id) — scope \(scope) excludes user")
+                        return
+                    }
+                }
+                Task { await actor.handleRealtimeUpdate(.project(dto)) }
+
+            case "project_tasks":
+                let dto = try record.decodeRecord(as: SupabaseProjectTaskDTO.self, decoder: decoder)
+                let scope = PermissionStore.shared.scope(for: "tasks.view") ?? "all"
+                if (scope == "assigned" || scope == "own"), let uid = self.userId {
+                    let teamIds = dto.teamMemberIds ?? []
+                    if !teamIds.contains(uid) {
+                        print("[RealtimeProcessor] Discarding task \(dto.id) — scope \(scope) excludes user")
+                        return
+                    }
+                }
+                Task { await actor.handleRealtimeUpdate(.task(dto)) }
+
+            case "users":
+                let dto = try record.decodeRecord(as: SupabaseUserDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.user(dto)) }
+
+            case "clients":
+                // Scope enforcement for clients is server-side (RLS) — no client-side filter.
+                let dto = try record.decodeRecord(as: SupabaseClientDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.client(dto)) }
+
+            case "companies":
+                let dto = try record.decodeRecord(as: SupabaseCompanyDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.company(dto)) }
+
+            case "task_types":
+                let dto = try record.decodeRecord(as: SupabaseTaskTypeDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.taskType(dto)) }
+
+            case "sub_clients":
+                let dto = try record.decodeRecord(as: SupabaseSubClientDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.subClient(dto)) }
+
+            case "project_notes":
+                let dto = try record.decodeRecord(as: ProjectNoteDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.projectNote(dto)) }
+                // Preserve legacy side-effect: notify views listening for new notes.
+                NotificationCenter.default.post(
+                    name: .projectNoteReceived,
+                    object: nil,
+                    userInfo: ["projectId": dto.projectId]
+                )
+
+            case "project_photo_annotations":
+                let dto = try record.decodeRecord(as: PhotoAnnotationDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.photoAnnotation(dto)) }
+
+            // Non-merge tables: no actor involvement, just post events on main.
+            case "expenses":
+                NotificationCenter.default.post(name: .expenseUpdated, object: nil)
+            case "calendar_user_events":
+                NotificationCenter.default.post(name: .calendarEventUpdated, object: nil)
+            case "notifications":
+                NotificationCenter.default.post(name: .notificationReceived, object: nil)
+            case "user_roles", "role_permissions", "user_permission_overrides":
+                print("[RealtimeProcessor] Permission change detected on \(table)")
+                NotificationCenter.default.post(name: .permissionsChanged, object: nil)
+
+            default:
+                print("[RealtimeProcessor] Received change on \(table) (no handler)")
+            }
+        } catch {
+            print("[RealtimeProcessor] Error decoding for actor on \(table): \(error)")
+        }
+    }
+
+    private func dispatchDeleteToActor(table: String, action: DeleteAction, actor: DataActor) {
+        struct IdPayload: Decodable { let id: String }
+        do {
+            switch table {
+            case "projects", "project_tasks", "users", "clients", "companies",
+                 "task_types", "sub_clients", "project_notes", "project_photo_annotations":
+                let payload = try action.decodeOldRecord(as: IdPayload.self, decoder: decoder)
+                Task { await actor.softDeleteFromRealtime(table: table, id: payload.id) }
+
+            case "expenses":
+                NotificationCenter.default.post(name: .expenseUpdated, object: nil)
+            case "calendar_user_events":
+                NotificationCenter.default.post(name: .calendarEventUpdated, object: nil)
+            case "notifications":
+                NotificationCenter.default.post(name: .notificationReceived, object: nil)
+            case "user_roles", "role_permissions", "user_permission_overrides":
+                print("[RealtimeProcessor] Permission deletion detected on \(table)")
+                NotificationCenter.default.post(name: .permissionsChanged, object: nil)
+
+            default:
+                print("[RealtimeProcessor] Delete on \(table) (no handler)")
+            }
+        } catch {
+            print("[RealtimeProcessor] Error decoding delete for actor on \(table): \(error)")
         }
     }
 

@@ -19,13 +19,16 @@ enum SpotlightItemBuilder {
         let attrs = CSSearchableItemAttributeSet(contentType: UTType.content)
         attrs.title = project.title
         attrs.displayName = project.title
-        attrs.contentDescription = [project.address, project.projectDescription]
+
+        let clientName = project.client?.name
+        let trimmedAddress = shortAddress(project.address)
+        attrs.contentDescription = [clientName, trimmedAddress, project.projectDescription]
             .compactMap { ($0?.isEmpty == false) ? $0 : nil }
             .joined(separator: " • ")
 
         var keywords: [String] = [project.title]
         if let address = project.address, !address.isEmpty { keywords.append(address) }
-        if let clientName = project.client?.name, !clientName.isEmpty { keywords.append(clientName) }
+        if let clientName = clientName, !clientName.isEmpty { keywords.append(clientName) }
         keywords.append(project.status.displayName)
         attrs.keywords = keywords
 
@@ -44,7 +47,7 @@ enum SpotlightItemBuilder {
     // MARK: - Client
 
     static func buildClient(_ client: Client) -> CSSearchableItem {
-        let attrs = CSSearchableItemAttributeSet(contentType: UTType.contact)
+        let attrs = CSSearchableItemAttributeSet(contentType: UTType.content)
         attrs.title = client.name
         attrs.displayName = client.name
         attrs.contentDescription = [client.phoneNumber, client.email, client.address]
@@ -79,19 +82,29 @@ enum SpotlightItemBuilder {
 
     static func buildTask(_ task: ProjectTask) -> CSSearchableItem {
         let attrs = CSSearchableItemAttributeSet(contentType: UTType.content)
-        let title = (task.customTitle?.isEmpty == false ? task.customTitle : nil)
+        let taskName = (task.customTitle?.isEmpty == false ? task.customTitle : nil)
             ?? task.taskType?.display
             ?? "Task"
-        attrs.title = title
-        attrs.displayName = title
+        let projectTitle = task.project?.title
+        let displayTitle: String = {
+            if let projectTitle = projectTitle, !projectTitle.isEmpty {
+                return "\(taskName), \(projectTitle)"
+            }
+            return taskName
+        }()
+        attrs.title = displayTitle
+        attrs.displayName = displayTitle
 
-        var descParts: [String] = []
-        if let projectTitle = task.project?.title { descParts.append(projectTitle) }
-        if let notes = task.taskNotes, !notes.isEmpty { descParts.append(notes) }
-        attrs.contentDescription = descParts.joined(separator: " • ")
+        let clientName = task.project?.client?.name
+        let trimmedAddress = shortAddress(task.project?.address)
+        attrs.contentDescription = [clientName, trimmedAddress, task.taskNotes]
+            .compactMap { ($0?.isEmpty == false) ? $0 : nil }
+            .joined(separator: " • ")
 
-        var keywords: [String] = [title]
-        if let projectTitle = task.project?.title { keywords.append(projectTitle) }
+        var keywords: [String] = [taskName]
+        if let projectTitle = projectTitle, !projectTitle.isEmpty { keywords.append(projectTitle) }
+        if let clientName = clientName, !clientName.isEmpty { keywords.append(clientName) }
+        if let address = task.project?.address, !address.isEmpty { keywords.append(address) }
         if let notes = task.taskNotes, !notes.isEmpty { keywords.append(notes) }
         attrs.keywords = keywords
 
@@ -164,5 +177,47 @@ enum SpotlightItemBuilder {
             domainIdentifier: SpotlightDomain.estimate,
             attributeSet: attrs
         )
+    }
+
+    // MARK: - Address Formatting
+
+    /// Trim a raw address down to the parts a field user scans for in a Spotlight result:
+    /// street + area, dropping postal codes, province abbreviations, and country tokens.
+    /// Returns the joined first two meaningful parts, or nil if nothing survives.
+    private static func shortAddress(_ address: String?) -> String? {
+        guard let raw = address?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
+
+        var cleaned = raw
+        if let regex = try? NSRegularExpression(pattern: #"\b[A-Z]\d[A-Z]\s?\d[A-Z]\d\b"#) {
+            let range = NSRange(cleaned.startIndex..<cleaned.endIndex, in: cleaned)
+            cleaned = regex.stringByReplacingMatches(in: cleaned, options: [], range: range, withTemplate: "")
+        }
+
+        let dropTokens: Set<String> = [
+            "AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT",
+            "CANADA", "USA", "CA"
+        ]
+
+        var parts = cleaned
+            .split(separator: ",", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        while let last = parts.last, dropTokens.contains(last.uppercased()) {
+            parts.removeLast()
+        }
+
+        parts = parts.map { part -> String in
+            var words = part.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+            while let last = words.last, dropTokens.contains(last.uppercased()) {
+                words.removeLast()
+            }
+            return words.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty }
+
+        let joined = parts.prefix(2).joined(separator: ", ")
+        return joined.isEmpty ? nil : joined
     }
 }

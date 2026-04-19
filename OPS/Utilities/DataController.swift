@@ -248,8 +248,14 @@ class DataController: ObservableObject {
             connectivity: connectivity
         )
 
-        // Configure the sync engine (already created eagerly)
-        syncEngine.configure(modelContext: modelContext, connectivity: connectivity)
+        // Configure the sync engine (already created eagerly). Pass dataActor when
+        // the feature flag is on and the actor has been created in setModelContext;
+        // SyncEngine routes fullSync/pullDelta/pushPending/etc. through the actor.
+        syncEngine.configure(
+            modelContext: modelContext,
+            connectivity: connectivity,
+            dataActor: self.dataActor
+        )
         syncEngine.registerBackgroundTasks()
 
         // Immediately check for pending images after initialization

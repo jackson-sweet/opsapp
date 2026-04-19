@@ -148,6 +148,21 @@ actor DataActor {
         InboundRepositories(companyId: companyId)
     }
 
+    // MARK: - Single-Company Sync
+
+    /// Public entry point for SyncEngine.syncCompanyNow — fetches and merges only
+    /// the company row. Skips the full/delta sync ceremony (iteration over syncOrder
+    /// + linkAllRelationships pass) since the caller just needs the company row to
+    /// land before downstream features query it.
+    func syncCompanyOnly(companyId: String) async throws {
+        guard !companyId.isEmpty else {
+            print("[DataActor] syncCompanyOnly aborted — no companyId")
+            return
+        }
+        let repos = repositories(companyId: companyId)
+        try await syncCompany(repos: repos)
+    }
+
     // MARK: - Full Sync
 
     /// Pull ALL entities from Supabase in dependency order and merge into local SwiftData.

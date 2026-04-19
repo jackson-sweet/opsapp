@@ -182,7 +182,7 @@ actor DataActor {
         }
 
         // Link FK columns into SwiftData relationship references inside a transaction.
-        try linkAllRelationships()
+        linkAllRelationships()
 
         onProgress?(.photoAnnotation, 1.0)
         print("[DataActor] ======== FULL SYNC COMPLETE ========")
@@ -1304,6 +1304,79 @@ actor DataActor {
               let hour = Int(parts[0]),
               let minute = Int(parts[1]) else { return nil }
         return Calendar.current.date(from: DateComponents(hour: hour, minute: minute))
+    }
+
+    // MARK: - Relationship Linking
+
+    /// After all entities are pulled, walk the graph and wire FK string columns
+    /// into SwiftData @Relationship properties. Runs inside a single transaction
+    /// so partial linking never reaches the store.
+    ///
+    /// Non-throwing by design (matches InboundProcessor.linkAllRelationships) — a
+    /// failed fetch or transaction is logged and the sync continues. The caller
+    /// does NOT observe the failure; relationships will re-link on next sync.
+    ///
+    /// Ported from InboundProcessor.linkAllRelationships. All `context` references
+    /// become `self.modelContext`; manual `try context.save()` is replaced by the
+    /// surrounding `modelContext.transaction { }` block.
+    private func linkAllRelationships() {
+        print("[DataActor] Linking all relationships...")
+
+        do {
+            try modelContext.transaction {
+                let projects = try modelContext.fetch(FetchDescriptor<Project>())
+                let tasks = try modelContext.fetch(FetchDescriptor<ProjectTask>())
+                let clients = try modelContext.fetch(FetchDescriptor<Client>())
+                let taskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
+                let users = try modelContext.fetch(FetchDescriptor<User>())
+
+                // Build id-lookup dictionaries — last-wins to safely handle duplicates.
+                var clientById: [String: Client] = [:]
+                for c in clients { clientById[c.id] = c }
+                var taskTypeById: [String: TaskType] = [:]
+                for t in taskTypes { taskTypeById[t.id] = t }
+                var userById: [String: User] = [:]
+                for u in users { userById[u.id] = u }
+                var projectById: [String: Project] = [:]
+                for p in projects { projectById[p.id] = p }
+
+                // Link projects → client and team members
+                for project in projects {
+                    if let clientId = project.clientId, let client = clientById[clientId] {
+                        if project.client?.id != clientId {
+                            project.client = client
+                        }
+                    }
+                    let memberIds = project.getTeamMemberIds()
+                    let members = memberIds.compactMap { userById[$0] }
+                    if Set(project.teamMembers.map(\.id)) != Set(members.map(\.id)) {
+                        project.teamMembers = members
+                    }
+                }
+
+                // Link tasks → project, task type, team members
+                for task in tasks {
+                    if let project = projectById[task.projectId] {
+                        if task.project?.id != project.id {
+                            task.project = project
+                        }
+                    }
+                    if let taskType = taskTypeById[task.taskTypeId] {
+                        if task.taskType?.id != taskType.id {
+                            task.taskType = taskType
+                        }
+                    }
+                    let memberIds = task.getTeamMemberIds()
+                    let members = memberIds.compactMap { userById[$0] }
+                    if Set(task.teamMembers.map(\.id)) != Set(members.map(\.id)) {
+                        task.teamMembers = members
+                    }
+                }
+            }
+            print("[DataActor] Relationships linked")
+        } catch {
+            print("[DataActor] Relationship linking failed: \(error) — skipping")
+        }
     }
 }
 

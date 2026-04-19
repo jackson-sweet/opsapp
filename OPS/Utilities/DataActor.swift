@@ -222,6 +222,47 @@ actor DataActor {
 
         print("[DataActor] ======== DELTA SYNC COMPLETE ========")
     }
+
+    // MARK: - Per-Entity Sync Router
+
+    /// Routes a sync call to the appropriate entity-specific method.
+    /// Only the 12 entity types InboundProcessor supports are handled; the default
+    /// case matches real behavior (log and skip) for the remaining 15 SyncEntityType
+    /// cases that are out-of-scope for the inbound path.
+    private func syncEntityType(
+        _ entityType: SyncEntityType,
+        since: Date?,
+        repos: InboundRepositories
+    ) async throws {
+        switch entityType {
+        case .company:
+            try await syncCompany(repos: repos)
+        case .user:
+            try await syncUsers(since: since, repos: repos)
+        case .client:
+            try await syncClients(since: since, repos: repos)
+        case .taskType:
+            try await syncTaskTypes(since: since, repos: repos)
+        case .project:
+            try await syncProjects(since: since, repos: repos)
+        case .projectTask:
+            try await syncTasks(since: since, repos: repos)
+        case .subClient:
+            try await syncSubClients(since: since, repos: repos)
+        case .projectNote:
+            try await syncProjectNotes(since: since, repos: repos)
+        case .photoAnnotation:
+            try await syncPhotoAnnotations(since: since, repos: repos)
+        case .deckDesign:
+            try await syncDeckDesigns(since: since, repos: repos)
+        case .estimate:
+            try await syncEstimates(since: since, repos: repos)
+        case .invoice:
+            try await syncInvoices(since: since, repos: repos)
+        default:
+            print("[DataActor] Entity type \(entityType.rawValue) not yet supported for inbound sync")
+        }
+    }
 }
 
 // MARK: - Inbound Repositories Helper

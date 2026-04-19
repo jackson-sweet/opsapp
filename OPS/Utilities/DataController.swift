@@ -50,6 +50,15 @@ class DataController: ObservableObject {
     let authManager: AuthManager
     private let keychainManager: KeychainManager
     var modelContext: ModelContext?
+
+    /// Background SwiftData actor — owns all sync/cleanup/background writes.
+    /// Created once in setModelContext. Gated behind FeatureFlags.useDataActor.
+    private(set) var dataActor: DataActor?
+
+    /// Bridges DataActor.didSave → main context @Query refresh.
+    /// Created alongside dataActor; published for views to observe.
+    @Published private(set) var refreshBridge: MainContextRefreshBridge?
+
     private var cancellables = Set<AnyCancellable>()
 
     // Cancellable data wipe scheduled during logout — cancelled if re-login starts
@@ -169,22 +178,59 @@ class DataController: ObservableObject {
             setupConnectivityMonitoring()
         }
 
-        // Set up in proper sequence to avoid race conditions.
-        // Pinned to @MainActor because modelContext is the main-queue context from
-        // sharedModelContainer.mainContext — SwiftData's ModelContext is not Sendable
-        // and off-main access corrupts its internal state (malloc double-free crash
-        // at the first context.fetch). See SwiftData runtime warning:
-        // "ModelContext: Unbinding from the main queue. … consider using a ModelActor."
-        Task { @MainActor in
-            // First clean up any duplicate users that might exist
-            await cleanupDuplicateUsers()
-            await cleanupDuplicateProjects()
-            await cleanupDuplicateTasks()
-            await cleanupDuplicateClients()
-            await cleanupDuplicateTaskTypes()
+        // Create the DataActor + refresh bridge SYNCHRONOUSLY (flag-gated).
+        //
+        // Must happen before any other code path can race to sync. Specifically:
+        //   - DataController.fetchUserFromAPI calls initializeSyncManager at
+        //     line 843 during auth check — configure() must see a non-nil
+        //     self.dataActor.
+        //   - ConnectivityManager.onStateChanged callbacks can trigger a sync
+        //     immediately upon connectivity restore; SyncEngine.dataActor
+        //     must be bound before that happens.
+        //
+        // The @ModelActor-synthesized init runs synchronously; only configure()
+        // is async. Actor methods are FIFO-serialized, so scheduling configure()
+        // first guarantees it runs before any queued cleanup/sync method.
+        if FeatureFlags.useDataActor && self.dataActor == nil {
+            let actor = DataActor(modelContainer: context.container)
 
-            // Initialize sync manager if authenticated OR if we have a current user (onboarding).
-            // This ensures sync is available during company creation in onboarding.
+            let bridge = MainContextRefreshBridge(
+                mainContext: context,
+                listeningTo: .dataActorDidSave
+            )
+
+            self.dataActor = actor
+            self.refreshBridge = bridge
+
+            // Bind the actor to SyncEngine synchronously so the first sync
+            // trigger (network reconnect, auth completion) sees the actor path.
+            self.syncEngine.setDataActor(actor)
+
+            // configure() sets autosave off and installs the didSave → main
+            // rebroadcast observer. Runs async on the actor's executor; any
+            // subsequent actor method queues behind it.
+            Task { await actor.configure() }
+
+            print("[DATA_CONTROLLER] DataActor created — actor path is active for this session")
+        }
+
+        // Cleanup + initializeSyncManager remain in a Task because cleanup is
+        // async and we don't want to block setModelContext's caller.
+        Task { @MainActor in
+            if FeatureFlags.useDataActor, let actor = self.dataActor {
+                await actor.cleanupDuplicateUsers()
+                await actor.cleanupDuplicateProjects()
+                await actor.cleanupDuplicateTasks()
+                await actor.cleanupDuplicateClients()
+                await actor.cleanupDuplicateTaskTypes()
+            } else {
+                await cleanupDuplicateUsers()
+                await cleanupDuplicateProjects()
+                await cleanupDuplicateTasks()
+                await cleanupDuplicateClients()
+                await cleanupDuplicateTaskTypes()
+            }
+
             if isAuthenticated || currentUser != nil {
                 initializeSyncManager()
             }
@@ -212,8 +258,14 @@ class DataController: ObservableObject {
             connectivity: connectivity
         )
 
-        // Configure the sync engine (already created eagerly)
-        syncEngine.configure(modelContext: modelContext, connectivity: connectivity)
+        // Configure the sync engine (already created eagerly). Pass dataActor when
+        // the feature flag is on and the actor has been created in setModelContext;
+        // SyncEngine routes fullSync/pullDelta/pushPending/etc. through the actor.
+        syncEngine.configure(
+            modelContext: modelContext,
+            connectivity: connectivity,
+            dataActor: self.dataActor
+        )
         syncEngine.registerBackgroundTasks()
 
         // Immediately check for pending images after initialization

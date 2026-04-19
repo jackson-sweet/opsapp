@@ -26,6 +26,7 @@ struct DeveloperDashboard: View {
         case taskTypes = "Task Types"
         case inventoryUnits = "Inventory Units"
         case wizardTesting = "Wizard Testing"
+        case dataActorBenchmark = "DataActor Benchmark"
 
         var icon: String {
             switch self {
@@ -38,6 +39,7 @@ struct DeveloperDashboard: View {
             case .taskTypes: return "square.grid.2x2"
             case .inventoryUnits: return "shippingbox.fill"
             case .wizardTesting: return "wand.and.stars"
+            case .dataActorBenchmark: return "speedometer"
             }
         }
 
@@ -52,6 +54,7 @@ struct DeveloperDashboard: View {
             case .taskTypes: return "Manage task type definitions"
             case .inventoryUnits: return "Create default inventory units for company"
             case .wizardTesting: return "Test and debug setup guide wizards"
+            case .dataActorBenchmark: return "Benchmark Phase 1 actor vs legacy sync path"
             }
         }
 
@@ -66,6 +69,7 @@ struct DeveloperDashboard: View {
             case .taskTypes: return Color.orange
             case .inventoryUnits: return Color.teal
             case .wizardTesting: return Color.purple
+            case .dataActorBenchmark: return Color.cyan
             }
         }
     }
@@ -175,6 +179,10 @@ struct DeveloperDashboard: View {
                                         selectedTool = .wizardTesting
                                     }
                                 }
+
+                                ToolCard(tool: .dataActorBenchmark) {
+                                    selectedTool = .dataActorBenchmark
+                                }
                             }
                         }
                         .padding(.horizontal)
@@ -217,6 +225,9 @@ struct DeveloperDashboard: View {
                     if let stateManager = wizardStateManager {
                         WizardTestingView(stateManager: stateManager)
                     }
+                case .dataActorBenchmark:
+                    DataActorBenchmarkView()
+                        .environmentObject(dataController)
                 }
             }
         }

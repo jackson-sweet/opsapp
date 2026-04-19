@@ -48,6 +48,18 @@ final class SyncEngine {
     private var realtimeProcessor: RealtimeProcessor?
     private var backgroundScheduler: BackgroundSyncScheduler?
 
+    // MARK: - DataActor Path
+
+    /// Background data actor — when present, sync ops route through this actor
+    /// instead of the MainActor processors. Injected by DataController via configure.
+    private weak var dataActor: DataActor?
+
+    /// SyncEngine-owned spotlight tracker used to dispatch DataActor's accumulated
+    /// spotlight diff. Distinct from InboundProcessor's tracker so actor-path and
+    /// legacy-path instances don't share state. When the legacy path is retired,
+    /// only this tracker remains.
+    private let spotlightTracker = SpotlightSyncTracker()
+
     // MARK: - Lifecycle
 
     init() {}
@@ -60,15 +72,30 @@ final class SyncEngine {
 
     /// Stores references to the model context and connectivity manager,
     /// initializes all processors, and starts the periodic retry timer.
-    func configure(modelContext: ModelContext, connectivity: ConnectivityManager) {
+    /// `dataActor` is optional so callers that haven't yet enabled the flag
+    /// (e.g., tests, older integration points) keep compiling against the old
+    /// signature without modification.
+    func configure(
+        modelContext: ModelContext,
+        connectivity: ConnectivityManager,
+        dataActor: DataActor? = nil
+    ) {
         self.modelContext = modelContext
         self.connectivity = connectivity
+        self.dataActor = dataActor
 
         // Initialize processors
         self.outboundProcessor = OutboundProcessor()
         self.inboundProcessor = InboundProcessor()
         self.photoProcessor = PhotoProcessor()
         self.realtimeProcessor = RealtimeProcessor()
+
+        // Wire RealtimeProcessor to the actor when the flag is on — the channel
+        // subscription must stay on main, but each event's SwiftData write can
+        // dispatch to the actor.
+        if let actor = dataActor {
+            self.realtimeProcessor?.setDataActor(actor)
+        }
 
         // Initialize background scheduler
         let scheduler = BackgroundSyncScheduler()
@@ -139,6 +166,22 @@ final class SyncEngine {
     func reconfigureForCompany() {
         inboundProcessor?.reconfigure()
         print("[SYNC_ENGINE] Reconfigured InboundProcessor for current company")
+    }
+
+    /// Late-binds the background DataActor after configure() has already run.
+    ///
+    /// Required because DataController.fetchUserFromAPI (at auth check) can call
+    /// initializeSyncManager — and therefore configure — BEFORE setModelContext's
+    /// async Task block finishes creating the actor. Without this setter, subsequent
+    /// initializeSyncManager calls early-return on the imageSyncManager guard and
+    /// the actor never gets wired in. Also pushes the actor reference to the
+    /// already-created RealtimeProcessor so its flag-gated dispatch engages.
+    func setDataActor(_ actor: DataActor?) {
+        self.dataActor = actor
+        if let actor = actor {
+            self.realtimeProcessor?.setDataActor(actor)
+        }
+        print("[SYNC_ENGINE] DataActor reference \(actor == nil ? "cleared" : "set — actor path now active")")
     }
 
     /// Starts Realtime subscriptions for the given company.
@@ -313,16 +356,22 @@ final class SyncEngine {
     /// Intentionally does NOT acquire the `syncInProgress` lock — it's a
     /// single-row fetch that is safe to run alongside other syncs.
     func syncCompanyNow() async {
-        guard let modelContext, let inboundProcessor else {
-            print("[SYNC_ENGINE] syncCompanyNow: not configured")
-            return
-        }
         guard connectivity?.shouldAttemptSync == true else {
             print("[SYNC_ENGINE] syncCompanyNow: network unavailable — skipping")
             return
         }
+
         do {
-            try await inboundProcessor.syncCompany(context: modelContext)
+            if FeatureFlags.useDataActor, let actor = dataActor {
+                let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
+                try await actor.syncCompanyOnly(companyId: companyId)
+            } else {
+                guard let modelContext, let inboundProcessor else {
+                    print("[SYNC_ENGINE] syncCompanyNow: not configured")
+                    return
+                }
+                try await inboundProcessor.syncCompany(context: modelContext)
+            }
         } catch {
             print("[SYNC_ENGINE] syncCompanyNow error: \(error)")
         }
@@ -431,15 +480,28 @@ final class SyncEngine {
             refreshPendingCount()
         }
 
-        // Pull all entities via InboundProcessor
+        // Pull all entities via DataActor (flag-on) or InboundProcessor (legacy).
         guard let ctx = modelContext else { return }
         do {
-            try await inboundProcessor?.fullSync(
-                context: ctx,
-                onProgress: { [weak self] entityType, _ in
-                    self?.statusText = "Syncing \(entityType.rawValue)…"
-                }
-            )
+            if FeatureFlags.useDataActor, let actor = dataActor {
+                let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
+                try await actor.fullSync(
+                    companyId: companyId,
+                    onProgress: { [weak self] entityType, _ in
+                        Task { @MainActor [weak self] in
+                            self?.statusText = "Syncing \(entityType.rawValue)…"
+                        }
+                    }
+                )
+                await applySpotlightSnapshot(from: actor)
+            } else {
+                try await inboundProcessor?.fullSync(
+                    context: ctx,
+                    onProgress: { [weak self] entityType, _ in
+                        self?.statusText = "Syncing \(entityType.rawValue)…"
+                    }
+                )
+            }
         } catch {
             print("[SYNC_ENGINE] Full sync pull error: \(error)")
             hasError = true
@@ -492,10 +554,20 @@ final class SyncEngine {
         print("[SYNC_ENGINE] pushPending — \(pending.count) operation(s) to push")
         statusText = "Pushing \(pending.count) change(s)…"
 
-        await outboundProcessor?.processPendingOperations(
-            context: modelContext,
-            connectivity: connectivity
-        )
+        if FeatureFlags.useDataActor, let actor = dataActor {
+            // Connectivity guard lives here (on main) per PM guidance — the actor
+            // method has no connectivity parameter and trusts callers to gate.
+            guard connectivity.shouldAttemptSync else {
+                print("[SYNC_ENGINE] Skipping push — connectivity says do not sync")
+                return
+            }
+            await actor.processPendingOperations()
+        } else {
+            await outboundProcessor?.processPendingOperations(
+                context: modelContext,
+                connectivity: connectivity
+            )
+        }
 
         refreshPendingCount()
     }
@@ -519,10 +591,16 @@ final class SyncEngine {
         }
 
         do {
-            try await inboundProcessor?.deltaSync(
-                context: modelContext,
-                since: sinceTimestamps
-            )
+            if FeatureFlags.useDataActor, let actor = dataActor {
+                let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
+                try await actor.deltaSync(companyId: companyId, since: sinceTimestamps)
+                await applySpotlightSnapshot(from: actor)
+            } else {
+                try await inboundProcessor?.deltaSync(
+                    context: modelContext,
+                    since: sinceTimestamps
+                )
+            }
 
             // Update all timestamps on success
             let now = Date()
@@ -567,10 +645,16 @@ final class SyncEngine {
         }
 
         do {
-            try await inboundProcessor?.deltaSync(
-                context: modelContext,
-                since: sinceTimestamps
-            )
+            if FeatureFlags.useDataActor, let actor = dataActor {
+                let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
+                try await actor.deltaSync(companyId: companyId, since: sinceTimestamps)
+                await applySpotlightSnapshot(from: actor)
+            } else {
+                try await inboundProcessor?.deltaSync(
+                    context: modelContext,
+                    since: sinceTimestamps
+                )
+            }
 
             // Update timestamps
             let now = Date()
@@ -581,6 +665,32 @@ final class SyncEngine {
         } catch {
             print("[SYNC_ENGINE] Catch-up delta error: \(error)")
         }
+    }
+
+    // MARK: - Spotlight Snapshot Dispatch
+
+    /// Extracts the DataActor's accumulated Spotlight diff and dispatches it via
+    /// the main-side SpotlightSyncTracker. Called after each actor-path sync
+    /// (fullSync/pullDelta/deltaSyncSince). Gated on `hasCompletedInitialBackfill`
+    /// so we don't fire targeted updates before the full initial index exists.
+    private func applySpotlightSnapshot(from actor: DataActor) async {
+        let snapshot = await actor.extractAndResetSpotlight()
+        guard SpotlightIndexManager.shared.hasCompletedInitialBackfill else { return }
+        guard !snapshot.isEmpty else { return }
+
+        for (domain, ids) in snapshot.dirty {
+            for id in ids {
+                spotlightTracker.markDirty(domain: domain, id: id)
+            }
+        }
+        for (domain, ids) in snapshot.deleted {
+            for id in ids {
+                spotlightTracker.markDeleted(domain: domain, id: id)
+            }
+        }
+
+        guard let ctx = modelContext else { return }
+        await spotlightTracker.dispatch(context: ctx)
     }
 
     // MARK: - Timestamp Persistence

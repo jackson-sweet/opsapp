@@ -203,6 +203,16 @@ class DataController: ObservableObject {
 
                 self.dataActor = actor
                 self.refreshBridge = bridge
+
+                // Late-bind the actor to SyncEngine in case initializeSyncManager
+                // already ran from the auth path (DataController.fetchUserFromAPI
+                // calls it at line 843 before this Task block completes). Without
+                // this, SyncEngine.configure would have received dataActor=nil and
+                // subsequent initializeSyncManager calls early-return on the
+                // imageSyncManager guard, leaving the actor unwired in production.
+                self.syncEngine?.setDataActor(actor)
+
+                print("[DATA_CONTROLLER] DataActor created — actor path is active for this session")
             }
 
             // 2. Dispatch cleanup — actor path if flag on AND actor created, else legacy.

@@ -168,6 +168,22 @@ final class SyncEngine {
         print("[SYNC_ENGINE] Reconfigured InboundProcessor for current company")
     }
 
+    /// Late-binds the background DataActor after configure() has already run.
+    ///
+    /// Required because DataController.fetchUserFromAPI (at auth check) can call
+    /// initializeSyncManager — and therefore configure — BEFORE setModelContext's
+    /// async Task block finishes creating the actor. Without this setter, subsequent
+    /// initializeSyncManager calls early-return on the imageSyncManager guard and
+    /// the actor never gets wired in. Also pushes the actor reference to the
+    /// already-created RealtimeProcessor so its flag-gated dispatch engages.
+    func setDataActor(_ actor: DataActor?) {
+        self.dataActor = actor
+        if let actor = actor {
+            self.realtimeProcessor?.setDataActor(actor)
+        }
+        print("[SYNC_ENGINE] DataActor reference \(actor == nil ? "cleared" : "set — actor path now active")")
+    }
+
     /// Starts Realtime subscriptions for the given company.
     func startRealtime(companyId: String, userId: String? = nil) async {
         guard let modelContext else { return }

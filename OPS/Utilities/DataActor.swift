@@ -30,4 +30,14 @@ actor DataActor {
     func configure() {
         modelContext.autosaveEnabled = false
     }
+
+    // MARK: - Context Accessor
+
+    /// Exposes the actor's ModelContext to the main-actor refresh bridge
+    /// for didSave subscription. DO NOT use for direct reads/writes from
+    /// outside the actor — that would re-introduce the thread-safety bug
+    /// this entire refactor is designed to eliminate.
+    func context() -> ModelContext {
+        modelContext
+    }
 }

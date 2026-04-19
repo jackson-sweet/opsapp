@@ -50,6 +50,15 @@ class DataController: ObservableObject {
     let authManager: AuthManager
     private let keychainManager: KeychainManager
     var modelContext: ModelContext?
+
+    /// Background SwiftData actor — owns all sync/cleanup/background writes.
+    /// Created once in setModelContext. Gated behind FeatureFlags.useDataActor.
+    private(set) var dataActor: DataActor?
+
+    /// Bridges DataActor.didSave → main context @Query refresh.
+    /// Created alongside dataActor; published for views to observe.
+    @Published private(set) var refreshBridge: MainContextRefreshBridge?
+
     private var cancellables = Set<AnyCancellable>()
 
     // Cancellable data wipe scheduled during logout — cancelled if re-login starts
@@ -157,6 +166,29 @@ class DataController: ObservableObject {
     @MainActor
     func setModelContext(_ context: ModelContext) {
         self.modelContext = context
+
+        // Create background actor and refresh bridge if the feature flag is on.
+        // Gated so legacy @MainActor path remains testable and reversible.
+        if FeatureFlags.useDataActor && self.dataActor == nil {
+            let container = context.container
+            let actor = DataActor(modelContainer: container)
+            Task {
+                await actor.configure()
+                await MainActor.run {
+                    self.dataActor = actor
+
+                    // Create bridge and subscribe to actor's context saves
+                    let bridge = MainContextRefreshBridge(mainContext: context)
+                    self.refreshBridge = bridge
+
+                    Task {
+                        // Retrieve the actor's context (via a helper we'll add)
+                        let actorContext = await actor.context()
+                        bridge.subscribe(to: actorContext)
+                    }
+                }
+            }
+        }
 
         // Create sync engine and connectivity eagerly so they're never nil.
         // configure() is called later in initializeSyncManager() once auth is verified.

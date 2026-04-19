@@ -1311,6 +1311,120 @@ actor DataActor {
         return Calendar.current.date(from: DateComponents(hour: hour, minute: minute))
     }
 
+    // MARK: - Outbound Push
+
+    /// Maximum retry count before an operation is marked as permanently failed.
+    /// Mirrors OutboundProcessor.maxRetries.
+    private static let maxOutboundRetries = 20
+
+    /// Fetches all pending SyncOperations, coalesces them, and pushes each to Supabase.
+    /// Operations in backoff or with unmet dependencies are skipped.
+    ///
+    /// Connectivity guard is enforced on MainActor by SyncEngine BEFORE this is called
+    /// (per PM guidance). This method assumes connectivity is OK.
+    ///
+    /// Ported from OutboundProcessor.processPendingOperations. Differences:
+    ///   - no context/connectivity parameters (actor owns its context; connectivity
+    ///     guarded by caller)
+    ///   - coalesceOperations runs inside transaction { } so its op.status mutations
+    ///     on superseded entries persist atomically
+    ///   - executeOperation mutations persist via per-state transactions inside that
+    ///     method (no single trailing context.save)
+    func processPendingOperations() async {
+        // 1. Fetch pending operations sorted by priority ASC, createdAt ASC.
+        let pending: [SyncOperation]
+        do {
+            let descriptor = FetchDescriptor<SyncOperation>(
+                predicate: #Predicate<SyncOperation> { $0.status == "pending" },
+                sortBy: [
+                    SortDescriptor(\.priority, order: .forward),
+                    SortDescriptor(\.createdAt, order: .forward)
+                ]
+            )
+            pending = try modelContext.fetch(descriptor)
+        } catch {
+            print("[DataActor] Failed to fetch pending operations: \(error)")
+            return
+        }
+
+        guard !pending.isEmpty else {
+            print("[DataActor] No pending operations")
+            return
+        }
+
+        print("[DataActor] Found \(pending.count) pending operation(s)")
+
+        // 2. Filter out operations in backoff or with unmet dependencies.
+        let now = Date()
+        let eligible = pending.filter { op in
+            if op.retryCount > 0, let lastAttempt = op.lastAttemptedAt {
+                let earliestRetry = lastAttempt.addingTimeInterval(op.backoffDelay)
+                if now < earliestRetry {
+                    print("[DataActor] Skipping \(op.entityType) \(op.entityId) — in backoff (retry \(op.retryCount), delay \(op.backoffDelay)s)")
+                    return false
+                }
+            }
+
+            if let depId = op.dependsOnId, !depId.isEmpty {
+                let depCompletedInBatch = pending.contains { $0.id.uuidString == depId && $0.status == "completed" }
+                if !depCompletedInBatch {
+                    let isDepCompleted = isDependencyCompleted(depId)
+                    if !isDepCompleted {
+                        print("[DataActor] Skipping \(op.entityType) \(op.entityId) — dependency \(depId) not completed")
+                        return false
+                    }
+                }
+            }
+
+            return true
+        }
+
+        // 3. Coalesce — mutates superseded ops' status; wrap in transaction so those
+        //    mutations persist atomically before we begin executing survivors.
+        var coalesced: [SyncOperation] = []
+        do {
+            try modelContext.transaction {
+                coalesced = coalesceOperations(eligible)
+            }
+        } catch {
+            print("[DataActor] Failed to commit coalescing state: \(error)")
+            return
+        }
+        print("[DataActor] Coalesced \(eligible.count) → \(coalesced.count) operation(s)")
+
+        // 4. Execute each survivor. Each call manages its own state transitions via
+        //    per-state transactions (inProgress → completed/failed/pending).
+        for op in coalesced {
+            do {
+                try await executeOperation(op)
+            } catch {
+                let classified = classifySyncError(error)
+                print("[DataActor] Operation failed for \(op.entityType) \(op.entityId): \(classified.localizedDescription)")
+                // Error handling (state mutation) already done inside executeOperation.
+            }
+        }
+    }
+
+    // MARK: - Dependency Check
+
+    /// Checks whether a dependency operation (by UUID string) has status "completed"
+    /// in the store. Ported from OutboundProcessor.isDependencyCompleted; context
+    /// parameter removed.
+    private func isDependencyCompleted(_ dependsOnId: String) -> Bool {
+        guard let depUUID = UUID(uuidString: dependsOnId) else { return false }
+        do {
+            let descriptor = FetchDescriptor<SyncOperation>(
+                predicate: #Predicate<SyncOperation> { op in
+                    op.id == depUUID && op.status == "completed"
+                }
+            )
+            let results = try modelContext.fetch(descriptor)
+            return !results.isEmpty
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - Relationship Linking
 
     /// After all entities are pulled, walk the graph and wire FK string columns

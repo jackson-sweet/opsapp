@@ -26,20 +26,30 @@ final class SpotlightIndexManager {
     // MARK: - Permission Gates
 
     /// Determines which entity types the current user is allowed to have indexed.
-    /// Read from PermissionStore — mirrors UniversalSearchSheet's filters.
+    ///
+    /// Core CRUD entities (projects, clients, tasks) are indexable for every
+    /// authenticated company member — fine-grained visibility is handled below
+    /// by passesProjectScopeFilter / passesClientScopeFilter / passesTaskScopeFilter,
+    /// which already enforce company scope, team assignment, and status gates.
+    /// Gating the whole domain on `projects.view` / `clients.view` caused clients
+    /// to silently disappear for roles whose permission dict does not define
+    /// those keys (the codebase elsewhere uses `scope(for:) ?? "all"` with a
+    /// safe default — see SyncEngine, InboundProcessor).
+    ///
+    /// Money-tab entities (invoices, estimates) keep their explicit gate because
+    /// that mirrors the Money tab's own visibility contract.
     private func allowedDomains() -> Set<String> {
-        var allowed: Set<String> = []
         let perms = PermissionStore.shared
+        var allowed: Set<String> = [
+            SpotlightDomain.project,
+            SpotlightDomain.client,
+            SpotlightDomain.task
+        ]
 
-        if perms.can("projects.view") { allowed.insert(SpotlightDomain.project) }
-        if perms.can("clients.view") { allowed.insert(SpotlightDomain.client) }
-        if perms.can("projects.view") { allowed.insert(SpotlightDomain.task) } // tasks inherit projects gate
-        // Money-tab entities are gated by pipeline.view (same as the Money tab itself)
         if perms.can("pipeline.view") {
             allowed.insert(SpotlightDomain.invoice)
             allowed.insert(SpotlightDomain.estimate)
         }
-        // Also honor explicit estimates.view if a role defines it without pipeline access
         if perms.can("estimates.view") {
             allowed.insert(SpotlightDomain.estimate)
         }

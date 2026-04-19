@@ -602,6 +602,611 @@ actor DataActor {
             modelContext.insert(model)
         }
     }
+
+    // MARK: - Sync: Projects (permission-scoped)
+
+    private func syncProjects(since: Date?, repos: InboundRepositories) async throws {
+        let scope = await MainActor.run {
+            PermissionStore.shared.scope(for: "projects.view") ?? "all"
+        }
+        let userId = await MainActor.run {
+            UserDefaults.standard.string(forKey: "currentUserId")
+        }
+
+        let dtos = try await repos.project.fetchAll(since: since, scope: scope, userId: userId)
+        guard !dtos.isEmpty else { return }
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeProject(dto: dto)
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) projects (scope: \(scope))")
+    }
+
+    private func mergeProject(dto: SupabaseProjectDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<Project>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .project,
+                entityId: id,
+                fields: [
+                    "title", "status", "companyId", "clientId", "opportunityId",
+                    "address", "latitude", "longitude",
+                    "startDate", "endDate", "duration",
+                    "notes", "projectDescription", "allDay",
+                    "teamMemberIdsString", "projectImagesString", "deletedAt"
+                ]
+            )
+
+            if accept.contains("title") { existing.title = dto.title }
+            if accept.contains("status") { existing.status = Status(rawValue: dto.status) ?? .rfq }
+            if accept.contains("companyId") { existing.companyId = dto.companyId }
+            if accept.contains("clientId") { existing.clientId = dto.clientId }
+            if accept.contains("opportunityId") { existing.opportunityId = dto.opportunityId }
+            if accept.contains("address") { existing.address = dto.address }
+            if accept.contains("latitude") { existing.latitude = dto.latitude }
+            if accept.contains("longitude") { existing.longitude = dto.longitude }
+            if accept.contains("startDate") { existing.startDate = dto.startDate.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("endDate") { existing.endDate = dto.endDate.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("duration") { existing.duration = dto.duration }
+            if accept.contains("notes") { existing.notes = dto.notes }
+            if accept.contains("projectDescription") { existing.projectDescription = dto.description }
+            if accept.contains("allDay") { existing.allDay = dto.allDay ?? false }
+            if accept.contains("teamMemberIdsString") {
+                existing.teamMemberIdsString = (dto.teamMemberIds ?? []).joined(separator: ",")
+            }
+            if accept.contains("projectImagesString") {
+                existing.projectImagesString = (dto.projectImages ?? []).joined(separator: ",")
+            }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            existing.lastSyncedAt = Date()
+            // Only clear needsSync if no pending SyncOperations remain for this entity.
+            if !hasPendingOperations(entityType: .project, entityId: existing.id) {
+                existing.needsSync = false
+            }
+
+            if existing.deletedAt != nil {
+                markSpotlightDeleted(domain: SpotlightDomain.project, id: existing.id)
+            } else {
+                markSpotlightDirty(domain: SpotlightDomain.project, id: existing.id)
+            }
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+
+            if model.deletedAt != nil {
+                markSpotlightDeleted(domain: SpotlightDomain.project, id: model.id)
+            } else {
+                markSpotlightDirty(domain: SpotlightDomain.project, id: model.id)
+            }
+        }
+    }
+
+    // MARK: - Sync: Tasks (permission-scoped)
+
+    private func syncTasks(since: Date?, repos: InboundRepositories) async throws {
+        let scope = await MainActor.run {
+            PermissionStore.shared.scope(for: "tasks.view") ?? "all"
+        }
+        let userId = await MainActor.run {
+            UserDefaults.standard.string(forKey: "currentUserId")
+        }
+
+        let dtos = try await repos.task.fetchAll(since: since, scope: scope, userId: userId)
+        guard !dtos.isEmpty else { return }
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeTask(dto: dto)
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) tasks (scope: \(scope))")
+    }
+
+    private func mergeTask(dto: SupabaseProjectTaskDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .projectTask,
+                entityId: id,
+                fields: [
+                    "status", "taskNotes", "customTitle", "taskColor",
+                    "taskTypeId", "startDate", "endDate", "duration",
+                    "displayOrder", "teamMemberIdsString",
+                    "sourceLineItemId", "sourceEstimateId",
+                    "dependencyOverridesJSON", "startTime", "endTime", "deletedAt"
+                ]
+            )
+
+            if accept.contains("status") { existing.status = TaskStatus(rawValue: dto.status) ?? .active }
+            if accept.contains("taskNotes") { existing.taskNotes = dto.taskNotes }
+            if accept.contains("customTitle") { existing.customTitle = dto.customTitle }
+            if accept.contains("taskColor") { existing.taskColor = dto.taskColor ?? "#59779F" }
+            if accept.contains("taskTypeId") { existing.taskTypeId = dto.taskTypeId ?? "" }
+            if accept.contains("startDate") { existing.startDate = dto.startDate.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("endDate") { existing.endDate = dto.endDate.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("duration") { existing.duration = dto.duration ?? 1 }
+            if accept.contains("displayOrder") { existing.displayOrder = dto.displayOrder ?? 0 }
+            if accept.contains("teamMemberIdsString") {
+                existing.teamMemberIdsString = (dto.teamMemberIds ?? []).joined(separator: ",")
+            }
+            if accept.contains("sourceLineItemId") { existing.sourceLineItemId = dto.sourceLineItemId }
+            if accept.contains("sourceEstimateId") { existing.sourceEstimateId = dto.sourceEstimateId }
+            if accept.contains("dependencyOverridesJSON") {
+                if let overrides = dto.dependencyOverrides, !overrides.isEmpty,
+                   let data = try? JSONEncoder().encode(overrides),
+                   let json = String(data: data, encoding: .utf8) {
+                    existing.dependencyOverridesJSON = json
+                }
+            }
+            if accept.contains("startTime") {
+                if let st = dto.startTime, let parsed = Self.parseTime(st) {
+                    existing.startTime = parsed
+                }
+            }
+            if accept.contains("endTime") {
+                if let et = dto.endTime, let parsed = Self.parseTime(et) {
+                    existing.endTime = parsed
+                }
+            }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            existing.lastSyncedAt = Date()
+            if !hasPendingOperations(entityType: .projectTask, entityId: existing.id) {
+                existing.needsSync = false
+            }
+
+            if existing.deletedAt != nil {
+                markSpotlightDeleted(domain: SpotlightDomain.task, id: existing.id)
+            } else {
+                markSpotlightDirty(domain: SpotlightDomain.task, id: existing.id)
+            }
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+
+            if model.deletedAt != nil {
+                markSpotlightDeleted(domain: SpotlightDomain.task, id: model.id)
+            } else {
+                markSpotlightDirty(domain: SpotlightDomain.task, id: model.id)
+            }
+        }
+    }
+
+    // MARK: - Sync: Project Notes
+
+    private func syncProjectNotes(since: Date?, repos: InboundRepositories) async throws {
+        let dtos = try await repos.projectNote.fetchAll(since: since)
+        guard !dtos.isEmpty else { return }
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeProjectNote(dto: dto)
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) project notes")
+    }
+
+    private func mergeProjectNote(dto: ProjectNoteDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<ProjectNote>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .projectNote,
+                entityId: id,
+                fields: [
+                    "content", "attachmentsJSON", "mentionedUserIdsString",
+                    "updatedAt", "deletedAt"
+                ]
+            )
+
+            if accept.contains("content") { existing.content = dto.content }
+            if accept.contains("attachmentsJSON") {
+                if let attachments = dto.attachments, !attachments.isEmpty,
+                   let data = try? JSONEncoder().encode(attachments),
+                   let json = String(data: data, encoding: .utf8) {
+                    existing.attachmentsJSON = json
+                } else if dto.attachments == nil || (dto.attachments?.isEmpty ?? true) {
+                    existing.attachmentsJSON = "[]"
+                }
+            }
+            if accept.contains("mentionedUserIdsString") {
+                existing.mentionedUserIdsString = (dto.mentionedUserIds ?? []).joined(separator: ",")
+            }
+            if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            existing.lastSyncedAt = Date()
+            if !hasPendingOperations(entityType: .projectNote, entityId: existing.id) {
+                existing.needsSync = false
+            }
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+        }
+    }
+
+    // MARK: - Sync: Photo Annotations
+
+    private func syncPhotoAnnotations(since: Date?, repos: InboundRepositories) async throws {
+        let dtos = try await repos.photoAnnotation.fetchAll(since: since)
+        guard !dtos.isEmpty else { return }
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergePhotoAnnotation(dto: dto)
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) photo annotations")
+    }
+
+    private func mergePhotoAnnotation(dto: PhotoAnnotationDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<PhotoAnnotation>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .photoAnnotation,
+                entityId: id,
+                fields: [
+                    "annotationURL", "note", "updatedAt", "deletedAt"
+                ]
+            )
+
+            if accept.contains("annotationURL") { existing.annotationURL = dto.annotationUrl }
+            if accept.contains("note") { existing.note = dto.note ?? "" }
+            if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            existing.lastSyncedAt = Date()
+            if !hasPendingOperations(entityType: .photoAnnotation, entityId: existing.id) {
+                existing.needsSync = false
+            }
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+        }
+    }
+
+    // MARK: - Sync: Deck Designs
+
+    private func syncDeckDesigns(since: Date?, repos: InboundRepositories) async throws {
+        let dtos = try await repos.deckDesign.fetchAll(since: since)
+        guard !dtos.isEmpty else { return }
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeDeckDesign(dto: dto)
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) deck designs")
+    }
+
+    private func mergeDeckDesign(dto: SupabaseDeckDesignDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<DeckDesign>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .deckDesign,
+                entityId: id,
+                fields: [
+                    "title", "drawingDataJSON", "thumbnailURL",
+                    "version", "updatedAt", "deletedAt"
+                ]
+            )
+
+            if accept.contains("title") { existing.title = dto.title }
+            if accept.contains("drawingDataJSON") { existing.drawingDataJSON = dto.drawingData.toJSON() }
+            if accept.contains("thumbnailURL") { existing.thumbnailURL = dto.thumbnailUrl }
+            if accept.contains("version") { existing.version = dto.version }
+            if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            existing.lastSyncedAt = Date()
+            if !hasPendingOperations(entityType: .deckDesign, entityId: existing.id) {
+                existing.needsSync = false
+            }
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+        }
+    }
+
+    // MARK: - Sync: Estimates (+ soft-deletes on delta)
+
+    private func syncEstimates(since: Date?, repos: InboundRepositories) async throws {
+        let dtos = try await repos.estimate.fetchAll(since: since)
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeEstimate(dto: dto)
+            }
+        }
+
+        // Handle soft deletes for delta sync
+        if let sinceDate = since {
+            let deletedIds = try await repos.estimate.fetchDeletedIds(since: sinceDate)
+            if !deletedIds.isEmpty {
+                try modelContext.transaction {
+                    for id in deletedIds {
+                        try markEstimateDeleted(id: id)
+                    }
+                }
+            }
+        }
+
+        print("[DataActor] Merged \(dtos.count) estimates")
+    }
+
+    private func mergeEstimate(dto: EstimateDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<Estimate>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .estimate,
+                entityId: id,
+                fields: [
+                    "companyId", "estimateNumber", "title", "status", "subtotal", "taxRate",
+                    "taxAmount", "total", "internalNotes", "validUntil",
+                    "version", "clientId", "projectId", "opportunityId", "deletedAt"
+                ]
+            )
+
+            if accept.contains("companyId") { existing.companyId = dto.companyId }
+            if accept.contains("estimateNumber") { existing.estimateNumber = dto.estimateNumber ?? "" }
+            if accept.contains("title") { existing.title = dto.title ?? "" }
+            if accept.contains("status") {
+                existing.status = EstimateStatus(rawValue: dto.status) ?? .draft
+            }
+            if accept.contains("subtotal") { existing.subtotal = dto.subtotal }
+            if accept.contains("taxRate") { existing.taxRate = dto.taxRate ?? 0 }
+            if accept.contains("taxAmount") { existing.taxAmount = dto.taxAmount ?? 0 }
+            if accept.contains("total") { existing.total = dto.total }
+            if accept.contains("internalNotes") { existing.internalNotes = dto.notes }
+            if accept.contains("validUntil") {
+                existing.validUntil = dto.expirationDate.flatMap { SupabaseDate.parse($0) }
+            }
+            if accept.contains("version") { existing.version = dto.version }
+            if accept.contains("clientId") { existing.clientId = dto.clientId }
+            if accept.contains("projectId") { existing.projectId = dto.projectId }
+            if accept.contains("opportunityId") { existing.opportunityId = dto.opportunityId }
+            if accept.contains("deletedAt") {
+                existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+            }
+
+            existing.updatedAt = SupabaseDate.parse(dto.updatedAt) ?? Date()
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+
+            if existing.deletedAt != nil {
+                markSpotlightDeleted(domain: SpotlightDomain.estimate, id: id)
+            } else {
+                markSpotlightDirty(domain: SpotlightDomain.estimate, id: id)
+            }
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+
+            if model.deletedAt != nil {
+                markSpotlightDeleted(domain: SpotlightDomain.estimate, id: id)
+            } else {
+                markSpotlightDirty(domain: SpotlightDomain.estimate, id: id)
+            }
+        }
+    }
+
+    private func markEstimateDeleted(id: String) throws {
+        let descriptor = FetchDescriptor<Estimate>(
+            predicate: #Predicate { $0.id == id }
+        )
+        if let existing = try modelContext.fetch(descriptor).first {
+            existing.deletedAt = Date()
+            existing.needsSync = false
+            markSpotlightDeleted(domain: SpotlightDomain.estimate, id: id)
+        }
+    }
+
+    // MARK: - Sync: Invoices (+ line items + payments + soft-deletes)
+
+    private func syncInvoices(since: Date?, repos: InboundRepositories) async throws {
+        let dtos = try await repos.invoice.fetchAll(since: since)
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeInvoice(dto: dto)
+                try mergeInvoiceLineItems(dto: dto)
+                try mergeInvoicePayments(dto: dto)
+            }
+        }
+
+        if let sinceDate = since {
+            let deletedIds = try await repos.invoice.fetchDeletedIds(since: sinceDate)
+            if !deletedIds.isEmpty {
+                try modelContext.transaction {
+                    for id in deletedIds {
+                        try markInvoiceDeleted(id: id)
+                    }
+                }
+            }
+        }
+
+        print("[DataActor] Merged \(dtos.count) invoices")
+    }
+
+    private func mergeInvoice(dto: InvoiceDTO) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<Invoice>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .invoice,
+                entityId: id,
+                fields: [
+                    "companyId", "invoiceNumber", "title", "status", "subtotal", "taxRate",
+                    "taxAmount", "total", "amountPaid", "balanceDue",
+                    "dueDate", "sentAt", "paidAt", "clientId", "projectId",
+                    "estimateId", "opportunityId", "deletedAt"
+                ]
+            )
+
+            if accept.contains("companyId") { existing.companyId = dto.companyId }
+            if accept.contains("invoiceNumber") { existing.invoiceNumber = dto.invoiceNumber ?? "" }
+            if accept.contains("title") { existing.title = dto.subject }
+            if accept.contains("status") {
+                existing.status = InvoiceStatus(rawValue: dto.status ?? "") ?? .draft
+            }
+            if accept.contains("subtotal") { existing.subtotal = dto.subtotal ?? 0 }
+            if accept.contains("taxRate") { existing.taxRate = dto.taxRate ?? 0 }
+            if accept.contains("taxAmount") { existing.taxAmount = dto.taxAmount ?? 0 }
+            if accept.contains("total") { existing.total = dto.total ?? 0 }
+            if accept.contains("amountPaid") { existing.amountPaid = dto.amountPaid ?? 0 }
+            if accept.contains("balanceDue") { existing.balanceDue = dto.balanceDue ?? 0 }
+            if accept.contains("dueDate") { existing.dueDate = dto.dueDate.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("sentAt") { existing.sentAt = dto.sentAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("paidAt") { existing.paidAt = dto.paidAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("clientId") { existing.clientId = dto.clientId }
+            if accept.contains("projectId") { existing.projectId = dto.projectId }
+            if accept.contains("estimateId") { existing.estimateId = dto.estimateId }
+            if accept.contains("opportunityId") { existing.opportunityId = dto.opportunityId }
+            if accept.contains("deletedAt") {
+                existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+            }
+
+            existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } ?? Date()
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+
+            if existing.deletedAt != nil {
+                markSpotlightDeleted(domain: SpotlightDomain.invoice, id: id)
+            } else {
+                markSpotlightDirty(domain: SpotlightDomain.invoice, id: id)
+            }
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+
+            if model.deletedAt != nil {
+                markSpotlightDeleted(domain: SpotlightDomain.invoice, id: id)
+            } else {
+                markSpotlightDirty(domain: SpotlightDomain.invoice, id: id)
+            }
+        }
+    }
+
+    private func mergeInvoiceLineItems(dto: InvoiceDTO) throws {
+        let freshItems = dto.lineItems ?? []
+        let freshIds: Set<String> = Set(freshItems.map { $0.id })
+        let invoiceId = dto.id
+
+        // Upsert: insert new, update existing
+        for liDTO in freshItems {
+            let liId = liDTO.id
+            let descriptor = FetchDescriptor<InvoiceLineItem>(
+                predicate: #Predicate { $0.id == liId }
+            )
+            if let existing = try modelContext.fetch(descriptor).first {
+                let fresh = liDTO.toModel()
+                existing.name = fresh.name
+                existing.itemDescription = fresh.itemDescription
+                existing.quantity = fresh.quantity
+                existing.unit = fresh.unit
+                existing.unitPrice = fresh.unitPrice
+                existing.lineTotal = fresh.lineTotal
+                existing.type = fresh.type
+                existing.displayOrder = fresh.displayOrder
+                existing.parentLineItemId = fresh.parentLineItemId
+            } else {
+                modelContext.insert(liDTO.toModel())
+            }
+        }
+
+        // Delete: any local item for this invoice no longer on the server
+        let localDescriptor = FetchDescriptor<InvoiceLineItem>(
+            predicate: #Predicate { $0.invoiceId == invoiceId }
+        )
+        let local = (try? modelContext.fetch(localDescriptor)) ?? []
+        for item in local where !freshIds.contains(item.id) {
+            modelContext.delete(item)
+        }
+    }
+
+    private func mergeInvoicePayments(dto: InvoiceDTO) throws {
+        let freshPayments = dto.payments ?? []
+        let freshIds: Set<String> = Set(freshPayments.map { $0.id })
+        let invoiceId = dto.id
+
+        for pDTO in freshPayments {
+            let pId = pDTO.id
+            let descriptor = FetchDescriptor<Payment>(
+                predicate: #Predicate { $0.id == pId }
+            )
+            if let existing = try modelContext.fetch(descriptor).first {
+                let fresh = pDTO.toModel()
+                existing.amount = fresh.amount
+                existing.method = fresh.method
+                existing.paidAt = fresh.paidAt
+                existing.notes = fresh.notes
+            } else {
+                modelContext.insert(pDTO.toModel())
+            }
+        }
+
+        let localDescriptor = FetchDescriptor<Payment>(
+            predicate: #Predicate { $0.invoiceId == invoiceId }
+        )
+        let local = (try? modelContext.fetch(localDescriptor)) ?? []
+        for payment in local where !freshIds.contains(payment.id) {
+            modelContext.delete(payment)
+        }
+    }
+
+    private func markInvoiceDeleted(id: String) throws {
+        let descriptor = FetchDescriptor<Invoice>(
+            predicate: #Predicate { $0.id == id }
+        )
+        if let existing = try modelContext.fetch(descriptor).first {
+            existing.deletedAt = Date()
+            existing.needsSync = false
+            markSpotlightDeleted(domain: SpotlightDomain.invoice, id: id)
+        }
+    }
 }
 
 // MARK: - Inbound Repositories Helper

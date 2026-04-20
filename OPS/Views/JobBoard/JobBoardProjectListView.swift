@@ -76,10 +76,22 @@ struct JobBoardProjectListView: View {
 
         if !searchText.isEmpty {
             filtered = filtered.filter { project in
-                project.title.localizedCaseInsensitiveContains(searchText) ||
-                project.effectiveClientName.localizedCaseInsensitiveContains(searchText) ||
-                (project.projectDescription?.localizedCaseInsensitiveContains(searchText) ?? false) ||
-                (project.address?.localizedCaseInsensitiveContains(searchText) ?? false)
+                if project.title.localizedCaseInsensitiveContains(searchText) { return true }
+                if project.effectiveClientName.localizedCaseInsensitiveContains(searchText) { return true }
+                if project.projectDescription?.localizedCaseInsensitiveContains(searchText) == true { return true }
+                if project.address?.localizedCaseInsensitiveContains(searchText) == true { return true }
+                // Sub-client matches — surface projects when a site contact
+                // (e.g. "Mitchell") matches, even though the primary client
+                // is named something else.
+                if let subClients = project.client?.subClients {
+                    for sub in subClients where sub.deletedAt == nil {
+                        if sub.name.localizedCaseInsensitiveContains(searchText) { return true }
+                        if sub.title?.localizedCaseInsensitiveContains(searchText) == true { return true }
+                        if sub.email?.localizedCaseInsensitiveContains(searchText) == true { return true }
+                        if sub.phoneNumber?.localizedCaseInsensitiveContains(searchText) == true { return true }
+                    }
+                }
+                return false
             }
         }
 
@@ -169,8 +181,12 @@ struct JobBoardProjectListView: View {
         VStack(spacing: 0) {
             if showingFilters && hasActiveFilters {
                 activeFilterBadges
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
+                    .padding(.top, 4)
+                    .padding(.bottom, 8)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity),
+                        removal: .opacity.combined(with: .move(edge: .top))
+                    ))
             }
 
             if allProjects.isEmpty {
@@ -230,8 +246,11 @@ struct JobBoardProjectListView: View {
                                         count: closedProjects.count,
                                         color: Status.closed.color
                                     ) {
+                                        // Wizard completion fires on sheet dismiss — see
+                                        // .sheet(isPresented: $showingClosedSheet) below.
+                                        // Posting here would complete the wizard behind
+                                        // the sheet, hiding the confirmation toast.
                                         showingClosedSheet = true
-                                        NotificationCenter.default.post(name: Notification.Name("WizardJobBoardClosedViewed"), object: nil)
                                     }
                                     .tutorialHighlight(for: .closedProjectsScroll, cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .wizardTarget("view_closed")
@@ -253,6 +272,12 @@ struct JobBoardProjectListView: View {
                     }
                     .padding(.top, 12)
                     .padding(.bottom, 120)
+                    // Tab content ignores the bottom safe area, so the wizard
+                    // instruction bar (inserted as safeAreaInset on MainTabView)
+                    // would otherwise overlap the CLOSED section button when
+                    // scrolled to the bottom. Reserve extra space while a
+                    // wizard is active.
+                    .wizardBottomInset()
                     .background(
                         // Wizard: detect genuine scroll (≥50pt offset) before posting completion.
                         // A GeometryReader anchored at the top of the scroll content tracks its
@@ -401,6 +426,12 @@ struct JobBoardProjectListView: View {
                 projects: closedProjects,
                 dataController: dataController
             )
+            .onDisappear {
+                // Wizard: complete view_closed on dismiss so the completion
+                // confirmation toast is visible on the JobBoard, not hidden
+                // behind the sheet.
+                NotificationCenter.default.post(name: Notification.Name("WizardJobBoardClosedViewed"), object: nil)
+            }
         }
         .sheet(isPresented: $showingArchivedSheet) {
             ProjectListSheet(
@@ -410,10 +441,14 @@ struct JobBoardProjectListView: View {
             )
         }
         .onChange(of: selectedStatuses) { _, _ in
-            updateFilterVisibility()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                updateFilterVisibility()
+            }
         }
         .onChange(of: selectedTeamMemberIds) { _, _ in
-            updateFilterVisibility()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                updateFilterVisibility()
+            }
         }
         // Listen for blocked gesture notifications during projectListSwipe
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TutorialSwipeGestureBlocked"))) { _ in
@@ -478,9 +513,15 @@ struct JobBoardProjectListView: View {
                         text: status.displayName,
                         color: status.color,
                         onRemove: {
-                            selectedStatuses.remove(status)
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                selectedStatuses.remove(status)
+                            }
                         }
                     )
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.8).combined(with: .opacity),
+                        removal: .scale(scale: 0.8).combined(with: .opacity)
+                    ))
                 }
 
                 ForEach(Array(selectedTeamMemberIds), id: \.self) { memberId in
@@ -489,9 +530,15 @@ struct JobBoardProjectListView: View {
                             text: "\(member.firstName) \(member.lastName)",
                             color: OPSStyle.Colors.primaryAccent,
                             onRemove: {
-                                selectedTeamMemberIds.remove(memberId)
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    selectedTeamMemberIds.remove(memberId)
+                                }
                             }
                         )
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.8).combined(with: .opacity),
+                            removal: .scale(scale: 0.8).combined(with: .opacity)
+                        ))
                     }
                 }
             }

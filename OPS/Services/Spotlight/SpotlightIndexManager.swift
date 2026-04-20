@@ -296,7 +296,9 @@ final class SpotlightIndexManager {
         let userId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
         let isFieldCrew = !perms.hasFullAccess("projects.view")
         let hasPipelineAccess = perms.can("pipeline.view")
-        if isFieldCrew && !project.getTeamMemberIds().contains(userId) { return false }
+        // Bug G9 — Spotlight is a wide surface (reachable via system search);
+        // mention-granted projects must be indexed so tagged users can find them.
+        if isFieldCrew && !ProjectAccessHelper.wideVisible(project, userId: userId) { return false }
         if !hasPipelineAccess && (project.status == .rfq || project.status == .estimated) { return false }
         return true
     }
@@ -311,7 +313,8 @@ final class SpotlightIndexManager {
         let perms = PermissionStore.shared
         let userId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
         let isFieldCrew = !perms.hasFullAccess("projects.view")
-        if isFieldCrew && !project.getTeamMemberIds().contains(userId) { return false }
+        // Bug G9 — tasks on mention-granted projects are searchable.
+        if isFieldCrew && !ProjectAccessHelper.wideVisible(project, userId: userId) { return false }
         return true
     }
 

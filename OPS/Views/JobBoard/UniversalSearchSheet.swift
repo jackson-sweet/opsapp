@@ -54,7 +54,10 @@ struct UniversalSearchSheet: View {
         guard let userId = dataController.currentUser?.id else { return [] }
         var projects = allProjects.filter { $0.deletedAt == nil }
         if isFieldCrew {
-            projects = projects.filter { $0.getTeamMemberIds().contains(userId) }
+            // Bug G9 — include mention-granted projects. Search is an explicit
+            // wide surface; users need to be able to reach projects they've been
+            // tagged into via search (no Job Board entry for mention-only).
+            projects = projects.filter { ProjectAccessHelper.wideVisible($0, userId: userId) }
         }
         if !hasPipelineAccess {
             projects = projects.filter { $0.status != .rfq && $0.status != .estimated }
@@ -86,10 +89,21 @@ struct UniversalSearchSheet: View {
     private var matchingProjects: [Project] {
         guard !query.isEmpty else { return [] }
         let q = query
-        return availableProjects.filter {
-            $0.title.localizedCaseInsensitiveContains(q) ||
-            $0.effectiveClientName.localizedCaseInsensitiveContains(q) ||
-            ($0.address?.localizedCaseInsensitiveContains(q) ?? false)
+        return availableProjects.filter { project in
+            if project.title.localizedCaseInsensitiveContains(q) { return true }
+            if project.effectiveClientName.localizedCaseInsensitiveContains(q) { return true }
+            if project.address?.localizedCaseInsensitiveContains(q) == true { return true }
+            // Match by sub-client name / title / email / phone (so searching a
+            // site contact like "Mitchell" surfaces the project it's attached to)
+            if let subClients = project.client?.subClients {
+                for sub in subClients where sub.deletedAt == nil {
+                    if sub.name.localizedCaseInsensitiveContains(q) { return true }
+                    if sub.title?.localizedCaseInsensitiveContains(q) == true { return true }
+                    if sub.email?.localizedCaseInsensitiveContains(q) == true { return true }
+                    if sub.phoneNumber?.localizedCaseInsensitiveContains(q) == true { return true }
+                }
+            }
+            return false
         }
     }
 
@@ -105,10 +119,19 @@ struct UniversalSearchSheet: View {
     private var matchingClients: [Client] {
         guard !query.isEmpty else { return [] }
         let q = query
-        return availableClients.filter {
-            $0.name.localizedCaseInsensitiveContains(q) ||
-            ($0.email?.localizedCaseInsensitiveContains(q) ?? false) ||
-            ($0.phoneNumber?.localizedCaseInsensitiveContains(q) ?? false)
+        return availableClients.filter { client in
+            if client.name.localizedCaseInsensitiveContains(q) { return true }
+            if client.email?.localizedCaseInsensitiveContains(q) == true { return true }
+            if client.phoneNumber?.localizedCaseInsensitiveContains(q) == true { return true }
+            // Surface the parent client when the query matches one of their
+            // sub-contacts (name, title, email, or phone).
+            for sub in client.subClients where sub.deletedAt == nil {
+                if sub.name.localizedCaseInsensitiveContains(q) { return true }
+                if sub.title?.localizedCaseInsensitiveContains(q) == true { return true }
+                if sub.email?.localizedCaseInsensitiveContains(q) == true { return true }
+                if sub.phoneNumber?.localizedCaseInsensitiveContains(q) == true { return true }
+            }
+            return false
         }
     }
 

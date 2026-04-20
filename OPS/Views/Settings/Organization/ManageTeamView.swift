@@ -427,16 +427,11 @@ struct ManageTeamView: View {
 
     private func roleSection(title: String, icon: String, members: [User], color: Color) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Section header
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                    .foregroundColor(color)
-                Text("\(title) (\(members.count))")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-            .padding(.horizontal, 20)
+            // Section header — title only, no decorative role icon
+            Text("\(title) (\(members.count))")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .padding(.horizontal, 20)
 
             // Members card
             VStack(spacing: 0) {
@@ -514,23 +509,19 @@ struct ManageTeamView: View {
                                 .background(OPSStyle.Colors.separator)
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         }
-
-                        if let company = company, member.role != .unassigned {
-                            let hasSeat = company.getSeatedEmployeeIds().contains(member.id)
-                            Text(hasSeat ? "SEATED" : "NO SEAT")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(hasSeat ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(hasSeat ? OPSStyle.Colors.primaryAccent.opacity(0.15) : OPSStyle.Colors.separator)
-                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                        }
                     }
 
                     HStack(spacing: 6) {
                         Text(member.role.displayName.uppercased())
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(accentColor)
+
+                        if let company = company, member.role != .unassigned {
+                            let hasSeat = company.getSeatedEmployeeIds().contains(member.id)
+                            Text(hasSeat ? "· SEATED" : "· NO SEAT")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(hasSeat ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                        }
 
                         if let email = member.email, !email.isEmpty {
                             Text(email)

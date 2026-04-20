@@ -557,12 +557,12 @@ class DataController: ObservableObject {
 
                 return (true, nil)
             } else {
-                return (false, "No account found for this email. Please check your email or sign up.")
+                return (false, "NO ACCOUNT FOUND FOR THIS EMAIL. SIGN UP OR CHECK THE ADDRESS.")
             }
         } catch let error as FirebaseAuthService.FirebaseAuthServiceError {
             return (false, error.errorDescription)
         } catch {
-            return (false, "Incorrect email or password. Please try again.")
+            return (false, "WRONG EMAIL OR PASSWORD.")
         }
     }
     
@@ -1095,6 +1095,9 @@ class DataController: ObservableObject {
 
         // Clear permissions
         permissionStore?.clearPermissions()
+
+        // Bug G9 — clear mention-based project access index on logout.
+        MentionAccessIndex.shared.clear()
 
         // Clear on-disk client avatar cache
         ClientAvatarCache.shared.clearAll()
@@ -4265,29 +4268,59 @@ class DataController: ObservableObject {
     }
 
     /// Update project address - SINGLE SOURCE OF TRUTH
+    ///
+    /// Normalizes whitespace/control characters, geocodes when possible, and
+    /// keeps `project.latitude`/`longitude` in sync with the current address.
+    /// Non-geocodable free text (e.g. "at the end of Maple Rd, beside the red
+    /// barn") is saved verbatim — coordinates are cleared so the map pin can't
+    /// point at the *previous* address's location.
     @MainActor
     func updateProjectAddress(project: Project, address: String) async throws {
+        // Normalize: strip leading/trailing whitespace AND collapse any
+        // embedded control characters (newlines, tabs, null bytes) that could
+        // trip up downstream consumers (MapKit geocoder, Mapbox label
+        // rendering, Supabase JSON encoding).
+        let sanitized = Self.sanitizeAddressInput(address)
+
         // Apply address locally
-        project.address = address
+        project.address = sanitized
         project.needsSync = true
 
-        var changedFields: [String: Any] = ["address": address]
+        var changedFields: [String: Any] = ["address": sanitized]
 
-        // Geocode the address to update lat/long for map display
-        if !address.isEmpty {
+        // Geocode the address to update lat/long for map display.
+        // Three outcomes — each one syncs a consistent lat/lng to the server
+        // so the map never lies about where the address is:
+        //   1. Success → write new coords.
+        //   2. No result OR error → clear coords (non-geocodable address).
+        //   3. Empty input → clear coords.
+        if !sanitized.isEmpty {
             let geocoder = CLGeocoder()
             do {
-                let placemarks = try await geocoder.geocodeAddressString(address)
+                let placemarks = try await geocoder.geocodeAddressString(sanitized)
                 if let location = placemarks.first?.location {
                     project.latitude = location.coordinate.latitude
                     project.longitude = location.coordinate.longitude
                     changedFields["latitude"] = location.coordinate.latitude
                     changedFields["longitude"] = location.coordinate.longitude
                     print("[DataController] ✅ Geocoded address to \(location.coordinate.latitude), \(location.coordinate.longitude)")
+                } else {
+                    // Geocoder returned no placemarks — treat as non-geocodable
+                    project.latitude = nil
+                    project.longitude = nil
+                    changedFields["latitude"] = NSNull()
+                    changedFields["longitude"] = NSNull()
+                    print("[DataController] ⚠️ Geocoder returned no placemarks for \"\(sanitized)\" — clearing coordinates")
                 }
             } catch {
-                print("[DataController] ⚠️ Geocoding failed for address: \(error.localizedDescription)")
-                // Continue without coordinates — address still saves
+                // Non-geocodable free text (custom descriptions, rural
+                // addresses, etc). Clear coords rather than leaving stale
+                // ones pointing at the previous address's location.
+                project.latitude = nil
+                project.longitude = nil
+                changedFields["latitude"] = NSNull()
+                changedFields["longitude"] = NSNull()
+                print("[DataController] ⚠️ Geocoding failed for \"\(sanitized)\": \(error.localizedDescription) — clearing coordinates")
             }
         } else {
             // Clear coordinates when address is cleared
@@ -4297,7 +4330,12 @@ class DataController: ObservableObject {
             changedFields["longitude"] = NSNull()
         }
 
-        try? modelContext?.save()
+        do {
+            try modelContext?.save()
+        } catch {
+            print("[DataController] ❌ Failed to persist address change: \(error)")
+            throw error
+        }
 
         // Record for async sync
         syncEngine.recordOperation(
@@ -4306,6 +4344,18 @@ class DataController: ObservableObject {
             operationType: "update",
             changedFields: changedFields
         )
+    }
+
+    /// Trim whitespace and strip control characters from free-text address
+    /// input before persisting or geocoding. Keeps all printable glyphs
+    /// (including non-ASCII like "Côté d'Or") — only removes chars that
+    /// would break downstream consumers.
+    private static func sanitizeAddressInput(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        let disallowed = CharacterSet.controlCharacters
+        let scrubbed = trimmed.unicodeScalars.filter { !disallowed.contains($0) }
+        return String(String.UnicodeScalarView(scrubbed))
     }
 
     // MARK: - Task Operations

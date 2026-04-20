@@ -131,7 +131,15 @@ struct OPSApp: App {
                     // Wire permission store and load cached permissions
                     dataController.permissionStore = permissionStore
                     permissionStore.loadCachedPermissions()
-                    
+
+                    // Bug G9 — hydrate mention-based project access index from
+                    // cached ProjectNote rows so Search / Spotlight / deep links
+                    // work offline immediately on cold launch.
+                    if let userId = UserDefaults.standard.string(forKey: "currentUserId"),
+                       !userId.isEmpty {
+                        MentionAccessIndex.shared.rebuild(context: context, userId: userId)
+                    }
+
                     // Initialize SubscriptionManager with DataController
                     subscriptionManager.setDataController(dataController)
                     

@@ -274,9 +274,12 @@ struct PhotoStorageManagementView: View {
                         onEditingChanged: { editing in
                             if !editing {
                                 profiler.setBudget(Int64(budgetSliderMB * 1_048_576))
-                                // If budget was raised above current usage, clear the cap-hit banner
+                                // If budget now covers current usage, clear the cap-hit banner
+                                // AND resolve any unread rail notifications of this type so
+                                // the user isn't left wondering "did it work?"
                                 if !profiler.wouldExceedBudget(adding: 0) {
                                     capHitReport = nil
+                                    resolveCapHitRailNotifications()
                                 }
                             }
                         }
@@ -463,6 +466,36 @@ struct PhotoStorageManagementView: View {
             projectsWithPhotos: projectsWithPhotosPayload
         )
         print("[PhotoStorageManagementView] Freed \(result.deleted) photos (\(StorageProfiler.formatBytes(result.bytesFreed)))")
-        capHitReport = nil  // Budget likely OK now; re-appear if next sync exceeds again
+        capHitReport = nil  // Banner clears; re-appears if next sync still exceeds
+
+        // If eviction actually brought us under budget, close the loop on the
+        // notification rail so the user sees the issue as resolved.
+        if !profiler.wouldExceedBudget(adding: 0) {
+            resolveCapHitRailNotifications()
+        }
+    }
+
+    /// Marks any unread photo_storage_limit rail notifications as read for the
+    /// current user and clears the prefetch-service cooldown so the next
+    /// legitimate cap-hit can re-notify. Fire-and-forget: failures are logged
+    /// but never block the UI.
+    private func resolveCapHitRailNotifications() {
+        // Local: reset the 24-hour cooldown so the next cap-hit isn't silenced
+        prefetchService.clearCapHitCooldown()
+
+        guard let userId = UserDefaults.standard.string(forKey: "currentUserId"), !userId.isEmpty else {
+            return
+        }
+        Task {
+            do {
+                try await NotificationRepository.shared.markAllAsReadByType(
+                    type: "photo_storage_limit",
+                    userId: userId
+                )
+                print("[PhotoStorageManagementView] Resolved photo_storage_limit rail notifications")
+            } catch {
+                print("[PhotoStorageManagementView] Failed to resolve rail notifications: \(error)")
+            }
+        }
     }
 }

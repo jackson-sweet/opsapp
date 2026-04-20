@@ -151,6 +151,23 @@ class NotificationRepository {
             .execute()
     }
 
+    /// Marks all unread notifications of a given `type` as read for the user.
+    /// Used to auto-resolve rail entries after the user addresses the underlying
+    /// issue (e.g., `photo_storage_limit` clears when budget is raised or
+    /// oldest photos are evicted).
+    func markAllAsReadByType(type: String, userId: String) async throws {
+        struct MarkRead: Codable {
+            let is_read: Bool
+        }
+        try await client
+            .from("notifications")
+            .update(MarkRead(is_read: true))
+            .eq("type", value: type)
+            .eq("user_id", value: userId)
+            .eq("is_read", value: false)
+            .execute()
+    }
+
     /// Marks any unread `role_needed` notifications whose action_url contains
     /// `assignRole=<memberId>` as read. Called after iOS assigns a role so
     /// the admin's rail notification disappears without a second API call.

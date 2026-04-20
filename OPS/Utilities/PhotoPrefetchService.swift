@@ -323,6 +323,14 @@ final class PhotoPrefetchService: ObservableObject {
         static let lastPostedAt = "photoStorage.lastCapHitRailPostAt"
     }
 
+    /// Clears the rail-notification cooldown timestamp. Called after the user
+    /// resolves a cap-hit (via slider increase or Free Up Space) so the next
+    /// legitimate cap-hit can post a new rail notification without waiting for
+    /// the 24-hour window to expire.
+    func clearCapHitCooldown() {
+        UserDefaults.standard.removeObject(forKey: RailKey.lastPostedAt)
+    }
+
     /// Inserts a persistent cap-hit notification into the Supabase notifications
     /// table so it appears in the in-app notification rail. De-duped via a
     /// 24-hour cooldown — if we posted one recently, we skip.

@@ -592,11 +592,16 @@ struct NotificationListView: View {
                 }
             }
         case "photoStorage":
-            // Cap-hit from PhotoPrefetchService. Dismiss the notification list;
-            // the user follows the body copy to Settings → Photo Storage. Room
-            // to extend later with an auto-navigate event if the Settings tab
-            // exposes a public "open this screen" hook.
+            // Cap-hit from PhotoPrefetchService. Dismiss the notification list,
+            // then present the Photo Storage management sheet from MainTabView
+            // so the user lands on the fix screen with one tap.
             dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenPhotoStorage"),
+                    object: nil
+                )
+            }
         default:
             // Deep link to project if applicable
             if let projectId = notification.projectId, !projectId.isEmpty {

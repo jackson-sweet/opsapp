@@ -20,6 +20,34 @@ struct PhotoStorageManagementView: View {
     let allPhotoItems: [PhotoItem]
     let allProjects: [Project]
 
+    /// Standard entry point from AllPhotosGalleryView, which already has the
+    /// enriched PhotoItem list (with annotations, authors, etc).
+    init(allPhotoItems: [PhotoItem], allProjects: [Project]) {
+        self.allPhotoItems = allPhotoItems
+        self.allProjects = allProjects
+    }
+
+    /// Lightweight entry point for the notification-rail auto-navigate path.
+    /// Builds a minimal PhotoItem list from projects alone (no annotations,
+    /// no author metadata) — sufficient for the counts + per-project sections.
+    init(allProjects: [Project]) {
+        self.allProjects = allProjects
+        self.allPhotoItems = allProjects.flatMap { project in
+            project.getProjectImages().map { url in
+                PhotoItem(
+                    id: url,
+                    url: url,
+                    projectId: project.id,
+                    projectTitle: project.title,
+                    date: project.lastSyncedAt ?? Date(),
+                    authorId: nil,
+                    note: nil,
+                    searchHaystack: ""
+                )
+            }
+        }
+    }
+
     // MARK: - State
 
     @State private var showClearConfirmation = false

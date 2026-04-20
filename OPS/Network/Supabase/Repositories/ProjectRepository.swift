@@ -37,11 +37,59 @@ class ProjectRepository {
             query = query.eq("created_by", value: userId)
         }
 
-        let response: [SupabaseProjectDTO] = try await query
+        let assigned: [SupabaseProjectDTO] = try await query
             .order("created_at", ascending: false)
             .execute()
             .value
-        return response
+
+        // Bug G9 — mention-based project view grant.
+        // At "assigned" scope, also fetch projects where the user is tagged in
+        // any live note. At "all" scope the primary query already returns
+        // everything. "own" intentionally stays tight (own-created only).
+        guard scope == "assigned", let userId = userId else {
+            return assigned
+        }
+        let mentioned = try await fetchMentionGrantedProjects(userId: userId, since: since)
+        return unionByID(assigned, mentioned)
+    }
+
+    /// Fetch projects the user has mention-based view access to (Bug G9).
+    /// Two-step query: collect project_ids from live notes mentioning the user,
+    /// then fetch those project rows (RLS enforces the grant server-side).
+    private func fetchMentionGrantedProjects(userId: String, since: Date?) async throws -> [SupabaseProjectDTO] {
+        struct NoteIdRow: Decodable { let project_id: String }
+        let noteRows: [NoteIdRow] = try await client
+            .from("project_notes")
+            .select("project_id")
+            .eq("company_id", value: companyId)
+            .is("deleted_at", value: nil)
+            .contains("mentioned_user_ids", value: [userId])
+            .execute()
+            .value
+        let projectIds = Array(Set(noteRows.map(\.project_id)))
+        guard !projectIds.isEmpty else { return [] }
+
+        var projectQuery = client
+            .from("projects")
+            .select()
+            .eq("company_id", value: companyId)
+            .in("id", values: projectIds)
+        if let since = since {
+            projectQuery = projectQuery.gte("updated_at", value: isoString(since))
+        }
+        return try await projectQuery
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+    }
+
+    private func unionByID(_ a: [SupabaseProjectDTO], _ b: [SupabaseProjectDTO]) -> [SupabaseProjectDTO] {
+        var seen = Set<String>()
+        var result: [SupabaseProjectDTO] = []
+        for dto in a + b where seen.insert(dto.id).inserted {
+            result.append(dto)
+        }
+        return result
     }
 
     func fetchOne(_ id: String) async throws -> SupabaseProjectDTO {

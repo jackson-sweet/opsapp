@@ -163,24 +163,26 @@ final class PhotoPrefetchService: ObservableObject {
                 // Skip if already on disk
                 guard !downloader.isOnDevice(url) else { continue }
 
-                // Budget check. We don't know the target photo size until we
-                // fetch it; use a conservative estimate (2.5 MB per photo —
-                // typical JPEG from a modern phone camera at default quality).
-                let estimate: Int64 = 2_500_000
-                if profiler.wouldExceedBudget(adding: estimate) {
+                // Probe the photo's actual size via HEAD before committing the
+                // download. S3 / ops-web presigned URLs both return Content-Length
+                // on HEAD. Fall back to a 2.5 MB estimate if HEAD fails so the
+                // prefetch still progresses — we just use the less-accurate value
+                // for the budget check.
+                let probedSize = await probeContentLength(urlString: url) ?? fallbackSizeEstimate
+
+                if profiler.wouldExceedBudget(adding: probedSize) {
                     skippedForBudget += 1
-                    // Count remaining photos across all projects for the cap-hit report
                     let remaining = countRemainingPhotos(from: ordered, startingFrom: project, skippingUpTo: url)
                     postBudgetExceededNotification(
                         currentUsage: profiler.currentUsageBytes(),
                         budget: budget,
                         remaining: remaining,
-                        estimatedRemaining: Int64(remaining) * estimate
+                        estimatedRemaining: Int64(remaining) * fallbackSizeEstimate
                     )
                     lastRunDownloaded = downloaded
                     lastRunSkippedForBudget = skippedForBudget
                     lastRunAt = Date()
-                    print("[PhotoPrefetch] Paused at budget — downloaded \(downloaded), skipped \(skippedForBudget) remaining")
+                    print("[PhotoPrefetch] Paused at budget — downloaded \(downloaded), next photo would need \(StorageProfiler.formatBytes(probedSize))")
                     return
                 }
 
@@ -195,7 +197,49 @@ final class PhotoPrefetchService: ObservableObject {
         print("[PhotoPrefetch] Pass complete — downloaded \(downloaded), skipped \(skippedForBudget) (budget)")
     }
 
+    // MARK: - Constants
+
+    /// Fallback size when HEAD can't tell us the real Content-Length. Typical
+    /// JPEG from a modern phone camera at default quality settings.
+    private let fallbackSizeEstimate: Int64 = 2_500_000
+
+    /// Timeout for the HEAD request used to probe photo size. Short so a bad
+    /// network doesn't delay prefetch materially; on timeout we use the fallback
+    /// estimate and proceed.
+    private let headProbeTimeout: TimeInterval = 5
+
     // MARK: - Helpers
+
+    /// Issues a HEAD request against `urlString` and returns the Content-Length,
+    /// if the server provides one. Returns nil on error / timeout / missing header.
+    /// Cheap (~10-50 ms on WiFi) and caches nothing — called once per photo during prefetch.
+    private func probeContentLength(urlString: String) async -> Int64? {
+        let normalized = urlString.hasPrefix("//") ? "https:" + urlString : urlString
+        guard let url = URL(string: normalized) else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = headProbeTimeout
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode) else { return nil }
+
+            // Try Content-Length first (standard); fall back to expectedContentLength
+            // which URLSession computes from the same header.
+            if let lengthString = http.value(forHTTPHeaderField: "Content-Length"),
+               let length = Int64(lengthString), length > 0 {
+                return length
+            }
+            if http.expectedContentLength > 0 {
+                return http.expectedContentLength
+            }
+            return nil
+        } catch {
+            return nil
+        }
+    }
 
     /// Composite recency score for project ordering. Projects that the user is
     /// actively working on (scheduled today, ending tomorrow) should rank above

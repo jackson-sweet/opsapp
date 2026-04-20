@@ -268,6 +268,11 @@ class DataController: ObservableObject {
         )
         syncEngine.registerBackgroundTasks()
 
+        // Calibrate the photo storage budget on first authenticated launch.
+        // Idempotent — a StorageProfiler already-calibrated guard makes subsequent
+        // calls no-op. See OPS/Utilities/StorageProfiler.swift for the policy.
+        StorageProfiler.shared.calibrateIfNeeded()
+
         // Immediately check for pending images after initialization
         if isConnected {
             Task {

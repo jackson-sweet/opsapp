@@ -237,4 +237,37 @@ class PermissionStore: ObservableObject {
         keychainManager.deletePermissions()
         print("[PERMISSIONS] Cleared all permissions and cache")
     }
+
+    // MARK: - Per-Project Access (Bug G9 — mention-grant aware)
+
+    /// True if the current user can VIEW this project. Combines:
+    ///  - Feature-flag gate on `projects.view` (no override)
+    ///  - `all` scope → always true
+    ///  - `assigned` scope → team member OR mention-granted (via MentionAccessIndex)
+    ///  - `own` scope or no permission → false
+    ///
+    /// Use at the record level wherever today's code calls `can("projects.view")`
+    /// and holds an actual Project in hand. Global nav gates stay on `can(...)`.
+    @MainActor
+    func canViewProject(_ project: Project, userId: String) -> Bool {
+        if isBlockedByFlag("projects.view") { return false }
+        guard let scope = scope(for: "projects.view") else { return false }
+
+        switch scope {
+        case "all":
+            return true
+        case "assigned":
+            if project.getTeamMemberIds().contains(userId) { return true }
+            return MentionAccessIndex.shared.contains(project.id)
+        default:
+            return false
+        }
+    }
+
+    /// True if the user can post a reply note / attach a reply photo on this project.
+    /// Mention-only users retain this (Rule 2 of Bug G9).
+    @MainActor
+    func canReplyToProjectNotes(project: Project, userId: String) -> Bool {
+        canViewProject(project, userId: userId)
+    }
 }

@@ -156,6 +156,48 @@ class PhotoDownloadManager: ObservableObject {
         cacheVersion += 1
     }
 
+    /// Dry-run of enforceCapacityPolicy against a hypothetical target budget.
+    /// Used by the settings UI to show "Will delete N photos (~X MB)" before
+    /// the user commits a budget reduction. Walks the same candidate ordering
+    /// as the real eviction (pinned skipped, oldest-project-first) but makes
+    /// no mutations.
+    ///
+    /// - Parameters:
+    ///   - projectsWithPhotos: same tuple shape as enforceCapacityPolicy
+    ///   - targetBudget: hypothetical budget in bytes to test against
+    /// - Returns: `(count, bytesFreed)` — how many photos would evict and how
+    ///   many bytes would be reclaimed. Zero/zero if the hypothetical budget
+    ///   already covers current usage.
+    func previewEviction(
+        projectsWithPhotos: [(projectUpdatedAt: Date, photoURLs: [String])],
+        targetBudget: Int64
+    ) -> (count: Int, bytesFreed: Int64) {
+        var currentUsage = StorageProfiler.shared.currentUsageBytes()
+        guard currentUsage > targetBudget else { return (0, 0) }
+
+        var candidates: [(projectDate: Date, url: String)] = []
+        for project in projectsWithPhotos {
+            for url in project.photoURLs where !pinnedURLs.contains(url) {
+                candidates.append((project.projectUpdatedAt, url))
+            }
+        }
+        candidates.sort { $0.projectDate < $1.projectDate }
+
+        var count = 0
+        var bytes: Int64 = 0
+        for candidate in candidates {
+            if currentUsage <= targetBudget { break }
+            let cacheKey = candidate.url.hasPrefix("//") ? "https:" + candidate.url : candidate.url
+            guard let fileSize = ImageFileManager.shared.imageFileSize(localID: cacheKey), fileSize > 0 else {
+                continue  // File not on disk — not a real eviction candidate
+            }
+            count += 1
+            bytes += fileSize
+            currentUsage -= fileSize
+        }
+        return (count, bytes)
+    }
+
     /// Capacity-based cleanup: evict photos from oldest-updated projects first
     /// until on-disk usage drops below `StorageProfiler.shared.budgetBytes`.
     ///

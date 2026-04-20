@@ -53,7 +53,17 @@ struct PhotoStorageManagementView: View {
     @State private var showClearConfirmation = false
     @State private var showFreeUpConfirmation = false
     @State private var capHitReport: PhotoPrefetchBudgetReport?
+
+    /// Slider position in MB. Staged — does NOT commit to profiler until the
+    /// user taps Apply. Separating "preview" from "committed" prevents the
+    /// silent-delete trap where lowering the slider appeared to free space
+    /// but photos remained on disk over the new limit.
     @State private var budgetSliderMB: Double = 0
+
+    /// Snapshot of profiler.budgetBytes at view-appear, converted to MB.
+    /// Used to detect pending changes. Updated when Apply commits.
+    @State private var committedBudgetMB: Double = 0
+
     @State private var didLoadInitialBudget = false
 
     // MARK: - Derived Values
@@ -99,6 +109,36 @@ struct PhotoStorageManagementView: View {
 
     private var sliderMin: Double { Double(StorageProfiler.minBudget) / 1_048_576.0 }
     private var sliderMax: Double { Double(profiler.maxAllowedBudget()) / 1_048_576.0 }
+
+    // MARK: - Pending-Change Derived Values
+
+    /// Slider position converted to bytes (not yet committed to profiler).
+    private var pendingBudgetBytes: Int64 {
+        Int64(budgetSliderMB * 1_048_576)
+    }
+
+    /// True when the slider is far enough off the committed value that the
+    /// user has likely made a deliberate change. 1 MB threshold filters out
+    /// rounding/jitter from the continuous slider; changes smaller than that
+    /// don't warrant the Apply confirmation.
+    private var hasPendingChange: Bool {
+        abs(budgetSliderMB - committedBudgetMB) >= 1.0
+    }
+
+    /// True when applying the pending budget would trigger photo eviction —
+    /// i.e., the new limit is below current on-disk usage.
+    private var wouldTriggerEviction: Bool {
+        pendingBudgetBytes < currentUsageBytes
+    }
+
+    /// Dry-run eviction against the pending budget. Used to populate the
+    /// Apply card's "Will delete N photos (~M MB)" message.
+    private var evictionPreview: (count: Int, bytesFreed: Int64) {
+        downloadManager.previewEviction(
+            projectsWithPhotos: projectsWithPhotosPayload,
+            targetBudget: pendingBudgetBytes
+        )
+    }
 
     private var projectsWithPhotosPayload: [(projectUpdatedAt: Date, photoURLs: [String])] {
         allProjects.compactMap { project in
@@ -169,7 +209,9 @@ struct PhotoStorageManagementView: View {
             }
             .onAppear {
                 if !didLoadInitialBudget {
-                    budgetSliderMB = Double(budgetBytes) / 1_048_576.0
+                    let initial = Double(budgetBytes) / 1_048_576.0
+                    budgetSliderMB = initial
+                    committedBudgetMB = initial
                     didLoadInitialBudget = true
                 }
             }
@@ -262,7 +304,7 @@ struct PhotoStorageManagementView: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
 
-                // Slider
+                // Slider — stages a pending change, does NOT commit
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Adjust limit")
                         .font(OPSStyle.Typography.caption)
@@ -270,19 +312,7 @@ struct PhotoStorageManagementView: View {
 
                     Slider(
                         value: $budgetSliderMB,
-                        in: sliderMin...max(sliderMin + 1, sliderMax),
-                        onEditingChanged: { editing in
-                            if !editing {
-                                profiler.setBudget(Int64(budgetSliderMB * 1_048_576))
-                                // If budget now covers current usage, clear the cap-hit banner
-                                // AND resolve any unread rail notifications of this type so
-                                // the user isn't left wondering "did it work?"
-                                if !profiler.wouldExceedBudget(adding: 0) {
-                                    capHitReport = nil
-                                    resolveCapHitRailNotifications()
-                                }
-                            }
-                        }
+                        in: sliderMin...max(sliderMin + 1, sliderMax)
                     )
                     .tint(OPSStyle.Colors.primaryAccent)
 
@@ -291,16 +321,22 @@ struct PhotoStorageManagementView: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                         Spacer()
-                        Text("Limit: \(StorageProfiler.formatBytes(Int64(budgetSliderMB * 1_048_576)))")
+                        Text(pendingBudgetLabel)
                             .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .foregroundColor(hasPendingChange ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
                         Spacer()
                         Text(StorageProfiler.formatBytes(Int64(sliderMax * 1_048_576)))
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                 }
+
+                if hasPendingChange {
+                    applyPendingCard
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
+            .animation(.easeInOut(duration: 0.2), value: hasPendingChange)
             .padding()
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -310,6 +346,89 @@ struct PhotoStorageManagementView: View {
             )
         }
         .padding(.horizontal, 20)
+    }
+
+    /// Dynamic label next to the slider. Pending changes get highlighted color.
+    private var pendingBudgetLabel: String {
+        if hasPendingChange {
+            return "Pending: \(StorageProfiler.formatBytes(pendingBudgetBytes))"
+        }
+        return "Limit: \(StorageProfiler.formatBytes(pendingBudgetBytes))"
+    }
+
+    /// Inline card with a contextual message about what Apply will do, plus
+    /// Cancel / Apply buttons. Only rendered when hasPendingChange is true.
+    private var applyPendingCard: some View {
+        let accent = wouldTriggerEviction ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.primaryAccent
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: wouldTriggerEviction ? "exclamationmark.triangle.fill" : "arrow.triangle.2.circlepath")
+                    .foregroundColor(accent)
+                Text(wouldTriggerEviction ? "REVIEW DELETION" : "PENDING CHANGE")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(accent)
+            }
+
+            Text(applyCardBodyCopy)
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 10) {
+                Button(action: cancelPendingChange) {
+                    Text("Cancel")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        )
+                }
+
+                Button(action: applyPendingChange) {
+                    Text(wouldTriggerEviction ? "Apply & Delete" : "Apply")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(accent)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                }
+            }
+        }
+        .padding()
+        .background(accent.opacity(0.12))
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(accent, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+    }
+
+    /// Context-sensitive copy explaining exactly what tapping Apply will do.
+    /// Three cases: (1) lowering below current usage → eviction; (2) raising
+    /// limit → headroom; (3) lowering but still above usage → no-op state change.
+    private var applyCardBodyCopy: String {
+        let newLimit = StorageProfiler.formatBytes(pendingBudgetBytes)
+
+        if wouldTriggerEviction {
+            let preview = evictionPreview
+            if preview.count > 0 {
+                let photoWord = preview.count == 1 ? "photo" : "photos"
+                return "Reducing to \(newLimit) will delete \(preview.count) \(photoWord) (\(StorageProfiler.formatBytes(preview.bytesFreed))) from your oldest projects. Pinned photos are kept."
+            }
+            return "Reducing to \(newLimit) will trim photos from your oldest projects until usage fits."
+        }
+
+        if pendingBudgetBytes > Int64(committedBudgetMB * 1_048_576) {
+            let headroom = pendingBudgetBytes - currentUsageBytes
+            return "Raising to \(newLimit) gives OPS \(StorageProfiler.formatBytes(headroom)) of headroom. The next sync will download photos from your most recent projects to fill it (WiFi only by default)."
+        }
+
+        return "Set the limit to \(newLimit). Current usage fits — no photos will be deleted."
     }
 
     private var prefetchPreferencesSection: some View {
@@ -461,15 +580,59 @@ struct PhotoStorageManagementView: View {
 
     // MARK: - Actions
 
+    // MARK: - Apply / Cancel Actions
+
+    /// Revert slider to the committed value without touching profiler.
+    private func cancelPendingChange() {
+        budgetSliderMB = committedBudgetMB
+    }
+
+    /// Commit the staged budget change:
+    ///   1. Write new budget to StorageProfiler
+    ///   2. If lowering would exceed usage, run eviction (user already
+    ///      consented via the Apply button label "Apply & Delete")
+    ///   3. If usage now fits the budget, clear the cap-hit banner and mark
+    ///      the rail notification as read
+    ///   4. Sync committedBudgetMB so hasPendingChange goes false and the
+    ///      Apply card hides
+    private func applyPendingChange() {
+        let newBytes = pendingBudgetBytes
+        profiler.setBudget(newBytes)
+
+        let resolvedBudget = profiler.budgetBytes  // in case setBudget clamped
+
+        if resolvedBudget < currentUsageBytes {
+            let result = downloadManager.enforceCapacityPolicy(
+                projectsWithPhotos: projectsWithPhotosPayload
+            )
+            print("[PhotoStorageManagementView] Apply+Delete: evicted \(result.deleted), freed \(StorageProfiler.formatBytes(result.bytesFreed))")
+        } else {
+            print("[PhotoStorageManagementView] Apply: budget set to \(StorageProfiler.formatBytes(resolvedBudget)); no eviction needed")
+        }
+
+        // Sync slider snapshot to the committed value — this also drops
+        // hasPendingChange to false, hiding the Apply card.
+        committedBudgetMB = Double(resolvedBudget) / 1_048_576.0
+        budgetSliderMB = committedBudgetMB
+
+        // Clear banner + resolve rail notification if the fix landed us under budget
+        if !profiler.wouldExceedBudget(adding: 0) {
+            capHitReport = nil
+            resolveCapHitRailNotifications()
+        }
+    }
+
     private func freeUpSpace() {
+        // "Free Up Space" button runs against the CURRENTLY COMMITTED budget,
+        // not the pending slider value. If the user has a pending change, we
+        // respect the committed state — they need to tap Apply separately to
+        // commit the new budget (which might already include eviction).
         let result = downloadManager.enforceCapacityPolicy(
             projectsWithPhotos: projectsWithPhotosPayload
         )
         print("[PhotoStorageManagementView] Freed \(result.deleted) photos (\(StorageProfiler.formatBytes(result.bytesFreed)))")
-        capHitReport = nil  // Banner clears; re-appears if next sync still exceeds
+        capHitReport = nil
 
-        // If eviction actually brought us under budget, close the loop on the
-        // notification rail so the user sees the issue as resolved.
         if !profiler.wouldExceedBudget(adding: 0) {
             resolveCapHitRailNotifications()
         }

@@ -16,38 +16,13 @@ class PhotoDownloadManager: ObservableObject {
     @Published var activeDownloads: [String: Double] = [:]  // url -> progress (0.0-1.0)
     @Published private(set) var cacheVersion: Int = 0  // Bumped on cache changes to trigger view refresh
 
-    // MARK: - Auto-Keep Policy
-    enum KeepPolicy: String, CaseIterable {
-        case oneMonth = "1 Month"
-        case threeMonths = "3 Months"
-        case sixMonths = "6 Months"
-        case twelveMonths = "12 Months"
-        case allTime = "All Time"
-        case manual = "Manual Only"
+    // MARK: - Pinned URLs (user-selected keep list)
 
-        var monthCount: Int? {
-            switch self {
-            case .oneMonth: return 1
-            case .threeMonths: return 3
-            case .sixMonths: return 6
-            case .twelveMonths: return 12
-            case .allTime: return nil
-            case .manual: return nil  // nil = never auto-delete (same as allTime)
-            }
-        }
-    }
-
-    private let policyKey = "photoAutoKeepPolicy"
     private let pinnedKey = "photoPinnedURLs"
-    private let keepAllKey = "photoKeepAllDownloaded"
 
-    @Published var keepPolicy: KeepPolicy = .threeMonths {
-        didSet {
-            UserDefaults.standard.set(keepPolicy.rawValue, forKey: policyKey)
-        }
-    }
-
-    /// URLs that the user has explicitly pinned to keep on-device (survive auto-keep policy cleanup)
+    /// URLs that the user has explicitly pinned to keep on-device. Pins count
+    /// toward the storage budget (see StorageProfiler) but are never auto-evicted
+    /// by capacity cleanup — user chose them.
     @Published var pinnedURLs: Set<String> = [] {
         didSet {
             if let data = try? JSONEncoder().encode(pinnedURLs) {
@@ -56,22 +31,16 @@ class PhotoDownloadManager: ObservableObject {
         }
     }
 
-    /// When true, all photos are downloaded and kept on-device regardless of policy
-    @Published var keepAllDownloaded: Bool = false {
-        didSet {
-            UserDefaults.standard.set(keepAllDownloaded, forKey: keepAllKey)
-        }
-    }
-
     private init() {
-        let raw = UserDefaults.standard.string(forKey: policyKey) ?? KeepPolicy.threeMonths.rawValue
-        self.keepPolicy = KeepPolicy(rawValue: raw) ?? .threeMonths
-        self.keepAllDownloaded = UserDefaults.standard.bool(forKey: keepAllKey)
-
         if let data = UserDefaults.standard.data(forKey: pinnedKey),
            let urls = try? JSONDecoder().decode(Set<String>.self, from: data) {
             self.pinnedURLs = urls
         }
+
+        // One-time migration: remove defunct keys from the pre-capacity era.
+        // Safe to call on every launch — UserDefaults.removeObject is idempotent.
+        UserDefaults.standard.removeObject(forKey: "photoAutoKeepPolicy")
+        UserDefaults.standard.removeObject(forKey: "photoKeepAllDownloaded")
     }
 
     // MARK: - Pin / Unpin
@@ -185,29 +154,6 @@ class PhotoDownloadManager: ObservableObject {
         ImageFileManager.shared.clearRemoteImageCache()
         ImageCache.shared.clear()
         cacheVersion += 1
-    }
-
-    /// Enforce auto-keep policy: remove photos older than policy date.
-    /// Respects pinned URLs and keepAllDownloaded setting.
-    ///
-    /// DEPRECATED (photo-storage-capacity migration): replaced by
-    /// `enforceCapacityPolicy(projectsWithPhotos:)`. The capacity-based approach
-    /// evicts by oldest project rather than fixed time cutoffs, and scales to
-    /// device capacity. This method kept for callers-in-transition; will be
-    /// removed once PhotoStorageManagementView is rewritten.
-    func enforceKeepPolicy(allPhotoURLs: [(url: String, date: Date)]) {
-        // Never enforce cleanup when keep-all is enabled
-        guard !keepAllDownloaded else { return }
-        guard let months = keepPolicy.monthCount, months > 0 else { return }
-        let cutoff = Calendar.current.date(byAdding: .month, value: -months, to: Date()) ?? Date()
-
-        for item in allPhotoURLs where item.date < cutoff {
-            // Skip pinned photos — user explicitly chose to keep them
-            if pinnedURLs.contains(item.url) { continue }
-            if !item.url.hasPrefix("local://") {
-                _ = removeFromDevice(item.url)
-            }
-        }
     }
 
     /// Capacity-based cleanup: evict photos from oldest-updated projects first

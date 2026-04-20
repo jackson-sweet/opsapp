@@ -427,35 +427,8 @@ struct AllPhotosGalleryView: View {
                     .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
             }
 
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Keep All Photos Downloaded")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                    Text("Downloads and keeps all project photos on this device")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-
-                Spacer()
-
-                Toggle("", isOn: Binding(
-                    get: { downloadManager.keepAllDownloaded },
-                    set: { newValue in
-                        downloadManager.keepAllDownloaded = newValue
-                        if newValue {
-                            // Trigger download of all photos not yet on device
-                            let urls = allPhotoItems.map { $0.url }
-                            Task {
-                                await downloadManager.downloadAllPhotos(urls)
-                            }
-                        }
-                    }
-                ))
-                .labelsHidden()
-                .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
-            }
+            // "Keep All Photos Downloaded" toggle removed — photo caching is
+            // now capacity-based. Manage via Settings → Photo Storage.
         }
         .padding(.horizontal, 20)
     }

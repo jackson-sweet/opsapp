@@ -182,7 +182,11 @@ struct JobBoardView: View {
                     if !tutorialMode && (selectedSection == .projects || selectedSection == .myProjects || selectedSection == .tasks || selectedSection == .kanban) {
                         HStack(spacing: 12) {
                             Button(action: {
-                                showingProjectFilterSheet = true
+                                if selectedSection == .tasks {
+                                    showingTaskFilterSheet = true
+                                } else {
+                                    showingProjectFilterSheet = true
+                                }
                             }) {
                                 Image(systemName: "line.3.horizontal.decrease")
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
@@ -400,6 +404,10 @@ struct JobBoardView: View {
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenTaskReview"))) { _ in
                 computeReviewableTasks()
                 showTaskReview = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenUnscheduledReview"))) { _ in
+                computeUnscheduledTasks()
+                showUnscheduledReview = true
             }
         }
 

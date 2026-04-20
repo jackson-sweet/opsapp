@@ -298,11 +298,76 @@ final class PhotoPrefetchService: ObservableObject {
             photosRemaining: remaining,
             estimatedRemainingBytes: estimatedRemaining
         )
+        // Local event for views/banners to observe (used by PhotoStorageManagementView).
         NotificationCenter.default.post(
             name: .photoStorageBudgetExceeded,
             object: nil,
             userInfo: ["report": report]
         )
+
+        // Persist the event to the in-app notification rail so the user sees
+        // it even without opening Photo Storage settings. Cooldown-gated so
+        // we don't spam the rail on every sync when budget stays full.
+        Task { [report] in
+            await postCapHitRailNotification(report: report)
+        }
+    }
+
+    // MARK: - Rail Notification Integration
+
+    /// Cooldown between rail notifications so repeated cap-hits don't spam the
+    /// rail. A single rail entry stays until the user addresses it.
+    private static let railNotificationCooldown: TimeInterval = 24 * 60 * 60  // 24 hours
+
+    private enum RailKey {
+        static let lastPostedAt = "photoStorage.lastCapHitRailPostAt"
+    }
+
+    /// Inserts a persistent cap-hit notification into the Supabase notifications
+    /// table so it appears in the in-app notification rail. De-duped via a
+    /// 24-hour cooldown — if we posted one recently, we skip.
+    private func postCapHitRailNotification(report: PhotoPrefetchBudgetReport) async {
+        // Cooldown: don't flood the rail if sync keeps hitting cap
+        if let lastPost = UserDefaults.standard.object(forKey: RailKey.lastPostedAt) as? Date {
+            let elapsed = Date().timeIntervalSince(lastPost)
+            if elapsed < Self.railNotificationCooldown {
+                print("[PhotoPrefetch] Skipping rail notification — last posted \(Int(elapsed / 3600))h ago")
+                return
+            }
+        }
+
+        guard let userId = UserDefaults.standard.string(forKey: "currentUserId"), !userId.isEmpty else {
+            print("[PhotoPrefetch] Skipping rail notification — no currentUserId")
+            return
+        }
+        guard let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId"), !companyId.isEmpty else {
+            print("[PhotoPrefetch] Skipping rail notification — no currentUserCompanyId")
+            return
+        }
+
+        let photos = report.photosRemaining
+        let photoPhrase = photos == 1 ? "1 photo" : "\(photos) photos"
+        let title = "Photo storage limit reached"
+        let body = "\(photoPhrase) couldn't download. Open Settings → Photo Storage to raise your limit or free up space."
+
+        let dto = NotificationRepository.CreateNotificationDTO(
+            userId: userId,
+            companyId: companyId,
+            type: "photo_storage_limit",
+            title: title,
+            body: body,
+            deepLinkType: "photoStorage",
+            persistent: true,
+            actionLabel: "Manage Storage"
+        )
+
+        do {
+            try await NotificationRepository.shared.createNotification(dto)
+            UserDefaults.standard.set(Date(), forKey: RailKey.lastPostedAt)
+            print("[PhotoPrefetch] Posted cap-hit rail notification (\(photoPhrase))")
+        } catch {
+            print("[PhotoPrefetch] Failed to post rail notification: \(error)")
+        }
     }
 }
 

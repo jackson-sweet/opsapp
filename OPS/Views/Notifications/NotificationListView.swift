@@ -591,6 +591,12 @@ struct NotificationListView: View {
                     NotificationCenter.default.post(name: Notification.Name("OpenTaskReview"), object: nil)
                 }
             }
+        case "photoStorage":
+            // Cap-hit from PhotoPrefetchService. Dismiss the notification list;
+            // the user follows the body copy to Settings → Photo Storage. Room
+            // to extend later with an auto-navigate event if the Settings tab
+            // exposes a public "open this screen" hook.
+            dismiss()
         default:
             // Deep link to project if applicable
             if let projectId = notification.projectId, !projectId.isEmpty {

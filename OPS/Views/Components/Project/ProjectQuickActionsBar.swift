@@ -12,6 +12,9 @@ struct ProjectQuickActionsBar: View {
     let selectedTask: ProjectTask?
     let hasClientContact: Bool
     let canEdit: Bool
+    /// Bug G9 — when true, the user got here via a note mention and should
+    /// only be able to post reply notes. All other actions are hidden.
+    var isMentionOnly: Bool = false
     let onPhoto: () -> Void
     let onNote: () -> Void
     let onExpense: () -> Void
@@ -27,6 +30,11 @@ struct ProjectQuickActionsBar: View {
 
     /// Builds the list of actions based on current context
     private var actions: [ActionItem] {
+        // Bug G9 — mention-only users: reply-note only.
+        if isMentionOnly {
+            return [ActionItem(icon: "note.text", label: "NOTE", action: onNote)]
+        }
+
         var items: [ActionItem] = []
 
         // COMPLETE PROJECT — front of bar, double width, when all tasks are done.

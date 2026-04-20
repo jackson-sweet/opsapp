@@ -360,6 +360,7 @@ struct ProjectDetailsView: View {
                         selectedTask: viewModel.selectedTask,
                         hasClientContact: viewModel.hasClientContact,
                         canEdit: viewModel.canEditProject,
+                        isMentionOnly: viewModel.isMentionOnlyAccess,
                         onPhoto: { showingCameraBatch = true },
                         onNote: {
                             viewModel.selectedTab = .activity
@@ -1056,6 +1057,10 @@ struct ProjectDetailsView: View {
 
         // Refresh client
         viewModel.refreshClientData()
+
+        // Hydrate map coordinates when the project has an address but no
+        // cached lat/lng (legacy Bubble rows, prior failed geocode).
+        viewModel.geocodeAddressIfNeeded()
 
         // Wizard system: notify project opened (completes Job Board wizard step)
         NotificationCenter.default.post(

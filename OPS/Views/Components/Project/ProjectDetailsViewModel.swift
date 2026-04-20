@@ -131,7 +131,17 @@ class ProjectDetailsViewModel: ObservableObject {
 
     // MARK: - Permissions
 
+    /// Bug G9 — the user has view access to this project ONLY because they were
+    /// tagged in a note. They can read and reply to notes, but cannot edit
+    /// project details, tasks, schedule, team, etc.
+    var isMentionOnlyAccess: Bool {
+        guard let userId = dataController?.currentUser?.id else { return false }
+        return ProjectAccessHelper.isMentionOnly(project, userId: userId)
+    }
+
     var canEditProject: Bool {
+        // Mention-only users cannot edit any project field (Bug G9, Rule 1+2).
+        if isMentionOnlyAccess { return false }
         return PermissionStore.shared.can("projects.edit")
     }
 
@@ -403,18 +413,110 @@ class ProjectDetailsViewModel: ObservableObject {
 
     // MARK: - Address
 
+    /// True while an updateProjectAddress call is in flight. Prevents a
+    /// double-tap on SAVE from racing two writes against the same project.
+    private var isSavingAddress = false
+
     func saveAddress() {
+        guard !isSavingAddress else {
+            print("[PROJECT_DETAILS] ⚠️ Address save already in progress — ignoring")
+            return
+        }
+        isSavingAddress = true
+
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.impactOccurred()
 
-        Task {
+        // Capture on the main actor before hopping to the task.
+        let addressToSave = editedAddress
+
+        Task { @MainActor in
+            defer { isSavingAddress = false }
             do {
-                try await dataController?.updateProjectAddress(project: project, address: editedAddress)
+                try await dataController?.updateProjectAddress(project: project, address: addressToSave)
+                // Refresh the map region if coordinates changed.
+                if let coordinate = project.coordinate {
+                    addressMapRegion = MKCoordinateRegion(
+                        center: coordinate,
+                        span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                    )
+                }
+                showSaveNotification()
             } catch {
                 print("Failed to save address: \(error)")
             }
         }
         showingAddressEditor = false
+    }
+
+    /// Called when ProjectDetailsView appears. If the project has a non-empty
+    /// address but missing coordinates (legacy Bubble import, failed prior
+    /// geocode, or sync race), forward-geocode it now so the map pin snaps
+    /// to the right spot instead of falling back to the SF default.
+    func geocodeAddressIfNeeded() {
+        guard let address = project.address?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !address.isEmpty,
+              project.coordinate == nil,
+              !isGeocodingAddress else {
+            return
+        }
+
+        isGeocodingAddress = true
+
+        Task { @MainActor in
+            defer { isGeocodingAddress = false }
+
+            let geocoder = CLGeocoder()
+            do {
+                let placemarks = try await geocoder.geocodeAddressString(address)
+                guard let location = placemarks.first?.location else {
+                    print("[PROJECT_DETAILS] Geocode-on-load: no placemarks for \"\(address)\"")
+                    return
+                }
+
+                // Race guard: if the user edited the address while we were
+                // awaiting the geocoder, bail rather than stamping stale
+                // coords on top of the fresh edit.
+                let currentAddress = project.address?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard currentAddress == address else {
+                    print("[PROJECT_DETAILS] Geocode-on-load: address changed mid-flight (\"\(address)\" → \"\(currentAddress)\") — skipping write")
+                    return
+                }
+
+                // Also skip if saveAddress already hydrated coords while we
+                // were awaiting.
+                guard project.coordinate == nil else {
+                    print("[PROJECT_DETAILS] Geocode-on-load: coords already set — skipping write")
+                    return
+                }
+
+                // Write back to the project so the map renders and subsequent
+                // loads don't repeat the lookup. Queue a sync so the server
+                // row gets the coords too.
+                project.latitude = location.coordinate.latitude
+                project.longitude = location.coordinate.longitude
+                project.needsSync = true
+                try? dataController?.modelContext?.save()
+
+                dataController?.syncEngine.recordOperation(
+                    entityType: .project,
+                    entityId: project.id,
+                    operationType: "update",
+                    changedFields: [
+                        "latitude": location.coordinate.latitude,
+                        "longitude": location.coordinate.longitude
+                    ]
+                )
+
+                addressMapRegion = MKCoordinateRegion(
+                    center: location.coordinate,
+                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                )
+                print("[PROJECT_DETAILS] ✅ Geocode-on-load hydrated coords for \"\(address)\"")
+            } catch {
+                print("[PROJECT_DETAILS] Geocode-on-load failed for \"\(address)\": \(error.localizedDescription)")
+            }
+        }
     }
 
     // MARK: - Schedule

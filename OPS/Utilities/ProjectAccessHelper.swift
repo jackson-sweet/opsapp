@@ -30,10 +30,15 @@ enum ProjectAccessHelper {
         return MentionAccessIndex.shared.contains(project.id)
     }
 
-    /// True if the user only has mention-based access to this project (not on team).
-    /// Drives the read-only UI lock in ProjectDetailsView / FloatingActionMenu.
+    /// True if the user only has mention-based access to this project
+    /// (not on team, no full "all" scope). Drives the read-only UI lock in
+    /// ProjectDetailsView / FloatingActionMenu.
+    ///
+    /// Full-scope users (Admin/Owner/Office with "all") are never mention-only —
+    /// they can edit any project regardless of how they arrived at it.
     static func isMentionOnly(_ project: Project, userId: String) -> Bool {
-        !project.getTeamMemberIds().contains(userId)
-            && MentionAccessIndex.shared.contains(project.id)
+        if PermissionStore.shared.hasFullAccess("projects.view") { return false }
+        if project.getTeamMemberIds().contains(userId) { return false }
+        return MentionAccessIndex.shared.contains(project.id)
     }
 }

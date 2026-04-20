@@ -801,100 +801,116 @@ struct TaskTypeSheet: View {
 
         isSaving = true
 
-        Task {
+        // Snapshot form state synchronously so async work can't observe torn writes
+        // (matches the TaskFormSheet.saveTask pattern that resolved an iOS 18
+        // crash vector plus duplicate-insert race). Capturing strings/value types
+        // keeps the closure Sendable; the @Model is looked up inside the actor.
+        let newTaskTypeId = UUID().uuidString
+        let capturedName = taskTypeName
+        let capturedColor = taskTypeColorHex
+        let capturedIcon = taskTypeIcon
+        let capturedDependencies = dependencies
+
+        Task { @MainActor in
+            // ----- Phase 1: Local SwiftData write (MainActor) -----
+            let newTaskType = TaskType(
+                id: newTaskTypeId,
+                display: capturedName,
+                color: capturedColor,
+                companyId: companyId,
+                isDefault: false,
+                icon: capturedIcon
+            )
+
+            // Insert BEFORE wiring dependencies so SwiftData never sees a
+            // half-managed model being referenced by managed objects (iOS 18
+            // crash vector — same root cause TaskFormSheet fixed in 2c1cd1c).
+            modelContext.insert(newTaskType)
+            newTaskType.dependencies = capturedDependencies
+            newTaskType.needsSync = true
+
             do {
-                let newTaskTypeId = UUID().uuidString
-
-                let newTaskType = await MainActor.run {
-                    let newTaskType = TaskType(
-                        id: newTaskTypeId,
-                        display: taskTypeName,
-                        color: taskTypeColorHex,
-                        companyId: companyId,
-                        isDefault: false,
-                        icon: taskTypeIcon
-                    )
-                    newTaskType.dependencies = dependencies
-                    newTaskType.needsSync = true
-                    modelContext.insert(newTaskType)
-                    try? modelContext.save()
-                    return newTaskType
-                }
-
-                let dto = SupabaseTaskTypeDTO(
-                    id: newTaskTypeId,
-                    bubbleId: nil,
-                    companyId: companyId,
-                    display: taskTypeName,
-                    color: taskTypeColorHex,
-                    icon: taskTypeIcon,
-                    isDefault: false,
-                    displayOrder: nil,
-                    dependencies: dependencies.isEmpty ? nil : dependencies,
-                    defaultTeamMemberIds: nil,
-                    deletedAt: nil
-                )
-                let _ = try await dataController.createTaskType(dto: dto)
-                await MainActor.run {
-                    newTaskType.needsSync = false
-                    newTaskType.lastSyncedAt = Date()
-                    try? modelContext.save()
-                }
-
-                await MainActor.run {
-                    let generator = UINotificationFeedbackGenerator()
-                    generator.notificationOccurred(.success)
-
-                    onSave(newTaskType)
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        dismiss()
-                    }
-                }
+                try modelContext.save()
             } catch {
-                await MainActor.run {
-                    let generator = UINotificationFeedbackGenerator()
-                    generator.notificationOccurred(.error)
-
-                    errorMessage = error.localizedDescription
-                    showingError = true
-                    isSaving = false
-                }
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.error)
+                errorMessage = "Failed to save task type locally: \(error.localizedDescription)"
+                showingError = true
+                isSaving = false
+                return
             }
+
+            // ----- Phase 2: Queue sync operation (MainActor) -----
+            // DataController.createTaskType is idempotent via id lookup — it
+            // finds the row we just inserted and only records the sync op.
+            // Keep this @MainActor hop explicit so DataActor paths never see
+            // a mid-flight context mutation.
+            let dto = SupabaseTaskTypeDTO(
+                id: newTaskTypeId,
+                bubbleId: nil,
+                companyId: companyId,
+                display: capturedName,
+                color: capturedColor,
+                icon: capturedIcon,
+                isDefault: false,
+                displayOrder: nil,
+                dependencies: capturedDependencies.isEmpty ? nil : capturedDependencies,
+                defaultTeamMemberIds: nil,
+                deletedAt: nil
+            )
+
+            do {
+                _ = try await dataController.createTaskType(dto: dto)
+            } catch {
+                // Local insert already succeeded; sync will retry. Surface the
+                // message but do not roll back — the UI must show the new type.
+                print("[TASK_TYPE_SHEET] ⚠️ Sync op enqueue failed, will retry: \(error)")
+            }
+
+            // ----- Phase 3: Success path (MainActor) -----
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
+
+            isSaving = false
+            onSave(newTaskType)
+            dismiss()
         }
     }
 
     private func saveEditedTaskType(taskType: TaskType, onSave: @escaping () -> Void) {
+        guard !isSaving else { return }
         isSaving = true
 
-        Task {
-            await MainActor.run {
-                taskType.display = taskTypeName
-                taskType.icon = taskTypeIcon
-                taskType.color = taskTypeColorHex
-                taskType.dependencies = dependencies
-                taskType.needsSync = true
+        // Snapshot form state so a late edit can't tear the write mid-flight.
+        let capturedName = taskTypeName
+        let capturedIcon = taskTypeIcon
+        let capturedColorHex = taskTypeColorHex
+        let capturedDependencies = dependencies
 
-                do {
-                    try modelContext.save()
+        Task { @MainActor in
+            taskType.display = capturedName
+            taskType.icon = capturedIcon
+            taskType.color = capturedColorHex
+            taskType.dependencies = capturedDependencies
+            taskType.needsSync = true
 
-                    let generator = UINotificationFeedbackGenerator()
-                    generator.notificationOccurred(.success)
-
-                    onSave()
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        dismiss()
-                    }
-                } catch {
-                    let generator = UINotificationFeedbackGenerator()
-                    generator.notificationOccurred(.error)
-
-                    errorMessage = error.localizedDescription
-                    showingError = true
-                    isSaving = false
-                }
+            do {
+                try modelContext.save()
+            } catch {
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.error)
+                errorMessage = error.localizedDescription
+                showingError = true
+                isSaving = false
+                return
             }
+
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
+
+            isSaving = false
+            onSave()
+            dismiss()
 
             dataController.triggerBackgroundSync()
         }

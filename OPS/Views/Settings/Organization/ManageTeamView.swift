@@ -514,6 +514,17 @@ struct ManageTeamView: View {
                                 .background(OPSStyle.Colors.separator)
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         }
+
+                        if let company = company, member.role != .unassigned {
+                            let hasSeat = company.getSeatedEmployeeIds().contains(member.id)
+                            Text(hasSeat ? "SEATED" : "NO SEAT")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(hasSeat ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(hasSeat ? OPSStyle.Colors.primaryAccent.opacity(0.15) : OPSStyle.Colors.separator)
+                                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        }
                     }
 
                     HStack(spacing: 6) {

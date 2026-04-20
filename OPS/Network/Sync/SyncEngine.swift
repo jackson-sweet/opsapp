@@ -551,6 +551,14 @@ final class SyncEngine {
         statusText = hasError ? "Sync error" : "Full sync complete"
         print("[SYNC_ENGINE] Full sync complete")
 
+        // Bug G9 — rebuild mention-access index from latest ProjectNote rows.
+        // Runs after every full sync so revoked mentions / new mentions resolve.
+        if !hasError, let modelContext,
+           let userId = UserDefaults.standard.string(forKey: "currentUserId"),
+           !userId.isEmpty {
+            MentionAccessIndex.shared.rebuild(context: modelContext, userId: userId)
+        }
+
         if !hasError {
             kickoffPhotoPrefetch()
         }

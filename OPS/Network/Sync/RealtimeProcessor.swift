@@ -291,6 +291,10 @@ final class RealtimeProcessor: ObservableObject {
                     object: nil,
                     userInfo: ["projectId": dto.projectId]
                 )
+                // Bug G9 — rebuild mention-access index so new / revoked mentions
+                // resolve immediately; if the mention targets the current user
+                // and the project isn't cached locally, fetch it.
+                handleMentionAccessRealtimeUpdate(noteDTO: dto, context: context)
 
             case "project_photo_annotations":
                 let dto = try record.decodeRecord(as: PhotoAnnotationDTO.self, decoder: decoder)
@@ -391,6 +395,10 @@ final class RealtimeProcessor: ObservableObject {
                     existing.deletedAt = Date()
                     try context.save()
                 }
+                // Bug G9 — soft-delete of a note may revoke mention access.
+                if let userId = self.userId {
+                    MentionAccessIndex.shared.rebuild(context: context, userId: userId)
+                }
 
             case "project_photo_annotations":
                 let descriptor = FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == id })
@@ -473,6 +481,10 @@ final class RealtimeProcessor: ObservableObject {
                     object: nil,
                     userInfo: ["projectId": dto.projectId]
                 )
+                // Bug G9 — same as legacy path: refresh mention-access.
+                if let context = modelContext {
+                    handleMentionAccessRealtimeUpdate(noteDTO: dto, context: context)
+                }
 
             case "project_photo_annotations":
                 let dto = try record.decodeRecord(as: PhotoAnnotationDTO.self, decoder: decoder)
@@ -528,6 +540,42 @@ final class RealtimeProcessor: ObservableObject {
 
     /// Returns the set of field names that have pending SyncOperations for a given entity.
     /// These fields should NOT be overwritten by incoming server values.
+    /// Bug G9 — on an incoming ProjectNote realtime event, keep the mention
+    /// access index in sync. If the note mentions the current user AND the
+    /// referenced project isn't in the local cache yet, fetch it so the user
+    /// can reach it via Search / Spotlight / deep link without waiting for
+    /// the next full sync.
+    private func handleMentionAccessRealtimeUpdate(noteDTO: ProjectNoteDTO, context: ModelContext) {
+        guard let uid = self.userId else { return }
+
+        MentionAccessIndex.shared.rebuild(context: context, userId: uid)
+
+        // If the note mentions this user and the project isn't local, fetch it.
+        let mentionsMe = noteDTO.mentionedUserIds?.contains(uid) == true
+        guard mentionsMe else { return }
+
+        let projectId = noteDTO.projectId
+        let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectId })
+        let alreadyCached = (try? context.fetch(descriptor).first) != nil
+        if alreadyCached { return }
+
+        guard let companyId = self.companyId else { return }
+        Task { @MainActor in
+            do {
+                let dto = try await ProjectRepository(companyId: companyId).fetchOne(projectId)
+                let model = dto.toModel()
+                let pendingFields = self.pendingFieldsForEntity(
+                    entityType: .project, entityId: dto.id, context: context
+                )
+                try self.upsertProject(context: context, id: dto.id, model: model, pendingFields: pendingFields)
+                try context.save()
+                print("[RealtimeProcessor] G9 — fetched mention-granted project \(projectId)")
+            } catch {
+                print("[RealtimeProcessor] G9 — failed to fetch mention-granted project \(projectId): \(error)")
+            }
+        }
+    }
+
     private func pendingFieldsForEntity(
         entityType: SyncEntityType,
         entityId: String,

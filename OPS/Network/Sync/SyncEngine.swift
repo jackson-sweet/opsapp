@@ -407,7 +407,21 @@ final class SyncEngine {
 
         if !hasError {
             statusText = "Synced"
+            kickoffPhotoPrefetch()
         }
+    }
+
+    // MARK: - Photo Prefetch Hook
+
+    /// Triggers PhotoPrefetchService after successful sync. Respects the
+    /// service's own WiFi-only and enabled guards — SyncEngine just says
+    /// "we just synced new data, consider downloading photos now."
+    private func kickoffPhotoPrefetch() {
+        guard let modelContext, let connectivity else { return }
+        PhotoPrefetchService.shared.prefetchIfAppropriate(
+            modelContext: modelContext,
+            connectivity: connectivity
+        )
     }
 
     // MARK: - Migration Cleanup
@@ -536,6 +550,10 @@ final class SyncEngine {
 
         statusText = hasError ? "Sync error" : "Full sync complete"
         print("[SYNC_ENGINE] Full sync complete")
+
+        if !hasError {
+            kickoffPhotoPrefetch()
+        }
     }
 
     /// Pushes all pending local operations to the server via OutboundProcessor.
@@ -662,6 +680,7 @@ final class SyncEngine {
                 setLastSyncTimestamp(now, for: entityType)
             }
             statusText = "Synced"
+            kickoffPhotoPrefetch()
         } catch {
             print("[SYNC_ENGINE] Catch-up delta error: \(error)")
         }

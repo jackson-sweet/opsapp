@@ -220,24 +220,10 @@ final class RealtimeProcessor: ObservableObject {
             case "projects":
                 let dto = try record.decodeRecord(as: SupabaseProjectDTO.self, decoder: decoder)
 
-                // Permission scope guard — Realtime doesn't support contains filter,
-                // so we discard records the user shouldn't see.
-                let projectScope = PermissionStore.shared.scope(for: "projects.view") ?? "all"
-                if projectScope == "assigned", let uid = self.userId {
-                    let teamIds = dto.teamMemberIds ?? []
-                    if !teamIds.contains(uid) {
-                        print("[RealtimeProcessor] Discarding project \(dto.id) — user not in team_member_ids (scope: assigned)")
-                        return
-                    }
-                } else if projectScope == "own", let uid = self.userId {
-                    // Projects don't expose createdBy in the DTO, so we can only
-                    // accept projects where the user is at least in team_member_ids.
-                    let teamIds = dto.teamMemberIds ?? []
-                    if !teamIds.contains(uid) {
-                        print("[RealtimeProcessor] Discarding project \(dto.id) — user not in team (scope: own)")
-                        return
-                    }
-                }
+                // Bug G9 — client-side scope guards removed. Supabase RLS
+                // (migration 074, private.current_user_can_view_project) enforces
+                // both team-based and mention-based grant. Any row delivered here
+                // has already passed RLS and is valid to persist.
 
                 let model = dto.toModel()
                 let pendingFields = pendingFieldsForEntity(entityType: .project, entityId: dto.id, context: context)
@@ -246,21 +232,7 @@ final class RealtimeProcessor: ObservableObject {
             case "project_tasks":
                 let dto = try record.decodeRecord(as: SupabaseProjectTaskDTO.self, decoder: decoder)
 
-                // Permission scope guard for tasks
-                let taskScope = PermissionStore.shared.scope(for: "tasks.view") ?? "all"
-                if taskScope == "assigned", let uid = self.userId {
-                    let teamIds = dto.teamMemberIds ?? []
-                    if !teamIds.contains(uid) {
-                        print("[RealtimeProcessor] Discarding task \(dto.id) — user not in team_member_ids (scope: assigned)")
-                        return
-                    }
-                } else if taskScope == "own", let uid = self.userId {
-                    let teamIds = dto.teamMemberIds ?? []
-                    if !teamIds.contains(uid) {
-                        print("[RealtimeProcessor] Discarding task \(dto.id) — user not in team (scope: own)")
-                        return
-                    }
-                }
+                // Bug G9 — client-side scope guards removed. See "projects" case above.
 
                 let model = dto.toModel()
                 let pendingFields = pendingFieldsForEntity(entityType: .projectTask, entityId: dto.id, context: context)
@@ -461,27 +433,14 @@ final class RealtimeProcessor: ObservableObject {
         do {
             switch table {
             case "projects":
+                // Bug G9 — client-side scope guards removed. RLS (migration 074)
+                // enforces team-based and mention-based grant server-side.
                 let dto = try record.decodeRecord(as: SupabaseProjectDTO.self, decoder: decoder)
-                let scope = PermissionStore.shared.scope(for: "projects.view") ?? "all"
-                if (scope == "assigned" || scope == "own"), let uid = self.userId {
-                    let teamIds = dto.teamMemberIds ?? []
-                    if !teamIds.contains(uid) {
-                        print("[RealtimeProcessor] Discarding project \(dto.id) — scope \(scope) excludes user")
-                        return
-                    }
-                }
                 Task { await actor.handleRealtimeUpdate(.project(dto)) }
 
             case "project_tasks":
+                // Bug G9 — client-side scope guards removed. See "projects" case.
                 let dto = try record.decodeRecord(as: SupabaseProjectTaskDTO.self, decoder: decoder)
-                let scope = PermissionStore.shared.scope(for: "tasks.view") ?? "all"
-                if (scope == "assigned" || scope == "own"), let uid = self.userId {
-                    let teamIds = dto.teamMemberIds ?? []
-                    if !teamIds.contains(uid) {
-                        print("[RealtimeProcessor] Discarding task \(dto.id) — scope \(scope) excludes user")
-                        return
-                    }
-                }
                 Task { await actor.handleRealtimeUpdate(.task(dto)) }
 
             case "users":
@@ -651,6 +610,15 @@ final class RealtimeProcessor: ObservableObject {
                 existing.needsSync = false
             }
         } else {
+            // Origin suppression: pendingFields non-empty means the main context
+            // just wrote this row locally. Inserting here would leave two rows
+            // with the same id (ProjectTask.id lacks @Attribute(.unique)).
+            if !pendingFields.isEmpty {
+                print("[RealtimeProcessor] Skipping upsert insert for task \(id) — pending local op exists (origin suppression)")
+                try context.save()
+                return
+            }
+
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)
@@ -761,6 +729,17 @@ final class RealtimeProcessor: ObservableObject {
             existing.lastSyncedAt = Date()
             existing.needsSync = false
         } else {
+            // Origin suppression: pendingFields non-empty means the main context
+            // just wrote this row locally. Inserting here would leave two rows
+            // with the same id (TaskType.id lacks @Attribute(.unique)), and the
+            // UI's relationship resolution can pick the stale duplicate — the
+            // "Rail task type crash" repro traces to this path.
+            if !pendingFields.isEmpty {
+                print("[RealtimeProcessor] Skipping upsert insert for task type \(id) — pending local op exists (origin suppression)")
+                try context.save()
+                return
+            }
+
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)

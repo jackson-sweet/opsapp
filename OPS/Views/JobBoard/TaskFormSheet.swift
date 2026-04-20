@@ -1425,11 +1425,24 @@ struct TaskFormSheet: View {
                     }
                     newTask.setTeamMemberIds(snapshotTeamMemberIds)
 
+                    // setTeamMemberIds only writes the ID string; it does NOT
+                    // cascade to the [User] relationship array that the task
+                    // list reads for avatar rendering. Populate it here so the
+                    // row shows avatars immediately instead of waiting for an
+                    // inbound sync to hydrate the relationship.
+                    if !snapshotTeamMemberIds.isEmpty {
+                        let ids = snapshotTeamMemberIds
+                        let descriptor = FetchDescriptor<User>(
+                            predicate: #Predicate<User> { user in ids.contains(user.id) }
+                        )
+                        newTask.teamMembers = (try? modelContext.fetch(descriptor)) ?? []
+                    }
+
                     task = newTask
                     isEditMode = false
                     teamMembersChanged = false
 
-                    print("[TASK_CREATE] ✅ Task inserted locally with ID: \(task.id), color: \(task.taskColor)")
+                    print("[TASK_CREATE] ✅ Task inserted locally with ID: \(task.id), color: \(task.taskColor), teamMembers: \(newTask.teamMembers.count)")
                 }
 
                 // Common writes (create + edit)
@@ -1534,6 +1547,19 @@ struct TaskFormSheet: View {
                 // Fall through to dismiss path so the user isn't stuck.
             }
 
+            // ----- Defense against inbound-echo duplicate race -----
+            // ProjectTask.id is not @Attribute(.unique), so a realtime echo
+            // arriving after the outbound SyncOperation was cleared can slip
+            // past origin-suppression in InboundProcessor.mergeTask and insert
+            // a second row for the same id. Dedupe immediately, and again
+            // after a short delay to catch slow echoes from realtime.
+            let createdTaskId = task.id
+            Self.dedupeTaskRow(id: createdTaskId, context: modelContext)
+            Task { @MainActor [weak ctx = modelContext] in
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                if let ctx { Self.dedupeTaskRow(id: createdTaskId, context: ctx) }
+            }
+
             // ----- Phase 3: Success path (MainActor) -----
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
@@ -1571,6 +1597,28 @@ struct TaskFormSheet: View {
             try? await Task.sleep(nanoseconds: 300_000_000)
             dismiss()
         }
+    }
+
+    /// Remove duplicate ProjectTask rows for a given id. Winner is the copy
+    /// with needsSync=true (pending local changes) if present, otherwise the
+    /// most-recently synced. Called from saveTask to defend against the
+    /// inbound-echo race that slips past origin-suppression.
+    @MainActor
+    private static func dedupeTaskRow(id: String, context: ModelContext) {
+        let descriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { $0.id == id }
+        )
+        guard let copies = try? context.fetch(descriptor), copies.count > 1 else { return }
+        print("[TASK_FORM] ⚠️ Detected \(copies.count) rows for task \(id), deduping")
+
+        let winner: ProjectTask = copies.first(where: { $0.needsSync })
+            ?? copies.max(by: { ($0.lastSyncedAt ?? .distantPast) < ($1.lastSyncedAt ?? .distantPast) })
+            ?? copies[0]
+
+        for dup in copies where dup !== winner {
+            context.delete(dup)
+        }
+        try? context.save()
     }
 
     private func saveDraftTask() {

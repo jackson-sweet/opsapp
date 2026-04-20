@@ -200,6 +200,9 @@ class PhotoDownloadManager: ObservableObject {
         var deleted = 0
         var bytesFreed: Int64 = 0
 
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+
         for candidate in candidates {
             if currentUsage <= budget { break }
 
@@ -207,6 +210,13 @@ class PhotoDownloadManager: ObservableObject {
             let fileSize = ImageFileManager.shared.imageFileSize(localID: cacheKey) ?? 0
 
             if removeFromDevice(candidate.url) {
+                // Per-photo eviction log for test verification. Chronological
+                // ordering (oldest project date first) should be visible in
+                // the printed sequence.
+                let dateStr = dateFormatter.string(from: candidate.projectDate)
+                let urlTail = String(candidate.url.suffix(48))
+                print("[PhotoDownloadManager] Evicted project-date=\(dateStr) url=…\(urlTail)")
+
                 deleted += 1
                 bytesFreed += fileSize
                 currentUsage -= fileSize

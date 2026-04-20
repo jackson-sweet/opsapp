@@ -189,6 +189,12 @@ class PhotoDownloadManager: ObservableObject {
 
     /// Enforce auto-keep policy: remove photos older than policy date.
     /// Respects pinned URLs and keepAllDownloaded setting.
+    ///
+    /// DEPRECATED (photo-storage-capacity migration): replaced by
+    /// `enforceCapacityPolicy(projectsWithPhotos:)`. The capacity-based approach
+    /// evicts by oldest project rather than fixed time cutoffs, and scales to
+    /// device capacity. This method kept for callers-in-transition; will be
+    /// removed once PhotoStorageManagementView is rewritten.
     func enforceKeepPolicy(allPhotoURLs: [(url: String, date: Date)]) {
         // Never enforce cleanup when keep-all is enabled
         guard !keepAllDownloaded else { return }
@@ -202,6 +208,67 @@ class PhotoDownloadManager: ObservableObject {
                 _ = removeFromDevice(item.url)
             }
         }
+    }
+
+    /// Capacity-based cleanup: evict photos from oldest-updated projects first
+    /// until on-disk usage drops below `StorageProfiler.shared.budgetBytes`.
+    ///
+    /// - Pinned photos are SKIPPED (they still count toward budget but are never
+    ///   auto-deleted — user chose to keep them).
+    /// - Eviction is user-initiated only (via cap-hit notification action or
+    ///   "Free Up Space" in settings). This method never runs automatically.
+    /// - Oldest-project-first ordering: a project with 50 photos that hasn't
+    ///   been touched in 6 months loses all 50 before a project touched last
+    ///   week loses any.
+    ///
+    /// - Parameter projectsWithPhotos: caller supplies `(projectUpdatedAt, photoURLs)`
+    ///   tuples for every project containing cached photos. The caller is
+    ///   responsible for filtering to the user's permission scope.
+    /// - Returns: `(deleted, bytesFreed)` — count of photo files removed and
+    ///   total bytes reclaimed.
+    @discardableResult
+    func enforceCapacityPolicy(
+        projectsWithPhotos: [(projectUpdatedAt: Date, photoURLs: [String])]
+    ) -> (deleted: Int, bytesFreed: Int64) {
+        let profiler = StorageProfiler.shared
+        let budget = profiler.budgetBytes
+        var currentUsage = profiler.currentUsageBytes()
+
+        guard currentUsage > budget else {
+            print("[PhotoDownloadManager] Capacity policy: under budget (\(StorageProfiler.formatBytes(currentUsage)) of \(StorageProfiler.formatBytes(budget))) — nothing to evict")
+            return (0, 0)
+        }
+
+        // Flatten to (projectDate, url) pairs. Skip pinned URLs — they count
+        // toward the budget but are never candidates for eviction.
+        var candidates: [(projectDate: Date, url: String)] = []
+        for project in projectsWithPhotos {
+            for url in project.photoURLs where !pinnedURLs.contains(url) {
+                candidates.append((project.projectUpdatedAt, url))
+            }
+        }
+
+        // Oldest projects first.
+        candidates.sort { $0.projectDate < $1.projectDate }
+
+        var deleted = 0
+        var bytesFreed: Int64 = 0
+
+        for candidate in candidates {
+            if currentUsage <= budget { break }
+
+            let cacheKey = candidate.url.hasPrefix("//") ? "https:" + candidate.url : candidate.url
+            let fileSize = ImageFileManager.shared.imageFileSize(localID: cacheKey) ?? 0
+
+            if removeFromDevice(candidate.url) {
+                deleted += 1
+                bytesFreed += fileSize
+                currentUsage -= fileSize
+            }
+        }
+
+        print("[PhotoDownloadManager] Capacity policy: evicted \(deleted) photo(s), freed \(StorageProfiler.formatBytes(bytesFreed)) — now at \(StorageProfiler.formatBytes(currentUsage)) of \(StorageProfiler.formatBytes(budget))")
+        return (deleted, bytesFreed)
     }
 
     // MARK: - Storage Estimation (cached — call sparingly, not in computed properties)

@@ -40,11 +40,56 @@ class TaskRepository {
             query = query.eq("created_by", value: userId)
         }
 
-        let response: [SupabaseProjectTaskDTO] = try await query
+        let assigned: [SupabaseProjectTaskDTO] = try await query
             .order("display_order", ascending: true)
             .execute()
             .value
-        return response
+
+        // Bug G9 — tasks on mention-granted projects.
+        // Mirror ProjectRepository: at "assigned" scope also pull tasks whose
+        // project_id is in the user's mention-granted project set. RLS enforces.
+        guard scope == "assigned", let userId = userId else {
+            return assigned
+        }
+        let mentioned = try await fetchTasksOnMentionGrantedProjects(userId: userId, since: since)
+        return unionByID(assigned, mentioned)
+    }
+
+    /// Fetch tasks on projects the user has mention-based view access to (Bug G9).
+    private func fetchTasksOnMentionGrantedProjects(userId: String, since: Date?) async throws -> [SupabaseProjectTaskDTO] {
+        struct NoteIdRow: Decodable { let project_id: String }
+        let noteRows: [NoteIdRow] = try await client
+            .from("project_notes")
+            .select("project_id")
+            .eq("company_id", value: companyId)
+            .is("deleted_at", value: nil)
+            .contains("mentioned_user_ids", value: [userId])
+            .execute()
+            .value
+        let projectIds = Array(Set(noteRows.map(\.project_id)))
+        guard !projectIds.isEmpty else { return [] }
+
+        var taskQuery = client
+            .from("project_tasks")
+            .select()
+            .eq("company_id", value: companyId)
+            .in("project_id", values: projectIds)
+        if let since = since {
+            taskQuery = taskQuery.gte("updated_at", value: isoString(since))
+        }
+        return try await taskQuery
+            .order("display_order", ascending: true)
+            .execute()
+            .value
+    }
+
+    private func unionByID(_ a: [SupabaseProjectTaskDTO], _ b: [SupabaseProjectTaskDTO]) -> [SupabaseProjectTaskDTO] {
+        var seen = Set<String>()
+        var result: [SupabaseProjectTaskDTO] = []
+        for dto in a + b where seen.insert(dto.id).inserted {
+            result.append(dto)
+        }
+        return result
     }
 
     func fetchForProject(_ projectId: String) async throws -> [SupabaseProjectTaskDTO] {

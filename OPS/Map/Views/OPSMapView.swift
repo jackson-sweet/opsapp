@@ -18,7 +18,7 @@ struct OPSMapView: UIViewRepresentable {
     func makeUIView(context: Context) -> MapView {
         let style = coordinator.mapStyle
         let options = MapInitOptions(styleURI: style.baseStyleURI)
-        let mapView = MapView(frame: .zero, mapInitOptions: options)
+        let mapView = MapView(frame: CGRect(x: 0, y: 0, width: 64, height: 64), mapInitOptions: options)
 
         // Match the style's land color while tiles stream in
         mapView.backgroundColor = style.backgroundColor

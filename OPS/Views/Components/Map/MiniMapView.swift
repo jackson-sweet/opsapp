@@ -148,7 +148,7 @@ private struct MiniMapboxView: UIViewRepresentable {
             cameraOptions: camera,
             styleURI: style.baseStyleURI
         )
-        let mapView = MapView(frame: .zero, mapInitOptions: options)
+        let mapView = MapView(frame: CGRect(x: 0, y: 0, width: 64, height: 64), mapInitOptions: options)
         mapView.backgroundColor = style.backgroundColor
 
         // Disable all interactions — parent Button handles tap

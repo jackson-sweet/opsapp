@@ -123,8 +123,11 @@ struct CalendarDaySelector: View {
         }
         // Watch for calendar event changes and force refresh
         .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
-            // Use objectWillChange instead of forcing full view recreation
-            viewModel.objectWillChange.send()
+            // Defer past current render pass to avoid
+            // "Publishing changes from within view updates" warning.
+            DispatchQueue.main.async {
+                viewModel.objectWillChange.send()
+            }
         }
     }
 

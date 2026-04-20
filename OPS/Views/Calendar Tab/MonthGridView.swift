@@ -1240,17 +1240,19 @@ struct DayDetailsSheet: View {
                     .padding(.top, 60)
                 } else {
                     // New tasks section (matching week view template)
-                    ForEach(Array(newTasks.enumerated()), id: \.element.id) { index, task in
-                        CalendarEventCard(
-                            task: task,
-                            isFirst: index == 0,
-                            isOngoing: false,
-                            onTap: {
-                                handleTaskTap(task)
-                            }
-                        )
-                        .wizardTarget("tap_task")
-                        .padding(.horizontal)
+                    VStack(spacing: 8) {
+                        ForEach(Array(newTasks.enumerated()), id: \.element.id) { index, task in
+                            CalendarEventCard(
+                                task: task,
+                                isFirst: index == 0,
+                                isOngoing: false,
+                                onTap: {
+                                    handleTaskTap(task)
+                                }
+                            )
+                            .wizardTarget("tap_task")
+                            .padding(.horizontal)
+                        }
                     }
 
                     // Ongoing section divider and tasks (matching week view template)
@@ -1271,17 +1273,19 @@ struct DayDetailsSheet: View {
                         .padding(.vertical, 8)
                         .padding(.horizontal, 24)
 
-                        ForEach(Array(ongoingTasks.enumerated()), id: \.element.id) { index, task in
-                            CalendarEventCard(
-                                task: task,
-                                isFirst: false,
-                                isOngoing: true,
-                                onTap: {
-                                    handleTaskTap(task)
-                                }
-                            )
-                            .wizardTarget("tap_task")
-                            .padding(.horizontal)
+                        VStack(spacing: 8) {
+                            ForEach(Array(ongoingTasks.enumerated()), id: \.element.id) { index, task in
+                                CalendarEventCard(
+                                    task: task,
+                                    isFirst: false,
+                                    isOngoing: true,
+                                    onTap: {
+                                        handleTaskTap(task)
+                                    }
+                                )
+                                .wizardTarget("tap_task")
+                                .padding(.horizontal)
+                            }
                         }
                     }
                 }

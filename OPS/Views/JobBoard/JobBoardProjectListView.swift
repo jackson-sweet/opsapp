@@ -514,7 +514,7 @@ struct JobBoardProjectListView: View {
                         color: status.color,
                         onRemove: {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                selectedStatuses.remove(status)
+                                _ = selectedStatuses.remove(status)
                             }
                         }
                     )
@@ -531,7 +531,7 @@ struct JobBoardProjectListView: View {
                             color: OPSStyle.Colors.primaryAccent,
                             onRemove: {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                    selectedTeamMemberIds.remove(memberId)
+                                    _ = selectedTeamMemberIds.remove(memberId)
                                 }
                             }
                         )

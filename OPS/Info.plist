@@ -61,16 +61,22 @@
 	</array>
 	<key>UIAppFonts</key>
 	<array>
-		<string>BebasNeue-Regular.ttf</string>
-		<string>Kosugi-Regular.ttf</string>
 		<string>Mohave-Bold.ttf</string>
+		<string>Mohave-BoldItalic.ttf</string>
 		<string>Mohave-Italic.ttf</string>
 		<string>Mohave-Light.ttf</string>
+		<string>Mohave-LightItalic.ttf</string>
 		<string>Mohave-Medium.ttf</string>
 		<string>Mohave-MediumItalic.ttf</string>
 		<string>Mohave-Regular.ttf</string>
 		<string>Mohave-SemiBold.ttf</string>
 		<string>Mohave-SemiBoldItalic.ttf</string>
+		<string>JetBrainsMono-Regular.ttf</string>
+		<string>JetBrainsMono-Medium.ttf</string>
+		<string>JetBrainsMono-Bold.ttf</string>
+		<string>CakeMono-Light.ttf</string>
+		<string>CakeMono-Regular.ttf</string>
+		<string>CakeMono-Bold.ttf</string>
 	</array>
 </dict>
 </plist>

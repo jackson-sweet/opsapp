@@ -116,20 +116,19 @@ struct PushInMessage: View {
         HStack(spacing: 12) {
             // Status icon
             Image(systemName: type.icon)
-                .font(.system(size: OPSStyle.Layout.IconSize.md))
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundColor(type.color)
                 .frame(width: 32, height: 32)
 
             // Text content
             VStack(alignment: .leading, spacing: 2) {
                 Text(title.uppercased())
-                    .font(OPSStyle.Typography.cardSubtitle)
-                    .fontWeight(.semibold)
+                    .font(.custom("CakeMono-Light", size: 16))
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
                 if let subtitle = subtitle {
                     Text(subtitle)
-                        .font(OPSStyle.Typography.caption)
+                        .font(.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
@@ -154,7 +153,7 @@ struct PushInMessage: View {
                     dismissMessage()
                 }) {
                     Image(systemName: "xmark")
-                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .frame(width: 24, height: 24)
                         .background(
@@ -195,6 +194,7 @@ struct PushInMessage: View {
                 .foregroundColor(OPSStyle.Colors.cardBorder),
             alignment: .bottom
         )
+        .shadow(color: OPSStyle.Colors.shadowColor, radius: 10, x: 0, y: 4)
         .offset(y: dragOffset)
         .gesture(
             DragGesture()

@@ -53,10 +53,11 @@ struct OPSProfileInput: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Label
+            // Label — JetBrains Mono uppercase, tactical
             Text(label.uppercased())
                 .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .foregroundColor(OPSStyle.Colors.text3)
+                .tracking(0.12 * 14)
 
             // Input field or display text
             if isEditable {
@@ -65,31 +66,34 @@ struct OPSProfileInput: View {
                 nonEditableField
             }
 
-            // Helper text (if provided)
+            // Helper text — bracket-wrapped metadata per spec voice
             if let helper = helperText {
-                Text(helper)
+                Text("[\(helper)]")
                     .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .italic()
+                    .foregroundColor(OPSStyle.Colors.text3)
             }
         }
     }
 
     // MARK: - Editable Field
-
+    //
+    // Spec v2: inputs use `surface-input` fill (rgba 255,255,255,0.04) with `line` border.
+    // Focus brightens border to rgba(255,255,255,0.20) — NO accent on input focus rings.
+    // (Accent focus is reserved for buttons and system-level focus; inputs are the lone
+    // exception that does NOT use accent on focus.)
     private var editableField: some View {
         Group {
             if type == .password {
                 SecureField("", text: $text)
                     .placeholder(when: text.isEmpty) {
                         Text(placeholder.isEmpty ? label : placeholder)
-                            .foregroundColor(OPSStyle.Colors.placeholderText)
+                            .foregroundColor(OPSStyle.Colors.text3)
                     }
             } else {
                 TextField("", text: $text)
                     .placeholder(when: text.isEmpty) {
                         Text(placeholder.isEmpty ? label : placeholder)
-                            .foregroundColor(OPSStyle.Colors.placeholderText)
+                            .foregroundColor(OPSStyle.Colors.text3)
                     }
                     .keyboardType(type.keyboardType)
                     .textInputAutocapitalization(type.autocapitalization)
@@ -97,20 +101,21 @@ struct OPSProfileInput: View {
             }
         }
         .font(OPSStyle.Typography.body)
-        .foregroundColor(OPSStyle.Colors.primaryText)
-        .tint(OPSStyle.Colors.primaryText)
+        .foregroundColor(OPSStyle.Colors.text)
+        .tint(OPSStyle.Colors.text)
         .focused($isFocused)
         .padding(.vertical, 12)
         .padding(.horizontal, 16)
-        .background(Color.clear)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .background(OPSStyle.Colors.surfaceInput)
+        .cornerRadius(OPSStyle.Layout.buttonRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                 .stroke(
-                    isFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
-                    lineWidth: OPSStyle.Layout.Border.standard
+                    isFocused ? Color.white.opacity(0.20) : OPSStyle.Colors.line,
+                    lineWidth: 1
                 )
         )
+        .animation(OPSStyle.Animation.hover, value: isFocused)
         .onChange(of: isFocused) { _, newValue in
             onFocusChange?(newValue)
         }
@@ -121,15 +126,15 @@ struct OPSProfileInput: View {
     private var nonEditableField: some View {
         Text(text.isEmpty ? placeholder : text)
             .font(OPSStyle.Typography.body)
-            .foregroundColor(text.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.tertiaryText)
+            .foregroundColor(text.isEmpty ? OPSStyle.Colors.text3 : OPSStyle.Colors.text2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 12)
             .padding(.horizontal, 16)
-            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .background(OPSStyle.Colors.surfaceInput)
+            .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.tertiaryText.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                    .stroke(OPSStyle.Colors.line, lineWidth: 1)
             )
     }
 }
@@ -159,11 +164,14 @@ struct FormTextField: View {
     var keyboardType: UIKeyboardType = .default
     var isSecure: Bool = false
 
+    @FocusState private var isFocused: Bool
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title.uppercased())
                 .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .foregroundColor(OPSStyle.Colors.text3)
+                .tracking(0.12 * 14)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Group {
@@ -171,28 +179,33 @@ struct FormTextField: View {
                     SecureField("", text: $text)
                         .placeholder(when: text.isEmpty) {
                             Text(placeholder.isEmpty ? title : placeholder)
-                                .foregroundColor(OPSStyle.Colors.placeholderText)
+                                .foregroundColor(OPSStyle.Colors.text3)
                         }
                 } else {
                     TextField("", text: $text)
                         .placeholder(when: text.isEmpty) {
                             Text(placeholder.isEmpty ? title : placeholder)
-                                .foregroundColor(OPSStyle.Colors.placeholderText)
+                                .foregroundColor(OPSStyle.Colors.text3)
                         }
                         .keyboardType(keyboardType)
                 }
             }
             .font(OPSStyle.Typography.body)
-            .foregroundColor(OPSStyle.Colors.primaryText)
-            .tint(OPSStyle.Colors.primaryText)
+            .foregroundColor(OPSStyle.Colors.text)
+            .tint(OPSStyle.Colors.text)
+            .focused($isFocused)
             .padding(.vertical, 12)
             .padding(.horizontal, 16)
-            .background(Color.clear)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .background(OPSStyle.Colors.surfaceInput)
+            .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                    .stroke(
+                        isFocused ? Color.white.opacity(0.20) : OPSStyle.Colors.line,
+                        lineWidth: 1
+                    )
             )
+            .animation(OPSStyle.Animation.hover, value: isFocused)
         }
     }
 }

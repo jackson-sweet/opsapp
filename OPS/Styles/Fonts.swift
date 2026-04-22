@@ -2,172 +2,176 @@
 //  Fonts.swift
 //  OPS
 //
-//  Created by Jackson Sweet on 2025-05-12.
+//  OPS typography system — spec v2 (2026-04-17).
+//  Three font families, each with one job:
+//
+//    • Mohave            — body copy, names, hero numbers
+//    • JetBrains Mono    — numbers, timestamps, `//` prefixes, `[brackets]`, micro labels
+//    • Cake Mono Light   — uppercase display voice (titles, buttons, badges, section headers)
+//
+//  Kosugi and Bebas Neue were deprecated 2026-04-17 and removed from the bundle.
+//  Every former Kosugi role now maps to JetBrains Mono.
 //
 
 import Foundation
 import SwiftUI
 
 extension Font {
-    // MARK: - Title Fonts (Mohave)
-    
-    /// Large title - Mohave Bold (32pt)
-    public static var largeTitle: Font {
-        return Font.custom("Mohave-Bold", size: 32)
+
+    // MARK: - Display voice (Cake Mono Light)
+    //
+    // The uppercase, confident, branded voice. Always weight 300 (Light).
+    // Call sites should apply `.textCase(.uppercase)` at the view level.
+
+    /// Page title — Cake Mono Light 22pt (TopBar H1, root-route page heading)
+    public static var pageTitle: Font {
+        return Font.custom("CakeMono-Light", size: 22)
     }
-    
-    /// Title - Mohave SemiBold (28pt)
-    public static var title: Font {
-        return Font.custom("Mohave-SemiBold", size: 28)
+
+    /// Display heading — Cake Mono Light 30pt (auth h1s, wizard step titles)
+    public static var display: Font {
+        return Font.custom("CakeMono-Light", size: 30)
     }
-    
-    /// Subtitle - Kosugi Regular (22pt)
-    public static var subtitle: Font {
-        return Font.custom("Kosugi-Regular", size: 22)
+
+    /// Section heading — Cake Mono Light 18pt (settings subheads, admin section headers)
+    public static var section: Font {
+        return Font.custom("CakeMono-Light", size: 18)
     }
-    
-    // MARK: - Body Fonts (Mohave)
-    
-    /// Body text - Mohave Regular (16pt)
+
+    /// Button label — Cake Mono Light 14pt (primary / secondary button text)
+    public static var buttonLabel: Font {
+        return Font.custom("CakeMono-Light", size: 14)
+    }
+
+    /// Badge (Cake Mono variant) — Cake Mono Light 11pt
+    public static var badgeCake: Font {
+        return Font.custom("CakeMono-Light", size: 11)
+    }
+
+    // MARK: - Data / tactical voice (JetBrains Mono)
+    //
+    // Numbers, timestamps, `//` prefixes, `[brackets]`, micro labels, shortcut chips.
+    // Always rendered with `.monospacedDigit()` plus tabular-lining via feature settings
+    // where possible (SwiftUI doesn't expose `font-feature-settings` directly — use
+    // `.monospacedDigit()` on the view modifier for tabular-lining behavior).
+
+    /// Panel title — JetBrains Mono 11pt (widget and section titles, prefixed with `//`)
+    public static var panelTitle: Font {
+        return Font.custom("JetBrainsMono-Regular", size: 11)
+    }
+
+    /// Data value (large) — JetBrains Mono Medium 20pt (hero metrics in widgets)
+    public static var dataValueLg: Font {
+        return Font.custom("JetBrainsMono-Medium", size: 20)
+    }
+
+    /// Data value — JetBrains Mono 13pt (standard data values)
+    public static var dataValue: Font {
+        return Font.custom("JetBrainsMono-Regular", size: 13)
+    }
+
+    /// Category label — JetBrains Mono 11pt (BOOKED, INVOICED, etc.)
+    public static var category: Font {
+        return Font.custom("JetBrainsMono-Regular", size: 11)
+    }
+
+    /// Metadata — JetBrains Mono 11pt (timestamps, IDs, subtotals)
+    public static var metadata: Font {
+        return Font.custom("JetBrainsMono-Regular", size: 11)
+    }
+
+    // MARK: - Body / narrative (Mohave)
+
+    /// Hero number — Mohave Light 80pt (dashboard hero, revenue total)
+    public static var hero: Font {
+        return Font.custom("Mohave-Light", size: 80)
+    }
+
+    /// Body text — Mohave Regular 16pt
     public static var body: Font {
         return Font.custom("Mohave-Regular", size: 16)
     }
-    
-    /// Bold body text - Mohave Medium (16pt)
+
+    /// Bold body text — Mohave Medium 16pt
     public static var bodyBold: Font {
         return Font.custom("Mohave-Medium", size: 16)
     }
-    
-    /// Emphasized body text - Mohave SemiBold (16pt)
+
+    /// Emphasized body text — Mohave SemiBold 16pt
     public static var bodyEmphasis: Font {
         return Font.custom("Mohave-SemiBold", size: 16)
     }
-    
-    // MARK: - Supporting Text (Kosugi)
-    
-    /// Caption text - Kosugi Regular (14pt)
-    public static var caption: Font {
-        return Font.custom("Kosugi-Regular", size: 14)
-    }
-    
-    /// Bold caption - Kosugi Regular (14pt)
-    public static var captionBold: Font {
-        return Font.custom("Kosugi-Regular", size: 14)
-    }
-    
-    /// Small caption - Kosugi Regular (12pt)
-    public static var smallCaption: Font {
-        return Font.custom("Kosugi-Regular", size: 12)
-    }
-    
-    /// Small body text - Mohave Light (14pt)
+
+    /// Small body text — Mohave Light 14pt
     public static var smallBody: Font {
         return Font.custom("Mohave-Light", size: 14)
     }
-    
-    // MARK: - Card Fonts
-    
-    /// Card title - Mohave Medium (18pt)
-    public static var cardTitle: Font {
-        return Font.custom("Mohave-Medium", size: 18)
-    }
-    
-    /// Card subtitle - Kosugi Regular (15pt)
-    public static var cardSubtitle: Font {
-        return Font.custom("Kosugi-Regular", size: 15)
-    }
-    
-    /// Card body text - Mohave Regular (14pt)
+
+    /// Card body text — Mohave Regular 14pt
     public static var cardBody: Font {
         return Font.custom("Mohave-Regular", size: 14)
     }
-    
-    // MARK: - UI Elements
-    
-    /// Status text - Mohave Medium (12pt)
+
+    // MARK: - Legacy role names (mapped to new fonts)
+    //
+    // These names are preserved so existing call sites continue to compile.
+    // Each role has been remapped to match the spec v2 voice assignment.
+    // Prefer the new role names above for any new code.
+
+    /// Large title — Mohave Bold 32pt (non-uppercase display)
+    public static var largeTitle: Font {
+        return Font.custom("Mohave-Bold", size: 32)
+    }
+
+    /// Title — Mohave SemiBold 28pt (non-uppercase display)
+    public static var title: Font {
+        return Font.custom("Mohave-SemiBold", size: 28)
+    }
+
+    /// Subtitle — formerly Kosugi 22pt. Now JetBrains Mono 22pt for tactical feel.
+    public static var subtitle: Font {
+        return Font.custom("JetBrainsMono-Regular", size: 22)
+    }
+
+    /// Caption text — formerly Kosugi 14pt. Now JetBrains Mono 14pt.
+    public static var caption: Font {
+        return Font.custom("JetBrainsMono-Regular", size: 14)
+    }
+
+    /// Bold caption — formerly Kosugi 14pt. Now JetBrains Mono Medium 14pt.
+    public static var captionBold: Font {
+        return Font.custom("JetBrainsMono-Medium", size: 14)
+    }
+
+    /// Small caption — formerly Kosugi 12pt. Now JetBrains Mono 12pt
+    /// (content rendered with bracket wrapping — `[caption text]`).
+    public static var smallCaption: Font {
+        return Font.custom("JetBrainsMono-Regular", size: 12)
+    }
+
+    /// Card title — Mohave Medium 18pt
+    public static var cardTitle: Font {
+        return Font.custom("Mohave-Medium", size: 18)
+    }
+
+    /// Card subtitle — formerly Kosugi 15pt. Now JetBrains Mono 15pt.
+    public static var cardSubtitle: Font {
+        return Font.custom("JetBrainsMono-Regular", size: 15)
+    }
+
+    /// Status text — JetBrains Mono Medium 12pt (uppercase at call site)
     public static var status: Font {
-        return Font.custom("Mohave-Medium", size: 12)
-    }
-    
-    /// Small button text - Kosugi Regular (12pt) — ALL CAPS via .textCase(.uppercase)
-    public static var smallButton: Font {
-        return Font.custom("Kosugi-Regular", size: 12)
+        return Font.custom("JetBrainsMono-Medium", size: 12)
     }
 
-    /// Button text - Kosugi Regular (14pt) — ALL CAPS via .textCase(.uppercase)
+    /// Button text — legacy name. New primary surface should use `.buttonLabel` (Cake Mono Light).
+    /// Kept at Mohave Regular 16pt for any view still depending on a sentence-case button.
     public static var button: Font {
-        return Font.custom("Kosugi-Regular", size: 14)
+        return Font.custom("Mohave-Regular", size: 16)
     }
 
-    /// Section label - Kosugi Regular (12pt) — ALL CAPS, tracked
-    public static var sectionLabel: Font {
-        return Font.custom("Kosugi-Regular", size: 12)
-    }
-
-    // MARK: - Dynamic Sizing
-
-    /// Avatar initials — Mohave Bold, dynamically sized relative to the avatar frame.
-    /// Use for initials inside Circle/RoundedRectangle avatars where size varies.
-    public static func avatarInitials(size: CGFloat) -> Font {
-        return Font.custom("Mohave-Bold", size: size)
-    }
-
-    // MARK: - Compact UI Labels (Kosugi)
-
-    /// Mini label — Kosugi Regular (10pt). Avatar initials inside small circles (28-32pt).
-    public static var miniLabel: Font {
-        return Font.custom("Kosugi-Regular", size: 10)
-    }
-
-    /// Micro label — Kosugi Regular (11pt). Sheet section labels, toolbar cancel buttons.
-    public static var microLabel: Font {
-        return Font.custom("Kosugi-Regular", size: 11)
-    }
-
-    /// Tag label — Kosugi Regular (12pt). Small tags, dependency bar labels, chip text.
-    public static var tagLabel: Font {
-        return Font.custom("Kosugi-Regular", size: 12)
-    }
-
-    /// Preview label — Kosugi Regular (18pt). Task type preview badges, large chip text.
-    public static var previewLabel: Font {
-        return Font.custom("Kosugi-Regular", size: 18)
-    }
-
-    // MARK: - Additional Sizes
-
-    /// Button large — Mohave SemiBold (18pt). Medium-prominence buttons (Reset, secondary actions).
-    public static var buttonLarge: Font {
-        return Font.custom("Mohave-SemiBold", size: 18)
-    }
-
-    /// Heading text - Mohave Medium (20pt)
-    public static var heading: Font {
-        return Font.custom("Mohave-Medium", size: 20)
-    }
-
-    /// Heading bold — Mohave Bold (22pt). Large avatar initials, prominent display text.
-    public static var headingBold: Font {
-        return Font.custom("Mohave-Bold", size: 22)
-    }
-
-    /// Large heading text - Mohave SemiBold (24pt)
-    public static var headingLarge: Font {
-        return Font.custom("Mohave-SemiBold", size: 24)
-    }
-
-    /// Quantity display — Mohave Bold (56pt). Inventory quantity counters.
-    public static var displayQuantity: Font {
-        return Font.custom("Mohave-Bold", size: 56)
-    }
-
-    /// Display large - Mohave Bold (48pt)
-    public static var displayLarge: Font {
-        return Font.custom("Mohave-Bold", size: 48)
-    }
-
-    /// Display extra large - Mohave Bold (60pt)
-    public static var displayXL: Font {
-        return Font.custom("Mohave-Bold", size: 60)
+    /// Small button text — Mohave Medium 14pt.
+    public static var smallButton: Font {
+        return Font.custom("Mohave-Medium", size: 14)
     }
 }

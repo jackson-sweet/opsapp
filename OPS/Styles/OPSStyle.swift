@@ -9,36 +9,54 @@
 // OPSStyle.swift
 import SwiftUI
 
-/// The main styling system for the OPS app
+/// The main styling system for the OPS app — spec v2 (2026-04-17).
 ///
-/// This file contains the core design system values for the app such as colors,
-/// typography, and layout constants. For reusable UI components, see the
-/// Styles/Components directory:
+/// Canonical source of truth: `/.interface-design/system.md` at the repo root.
 ///
-/// - ButtonStyles.swift - Button styling and components
-/// - CardStyles.swift - Card styling and components
-/// - CategoryCard.swift - Settings menu category cards
-/// - FormInputs.swift - Text inputs and form controls
-/// - IconBadge.swift - Icon badge styling
-/// - ListItems.swift - List item row styling
-/// - OPSComponents.swift - Component documentation and legacy components
-/// - ProfileCard.swift - User profile card styling
-/// - SettingsHeader.swift - Settings screen headers
-/// - StatusBadge.swift - Status indicator badges
+/// Semantic tokens (prefer these for new code):
+///
+///   Colors
+///   ─────────────────────────────────────────────────
+///   opsAccent      #6F94B0  primary CTA + focus ring ONLY
+///   text           #EDEDED  primary body, hero numbers, names, active nav
+///   text2          #B5B5B5  secondary values, ghost buttons, links
+///   text3          #8A8A8A  labels, metadata, subtitles, placeholders
+///   textMute       #6A6A6A  decorative ONLY — `//` slashes, separators
+///   olive          #9DB582  success / completed / nominal / +delta
+///   tan            #C4A868  attention / warning / site visit / expiring
+///   rose           #B58289  error / overdue / cost
+///   brick          #93321A  destructive borders/dots ONLY — not body text
+///
+///   Radii (sharp, tactical — no 999px pills except avatars)
+///   ─────────────────────────────────────────────────
+///   panelRadius         10  cards, widgets, panels
+///   modalRadius         12  modals, popovers, dropdowns, toasts
+///   buttonRadius         5  buttons, inputs
+///   chipRadius           4  tags, badges, chips
+///   progressBarRadius    2  funnel bars, progress tracks
+///   sidebarHoverRadius   6  sidebar hover background
+///
+///   Motion: single easing curve `cubic-bezier(0.22, 1, 0.36, 1)` — no spring.
+///
+/// Legacy token names (primaryAccent, cardBackground, cornerRadius, etc.) are
+/// preserved as aliases so existing call sites keep compiling. Prefer the new
+/// semantic names above in any new or touched code.
+///
+/// For reusable UI components, see Styles/Components/.
 ///
 enum OPSStyle {
     // MARK: - Colors
     enum Colors {
         // Brand colors
-        static let primaryAccent = Color("AccentPrimary") // Orange (#FF7733)
-        static let secondaryAccent = Color("AccentSecondary") // Blue for secondary actions
-        
-        // Background colors
-        static let background = Color("Background") // Main background (black)
-        static let darkBackground = Color("DarkBackground") // Darker background (#090C15)
-        static let cardBackground = Color("CardBackground") // Card background (dark gray)
-        static let cardBackgroundDark = Color("CardBackgroundDark") // Darker card background (#1F293D)
-        static let statusBackground = Color("StatusBackground") // Status badge background
+        static let primaryAccent = Color("AccentPrimary")   // #6F94B0 steel blue — prefer `opsAccent`
+        static let secondaryAccent = Color("AccentSecondary") // #C4A868 tan — prefer `tan`
+
+        // Background colors (legacy — prefer `.glassSurface()` / `.glassDense()` modifiers)
+        static let background = Color("Background")                // #000000 pure black
+        static let darkBackground = Color("DarkBackground")        // #090C15 (legacy — deprecated)
+        static let cardBackground = Color("CardBackground")        // #191919 flat card (legacy — migrate to glass)
+        static let cardBackgroundDark = Color("CardBackgroundDark") // #0D0D0D (legacy — deprecated)
+        static let statusBackground = Color("StatusBackground")    // #1D1D1D (legacy — deprecated)
 
         // Border colors
         static let cardBorder = Color.white.opacity(0.2) // Standard card border (consolidated from 0.1, 0.15, 0.2 variations)
@@ -47,17 +65,17 @@ enum OPSStyle {
         static let buttonBorder = Color.white.opacity(0.4) // Secondary action buttons
         static let darkBorder = Color.black.opacity(0.5) // Dark borders; used by GracePeriodBanner
         
-        // Text colors
-        static let primaryText = Color("TextPrimary") // White
-        static let secondaryText = Color("TextSecondary") // Light gray (#AAAAAA)
-        static let tertiaryText = Color("TextTertiary") // Darker gray (#777777)
-        static let inactiveText = Color("TextInactive") // Dark gray
-        
+        // Text colors (prefer `text` / `text2` / `text3` / `textMute` below)
+        static let primaryText   = Color("TextPrimary")     // #EDEDED — prefer `text`
+        static let secondaryText = Color("TextSecondary")   // #B5B5B5 — prefer `text2`
+        static let tertiaryText  = Color("TextTertiary")    // #8A8A8A — prefer `text3`
+        static let inactiveText  = Color("TextInactive")    // #6A6A6A — prefer `textMute` (decorative only)
+
         // Status colors
-        static let successStatus = Color("StatusSuccess") // Green (#34C759)
-        static let warningStatus = Color("StatusWarning") // Yellow/Orange
-        static let errorStatus = Color("StatusError") // Red (#FF3B30)
-        static let inactiveStatus = Color("StatusInactive") // Gray (#8E8E93)
+        static let successStatus  = Color("StatusSuccess")  // #9DB582 olive — prefer `olive`
+        static let warningStatus  = Color("StatusWarning")  // #C4A868 tan — prefer `tan`
+        static let errorStatus    = Color("StatusError")    // #93321A brick — prefer `brick` (border) or `rose` (text)
+        static let inactiveStatus = Color("StatusInactive") // #8E8E93 gray
 
         // Status text colors (for foreground, not background)
         // Reuse existing status asset colors for text as well
@@ -103,7 +121,61 @@ enum OPSStyle {
             startPoint: .top,
             endPoint: .bottom
         )
-        
+
+        // MARK: - Semantic tokens (spec v2 — preferred for new code)
+        //
+        // These are the canonical names from the design system. Prefer them over
+        // the legacy names above (primaryAccent, secondaryAccent, primaryText, …).
+        // The legacy names remain as aliases so existing call sites keep compiling.
+
+        // Accent — primary CTA and focus ring ONLY. Never on links, toggles, nav, tags.
+        static let opsAccent = Color("AccentPrimary")     // #6F94B0 steel blue
+
+        // Text ladder — `textMute` is decorative only (`//`, separators).
+        static let text      = Color("TextPrimary")       // #EDEDED
+        static let text2     = Color("TextSecondary")     // #B5B5B5
+        static let text3     = Color("TextTertiary")      // #8A8A8A
+        static let textMute  = Color("TextInactive")      // #6A6A6A
+
+        // Earth tones — semantic only, never decorative.
+        static let olive     = Color("StatusSuccess")     // #9DB582 positive / success / completed
+        static let tan       = Color("AccentSecondary")   // #C4A868 attention / warning / site visit
+        static let rose      = Color("Rose")              // #B58289 negative / error / overdue / cost
+        static let brick     = Color("StatusError")       // #93321A destructive border/dot ONLY
+
+        // Soft fills and hairlines derived from earth tones (12% / 30% alpha).
+        static let oliveSoft = Color("StatusSuccess").opacity(0.12)
+        static let oliveLine = Color("StatusSuccess").opacity(0.30)
+        static let tanSoft   = Color("AccentSecondary").opacity(0.12)
+        static let tanLine   = Color("AccentSecondary").opacity(0.30)
+        static let roseSoft  = Color("Rose").opacity(0.12)
+        static let roseLine  = Color("Rose").opacity(0.30)
+        static let brickLine = Color("StatusError").opacity(0.50)
+
+        // Financial
+        static let finRevenue     = Color("AccentSecondary")   // #C4A868 revenue / income
+        static let finProfit      = Color("StatusSuccess")     // #9DB582 profit
+        static let finCost        = Color("Rose")              // #B58289 expense / cost
+        static let finReceivables = Color("FinReceivables")    // #D4A574 outstanding receivables
+        static let finOverdue     = Color("StatusError")       // #93321A past-due
+
+        // Surfaces — transparent fills used over #000000 canvas.
+        static let surfaceInput   = Color.white.opacity(0.04)  // Input field fill
+        static let surfaceHover   = Color.white.opacity(0.05)  // Interactive row / button hover
+        static let surfaceActive  = Color.white.opacity(0.08)  // Active toggle, pressed state
+
+        // Borders & neutral fills
+        static let line           = Color.white.opacity(0.10)  // Standard hairline — panels, inputs
+        static let glassBorder    = Color.white.opacity(0.09)  // Glass panel edge
+        static let fillNeutral    = Color.white.opacity(0.14)  // Bar fills, progress tracks
+        static let fillNeutralDim = Color.white.opacity(0.06)  // Track backgrounds, skeletons
+
+        // Glass approximation — prefer the `.glassSurface()` / `.glassDense()` view
+        // modifiers in Phase 4 which layer `.ultraThinMaterial` + border + top gradient.
+        // These flat approximations are a fallback only.
+        static let glassApprox      = Color(red: 18/255, green: 18/255, blue: 20/255).opacity(0.58)
+        static let glassDenseApprox = Color(red: 18/255, green: 18/255, blue: 20/255).opacity(0.78)
+
         // MARK: - Light Theme (Employee Onboarding)
         enum Light {
             // Background colors
@@ -127,18 +199,19 @@ enum OPSStyle {
             static let inactiveStatus = Colors.inactiveStatus
         }
         
-        // Utility
-        // Pipeline stage colors
+        // MARK: - Pipeline stage colors (spec v2 — each stage is globally unique)
+        // Cool slate → steel → teal → warm gold → amber → terracotta, branching to
+        // olive (won) / rose (lost). Every hex is unique across all enum palettes.
         static func pipelineStageColor(for stage: PipelineStage) -> Color {
             switch stage {
-            case .newLead:     return Color(hex: "#BCBCBC")
-            case .qualifying:  return Color(hex: "#B5A381")
-            case .quoting:     return Color(hex: "#8195B5")
-            case .quoted:      return Color(hex: "#9DB582")
-            case .followUp:    return Color(hex: "#C4A868")
-            case .negotiation: return Color(hex: "#B58289")
-            case .won:         return Color("StatusSuccess")
-            case .lost:        return Color("StatusError")
+            case .newLead:     return Color(hex: "#6A7A8A") // cool slate
+            case .qualifying:  return Color(hex: "#6F94B0") // = opsAccent (steel)
+            case .quoting:     return Color(hex: "#7CA5B8") // teal-steel
+            case .quoted:      return Color(hex: "#BFAE8A") // warm gold
+            case .followUp:    return Color(hex: "#C4A868") // = tan
+            case .negotiation: return Color(hex: "#CA9670") // terracotta
+            case .won:         return Color(hex: "#9DB582") // = olive
+            case .lost:        return Color(hex: "#B58289") // = rose
             }
         }
 
@@ -162,33 +235,77 @@ enum OPSStyle {
         }
     }
     
-    // MARK: - Typography
+    // MARK: - Typography (spec v2)
+    //
+    // Three families, each with one job:
+    //   • Mohave          — body, names, hero numbers
+    //   • JetBrains Mono  — numbers, timestamps, `//` prefixes, `[brackets]`, micro labels
+    //   • Cake Mono Light — uppercase display voice (titles, buttons, badges, sections)
+    //
     enum Typography {
-        // Title styles
+
+        // MARK: New semantic roles (spec v2 — prefer these for new code)
+
+        /// Hero number — Mohave Light 80pt (dashboard hero, revenue total)
+        static let hero = Font.hero
+
+        /// Page title — Cake Mono Light 22pt (TopBar H1, root-route page heading)
+        static let pageTitle = Font.pageTitle
+
+        /// Display heading — Cake Mono Light 30pt (auth h1s, wizard step titles)
+        static let display = Font.display
+
+        /// Section heading — Cake Mono Light 18pt (settings subheads)
+        static let section = Font.section
+
+        /// Button label — Cake Mono Light 14pt (primary / secondary button text)
+        static let buttonLabel = Font.buttonLabel
+
+        /// Badge — Cake Mono Light 11pt
+        static let badgeCake = Font.badgeCake
+
+        /// Panel title — JetBrains Mono 11pt (widget and section titles, with `//` prefix)
+        static let panelTitle = Font.panelTitle
+
+        /// Data value (large) — JetBrains Mono Medium 20pt (hero metrics)
+        static let dataValueLg = Font.dataValueLg
+
+        /// Data value — JetBrains Mono 13pt (standard data values)
+        static let dataValue = Font.dataValue
+
+        /// Category label — JetBrains Mono 11pt (BOOKED, INVOICED)
+        static let category = Font.category
+
+        /// Metadata — JetBrains Mono 11pt (timestamps, IDs, subtotals)
+        static let metadata = Font.metadata
+
+        // MARK: Legacy roles (preserved so existing call sites keep compiling)
+
+        // Titles
         static let largeTitle = Font.largeTitle
         static let title = Font.title
-        static let subtitle = Font.subtitle
-        
-        // Body text
+        static let subtitle = Font.subtitle                // → JetBrains Mono 22pt
+
+        // Body text (Mohave)
         static let body = Font.body
         static let bodyBold = Font.bodyBold
         static let bodyEmphasis = Font.bodyEmphasis
-        
-        // Supporting text
-        static let caption = Font.caption
-        static let captionBold = Font.captionBold
-        static let smallCaption = Font.smallCaption
-        static let smallBody = Font.smallBody
-        
+
+        // Supporting text (→ JetBrains Mono)
+        static let caption = Font.caption                  // → JetBrains Mono 14pt
+        static let captionBold = Font.captionBold          // → JetBrains Mono Medium 14pt
+        static let smallCaption = Font.smallCaption        // → JetBrains Mono 12pt
+        static let smallBody = Font.smallBody              // → Mohave Light 14pt
+
         // Cards
         static let cardTitle = Font.cardTitle
-        static let cardSubtitle = Font.cardSubtitle
+        static let cardSubtitle = Font.cardSubtitle        // → JetBrains Mono 15pt
         static let cardBody = Font.cardBody
-        
-        // Status text
+
+        // Status text → JetBrains Mono Medium 12pt (uppercase at call site)
         static let status = Font.status
-        
-        // Button text
+
+        // Buttons — `buttonLabel` (Cake Mono Light) is the new primary role
         static let button = Font.button
         static let smallButton = Font.smallButton
         static let smallButtonBold = Font.smallButton.weight(.bold)
@@ -216,12 +333,23 @@ enum OPSStyle {
         static let touchTargetStandard = 56.0
         static let touchTargetLarge = 64.0
 
-        // Corner radius variants
-        static let cornerRadius = 5.0       // Standard corner radius
-        static let buttonRadius = 5.0       // Button corner radius
-        static let smallCornerRadius = 2.5  // For badges, small UI elements
-        static let cardCornerRadius = 8.0   // For larger cards
-        static let largeCornerRadius = 12.0 // For modals, sheets
+        // MARK: - Corner radius (spec v2 — sharp, tactical, no 999px pills)
+        // Prefer the new semantic names (panelRadius, chipRadius, etc.).
+        // Legacy names are kept as aliases so existing call sites still compile.
+
+        // New semantic names
+        static let panelRadius = 10.0         // Cards, widgets, panels
+        static let modalRadius = 12.0         // Modals, popovers, dropdowns, toasts
+        static let chipRadius = 4.0           // Tags, badges, chips
+        static let progressBarRadius = 2.0    // Funnel bars, progress tracks
+        static let sidebarHoverRadius = 6.0   // Sidebar hover background
+
+        // Legacy aliases (retained for backwards compatibility — values updated to spec)
+        static let cornerRadius = 5.0         // Standard inputs / general small containers (spec: buttons/inputs = 5)
+        static let buttonRadius = 5.0         // Buttons (spec: 5)
+        static let smallCornerRadius = 4.0    // Was 2.5 — now aligned to chipRadius
+        static let cardCornerRadius = 10.0    // Was 8 — now aligned to panelRadius
+        static let largeCornerRadius = 12.0   // Modals / sheets (spec: 12) — aligned to modalRadius
 
         // Opacity presets
         enum Opacity {
@@ -322,10 +450,43 @@ enum OPSStyle {
         }
     }
     
-    // MARK: - Animation
+    // MARK: - Animation (spec v2 — single easing curve, no spring physics)
+    //
+    // One curve for everything: `cubic-bezier(0.22, 1, 0.36, 1)` (EASE_SMOOTH).
+    // No spring, no bounce. Exception: drag-and-drop reorder only.
+    // Every animation must respect reduced-motion — fall back to 150ms opacity crossfade.
+    //
     enum Animation {
-        static let standard = SwiftUI.Animation.easeInOut(duration: 0.3)
-        static let quick = SwiftUI.Animation.easeOut(duration: 0.15)
+        // MARK: Easing — the single authorized curve
+        /// Control points of the one OPS easing curve: `cubic-bezier(0.22, 1, 0.36, 1)`.
+        /// Fast start, smooth finish, confident stop. Pass these to `Animation.timingCurve(...)`
+        /// or use one of the pre-built `.hover` / `.panel` / `.page` / `.flip` values below.
+        static let easeSmoothP1x: Double = 0.22
+        static let easeSmoothP1y: Double = 1.0
+        static let easeSmoothP2x: Double = 0.36
+        static let easeSmoothP2y: Double = 1.0
+
+        // MARK: Durations (named per spec)
+        static let durationHover:    Double = 0.150  // 150ms — hover transitions
+        static let durationPanel:    Double = 0.200  // 200ms — panel enter
+        static let durationPage:     Double = 0.250  // 250ms — page transitions
+        static let durationStagger:  Double = 0.300  // 300ms base + 50ms per item — row stagger
+        static let durationStaggerStep: Double = 0.050
+        static let durationChartBar: Double = 0.400  // 400-600ms — chart bar grow (add index delay)
+        static let durationFlip:     Double = 0.350  // 350ms — card flip
+        static let durationCountUp:  Double = 0.800  // 800ms — hero number count-up
+
+        // MARK: Pre-built Animation values
+        static let hover = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: durationHover)
+        static let panel = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: durationPanel)
+        static let page  = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: durationPage)
+        static let flip  = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: durationFlip)
+
+        // MARK: Legacy aliases (retained for backwards compatibility)
+        /// Deprecated — prefer `.page` (250ms). Kept for existing call sites.
+        static let standard = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.250)
+        /// Deprecated — prefer `.hover` (150ms). Kept for existing call sites.
+        static let quick    = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.150)
     }
 
     // MARK: - Icons

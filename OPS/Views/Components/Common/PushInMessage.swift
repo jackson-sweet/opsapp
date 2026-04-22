@@ -123,13 +123,12 @@ struct PushInMessage: View {
             // Text content
             VStack(alignment: .leading, spacing: 2) {
                 Text(title.uppercased())
-                    .font(.custom("Kosugi-Regular", size: 16))
-                    .fontWeight(.semibold)
+                    .font(.custom("CakeMono-Light", size: 16))
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
                 if let subtitle = subtitle {
                     Text(subtitle)
-                        .font(.custom("Kosugi-Regular", size: 14))
+                        .font(.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }

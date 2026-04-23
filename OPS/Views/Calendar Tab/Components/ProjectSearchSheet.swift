@@ -103,22 +103,32 @@ struct ProjectSearchSheet: View {
                 if project.title.localizedCaseInsensitiveContains(searchText) {
                     return true
                 }
-                
+
                 // Search in client name
                 if project.effectiveClientName.localizedCaseInsensitiveContains(searchText) {
                     return true
                 }
-                
+
+                // Search in sub-client contacts (name, title, email, phone)
+                if let subClients = project.client?.subClients {
+                    for sub in subClients where sub.deletedAt == nil {
+                        if sub.name.localizedCaseInsensitiveContains(searchText) { return true }
+                        if sub.title?.localizedCaseInsensitiveContains(searchText) == true { return true }
+                        if sub.email?.localizedCaseInsensitiveContains(searchText) == true { return true }
+                        if sub.phoneNumber?.localizedCaseInsensitiveContains(searchText) == true { return true }
+                    }
+                }
+
                 // Search in address
                 if project.address?.localizedCaseInsensitiveContains(searchText) ?? false {
                     return true
                 }
-                
+
                 // Search in status
                 if project.status.displayName.localizedCaseInsensitiveContains(searchText) {
                     return true
                 }
-                
+
                 // Always search in tasks (no longer optional)
                 for task in project.tasks {
                         // Search in task type display name
@@ -126,19 +136,19 @@ struct ProjectSearchSheet: View {
                            taskType.localizedCaseInsensitiveContains(searchText) {
                             return true
                         }
-                        
+
                         // Search in task notes
                         if let notes = task.taskNotes,
                            notes.localizedCaseInsensitiveContains(searchText) {
                             return true
                         }
-                        
+
                     // Search in task status
                     if task.status.displayName.localizedCaseInsensitiveContains(searchText) {
                         return true
                     }
                 }
-                
+
                 return false
             }
         }

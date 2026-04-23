@@ -312,16 +312,11 @@ struct NotificationListView: View {
     }
 
     private func sectionRows(_ items: [NotificationDTO]) -> some View {
-        ForEach(Array(items.enumerated()), id: \.element.id) { index, notif in
-            VStack(spacing: 0) {
-                notificationRow(notif)
-                if index < items.count - 1 {
-                    Rectangle()
-                        .fill(OPSStyle.Colors.cardBorderSubtle)
-                        .frame(height: OPSStyle.Layout.Border.standard)
-                        .padding(.leading, 56)
-                }
-            }
+        // Bug G2 — each row is now a glass surface card with its own border,
+        // so the inter-row dividers have been removed; the row's internal
+        // horizontal padding handles edge breathing room.
+        ForEach(items, id: \.id) { notif in
+            notificationRow(notif)
         }
     }
 
@@ -424,51 +419,77 @@ struct NotificationListView: View {
     // MARK: - Row
 
     private func notificationRow(_ notification: NotificationDTO) -> some View {
-        // Condensed two-line row: title (bold/uppercase) + body (demoted, 1 line),
-        // with relative time pinned trailing. Row height ~44pt to preserve the
-        // iOS minimum touch target while staying scannable in one glance.
+        // Bug G2 — condensed glass card row per spec v2:
+        //   Title: Mohave Medium 16pt (bodyBold)
+        //   Body:  Mohave Light 14pt  (smallBody), single line
+        //   Time:  JetBrains Mono 12pt (smallCaption), right-aligned
+        // Row becomes a glass surface with panelRadius so it reads as a card,
+        // not a dense list item. Full description is available in the
+        // tap-through target, not crammed into the row.
         Button(action: {
             handleNotificationTap(notification)
         }) {
-            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
-                Circle()
-                    .fill(notification.isRead ? Color.clear : OPSStyle.Colors.primaryAccent)
-                    .frame(width: 6, height: 6)
+            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
+                // Leading accent column: unread dot + icon, vertically centered
+                // against the title line so the card reads as a single unit.
+                VStack(spacing: 6) {
+                    Circle()
+                        .fill(notification.isRead ? Color.clear : OPSStyle.Colors.primaryAccent)
+                        .frame(width: 6, height: 6)
 
-                notificationIcon(for: notification.type)
+                    notificationIcon(for: notification.type)
+                }
+                .padding(.top, 2)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(notification.title.uppercased())
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(
-                            notification.isRead
-                                ? OPSStyle.Colors.secondaryText
-                                : OPSStyle.Colors.primaryText
-                        )
-                        .tracking(0.5)
-                        .lineLimit(1)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
+                        Text(notification.title.uppercased())
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(
+                                notification.isRead
+                                    ? OPSStyle.Colors.secondaryText
+                                    : OPSStyle.Colors.primaryText
+                            )
+                            .tracking(0.5)
+                            .lineLimit(1)
+
+                        Spacer(minLength: OPSStyle.Layout.spacing2)
+
+                        Text(relativeTime(notification.createdAt))
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
 
                     Text(notification.body)
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .font(OPSStyle.Typography.smallBody)
+                        .foregroundColor(
+                            notification.isRead
+                                ? OPSStyle.Colors.tertiaryText
+                                : OPSStyle.Colors.secondaryText
+                        )
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
-
-                Spacer(minLength: OPSStyle.Layout.spacing2)
-
-                Text(relativeTime(notification.createdAt))
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
+                    .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
+                    .stroke(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, 4)
     }
 
     private func notificationIcon(for type: String) -> some View {
@@ -559,6 +580,11 @@ struct NotificationListView: View {
     }
 
     private func handleNotificationTap(_ notification: NotificationDTO) {
+        // Light impact earns its place here — this is a meaningful navigation
+        // commit (opens a detail surface), matches the app-wide pattern used
+        // for list-row taps that transition the user somewhere.
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
         // Mark as read locally first
         if let index = notifications.firstIndex(where: { $0.id == notification.id }),
            !notifications[index].isRead {

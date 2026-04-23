@@ -276,8 +276,12 @@ struct JobBoardProjectListView: View {
                     // instruction bar (inserted as safeAreaInset on MainTabView)
                     // would otherwise overlap the CLOSED section button when
                     // scrolled to the bottom. Reserve extra space while a
-                    // wizard is active.
-                    .wizardBottomInset()
+                    // wizard is active. Bumped from the default 110 → 160 so
+                    // the button clears the instruction bar on every device
+                    // size + dynamic-type combination — the default was
+                    // marginal on smaller phones and left the button hidden
+                    // during the `view_closed` step.
+                    .wizardBottomInset(extra: 160)
                     .background(
                         // Wizard: detect genuine scroll (≥50pt offset) before posting completion.
                         // A GeometryReader anchored at the top of the scroll content tracks its
@@ -331,6 +335,21 @@ struct JobBoardProjectListView: View {
                         if let stepId = notification.userInfo?["stepId"] as? String {
                             withAnimation {
                                 scrollProxy.scrollTo("wizard_active_\(stepId)", anchor: .top)
+                            }
+                        }
+                    }
+                    // When the wizard advances to the `view_closed` step,
+                    // auto-scroll the CLOSED section button above the wizard
+                    // instruction bar. Anchors on `.bottom` with a 0.25s
+                    // delay so the prerequisite re-evaluation + bottom-inset
+                    // animation settle before the scroll fires.
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardStepChanged"))) { notification in
+                        guard let stepId = notification.userInfo?["stepId"] as? String,
+                              stepId == "view_closed",
+                              !closedProjects.isEmpty || !archivedProjects.isEmpty else { return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            withAnimation(OPSStyle.Animation.page) {
+                                scrollProxy.scrollTo("closedProjectsSection", anchor: .bottom)
                             }
                         }
                     }

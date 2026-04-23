@@ -30,6 +30,7 @@ struct SubscriptionLockoutView: View {
     @State private var refreshError = false
     @State private var refreshResultNegative = false
     @State private var refreshResultStatus: SubscriptionStatus?
+    @State private var refreshFailureReason: String?
     @State private var animationTask: Task<Void, Never>?
 
     var body: some View {
@@ -234,12 +235,30 @@ struct SubscriptionLockoutView: View {
                     .animation(OPSStyle.Animation.standard, value: refreshError)
                     .animation(OPSStyle.Animation.standard, value: refreshResultNegative)
                     .animation(OPSStyle.Animation.standard, value: refreshResultStatus)
+
+                    // Inline failure reason — surfaces the specific subscription
+                    // state so admins know why they're still locked out.
+                    if let reason = refreshFailureReason {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                .foregroundColor(OPSStyle.Colors.errorStatus)
+                            Text(reason.uppercased())
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.errorStatus)
+                                .multilineTextAlignment(.leading)
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
                 }
                 .padding(.horizontal, 24)
+                .animation(OPSStyle.Animation.standard, value: refreshFailureReason)
             }
         }
     }
-    
+
     private var adminLockoutMessage: String {
         if !subscriptionManager.userHasSeat && subscriptionManager.subscriptionStatus == .active {
             return "As an administrator, you need a seat to access OPS. Manage your team's seats or upgrade your plan."
@@ -372,7 +391,26 @@ struct SubscriptionLockoutView: View {
             }
             .disabled(isRefreshing)
             .padding(.horizontal, 40)
+
+            // Inline failure reason for non-admins — tells them exactly why the
+            // check failed (no seat, subscription expired, etc).
+            if let reason = refreshFailureReason {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                    Text(reason.uppercased())
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                        .multilineTextAlignment(.leading)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 40)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
+        .animation(OPSStyle.Animation.standard, value: refreshFailureReason)
     }
 
     private var nonAdminLockoutMessage: String {
@@ -894,6 +932,10 @@ struct SubscriptionLockoutView: View {
     private func refreshSubscription() async {
         guard !isRefreshing else { return }
 
+        // Immediate tap feedback so the button never feels dead — fires before
+        // any network roundtrip so the user always knows the tap registered.
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
         // Reset states
         isRefreshing = true
         refreshProgress = 0.0
@@ -901,6 +943,7 @@ struct SubscriptionLockoutView: View {
         refreshError = false
         refreshResultNegative = false
         refreshResultStatus = nil
+        refreshFailureReason = nil
 
         print("[LOCKOUT] 🔄 Refreshing subscription status...")
 
@@ -968,6 +1011,7 @@ struct SubscriptionLockoutView: View {
                 // Negative status - fill to 100% with red
                 refreshResultNegative = true
                 refreshProgress = 1.0
+                refreshFailureReason = failureReason(for: status, userHasSeat: subscriptionManager.userHasSeat)
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 print("[LOCKOUT] ⚠️ Subscription status is \(status.rawValue) - showing red")
 
@@ -979,29 +1023,37 @@ struct SubscriptionLockoutView: View {
                 refreshProgress = 0.0
                 refreshResultNegative = false
                 refreshResultStatus = nil
+                refreshFailureReason = nil
             } else if accessRestored {
                 // Positive status AND access is unlocked - fill to 100% with green
                 refreshComplete = true
                 refreshProgress = 1.0
+                // Success haptic pair: light impact for crisp tactile confirmation,
+                // plus the notification-level success cue — per OPSStyle haptic spec.
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 print("[LOCKOUT] ✅ Subscription status is \(status.rawValue) - access granted")
 
-                // Wait before fading out
-                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                // Wait before dismissing so the user sees the success state
+                try? await Task.sleep(nanoseconds: 700_000_000) // 0.7s
 
-                // Reset states
+                // Reset states then dismiss the lockout — the whole point of the
+                // check is to let them back into the app when access is restored.
                 isRefreshing = false
                 refreshProgress = 0.0
-
-                // Wait for fade to complete
-                try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
                 refreshComplete = false
                 refreshResultStatus = nil
+                dismiss()
             } else {
                 // Company subscription is healthy but this user still doesn't have a
                 // seat — flag as a failure so non-admins see "STILL LOCKED" feedback.
+                // Also set refreshResultNegative so the button tone reads as error
+                // (not success) — a green "PLAN ACTIVE" button next to a red inline
+                // reason is a mixed signal.
+                refreshResultNegative = true
                 refreshComplete = true
                 refreshProgress = 1.0
+                refreshFailureReason = failureReason(for: status, userHasSeat: subscriptionManager.userHasSeat)
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 print("[LOCKOUT] ⚠️ Status \(status.rawValue) but lockout still applies (e.g., no seat) — showing red")
 
@@ -1012,12 +1064,15 @@ struct SubscriptionLockoutView: View {
                 isRefreshing = false
                 refreshProgress = 0.0
                 refreshComplete = false
+                refreshResultNegative = false
                 refreshResultStatus = nil
+                refreshFailureReason = nil
             }
         } else {
             // Network error - fill to 100% with red
             refreshError = true
             refreshProgress = 1.0
+            refreshFailureReason = "Couldn't reach the server. Check your connection and try again."
             UINotificationFeedbackGenerator().notificationOccurred(.error)
 
             // Wait to show error
@@ -1027,6 +1082,28 @@ struct SubscriptionLockoutView: View {
             isRefreshing = false
             refreshProgress = 0.0
             refreshError = false
+            refreshFailureReason = nil
+        }
+    }
+
+    /// Human-readable reason for why the "Check Access" refresh did NOT restore
+    /// access. Returns one short sentence suitable for inline display beneath
+    /// the refresh button.
+    private func failureReason(for status: SubscriptionStatus, userHasSeat: Bool) -> String {
+        switch status {
+        case .expired:
+            return "Still no access — subscription expired."
+        case .cancelled:
+            return "Still no access — subscription cancelled."
+        case .grace:
+            return "Still no access — subscription in grace period."
+        case .trial:
+            return "Still no access — trial ended."
+        case .active:
+            if !userHasSeat {
+                return "Still no access — no seat assigned."
+            }
+            return "Still no access — contact your admin for help."
         }
     }
 

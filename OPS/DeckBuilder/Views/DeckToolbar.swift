@@ -25,72 +25,15 @@ struct DeckToolbar: View {
     var body: some View {
         VStack(spacing: 0) {
             if viewModel.activeTool == .tapSelect {
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    // Prominent mode indicator + live count — user always knows they're in multi-select
-                    HStack(spacing: OPSStyle.Layout.spacing1) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                        Text("MULTI-SELECT")
-                            .font(OPSStyle.Typography.miniLabel)
-                    }
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(OPSStyle.Colors.primaryAccent.opacity(0.12))
-                    .cornerRadius(4)
-
-                    let count = viewModel.selection.selectedEdgeIds.count + viewModel.selection.selectedVertexIds.count + (viewModel.selection.selectedFootprint ? 1 : 0)
-                    Text("\(count) selected")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                    Spacer()
-
-                    Menu {
-                        ForEach(SelectableElementType.allCases, id: \.self) { type in
-                            Button {
-                                if viewModel.tapSelectFilter.contains(type) {
-                                    viewModel.tapSelectFilter.remove(type)
-                                } else {
-                                    viewModel.tapSelectFilter.insert(type)
-                                }
-                            } label: {
-                                HStack {
-                                    Text(type.rawValue.capitalized)
-                                    if viewModel.tapSelectFilter.contains(type) {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        Text("FILTER")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    }
-
-                    Button {
-                        viewModel.activeTool = .draw
-                    } label: {
-                        Text("DONE")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.buttonText)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(OPSStyle.Colors.primaryAccent)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    }
-                }
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.vertical, OPSStyle.Layout.spacing2)
+                multiSelectHeader
             }
 
-            // Context-sensitive action bar — changes based on what's selected
-            if canEdit, viewModel.selection.hasVertices {
+            // Context-sensitive action bar — changes based on what's selected.
+            // In multi-select the bulk action bar takes priority over single-kind bars so
+            // mixed selections (edges + vertices + surface) can be acted on in one place.
+            if canEdit, viewModel.activeTool == .tapSelect, !viewModel.selection.isEmpty {
+                multiSelectBulkTools
+            } else if canEdit, viewModel.selection.hasVertices {
                 vertexTools
             } else if canEdit, viewModel.selection.hasEdges {
                 edgeTools
@@ -101,6 +44,131 @@ struct DeckToolbar: View {
             }
         }
         .background(OPSStyle.Colors.cardBackground)
+    }
+
+    // MARK: - Multi-Select Header
+
+    private var multiSelectHeader: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            // Prominent mode indicator + live count — user always knows they're in multi-select
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                Text("MULTI-SELECT")
+                    .font(OPSStyle.Typography.miniLabel)
+            }
+            .foregroundColor(OPSStyle.Colors.primaryAccent)
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
+            .padding(.vertical, OPSStyle.Layout.spacing1)
+            .background(OPSStyle.Colors.primaryAccent.opacity(0.12))
+            .cornerRadius(4)
+
+            let total = viewModel.selection.selectedEdgeIds.count
+                      + viewModel.selection.selectedVertexIds.count
+                      + (viewModel.selection.selectedFootprint ? 1 : 0)
+
+            // Count pill — sits beside the mode badge so scanning the toolbar shows both state + count
+            Text("\(total) SELECTED")
+                .font(OPSStyle.Typography.miniLabel)
+                .foregroundColor(total > 0 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
+                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                .padding(.vertical, OPSStyle.Layout.spacing1)
+                .background(OPSStyle.Colors.cardBackground.opacity(total > 0 ? 1 : 0.4))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .cornerRadius(4)
+
+            Spacer()
+
+            Menu {
+                ForEach(SelectableElementType.allCases, id: \.self) { type in
+                    Button {
+                        if viewModel.tapSelectFilter.contains(type) {
+                            viewModel.tapSelectFilter.remove(type)
+                        } else {
+                            viewModel.tapSelectFilter.insert(type)
+                        }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        HStack {
+                            Text(type.rawValue.capitalized)
+                            if viewModel.tapSelectFilter.contains(type) {
+                                Image(systemName: OPSStyle.Icons.checkmark)
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Text("FILTER")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                    .padding(.vertical, OPSStyle.Layout.spacing1 + 2)
+                    .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+            }
+
+            Button {
+                viewModel.exitMultiSelect()
+            } label: {
+                Text("DONE")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.buttonText)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    .background(OPSStyle.Colors.primaryAccent)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+    }
+
+    // MARK: - Multi-Select Bulk Tools
+
+    /// Bulk action bar for a multi-kind selection — replaces per-kind context bars.
+    /// Handles mixed selections (e.g. 3 edges + 2 vertices) in one tap via `deleteSelection`.
+    private var multiSelectBulkTools: some View {
+        let edgeCount = viewModel.selection.selectedEdgeIds.count
+        let vertexCount = viewModel.selection.selectedVertexIds.count
+        let surfaceSelected = viewModel.selection.selectedFootprint
+
+        // Material only makes sense when at least one edge or surface is selected
+        let canAssignMaterial = edgeCount > 0 || surfaceSelected
+        // Properties sheet supports edges + vertices + surface
+        let canOpenProperties = edgeCount > 0 || vertexCount > 0 || surfaceSelected
+
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                contextLabel("Selection")
+
+                toolDivider
+
+                if canAssignMaterial {
+                    actionButton(icon: "square.grid.3x3", label: "Material") {
+                        viewModel.showingMaterialPicker = true
+                    }
+                }
+
+                if canOpenProperties {
+                    actionButton(icon: "info.circle", label: "Properties") {
+                        viewModel.showingPropertySheet = true
+                    }
+                }
+
+                Spacer()
+
+                actionButton(icon: OPSStyle.Icons.trash, label: "Delete", tint: OPSStyle.Colors.errorStatus) {
+                    viewModel.deleteSelection()
+                }
+
+                clearSelectionButton
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+        }
     }
 
     // MARK: - Default Tools (no selection)

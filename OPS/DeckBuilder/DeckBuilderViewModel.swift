@@ -588,6 +588,27 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     func handleLongPress(at point: CGPoint, hitThreshold: Double = 25.0) {
+        // In multi-select, long-pressing empty canvas exits the mode. Long press ON
+        // a selected element still opens the property sheet — field users discovered
+        // this as the natural "I'm done selecting" gesture, matching Photos/Mail.
+        if activeTool == .tapSelect {
+            let hitsVertex = PolygonMath.findVertexAtPoint(point, vertices: activeVertices, hitThreshold: hitThreshold) != nil
+            let hitsEdge = PolygonMath.findEdgeAtPoint(point, edges: activeEdges, vertices: activeVertices, hitThreshold: hitThreshold * 0.8) != nil
+            let hitsFootprint = activeIsClosed && PolygonMath.pointInPolygon(point, vertices: activeOrderedPositions)
+
+            if !hitsVertex && !hitsEdge && !hitsFootprint {
+                exitMultiSelect()
+                return
+            }
+            // Long-pressed a selected element → open properties like any other mode
+            handleTap(at: point, hitThreshold: hitThreshold)
+            if !selection.isEmpty {
+                hapticMedium()
+                showingPropertySheet = true
+            }
+            return
+        }
+
         // Same hit detection as tap, but always shows property sheet
         handleTap(at: point, hitThreshold: hitThreshold)
         if !selection.isEmpty {
@@ -940,6 +961,59 @@ class DeckBuilderViewModel: ObservableObject {
         selection.clear()
         hapticMedium()
         save()
+    }
+
+    /// Delete everything currently selected in one pass — edges, vertices, and footprint.
+    /// Used by the multi-select bulk toolbar so a mixed selection can be removed with
+    /// one tap instead of cycling through context bars.
+    func deleteSelection() {
+        guard !selection.isEmpty else { return }
+        pushUndo("delete selection")
+
+        // Edges first — this also stops us iterating edges after we've pulled their endpoints
+        var edges = activeEdges
+        for edgeId in selection.selectedEdgeIds {
+            edges.removeAll { $0.id == edgeId }
+        }
+
+        // Selected vertices: drop them and any edges still connected to them
+        var verts = activeVertices
+        for vertexId in selection.selectedVertexIds {
+            edges.removeAll { $0.startVertexId == vertexId || $0.endVertexId == vertexId }
+            verts.removeAll { $0.id == vertexId }
+        }
+
+        // Orphan cleanup — vertices no longer referenced by any edge
+        let connectedVertexIds = Set(edges.flatMap { [$0.startVertexId, $0.endVertexId] })
+        verts.removeAll { !connectedVertexIds.contains($0.id) }
+
+        activeEdges = edges
+        activeVertices = verts
+
+        var fp = activeFootprint
+        if selection.selectedFootprint {
+            // User asked to clear the surface assignment, not the geometry
+            fp.assignedItems.removeAll()
+        }
+        fp.isClosed = activeIsClosed
+        activeFootprint = fp
+
+        selection.clear()
+        editingEdgeId = nil
+        editingVertexId = nil
+        hapticMedium()
+        save()
+    }
+
+    /// Exit multi-select cleanly: drop selection, restore the primary drawing tool.
+    /// Called by the long-press-to-exit gesture and by the DONE button.
+    func exitMultiSelect() {
+        guard activeTool == .tapSelect else { return }
+        selection.clear()
+        editingEdgeId = nil
+        editingVertexId = nil
+        activeTool = .draw
+        hapticLight()
     }
 
     // MARK: - Persistence

@@ -48,6 +48,23 @@ enum SpotlightTapRouter {
             )
             return true
 
+        case SpotlightDomain.subClient:
+            // Bug G4 — sub-clients live inside a parent client's detail screen;
+            // a tapped sub-client resolves to the parent client so the user
+            // lands on the contact profile containing the tapped contact row.
+            // Same permission gate as client (clients.view); routing itself
+            // is handled by MainTabView's OpenSubClientDetails observer.
+            guard perms.can("clients.view") else {
+                showAccessDenied("You don't have permission to view clients.")
+                return true
+            }
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenSubClientDetails"),
+                object: nil,
+                userInfo: ["subClientId": decoded.id]
+            )
+            return true
+
         case SpotlightDomain.task:
             guard perms.can("projects.view") else {
                 showAccessDenied("You don't have permission to view tasks.")

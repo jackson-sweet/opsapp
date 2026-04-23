@@ -552,6 +552,13 @@ actor DataActor {
 
             existing.lastSyncedAt = Date()
             existing.needsSync = false
+
+            // Bug G4 — propagate to Spotlight via the DataActor's pending tracker.
+            if existing.deletedAt != nil {
+                markSpotlightDeleted(domain: SpotlightDomain.subClient, id: id)
+            } else {
+                markSpotlightDirty(domain: SpotlightDomain.subClient, id: id)
+            }
         } else {
             let model = dto.toModel()
             model.lastSyncedAt = Date()
@@ -564,6 +571,12 @@ actor DataActor {
             }
 
             modelContext.insert(model)
+
+            if model.deletedAt != nil {
+                markSpotlightDeleted(domain: SpotlightDomain.subClient, id: id)
+            } else {
+                markSpotlightDirty(domain: SpotlightDomain.subClient, id: id)
+            }
         }
     }
 

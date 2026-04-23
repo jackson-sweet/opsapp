@@ -88,6 +88,20 @@ final class SpotlightSyncTracker {
             }
         }
 
+        // Bug G4 — delta-update pass for sub-clients. Orphan cleanup mirrors the
+        // client path: any id marked dirty that no longer has a SwiftData row
+        // gets an explicit remove so Spotlight never shows phantom contacts.
+        if let ids = dirtyByDomain[SpotlightDomain.subClient], !ids.isEmpty {
+            let subClients = fetchSubClients(ids: ids, context: context)
+            let foundIds = Set(subClients.map { $0.id })
+            for subClient in subClients {
+                await mgr.indexSubClient(subClient)
+            }
+            for missing in ids.subtracting(foundIds) {
+                await mgr.remove(domain: SpotlightDomain.subClient, id: missing)
+            }
+        }
+
         if let ids = dirtyByDomain[SpotlightDomain.task], !ids.isEmpty {
             let tasks = fetchTasks(ids: ids, context: context)
             let foundIds = Set(tasks.map { $0.id })
@@ -145,6 +159,13 @@ final class SpotlightSyncTracker {
 
     private func fetchClients(ids: Set<String>, context: ModelContext) -> [Client] {
         let descriptor = FetchDescriptor<Client>(
+            predicate: #Predicate { ids.contains($0.id) }
+        )
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    private func fetchSubClients(ids: Set<String>, context: ModelContext) -> [SubClient] {
+        let descriptor = FetchDescriptor<SubClient>(
             predicate: #Predicate { ids.contains($0.id) }
         )
         return (try? context.fetch(descriptor)) ?? []

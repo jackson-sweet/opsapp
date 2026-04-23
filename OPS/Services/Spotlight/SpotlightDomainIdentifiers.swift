@@ -10,13 +10,17 @@
 import Foundation
 
 enum SpotlightDomain {
-    static let project  = "co.opsapp.spotlight.project"
-    static let client   = "co.opsapp.spotlight.client"
-    static let task     = "co.opsapp.spotlight.task"
-    static let invoice  = "co.opsapp.spotlight.invoice"
-    static let estimate = "co.opsapp.spotlight.estimate"
+    static let project   = "co.opsapp.spotlight.project"
+    static let client    = "co.opsapp.spotlight.client"
+    /// Bug G4 — sub-clients (site contacts, billing contacts, etc.) are
+    /// first-class Spotlight entities so searches like "Mitchell" find the
+    /// site contact, not just the parent company.
+    static let subClient = "co.opsapp.spotlight.subclient"
+    static let task      = "co.opsapp.spotlight.task"
+    static let invoice   = "co.opsapp.spotlight.invoice"
+    static let estimate  = "co.opsapp.spotlight.estimate"
 
-    static let all: [String] = [project, client, task, invoice, estimate]
+    static let all: [String] = [project, client, subClient, task, invoice, estimate]
 }
 
 /// Item identifiers are `"<domain>:<entityId>"` so we can decode which entity

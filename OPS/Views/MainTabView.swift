@@ -65,6 +65,13 @@ struct MainTabView: View {
     private let openClientDetailsObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenClientDetails"))
 
+    // Bug G4 — observer for Spotlight taps on sub-client results. The subclient
+    // id is resolved to its parent client id here, then routed through the
+    // existing client detail path so the user lands on the parent's contact
+    // profile (which displays sub-client rows).
+    private let openSubClientDetailsObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenSubClientDetails"))
+
     private let openInvoiceDetailsObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenInvoiceDetails"))
 
@@ -410,6 +417,24 @@ struct MainTabView: View {
             if let clientId = notification.userInfo?["clientId"] as? String {
                 print("[PUSH_NAVIGATION] Opening client details for: \(clientId)")
                 openClientWithSync(clientId: clientId)
+            }
+        }
+
+        // Bug G4 — Spotlight tap on a sub-client result. Look up the subclient's
+        // parent in SwiftData and route to the parent's ContactDetailView. If
+        // the subclient isn't present locally (sync lag / purge), fall back to
+        // an access-denied message; triggering a full sync here would surprise
+        // the user with a several-second hang on a tap.
+        .onReceive(openSubClientDetailsObserver) { notification in
+            guard let subClientId = notification.userInfo?["subClientId"] as? String else { return }
+            guard let context = dataController.modelContext else { return }
+            let descriptor = FetchDescriptor<SubClient>(predicate: #Predicate { $0.id == subClientId })
+            if let sub = try? context.fetch(descriptor).first,
+               let parentId = sub.client?.id {
+                print("[PUSH_NAVIGATION] Opening sub-client \(subClientId) via parent \(parentId)")
+                openClientWithSync(clientId: parentId)
+            } else {
+                appState.presentAccessDenied(message: "This contact is no longer available.")
             }
         }
 

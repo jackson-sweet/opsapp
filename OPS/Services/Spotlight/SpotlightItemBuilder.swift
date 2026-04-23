@@ -78,6 +78,56 @@ enum SpotlightItemBuilder {
         )
     }
 
+    // MARK: - SubClient
+    //
+    // Bug G4 — site contacts / billing contacts attached to a client should
+    // be searchable from Spotlight by name, phone, email, and title. We
+    // include the parent client's name in the content description and
+    // keywords so searches can find sub-clients by either side of the
+    // relationship (e.g. "Mitchell Acme" or just "Mitchell").
+
+    static func buildSubClient(_ subClient: SubClient, parentClientName: String?) -> CSSearchableItem {
+        let attrs = CSSearchableItemAttributeSet(contentType: UTType.content)
+
+        // Display "Name — Title @ ParentClient" when all three are present;
+        // degrade gracefully if any piece is missing.
+        let displayTitle: String = {
+            if let title = subClient.title, !title.isEmpty {
+                return "\(subClient.name) — \(title)"
+            }
+            return subClient.name
+        }()
+        attrs.title = displayTitle
+        attrs.displayName = displayTitle
+
+        attrs.contentDescription = [parentClientName, subClient.phoneNumber, subClient.email]
+            .compactMap { ($0?.isEmpty == false) ? $0 : nil }
+            .joined(separator: " • ")
+
+        var keywords: [String] = [subClient.name]
+        if let title = subClient.title, !title.isEmpty { keywords.append(title) }
+        if let parent = parentClientName, !parent.isEmpty { keywords.append(parent) }
+        if let address = subClient.address, !address.isEmpty { keywords.append(address) }
+        attrs.keywords = keywords
+
+        if let phone = subClient.phoneNumber, !phone.isEmpty {
+            attrs.phoneNumbers = [phone]
+        }
+        if let email = subClient.email, !email.isEmpty {
+            attrs.emailAddresses = [email]
+        }
+
+        // SubClients don't carry their own avatar; we can leave thumbnail nil
+        // rather than reuse the parent's (which would be misleading at a glance).
+
+        let itemId = SpotlightItemId.make(domain: SpotlightDomain.subClient, id: subClient.id)
+        return CSSearchableItem(
+            uniqueIdentifier: itemId,
+            domainIdentifier: SpotlightDomain.subClient,
+            attributeSet: attrs
+        )
+    }
+
     // MARK: - Task
 
     static func buildTask(_ task: ProjectTask) -> CSSearchableItem {

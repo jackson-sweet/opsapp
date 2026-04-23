@@ -43,6 +43,10 @@ final class SpotlightIndexManager {
         var allowed: Set<String> = [
             SpotlightDomain.project,
             SpotlightDomain.client,
+            // Bug G4 — SubClients (site/billing contacts) inherit the same
+            // visibility contract as their parent Client entity, so they
+            // piggyback on the client domain gating below.
+            SpotlightDomain.subClient,
             SpotlightDomain.task
         ]
 
@@ -89,6 +93,14 @@ final class SpotlightIndexManager {
             await indexAllClients(context: context)
             current += 1
             progress?(current / steps, "Clients")
+        }
+        // Bug G4 — backfill sub-clients right after clients so the parent
+        // lookup used to resolve parentClientName hits the just-written
+        // client rows in SwiftData.
+        if allowed.contains(SpotlightDomain.subClient) {
+            await indexAllSubClients(context: context)
+            current += 1
+            progress?(current / steps, "Contacts")
         }
         if allowed.contains(SpotlightDomain.task) {
             await indexAllTasks(context: context)
@@ -165,6 +177,29 @@ final class SpotlightIndexManager {
         let items = sorted.map { SpotlightItemBuilder.buildClient($0) }
         await indexInBatches(items)
         print("[Spotlight] Indexed \(items.count) clients")
+    }
+
+    /// Bug G4 — bulk-index all sub-clients for the current company. Sub-clients
+    /// don't have their own companyId column; scope is enforced through the
+    /// parent client relationship (parent.companyId == currentUserCompanyId).
+    private func indexAllSubClients(context: ModelContext) async {
+        guard let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") else { return }
+        let descriptor = FetchDescriptor<SubClient>(
+            predicate: #Predicate { $0.deletedAt == nil }
+        )
+        guard let subClients = try? context.fetch(descriptor) else { return }
+
+        // Filter by parent client's company + soft-delete; drop orphans (parent missing).
+        let filtered = subClients.filter { sub in
+            guard let parent = sub.client,
+                  parent.deletedAt == nil,
+                  parent.companyId == companyId else { return false }
+            return true
+        }
+        let sorted = filtered.sorted { ($0.lastSyncedAt ?? .distantPast) > ($1.lastSyncedAt ?? .distantPast) }
+        let items = sorted.map { SpotlightItemBuilder.buildSubClient($0, parentClientName: $0.client?.name) }
+        await indexInBatches(items)
+        print("[Spotlight] Indexed \(items.count) sub-clients")
     }
 
     private func indexAllTasks(context: ModelContext) async {
@@ -245,6 +280,20 @@ final class SpotlightIndexManager {
         await indexInBatches([item])
     }
 
+    /// Bug G4 — incremental upsert for a single sub-client. Mirrors `indexClient`:
+    /// removes the entry outright if scope no longer passes (parent gone /
+    /// soft-deleted / company mismatch) so stale data doesn't linger.
+    func indexSubClient(_ subClient: SubClient) async {
+        guard allowedDomains().contains(SpotlightDomain.subClient),
+              subClient.deletedAt == nil,
+              passesSubClientScopeFilter(subClient) else {
+            await remove(domain: SpotlightDomain.subClient, id: subClient.id)
+            return
+        }
+        let item = SpotlightItemBuilder.buildSubClient(subClient, parentClientName: subClient.client?.name)
+        await indexInBatches([item])
+    }
+
     func indexTask(_ task: ProjectTask) async {
         guard allowedDomains().contains(SpotlightDomain.task),
               task.deletedAt == nil,
@@ -306,6 +355,17 @@ final class SpotlightIndexManager {
     private func passesClientScopeFilter(_ client: Client) -> Bool {
         guard let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") else { return false }
         return client.companyId == companyId
+    }
+
+    /// Bug G4 — sub-client scope mirrors client scope via the parent relationship.
+    /// Orphans (parent deleted or missing) are excluded so Spotlight doesn't
+    /// surface contacts whose client has been removed.
+    private func passesSubClientScopeFilter(_ subClient: SubClient) -> Bool {
+        guard let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId"),
+              let parent = subClient.client,
+              parent.deletedAt == nil,
+              parent.companyId == companyId else { return false }
+        return true
     }
 
     private func passesTaskScopeFilter(_ task: ProjectTask) -> Bool {

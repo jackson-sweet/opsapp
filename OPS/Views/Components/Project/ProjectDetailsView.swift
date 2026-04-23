@@ -177,7 +177,15 @@ struct ProjectDetailsView: View {
                                 itemType: .task(task),
                                 currentStartDate: task.startDate,
                                 currentEndDate: task.endDate,
-                                onScheduleUpdate: viewModel.handleTaskScheduleUpdate
+                                onScheduleUpdate: viewModel.handleTaskScheduleUpdate,
+                                onClearDates: {
+                                    // Bug f3604d52 — allow clearing the task's
+                                    // dates from the scheduler sheet toolbar.
+                                    task.startDate = nil
+                                    task.endDate = nil
+                                    task.needsSync = true
+                                    try? dataController.modelContext?.save()
+                                }
                             )
                             .environmentObject(dataController)
                         }

@@ -458,6 +458,13 @@ struct ProjectFormSheet: View {
                     onScheduleUpdate: { newStart, newEnd in
                         startDate = newStart
                         endDate = newEnd
+                    },
+                    onClearDates: {
+                        // Bug f3604d52 — Clear in the form-sheet resets the
+                        // in-memory dates so the form reflects the reset
+                        // immediately without needing a server round-trip.
+                        startDate = nil
+                        endDate = nil
                     }
                 )
                 .environmentObject(dataController)

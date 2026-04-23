@@ -331,9 +331,7 @@ struct DayPageView: View {
                         exitSelectMode()
                     },
                     onClearDates: {
-                        Task {
-                            try? await dataController.updateTaskSchedule(task: task, startDate: nil, endDate: nil)
-                        }
+                        clearTaskDates(task: task)
                         exitSelectMode()
                     }
                 )
@@ -357,9 +355,7 @@ struct DayPageView: View {
                     }
                 },
                 onClearDates: {
-                    Task {
-                        try? await dataController.updateTaskSchedule(task: task, startDate: nil, endDate: nil)
-                    }
+                    clearTaskDates(task: task)
                 }
             )
             .environmentObject(dataController)
@@ -972,6 +968,29 @@ struct DayPageView: View {
             userInfo: userInfo
         )
         NotificationCenter.default.post(name: Notification.Name("WizardCalendarTaskTapped"), object: nil)
+    }
+
+    /// Clear scheduled dates on a task (used by the Reschedule sheet's
+    /// Clear button). Mirrors the pattern in CalendarEventCard.clearTaskDates.
+    private func clearTaskDates(task: ProjectTask) {
+        task.startDate = nil
+        task.endDate = nil
+        task.duration = 0
+        task.needsSync = true
+        try? dataController.modelContext?.save()
+        dataController.scheduledTasksDidChange.toggle()
+
+        let taskId = task.id
+        Task {
+            try? await dataController.updateTaskFields(
+                taskId: taskId,
+                fields: [
+                    "start_date": .null,
+                    "end_date": .null,
+                    "duration": .integer(0)
+                ]
+            )
+        }
     }
 
     private func deleteUserEvent(_ event: CalendarUserEvent) {

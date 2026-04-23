@@ -181,10 +181,24 @@ struct ProjectDetailsView: View {
                                 onClearDates: {
                                     // Bug f3604d52 — allow clearing the task's
                                     // dates from the scheduler sheet toolbar.
+                                    // Mirrors CalendarEventCard.clearTaskDates.
                                     task.startDate = nil
                                     task.endDate = nil
+                                    task.duration = 0
                                     task.needsSync = true
                                     try? dataController.modelContext?.save()
+                                    dataController.scheduledTasksDidChange.toggle()
+                                    let taskId = task.id
+                                    Task {
+                                        try? await dataController.updateTaskFields(
+                                            taskId: taskId,
+                                            fields: [
+                                                "start_date": .null,
+                                                "end_date": .null,
+                                                "duration": .integer(0)
+                                            ]
+                                        )
+                                    }
                                 }
                             )
                             .environmentObject(dataController)

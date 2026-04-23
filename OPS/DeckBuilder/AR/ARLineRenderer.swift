@@ -21,6 +21,11 @@ class ARLineRenderer {
     private var footprintEntity: ModelEntity?
 
     private var textMeshCache: [String: MeshResource] = [:]
+    /// FIFO order of cache keys so we can cap the cache — large decks drawn over
+    /// many minutes can produce hundreds of distinct label strings, and keeping
+    /// every MeshResource in memory causes slowdown from GC + VRAM pressure.
+    private var textMeshCacheOrder: [String] = []
+    private static let textMeshCacheLimit = 128
     private var lastLiveLabelText: String = ""
     private var lastLiveDashCount: Int = 0
 
@@ -47,7 +52,15 @@ class ARLineRenderer {
 
     private func cachedTextMesh(_ text: String, fontSize: CGFloat) -> MeshResource {
         let key = "\(text)_\(fontSize)"
-        if let cached = textMeshCache[key] { return cached }
+        if let cached = textMeshCache[key] {
+            // LRU bump — move the key to the end of the order list so it doesn't get
+            // evicted next. Keeps frequently-used labels warm.
+            if let existingIdx = textMeshCacheOrder.firstIndex(of: key) {
+                textMeshCacheOrder.remove(at: existingIdx)
+                textMeshCacheOrder.append(key)
+            }
+            return cached
+        }
         let mesh = MeshResource.generateText(
             text,
             extrusionDepth: 0.001,
@@ -57,6 +70,13 @@ class ARLineRenderer {
             lineBreakMode: .byClipping
         )
         textMeshCache[key] = mesh
+        textMeshCacheOrder.append(key)
+        // Evict oldest entries once we pass the cap. Keeps memory bounded when a
+        // long drag walks through hundreds of distinct dimension labels.
+        while textMeshCacheOrder.count > Self.textMeshCacheLimit {
+            let evict = textMeshCacheOrder.removeFirst()
+            textMeshCache.removeValue(forKey: evict)
+        }
         return mesh
     }
 
@@ -417,6 +437,14 @@ class ARLineRenderer {
     private var repositionPreviewEntity: Entity?
     private var hiddenEdgeNames: Set<String> = []
     private var hiddenVertexName: String?
+    private var repositionVertexMarker: ModelEntity?
+    /// Dash pool per-connected-edge. Reused across reposition frames so we never
+    /// reallocate meshes for moving a vertex.
+    private var repositionConnectionPools: [[ModelEntity]] = []
+    /// Last-seen label text per connected edge so we only rebuild label meshes
+    /// when the displayed dimension changes.
+    private var repositionConnectionLabels: [ModelEntity] = []
+    private var repositionConnectionLabelTexts: [String] = []
 
     /// Hide the static edges and vertex being repositioned so preview replaces them
     func beginRepositionPreview(hideEdgeNames: [String], hideVertexName: String) {
@@ -429,62 +457,133 @@ class ARLineRenderer {
     }
 
     /// Render dashed preview lines from connected vertices to the crosshair + a vertex marker.
-    /// Preview labels lie flat on the ground along each preview edge — no billboarding required.
+    ///
+    /// Dashes and labels are pooled — the same entities are reused every frame.
+    /// Previously this tore down and rebuilt the entire preview group every
+    /// frame, which is O(N * dashCount) allocations per drag and caused the
+    /// pronounced slowdown on large decks. New pool strategy matches the live-line
+    /// approach: allocate once per edge, reposition on update, disable surplus.
     func updateRepositionPreview(
         vertexPosition: SIMD3<Float>,
         connectedEndpoints: [(otherVertex: SIMD3<Float>, label: String)]
     ) {
-        repositionPreviewEntity?.removeFromParent()
+        // Container + vertex marker: created once, repositioned thereafter
+        let group: Entity
+        if let existing = repositionPreviewEntity {
+            group = existing
+        } else {
+            let created = Entity()
+            created.name = "reposition_preview"
+            rootAnchor.addChild(created)
+            repositionPreviewEntity = created
+            group = created
+        }
 
-        let group = Entity()
-        group.name = "reposition_preview"
+        // Vertex marker
+        if let marker = repositionVertexMarker {
+            marker.position = vertexPosition
+        } else {
+            let vtxMesh = MeshResource.generateBox(width: vertexSize, height: vertexSize * 0.3, depth: vertexSize)
+            let vtxMaterial = SimpleMaterial(color: UIColor.white, isMetallic: true)
+            let diamond = ModelEntity(mesh: vtxMesh, materials: [vtxMaterial])
+            diamond.position = vertexPosition
+            diamond.transform.rotation = simd_quatf(angle: .pi / 4, axis: SIMD3<Float>(0, 1, 0))
+            group.addChild(diamond)
+            repositionVertexMarker = diamond
+        }
 
-        // Vertex marker at crosshair
-        let vtxMesh = MeshResource.generateBox(width: vertexSize, height: vertexSize * 0.3, depth: vertexSize)
-        let vtxMaterial = SimpleMaterial(color: UIColor.white, isMetallic: true)
-        let diamond = ModelEntity(mesh: vtxMesh, materials: [vtxMaterial])
-        diamond.position = vertexPosition
-        diamond.transform.rotation = simd_quatf(angle: .pi / 4, axis: SIMD3<Float>(0, 1, 0))
-        group.addChild(diamond)
+        // Grow/shrink per-connection dash and label pools to match the current
+        // connection count.
+        while repositionConnectionPools.count < connectedEndpoints.count {
+            repositionConnectionPools.append([])
+            repositionConnectionLabels.append(ModelEntity())
+            repositionConnectionLabelTexts.append("")
+        }
 
-        for connection in connectedEndpoints {
+        let segmentLength: Float = 0.12
+        let gapLength: Float = 0.06
+
+        for (cIdx, connection) in connectedEndpoints.enumerated() {
             let from = connection.otherVertex
             let to = vertexPosition
             let distance = simd_distance(from, to)
-            let segmentLength: Float = 0.12
-            let gapLength: Float = 0.06
             let direction = distance > 0.001 ? simd_normalize(to - from) : SIMD3<Float>(0, 0, 1)
 
-            var d: Float = 0
-            while d < distance {
-                let segEnd = min(d + segmentLength, distance)
-                let segment = createLineEntity(
-                    from: from + direction * d,
-                    to: from + direction * segEnd,
-                    color: edgeLiveColor,
-                    alpha: 0.6
+            // Count dashes for this connection
+            let dashCount = distance > 0 ? max(1, Int(distance / (segmentLength + gapLength))) : 0
+
+            // Grow this connection's dash pool
+            while repositionConnectionPools[cIdx].count < dashCount {
+                let mesh = MeshResource.generateBox(
+                    width: edgeWidth, height: edgeHeight, depth: segmentLength
                 )
-                group.addChild(segment)
-                d = segEnd + gapLength
+                var material = SimpleMaterial(
+                    color: edgeLiveColor.withAlphaComponent(0.6), isMetallic: false
+                )
+                material.roughness = .float(0.9)
+                let entity = ModelEntity(mesh: mesh, materials: [material])
+                group.addChild(entity)
+                repositionConnectionPools[cIdx].append(entity)
             }
 
-            let dimLabel = createGroundLabel(
-                text: connection.label,
-                position: midpoint(from, to) + SIMD3<Float>(0, 0.005, 0),
-                direction: to - from,
-                fontSize: labelTextSize
-            )
-            group.addChild(dimLabel)
+            // Position active dashes
+            let forward = SIMD3<Float>(0, 0, 1)
+            let segOrientation = simd_quatf(from: forward, to: direction)
+            var d: Float = 0
+            for i in 0..<dashCount {
+                let segStart = d
+                let segEnd = min(d + segmentLength, distance)
+                let actualLength = segEnd - segStart
+                let dash = repositionConnectionPools[cIdx][i]
+                dash.isEnabled = true
+                dash.position = from + direction * ((segStart + segEnd) * 0.5)
+                dash.orientation = segOrientation
+                let zScale = max(0.01, actualLength / segmentLength)
+                dash.scale = SIMD3<Float>(1, 1, zScale)
+                d = segEnd + gapLength
+            }
+            // Disable surplus dashes in this connection's pool
+            if repositionConnectionPools[cIdx].count > dashCount {
+                for i in dashCount..<repositionConnectionPools[cIdx].count {
+                    repositionConnectionPools[cIdx][i].isEnabled = false
+                }
+            }
+
+            // Label: rebuild only on text change, reposition every frame
+            let labelPos = midpoint(from, to) + SIMD3<Float>(0, 0.005, 0)
+            if connection.label != repositionConnectionLabelTexts[cIdx] {
+                repositionConnectionLabels[cIdx].removeFromParent()
+                let newLabel = createGroundLabel(
+                    text: connection.label,
+                    position: labelPos,
+                    direction: to - from,
+                    fontSize: labelTextSize
+                )
+                group.addChild(newLabel)
+                repositionConnectionLabels[cIdx] = newLabel
+                repositionConnectionLabelTexts[cIdx] = connection.label
+            } else {
+                repositionConnectionLabels[cIdx].position = labelPos
+            }
         }
 
-        rootAnchor.addChild(group)
-        repositionPreviewEntity = group
+        // Disable extra connection dashes + labels if connection count dropped
+        if repositionConnectionPools.count > connectedEndpoints.count {
+            for cIdx in connectedEndpoints.count..<repositionConnectionPools.count {
+                for dash in repositionConnectionPools[cIdx] { dash.isEnabled = false }
+                repositionConnectionLabels[cIdx].isEnabled = false
+            }
+        }
     }
 
     /// End reposition preview — restore hidden entities and clean up
     func endRepositionPreview() {
         repositionPreviewEntity?.removeFromParent()
         repositionPreviewEntity = nil
+        repositionVertexMarker = nil
+        repositionConnectionPools.removeAll()
+        repositionConnectionLabels.removeAll()
+        repositionConnectionLabelTexts.removeAll()
 
         for name in hiddenEdgeNames {
             edgeEntities[name]?.isEnabled = true
@@ -515,6 +614,9 @@ class ARLineRenderer {
         alignmentGuideEntity?.removeFromParent()
         alignmentGuideEntity = nil
         lastGuidesHash = 0
+        textMeshCache.removeAll()
+        textMeshCacheOrder.removeAll()
+        // endRepositionPreview clears the preview container + dash/label pools
         endRepositionPreview()
     }
 

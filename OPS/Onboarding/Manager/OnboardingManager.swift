@@ -938,6 +938,16 @@ class OnboardingManager: ObservableObject {
     }
 
     /// Join an existing company (Employee flow)
+    ///
+    /// Calls the `public.join_user_to_company` Supabase RPC which atomically handles:
+    /// - company_id assignment on the user row
+    /// - role_id assignment via user_roles (honors prescribed role from team_invitations)
+    /// - users.role sync with the assigned role name
+    /// - team_invitations status update to 'accepted'
+    /// - seat granting (if seats are available)
+    ///
+    /// The RPC returns `{ error: "..." }` on failure, or `{ success: true, ... }` on success.
+    /// Both paths are surfaced to the caller as user-facing error messages — no silent bounces.
     func joinCompany(code: String) async throws {
         isLoading = true
         errorMessage = nil
@@ -952,7 +962,8 @@ class OnboardingManager: ObservableObject {
         state.profileJoinPhase = .joining
 
         do {
-            // Look up company by code in Supabase
+            // Look up company by code in Supabase (needed for name/phone/address metadata
+            // that goes into UserDefaults and local SwiftData).
             let companyRepo = CompanyRepository()
             guard let companyDTO = try await companyRepo.fetchByCode(code) else {
                 throw OnboardingManagerError.invalidCompanyCode
@@ -960,51 +971,26 @@ class OnboardingManager: ObservableObject {
 
             let companyId = companyDTO.id
 
-            // Update user's company_id and role in Supabase
-            let userRepo = UserRepository(companyId: companyId)
-            try await userRepo.updateFields(userId: userId, fields: [
-                "company_id": .string(companyId),
-                "role": .string("unassigned"),
-                "is_company_admin": .bool(false)
-            ])
+            // Atomic RPC: writes company_id, role, invitation acceptance, and seat grant.
+            // Mirrors the ops-web /api/auth/join-company path so all platforms stay in sync.
+            let joinResult = try await executeJoinUserToCompanyRPC(userId: userId, companyId: companyId)
 
-            // Assign Crew role in user_roles table for permission system
-            do {
-                let fieldRoleRows: [[String: String]] = try await SupabaseService.shared.client
-                    .from("roles")
-                    .select("id")
-                    .eq("name", value: "Crew")
-                    .execute()
-                    .value
-                if let roleId = fieldRoleRows.first?["id"] {
-                    try await SupabaseService.shared.client
-                        .from("user_roles")
-                        .upsert(["user_id": userId, "role_id": roleId])
-                        .execute()
-                    print("[ONBOARDING_MANAGER] ✅ Field crew role assigned in user_roles")
-                }
-            } catch {
-                print("[ONBOARDING_MANAGER] ⚠️ Failed to assign field crew role: \(error)")
-            }
-
-            // Add user to company's seated_employee_ids (if seats available)
-            var seatIds = companyDTO.seatedEmployeeIds ?? []
-            let maxSeats = companyDTO.maxSeats ?? 10
-            if !seatIds.contains(userId) && seatIds.count < maxSeats {
-                seatIds.append(userId)
-                do {
-                    try await companyRepo.updateSeatedEmployees(companyId: companyId, userIds: seatIds)
-                    print("[ONBOARDING_MANAGER] ✅ User seated (\(seatIds.count)/\(maxSeats) seats used)")
-                } catch {
-                    print("[ONBOARDING_MANAGER] ⚠️ Failed to seat user: \(error)")
-                }
-            } else if seatIds.contains(userId) {
-                print("[ONBOARDING_MANAGER] User already seated")
-            } else {
-                print("[ONBOARDING_MANAGER] ❌ No available seats (\(seatIds.count)/\(maxSeats))")
-                errorMessage = "This company's team is full. Contact your boss to add more seats."
+            // RPC returns `{ seat_granted: false }` when the company is at seat capacity.
+            // Treat that as a user-visible error so the join doesn't succeed silently
+            // with the user still locked out.
+            if joinResult.seatGranted == false && !(companyDTO.seatedEmployeeIds ?? []).contains(userId) {
+                print("[ONBOARDING_MANAGER] ❌ No available seats — RPC returned seat_granted: false")
                 throw OnboardingManagerError.serverError("This company's team is full. Contact your boss to add more seats.")
             }
+
+            print("[ONBOARDING_MANAGER] ✅ RPC success — role: \(joinResult.roleName ?? "unassigned"), seat_granted: \(joinResult.seatGranted ?? false)")
+
+            // Set employee-specific fields not handled by the RPC.
+            let userRepo = UserRepository(companyId: companyId)
+            try? await userRepo.updateFields(userId: userId, fields: [
+                "is_company_admin": .bool(false),
+                "user_type": .string("employee")
+            ])
 
             state.companyData.companyId = companyId
             state.companyData.companyCode = code
@@ -1022,11 +1008,6 @@ class OnboardingManager: ObservableObject {
             // NOW update profile data — userRepo is available after repo reconfiguration
             try await updateUserProfile()
 
-            // Also write user_type to Supabase (was missing)
-            try? await userRepo.updateFields(userId: userId, fields: [
-                "user_type": .string("employee")
-            ])
-
             // Upload avatar if available
             if let avatarData = state.userData.avatarData {
                 await uploadAvatarDuringOnboarding(userId: userId, imageData: avatarData)
@@ -1038,6 +1019,10 @@ class OnboardingManager: ObservableObject {
                 currentUser.firstName = state.userData.firstName
                 currentUser.lastName = state.userData.lastName
                 currentUser.userType = .employee
+                if let roleName = joinResult.roleName,
+                   let mapped = UserRole(rawValue: roleName.lowercased()) {
+                    currentUser.role = mapped
+                }
                 if !state.userData.phone.isEmpty {
                     currentUser.phone = state.userData.phone
                 }
@@ -1064,26 +1049,10 @@ class OnboardingManager: ObservableObject {
             await dataController.triggerCompanySync()
             print("[ONBOARDING_MANAGER] Company sync triggered after join")
 
-            // Mark matching team_invitations as accepted
-            let userEmail = state.userData.email
-            if !userEmail.isEmpty {
-                do {
-                    try await SupabaseService.shared.client
-                        .from("team_invitations")
-                        .update(["status": "accepted"])
-                        .eq("company_id", value: companyId)
-                        .eq("email", value: userEmail)
-                        .eq("status", value: "pending")
-                        .execute()
-                    print("[ONBOARDING_MANAGER] ✅ Marked invitation as accepted for \(userEmail)")
-                } catch {
-                    print("[ONBOARDING_MANAGER] ⚠️ Failed to update invitation status: \(error)")
-                }
-            }
-
-            // Notify company admins that a new member joined
+            // Notify company admins that a new member joined (push only — the RPC
+            // does not create web-rail notifications; OneSignal push is iOS-only here).
             do {
-                let notifyIds = companyDTO.adminIds ?? []
+                let notifyIds = joinResult.adminIds ?? companyDTO.adminIds ?? []
                 let memberName = "\(state.userData.firstName) \(state.userData.lastName)"
                 // Create in-app notifications for each admin
                 let notifRepo = NotificationRepository()
@@ -1122,6 +1091,75 @@ class OnboardingManager: ObservableObject {
             }
             throw OnboardingManagerError.serverError(error.localizedDescription)
         }
+    }
+
+    // MARK: - Supabase join_user_to_company RPC
+
+    /// Lightweight wrapper over the `public.join_user_to_company` Supabase RPC.
+    /// The RPC returns JSONB with either `{ error: "..." }` or `{ success: true, ... }`.
+    /// Maps `error` responses to `OnboardingManagerError.serverError` so the caller's
+    /// catch handler surfaces the exact server-side message to the UI.
+    private struct JoinUserToCompanyResult: Decodable {
+        let success: Bool?
+        let error: String?
+        let userId: String?
+        let companyId: String?
+        let roleName: String?
+        let seatGranted: Bool?
+        let invitationFound: Bool?
+        let adminIds: [String]?
+        let newMemberName: String?
+        let companyName: String?
+
+        enum CodingKeys: String, CodingKey {
+            case success, error
+            case userId = "user_id"
+            case companyId = "company_id"
+            case roleName = "role_name"
+            case seatGranted = "seat_granted"
+            case invitationFound = "invitation_found"
+            case adminIds = "admin_ids"
+            case newMemberName = "new_member_name"
+            case companyName = "company_name"
+        }
+    }
+
+    /// Calls `public.join_user_to_company(p_user_id, p_company_id)` and decodes the JSONB result.
+    /// Throws `OnboardingManagerError.serverError(...)` if the RPC returns `{ error: "..." }`.
+    private func executeJoinUserToCompanyRPC(userId: String, companyId: String) async throws -> JoinUserToCompanyResult {
+        print("[ONBOARDING_MANAGER] Calling join_user_to_company RPC (user: \(userId), company: \(companyId))")
+
+        let responseData: Data = try await SupabaseService.shared.client
+            .rpc("join_user_to_company", params: [
+                "p_user_id": userId,
+                "p_company_id": companyId
+            ])
+            .execute()
+            .data
+
+        let decoder = JSONDecoder()
+
+        // PostgREST may wrap JSONB in an array, unwrap as needed.
+        if let single = try? decoder.decode(JoinUserToCompanyResult.self, from: responseData) {
+            if let serverError = single.error {
+                print("[ONBOARDING_MANAGER] ❌ RPC returned error: \(serverError)")
+                throw OnboardingManagerError.serverError(serverError)
+            }
+            return single
+        }
+
+        if let array = try? decoder.decode([JoinUserToCompanyResult].self, from: responseData),
+           let first = array.first {
+            if let serverError = first.error {
+                print("[ONBOARDING_MANAGER] ❌ RPC returned error: \(serverError)")
+                throw OnboardingManagerError.serverError(serverError)
+            }
+            return first
+        }
+
+        let raw = String(data: responseData, encoding: .utf8) ?? "nil"
+        print("[ONBOARDING_MANAGER] ❌ Failed to decode RPC response: \(raw.prefix(500))")
+        throw OnboardingManagerError.serverError("Could not parse join response. Please try again.")
     }
 
     /// Look up a company by crew code without joining.
@@ -1202,72 +1240,26 @@ class OnboardingManager: ObservableObject {
             // fetch(companyId:) throws if not found — no optional
             let companyDTO = try await companyRepo.fetch(companyId: companyId)
 
-            // Update user's company_id and type
+            // Atomic RPC: writes company_id, role (from invitation or default), invitation
+            // acceptance, and seat grant. Mirrors ops-web /api/auth/join-company.
+            let joinResult = try await executeJoinUserToCompanyRPC(userId: userId, companyId: companyId)
+
+            // When the RPC reports seat_granted:false for a user who isn't already seated,
+            // surface a clear user-visible error instead of letting the join succeed with
+            // the user still locked out of the app.
+            if joinResult.seatGranted == false && !(companyDTO.seatedEmployeeIds ?? []).contains(userId) {
+                print("[ONBOARDING_MANAGER] ❌ No available seats — RPC returned seat_granted: false")
+                throw OnboardingManagerError.serverError("This company's team is full. Contact your boss to add more seats.")
+            }
+
+            print("[ONBOARDING_MANAGER] ✅ RPC success — role: \(joinResult.roleName ?? "unassigned"), seat_granted: \(joinResult.seatGranted ?? false)")
+
+            // Set employee-specific fields not handled by the RPC
             let userRepo = UserRepository(companyId: companyId)
-            try await userRepo.updateFields(userId: userId, fields: [
-                "company_id": .string(companyId),
+            try? await userRepo.updateFields(userId: userId, fields: [
                 "is_company_admin": .bool(false),
                 "user_type": .string("employee")
             ])
-
-            // Handle role assignment based on invitation
-            if let invitationId = invitationId, let invite = selectedInvite, let roleName = invite.roleName {
-                // Accept the invitation
-                try? await SupabaseService.shared.client
-                    .from("team_invitations")
-                    .update(["status": "accepted", "updated_at": ISO8601DateFormatter().string(from: Date())])
-                    .eq("id", value: invitationId)
-                    .execute()
-
-                // Apply prescribed role
-                let roleRows: [[String: String]] = try await SupabaseService.shared.client
-                    .from("roles")
-                    .select("id")
-                    .eq("name", value: roleName)
-                    .execute()
-                    .value
-
-                if let roleId = roleRows.first?["id"] {
-                    try await SupabaseService.shared.client
-                        .from("user_roles")
-                        .upsert(["user_id": userId, "role_id": roleId])
-                        .execute()
-
-                    try await userRepo.updateFields(userId: userId, fields: [
-                        "role": .string(roleName.lowercased())
-                    ])
-                } else {
-                    try await assignDefaultCrewRole(userId: userId, companyId: companyId)
-                }
-            } else {
-                if let invitationId = invitationId {
-                    try? await SupabaseService.shared.client
-                        .from("team_invitations")
-                        .update(["status": "accepted", "updated_at": ISO8601DateFormatter().string(from: Date())])
-                        .eq("id", value: invitationId)
-                        .execute()
-                }
-                try await assignDefaultCrewRole(userId: userId, companyId: companyId)
-            }
-
-            // Add user to company's seated_employee_ids (if seats available)
-            var seatIds = companyDTO.seatedEmployeeIds ?? []
-            let maxSeats = companyDTO.maxSeats ?? 10
-            if !seatIds.contains(userId) && seatIds.count < maxSeats {
-                seatIds.append(userId)
-                do {
-                    try await companyRepo.updateSeatedEmployees(companyId: companyId, userIds: seatIds)
-                    print("[ONBOARDING_MANAGER] ✅ User seated (\(seatIds.count)/\(maxSeats) seats used)")
-                } catch {
-                    print("[ONBOARDING_MANAGER] ⚠️ Failed to seat user: \(error)")
-                }
-            } else if seatIds.contains(userId) {
-                print("[ONBOARDING_MANAGER] User already seated")
-            } else {
-                print("[ONBOARDING_MANAGER] ❌ No available seats (\(seatIds.count)/\(maxSeats))")
-                errorMessage = "This company's team is full. Contact your boss to add more seats."
-                throw OnboardingManagerError.serverError("This company's team is full. Contact your boss to add more seats.")
-            }
 
             // Store company info in state and UserDefaults
             state.companyData.companyId = companyId
@@ -1287,9 +1279,10 @@ class OnboardingManager: ObservableObject {
             if let currentUser = dataController.currentUser {
                 currentUser.companyId = companyId
                 currentUser.userType = .employee
-                // Set local role from invitation (if assigned)
-                if let invite = selectedInvite, let roleName = invite.roleName {
-                    currentUser.role = UserRole(rawValue: roleName.lowercased()) ?? .unassigned
+                // Set local role from RPC (which honors invitation-prescribed roles)
+                if let roleName = joinResult.roleName,
+                   let mapped = UserRole(rawValue: roleName.lowercased()) {
+                    currentUser.role = mapped
                     print("[ONBOARDING_MANAGER] Set local user role to: \(roleName.lowercased())")
                 }
                 try? dataController.modelContext?.save()
@@ -1317,7 +1310,7 @@ class OnboardingManager: ObservableObject {
 
             // Notify company admins that a new member joined
             do {
-                let notifyIds = companyDTO.adminIds ?? []
+                let notifyIds = joinResult.adminIds ?? companyDTO.adminIds ?? []
                 let memberName = "\(state.userData.firstName) \(state.userData.lastName)"
                 // Create in-app notifications for each admin
                 let notifRepo = NotificationRepository()
@@ -1351,30 +1344,15 @@ class OnboardingManager: ObservableObject {
 
         } catch {
             print("[ONBOARDING_MANAGER] Failed to join company: \(error)")
+            // Preserve typed errors so callers can surface the server-side message;
+            // only fall back to a generic banner if we genuinely have no detail.
+            if let onboardingError = error as? OnboardingManagerError {
+                errorMessage = onboardingError.errorDescription
+                throw onboardingError
+            }
             errorMessage = "Failed to join company. Please try again."
-            throw error
+            throw OnboardingManagerError.serverError(error.localizedDescription)
         }
-    }
-
-    /// Helper: Assign the default "Crew" role to a user
-    private func assignDefaultCrewRole(userId: String, companyId: String) async throws {
-        let fieldRoleRows: [[String: String]] = try await SupabaseService.shared.client
-            .from("roles")
-            .select("id")
-            .eq("name", value: "Crew")
-            .execute()
-            .value
-        if let roleId = fieldRoleRows.first?["id"] {
-            try await SupabaseService.shared.client
-                .from("user_roles")
-                .upsert(["user_id": userId, "role_id": roleId])
-                .execute()
-            print("[ONBOARDING_MANAGER] ✅ Field crew role assigned in user_roles")
-        }
-        let userRepo = UserRepository(companyId: companyId)
-        try await userRepo.updateFields(userId: userId, fields: [
-            "role": .string("unassigned")
-        ])
     }
 
     /// Update user profile to Supabase

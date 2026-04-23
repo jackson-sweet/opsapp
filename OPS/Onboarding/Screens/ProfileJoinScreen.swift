@@ -25,6 +25,7 @@ struct ProfileJoinScreen: View {
     // UI state
     @State private var showHelpSheet = false
     @State private var errorMessage: String?
+    @State private var showJoinFailedAlert = false
 
     // Computed
     private var isFormValid: Bool {
@@ -48,6 +49,11 @@ struct ProfileJoinScreen: View {
         }
         .onAppear {
             prefillData()
+        }
+        .alert("Couldn't Join Crew", isPresented: $showJoinFailedAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(errorMessage ?? "Something went wrong. Please try again.")
         }
     }
 
@@ -332,6 +338,8 @@ struct ProfileJoinScreen: View {
                 await MainActor.run {
                     errorMessage = error.localizedDescription
                     manager.state.profileJoinPhase = .form
+                    showJoinFailedAlert = true
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
                 }
             }
         }

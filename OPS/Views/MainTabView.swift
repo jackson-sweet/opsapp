@@ -186,8 +186,13 @@ struct MainTabView: View {
             // Dynamic content based on tabs array
             let tabCount = tabs.count
 
-            // Content views with transition - each complete view slides as a unit
-            ZStack {
+            // Content views with transition — each complete view slides as a
+            // unit. Wrapping the tab content in a Group with `.id(selectedTab)`
+            // forces SwiftUI to treat tab swaps as a view identity change,
+            // which is what actually lets `.transition(slideTransition)` fire.
+            // Without the `.id`, the outer container is re-used across tabs and
+            // the inner if/else branches just fade in/out (the bug we're fixing).
+            Group {
                 // Tab content — indices adapt based on role and permissions
                 if selectedTab == 0 {
                     HomeView()
@@ -205,6 +210,7 @@ struct MainTabView: View {
                     HomeView()
                 }
             }
+            .id(selectedTab)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea(.all, edges: .bottom)
             .transition(slideTransition)

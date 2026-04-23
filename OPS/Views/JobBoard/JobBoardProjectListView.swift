@@ -21,12 +21,24 @@ struct JobBoardProjectListView: View {
     var assignedToMe: Bool = false
     @State private var selectedStatuses: Set<Status> = []
     @State private var selectedTeamMemberIds: Set<String> = []
-    // Default to most-recently-edited so freshly touched projects float to
-    // the top — matches how users think about "what needs attention now".
-    @State private var sortOption: ProjectSortOption = .latestEdited
+    // Persisted sort preference. Default is `.latestEdited` so freshly
+    // touched projects float to the top — matches how users think about
+    // "what needs attention now". Once a user picks a sort from the filter
+    // sheet, that choice survives relaunches and tab swaps via @AppStorage.
+    @AppStorage("projectListSortOrder") private var sortOptionRaw: String = ProjectSortOption.latestEdited.rawValue
     @State private var showingCreateProject = false
     @State private var showingClosedSheet = false
     @State private var showingArchivedSheet = false
+
+    /// Typed accessor/setter backed by the `@AppStorage` string. Decoding
+    /// falls back to `.latestEdited` if the stored value is an unknown raw
+    /// (handles enum renames in future versions).
+    private var sortOption: Binding<ProjectSortOption> {
+        Binding<ProjectSortOption>(
+            get: { ProjectSortOption(rawValue: sortOptionRaw) ?? .latestEdited },
+            set: { sortOptionRaw = $0.rawValue }
+        )
+    }
 
     // Tutorial animation states
     @State private var tutorialAnimatedStatus: Status? = nil
@@ -95,7 +107,7 @@ struct JobBoardProjectListView: View {
             }
         }
 
-        switch sortOption {
+        switch sortOption.wrappedValue {
         case .latestEdited:
             return filtered.sorted { p1, p2 in
                 // Proxy "last edited" as the most recent of lastSyncedAt
@@ -276,8 +288,12 @@ struct JobBoardProjectListView: View {
                     // instruction bar (inserted as safeAreaInset on MainTabView)
                     // would otherwise overlap the CLOSED section button when
                     // scrolled to the bottom. Reserve extra space while a
-                    // wizard is active.
-                    .wizardBottomInset()
+                    // wizard is active. Bumped from the default 110 → 160 so
+                    // the button clears the instruction bar on every device
+                    // size + dynamic-type combination — the default was
+                    // marginal on smaller phones and left the button hidden
+                    // during the `view_closed` step.
+                    .wizardBottomInset(extra: 160)
                     .background(
                         // Wizard: detect genuine scroll (≥50pt offset) before posting completion.
                         // A GeometryReader anchored at the top of the scroll content tracks its
@@ -331,6 +347,21 @@ struct JobBoardProjectListView: View {
                         if let stepId = notification.userInfo?["stepId"] as? String {
                             withAnimation {
                                 scrollProxy.scrollTo("wizard_active_\(stepId)", anchor: .top)
+                            }
+                        }
+                    }
+                    // When the wizard advances to the `view_closed` step,
+                    // auto-scroll the CLOSED section button above the wizard
+                    // instruction bar. Anchors on `.bottom` with a 0.25s
+                    // delay so the prerequisite re-evaluation + bottom-inset
+                    // animation settle before the scroll fires.
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardStepChanged"))) { notification in
+                        guard let stepId = notification.userInfo?["stepId"] as? String,
+                              stepId == "view_closed",
+                              !closedProjects.isEmpty || !archivedProjects.isEmpty else { return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            withAnimation(OPSStyle.Animation.page) {
+                                scrollProxy.scrollTo("closedProjectsSection", anchor: .bottom)
                             }
                         }
                     }
@@ -409,7 +440,7 @@ struct JobBoardProjectListView: View {
             ProjectListFilterSheet(
                 selectedStatuses: $selectedStatuses,
                 selectedTeamMemberIds: $selectedTeamMemberIds,
-                sortOption: $sortOption,
+                sortOption: sortOption,  // already a Binding — no leading $
                 availableTeamMembers: availableTeamMembers
             )
             .environmentObject(dataController)

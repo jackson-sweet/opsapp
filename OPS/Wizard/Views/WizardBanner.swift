@@ -121,10 +121,12 @@ struct WizardBanner: View {
                 .fill(OPSStyle.Colors.wizardAccent.opacity(0.4))
                 .frame(height: 2)
         }
-        .transition(.asymmetric(
-            insertion: .move(edge: .top).combined(with: .opacity),
-            removal: .move(edge: .top).combined(with: .opacity)
-        ))
+        // Dismiss uses a pure slide-up (no opacity crossfade). Combining
+        // `.move` + `.opacity` on a three-layer blur banner competes with
+        // the BlurView compositor and produces the jerky collapse that
+        // this fix addresses. A single-dimension slide reads crisper and
+        // gives SwiftUI a single animatable value to drive.
+        .transition(.move(edge: .top))
     }
 }
 
@@ -148,6 +150,16 @@ struct WizardBannerModifier: ViewModifier {
                 .zIndex(998)
             }
         }
+        // Bind the banner's show/hide transition to an explicit animation on
+        // the ZStack. Relying only on `withAnimation` at the dismiss call
+        // site was causing the banner's height collapse and the tab content
+        // reflow to desynchronize — especially with the BlurView composite
+        // layer. Declaring the animation on the container pins the whole
+        // slide to a single curve.
+        .animation(
+            OPSStyle.Animation.page,
+            value: stateManager.showBanner
+        )
     }
 }
 

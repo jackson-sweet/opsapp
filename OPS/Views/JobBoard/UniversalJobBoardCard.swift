@@ -909,12 +909,79 @@ struct UniversalJobBoardCard: View {
 
     @ViewBuilder
     private var titleText: some View {
-        Text(title)
-            .font(OPSStyle.Typography.bodyBold)
-            .foregroundColor(OPSStyle.Colors.primaryText)
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .baselineOffset(0)
+        // For projects in a terminal state (completed / closed / archived) we
+        // surface an inline title-adjacent badge so the finished status is
+        // impossible to miss. The corner status chip still renders for every
+        // project — this badge augments it, it does not replace it.
+        HStack(spacing: 6) {
+            Text(title)
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .baselineOffset(0)
+                .layoutPriority(1)
+
+            if case .project(let project) = cardType,
+               let terminalBadge = terminalStatusBadge(for: project.status) {
+                terminalBadge
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(2)
+            }
+        }
+    }
+
+    /// Returns an inline "DONE", "CLOSED", or "ARCHIVED" pill for terminal
+    /// project statuses so a completed job reads as finished at a glance —
+    /// even before the user looks at the corner status chip. Non-terminal
+    /// statuses return `nil` so no badge renders.
+    ///
+    /// Not a `@ViewBuilder` — we need an optional return, and @ViewBuilder
+    /// can't construct `Optional<View>` from explicit `return nil`.
+    private func terminalStatusBadge(for status: Status) -> AnyView? {
+        switch status {
+        case .completed:
+            return AnyView(
+                inlineBadge(
+                    text: "DONE",
+                    color: OPSStyle.Colors.successStatus
+                )
+            )
+        case .closed:
+            return AnyView(
+                inlineBadge(
+                    text: "CLOSED",
+                    color: OPSStyle.Colors.inactiveStatus
+                )
+            )
+        case .archived:
+            return AnyView(
+                inlineBadge(
+                    text: "ARCHIVED",
+                    color: OPSStyle.Colors.tertiaryText
+                )
+            )
+        default:
+            return nil
+        }
+    }
+
+    @ViewBuilder
+    private func inlineBadge(text: String, color: Color) -> some View {
+        Text(text)
+            .font(OPSStyle.Typography.smallCaption)
+            .foregroundColor(color)
+            .tracking(1.0)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                    .fill(color.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                    .stroke(color.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
+            )
     }
 
     @ViewBuilder

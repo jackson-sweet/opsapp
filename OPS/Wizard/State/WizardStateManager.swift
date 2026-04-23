@@ -204,10 +204,16 @@ class WizardStateManager: ObservableObject {
     func bannerLaunchTapped() {
         guard let wizard = pendingBannerWizard else { return }
 
-        withAnimation(OPSStyle.Animation.spring) {
+        // Use the same 250ms page curve as WizardBannerModifier's implicit
+        // animation. Keeping the explicit and implicit animations on the same
+        // timing curve is what stops the slide and the height collapse from
+        // desynchronizing.
+        withAnimation(OPSStyle.Animation.page) {
             showBanner = false
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+        // Delay clearing the wizard reference until the slide completes
+        // (250ms + safety margin) so the view isn't yanked mid-animation.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) { [weak self] in
             self?.pendingBannerWizard = nil
         }
 
@@ -237,10 +243,10 @@ class WizardStateManager: ObservableObject {
             userRole: userRole?.rawValue
         )
 
-        withAnimation(OPSStyle.Animation.spring) {
+        withAnimation(OPSStyle.Animation.page) {
             showBanner = false
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) { [weak self] in
             self?.pendingBannerWizard = nil
         }
 
@@ -267,10 +273,10 @@ class WizardStateManager: ObservableObject {
             persistAndSync(state)
         }
 
-        withAnimation(OPSStyle.Animation.spring) {
+        withAnimation(OPSStyle.Animation.page) {
             showBanner = false
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) { [weak self] in
             self?.pendingBannerWizard = nil
         }
 

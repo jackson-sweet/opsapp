@@ -93,6 +93,7 @@ actor DataActor {
         .taskType,
         .project,
         .projectTask,
+        .wizardState,
         .projectNote,
         .photoAnnotation,
         .deckDesign,
@@ -271,6 +272,8 @@ actor DataActor {
             try await syncPhotoAnnotations(since: since, repos: repos)
         case .deckDesign:
             try await syncDeckDesigns(since: since, repos: repos)
+        case .wizardState:
+            try await syncWizardStates(since: since, repos: repos)
         case .estimate:
             try await syncEstimates(since: since, repos: repos)
         case .invoice:
@@ -1054,6 +1057,83 @@ actor DataActor {
 
             existing.lastSyncedAt = Date()
             if !hasPendingOperations(entityType: .deckDesign, entityId: existing.id) {
+                existing.needsSync = false
+            }
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+        }
+    }
+
+    // MARK: - Sync: Wizard States
+
+    private func syncWizardStates(since: Date?, repos: InboundRepositories) async throws {
+        // Resolve userId at call time — wizard_states is user-scoped, so a fresh
+        // login needs the correct id even if the repos struct was built earlier.
+        let userId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        guard !userId.isEmpty else {
+            print("[DataActor] No userId — skipping wizard_states sync")
+            return
+        }
+
+        let dtos = try await repos.wizardState.fetchForUser(userId, since: since)
+        guard !dtos.isEmpty else { return }
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeWizardState(dto: dto)
+            }
+        }
+        print("[DataActor] Merged \(dtos.count) wizard states")
+    }
+
+    private func mergeWizardState(dto: SupabaseWizardStateDTO) throws {
+        let id = dto.id
+        // Primary match on id.
+        let idDescriptor = FetchDescriptor<WizardState>(
+            predicate: #Predicate { $0.id == id }
+        )
+        var existing = try modelContext.fetch(idDescriptor).first
+
+        // Fallback match on (wizardId, userId) for rows created locally with a
+        // different UUID before this sync landed. Adopt the server id on adoption
+        // so subsequent pulls resolve directly.
+        if existing == nil {
+            let wizardId = dto.wizardId
+            let userId = dto.userId
+            let pairDescriptor = FetchDescriptor<WizardState>(
+                predicate: #Predicate { $0.wizardId == wizardId && $0.userId == userId }
+            )
+            if let fallback = try modelContext.fetch(pairDescriptor).first {
+                fallback.id = id
+                existing = fallback
+            }
+        }
+
+        if let existing = existing {
+            let accept = acceptableFields(
+                entityType: .wizardState,
+                entityId: id,
+                fields: [
+                    "statusRaw", "currentStepIndex", "doNotShow",
+                    "completedAt", "totalDurationMs", "stepsSkipped",
+                    "lastActiveAt", "currentSessionId"
+                ]
+            )
+
+            if accept.contains("statusRaw") { existing.statusRaw = dto.status }
+            if accept.contains("currentStepIndex") { existing.currentStepIndex = dto.currentStepIndex }
+            if accept.contains("doNotShow") { existing.doNotShow = dto.doNotShow }
+            if accept.contains("completedAt") { existing.completedAt = dto.completedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("totalDurationMs") { existing.totalDurationMs = dto.totalDurationMs }
+            if accept.contains("stepsSkipped") { existing.stepsSkipped = dto.stepsSkipped }
+            if accept.contains("lastActiveAt") { existing.lastActiveAt = dto.lastActiveAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("currentSessionId") { existing.currentSessionId = dto.currentSessionId }
+
+            existing.lastSyncedAt = Date()
+            if !hasPendingOperations(entityType: .wizardState, entityId: existing.id) {
                 existing.needsSync = false
             }
         } else {
@@ -2755,11 +2835,14 @@ struct InboundRepositories {
     let projectNote: ProjectNoteRepository
     let photoAnnotation: PhotoAnnotationRepository
     let deckDesign: DeckDesignRepository
+    let wizardState: WizardStateRepository
     let invoice: InvoiceRepository
     let estimate: EstimateRepository
 
     init(companyId: String) {
         self.companyId = companyId
+        // wizard_states is user-scoped. Read userId eagerly.
+        let userId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
         self.project = ProjectRepository(companyId: companyId)
         self.task = TaskRepository(companyId: companyId)
         self.user = UserRepository(companyId: companyId)
@@ -2769,6 +2852,7 @@ struct InboundRepositories {
         self.projectNote = ProjectNoteRepository(companyId: companyId)
         self.photoAnnotation = PhotoAnnotationRepository(companyId: companyId)
         self.deckDesign = DeckDesignRepository(companyId: companyId)
+        self.wizardState = WizardStateRepository(userId: userId)
         self.invoice = InvoiceRepository(companyId: companyId)
         self.estimate = EstimateRepository(companyId: companyId)
     }

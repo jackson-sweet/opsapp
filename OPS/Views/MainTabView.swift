@@ -267,16 +267,22 @@ struct MainTabView: View {
                 .environmentObject(dataController)
                 .environmentObject(appState)
         }
-        // Client detail sheet (from Spotlight / deep link)
+        // Client detail sheet (from Spotlight / deep link).
+        //
+        // Bug G1 — Spotlight taps on a client should open the READ-ONLY contact
+        // view, not the edit form. ClientSheet(mode: .edit(...)) was the legacy
+        // behavior; it dumped the user straight into a form with fields active.
+        // ContactDetailView is the canonical surface used from every other
+        // client-surface tap (JobBoard card, UniversalSearchSheet, task details);
+        // deep-links from Spotlight should match that contract. From the detail
+        // view, the user can still tap the pencil to edit when they need to.
         .sheet(isPresented: $appState.showClientDetails) {
             if let clientId = appState.selectedClientId,
                let ctx = dataController.modelContext,
                let client = try? ctx.fetch(FetchDescriptor<Client>(predicate: #Predicate { $0.id == clientId })).first {
-                ClientSheet(mode: .edit(client)) { _ in
-                    appState.showClientDetails = false
-                }
-                .environmentObject(dataController)
-                .environmentObject(permissionStore)
+                ContactDetailView(client: client, project: nil)
+                    .environmentObject(dataController)
+                    .environmentObject(permissionStore)
             }
         }
         // Invoice detail sheet (from Spotlight / deep link)

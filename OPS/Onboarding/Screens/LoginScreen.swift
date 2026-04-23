@@ -237,7 +237,8 @@ struct LoginScreen: View {
                     // Check if user needs to complete onboarding
                     manager.resume()
                 } else {
-                    errorMessage = loginError ?? "Wrong email or password. Try again."
+                    errorMessage = loginError ?? "WRONG EMAIL OR PASSWORD."
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
                 }
             }
         }
@@ -250,7 +251,7 @@ struct LoginScreen: View {
         Task { @MainActor in
             guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                   let rootViewController = windowScene.windows.first?.rootViewController else {
-                errorMessage = "Google sign-in unavailable right now."
+                errorMessage = "GOOGLE SIGN IN UNAVAILABLE. TRY AGAIN."
                 isLoading = false
                 return
             }
@@ -264,14 +265,16 @@ struct LoginScreen: View {
                 if success {
                     manager.resume()
                 } else {
-                    errorMessage = "No account found. Create one first."
+                    errorMessage = "NO ACCOUNT FOUND. SIGN UP TO CONTINUE."
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
                 }
             } catch {
                 isLoading = false
                 if let gidError = error as? GIDSignInError, gidError.code == .canceled {
                     // User canceled
                 } else {
-                    errorMessage = "Google sign-in unavailable right now."
+                    errorMessage = "GOOGLE SIGN IN UNAVAILABLE. TRY AGAIN."
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
                 }
             }
         }
@@ -286,7 +289,7 @@ struct LoginScreen: View {
                 .compactMap({ $0 as? UIWindowScene })
                 .flatMap({ $0.windows })
                 .first(where: { $0.isKeyWindow }) else {
-                errorMessage = "Apple sign-in unavailable right now."
+                errorMessage = "APPLE SIGN IN UNAVAILABLE. TRY AGAIN."
                 isLoading = false
                 return
             }
@@ -300,14 +303,16 @@ struct LoginScreen: View {
                 if success {
                     manager.resume()
                 } else {
-                    errorMessage = "No account found. Create one first."
+                    errorMessage = "NO ACCOUNT FOUND. SIGN UP TO CONTINUE."
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
                 }
             } catch {
                 isLoading = false
                 if let authError = error as? ASAuthorizationError, authError.code == .canceled {
                     // User canceled
                 } else {
-                    errorMessage = "Apple sign-in unavailable right now."
+                    errorMessage = "APPLE SIGN IN UNAVAILABLE. TRY AGAIN."
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
                 }
             }
         }

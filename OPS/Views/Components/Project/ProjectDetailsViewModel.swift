@@ -116,17 +116,36 @@ class ProjectDetailsViewModel: ObservableObject {
         self.noteText = notes
         self.originalNoteText = notes
 
-        if let coordinate = project.coordinate {
-            self.addressMapRegion = MKCoordinateRegion(
-                center: coordinate,
-                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-            )
+        // Bug d40120ea — use safeRegion so NaN/infinite coords from any
+        // upstream geocoder never reach MKCoordinateRegion (which asserts
+        // and crashes).
+        if let coordinate = project.coordinate,
+           let region = Self.safeMapRegion(center: coordinate, delta: 0.01) {
+            self.addressMapRegion = region
         } else {
             self.addressMapRegion = MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
                 span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
             )
         }
+    }
+
+    /// Build an `MKCoordinateRegion` only when the inputs are finite.
+    /// MapKit raises an assertion (which crashes in release) when handed
+    /// NaN or infinite center coordinates. Guard every caller through this
+    /// helper to keep the save path crash-proof for custom address text.
+    private static func safeMapRegion(center: CLLocationCoordinate2D, delta: Double) -> MKCoordinateRegion? {
+        guard center.latitude.isFinite,
+              center.longitude.isFinite,
+              abs(center.latitude) <= 90,
+              abs(center.longitude) <= 180,
+              delta.isFinite, delta > 0 else {
+            return nil
+        }
+        return MKCoordinateRegion(
+            center: center,
+            span: MKCoordinateSpan(latitudeDelta: delta, longitudeDelta: delta)
+        )
     }
 
     // MARK: - Permissions
@@ -434,16 +453,20 @@ class ProjectDetailsViewModel: ObservableObject {
             defer { isSavingAddress = false }
             do {
                 try await dataController?.updateProjectAddress(project: project, address: addressToSave)
-                // Refresh the map region if coordinates changed.
-                if let coordinate = project.coordinate {
-                    addressMapRegion = MKCoordinateRegion(
-                        center: coordinate,
-                        span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-                    )
+                // Refresh the map region if coordinates changed. safeMapRegion
+                // silently rejects NaN/infinite inputs so custom address text
+                // that fails geocoding leaves the region on its last valid
+                // value rather than crashing MapKit.
+                if let coordinate = project.coordinate,
+                   let region = Self.safeMapRegion(center: coordinate, delta: 0.01) {
+                    addressMapRegion = region
                 }
                 showSaveNotification()
             } catch {
-                print("Failed to save address: \(error)")
+                // Never crash the save path — address text has already been
+                // persisted by updateProjectAddress before its throw point
+                // for any non-geocoder error. Log and keep the UI alive.
+                print("[PROJECT_DETAILS] Failed to save address: \(error.localizedDescription)")
             }
         }
         showingAddressEditor = false
@@ -474,6 +497,19 @@ class ProjectDetailsViewModel: ObservableObject {
                     return
                 }
 
+                // Validate coordinate is finite and in-range before writing.
+                // Defensive: a malformed placemark can produce NaN/infinite
+                // coords which would crash MapKit when bound to a region.
+                let coord = location.coordinate
+                guard coord.latitude.isFinite,
+                      coord.longitude.isFinite,
+                      abs(coord.latitude) <= 90,
+                      abs(coord.longitude) <= 180,
+                      !(abs(coord.latitude) < 0.0001 && abs(coord.longitude) < 0.0001) else {
+                    print("[PROJECT_DETAILS] Geocode-on-load: invalid coord (\(coord.latitude), \(coord.longitude)) for \"\(address)\" — skipping")
+                    return
+                }
+
                 // Race guard: if the user edited the address while we were
                 // awaiting the geocoder, bail rather than stamping stale
                 // coords on top of the fresh edit.
@@ -493,8 +529,8 @@ class ProjectDetailsViewModel: ObservableObject {
                 // Write back to the project so the map renders and subsequent
                 // loads don't repeat the lookup. Queue a sync so the server
                 // row gets the coords too.
-                project.latitude = location.coordinate.latitude
-                project.longitude = location.coordinate.longitude
+                project.latitude = coord.latitude
+                project.longitude = coord.longitude
                 project.needsSync = true
                 try? dataController?.modelContext?.save()
 
@@ -503,15 +539,14 @@ class ProjectDetailsViewModel: ObservableObject {
                     entityId: project.id,
                     operationType: "update",
                     changedFields: [
-                        "latitude": location.coordinate.latitude,
-                        "longitude": location.coordinate.longitude
+                        "latitude": coord.latitude,
+                        "longitude": coord.longitude
                     ]
                 )
 
-                addressMapRegion = MKCoordinateRegion(
-                    center: location.coordinate,
-                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-                )
+                if let region = Self.safeMapRegion(center: location.coordinate, delta: 0.01) {
+                    addressMapRegion = region
+                }
                 print("[PROJECT_DETAILS] ✅ Geocode-on-load hydrated coords for \"\(address)\"")
             } catch {
                 print("[PROJECT_DETAILS] Geocode-on-load failed for \"\(address)\": \(error.localizedDescription)")

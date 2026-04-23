@@ -63,14 +63,17 @@ struct DeckLevel: Identifiable, Codable, Equatable {
     }
 
     var orderedPositions: [CGPoint] {
+        // Matches DeckDrawingData.orderedPositions — walks via previous-vertex-aware
+        // traversal so polygon fill follows the visible boundary on concave/construction-
+        // mole shapes. See DeckDrawingData for the detailed rationale.
         guard vertices.count >= 3, edges.count >= 3 else {
             return vertices.map { $0.position }
         }
 
-        var adjacency: [String: Set<String>] = [:]
+        var adjacency: [String: [String]] = [:]
         for edge in edges {
-            adjacency[edge.startVertexId, default: []].insert(edge.endVertexId)
-            adjacency[edge.endVertexId, default: []].insert(edge.startVertexId)
+            adjacency[edge.startVertexId, default: []].append(edge.endVertexId)
+            adjacency[edge.endVertexId, default: []].append(edge.startVertexId)
         }
 
         for vertex in vertices {
@@ -80,16 +83,24 @@ struct DeckLevel: Identifiable, Codable, Equatable {
         guard let startId = vertices.first?.id else { return vertices.map { $0.position } }
         var ordered: [CGPoint] = []
         var visited: Set<String> = [startId]
+        var previousId: String? = nil
         var currentId = startId
 
         if let v = vertex(byId: startId) { ordered.append(v.position) }
 
         for _ in 0..<vertices.count - 1 {
             guard let neighbors = adjacency[currentId] else { break }
-            guard let nextId = neighbors.subtracting(visited).sorted().first else { break }
-            visited.insert(nextId)
-            currentId = nextId
-            if let v = vertex(byId: nextId) { ordered.append(v.position) }
+            let nextId: String?
+            if let prev = previousId {
+                nextId = neighbors.first(where: { $0 != prev })
+            } else {
+                nextId = neighbors.sorted().first
+            }
+            guard let next = nextId, !visited.contains(next) else { break }
+            visited.insert(next)
+            previousId = currentId
+            currentId = next
+            if let v = vertex(byId: next) { ordered.append(v.position) }
         }
 
         guard ordered.count == vertices.count else { return vertices.map { $0.position } }

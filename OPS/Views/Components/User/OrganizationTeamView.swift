@@ -68,7 +68,7 @@ struct OrganizationTeamView: View {
                     }) {
                         HStack(spacing: 12) {
                             // Avatar - using unified UserAvatar component
-                            UserAvatar(teamMember: member, size: 40)
+                            TeamMemberAvatar(teamMember: member, size: 40)
                             
                             // Name & role
                             VStack(alignment: .leading, spacing: 2) {
@@ -233,7 +233,7 @@ struct TeamMemberCard: View {
     var body: some View {
         VStack(spacing: 8) {
             // Avatar - using unified UserAvatar component
-            UserAvatar(teamMember: teamMember, size: 70)
+            TeamMemberAvatar(teamMember: teamMember, size: 70)
             
             // Name
             Text(teamMember.fullName)

@@ -65,7 +65,7 @@ struct CompanyTeamMemberListRow: View {
     var body: some View {
         HStack(spacing: 12) {
             // Avatar - using unified UserAvatar component
-            UserAvatar(teamMember: teamMember, size: 40)
+            TeamMemberAvatar(teamMember: teamMember, size: 40)
             
             // User details
             VStack(alignment: .leading, spacing: 4) {

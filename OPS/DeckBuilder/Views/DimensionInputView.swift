@@ -45,14 +45,14 @@ struct DimensionInputView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .keyboardType(.numbersAndPunctuation)
                     .autocorrectionDisabled(true)
+                    .textInputAutocapitalization(.never)
                     .focused($isFocused)
                     .onChange(of: inputText) { _, newValue in
-                        let sanitized = newValue
-                            .replacingOccurrences(of: "\u{2018}", with: "'")
-                            .replacingOccurrences(of: "\u{2019}", with: "'")
-                            .replacingOccurrences(of: "\u{02BC}", with: "'")
-                            .replacingOccurrences(of: "\u{201C}", with: "\"")
-                            .replacingOccurrences(of: "\u{201D}", with: "\"")
+                        // Belt-and-suspenders: parser already normalizes smart quotes, but
+                        // we also swap them in the field so the visible text always shows
+                        // the ASCII `'` / `"` the user thought they typed. Quotes only —
+                        // don't rewrite word suffixes mid-keystroke.
+                        let sanitized = DimensionEngine.sanitizeQuotesForLiveInput(newValue)
                         if sanitized != newValue { inputText = sanitized }
                     }
                     .padding(OPSStyle.Layout.spacing3)

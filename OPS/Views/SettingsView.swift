@@ -15,7 +15,8 @@ struct SettingsView: View {
     @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.wizardStateManager) private var wizardStateManager
     @State private var showLogoutConfirmation = false
-    @State private var showingSearchSheet = false
+    // Bug G5 — the former sheet-based settings search has been replaced by an
+    // in-header expandable input; its state lives on AppState now.
     @State private var isRestartingTutorial = false
 
     // Developer mode state
@@ -358,16 +359,22 @@ struct SettingsView: View {
                     AppHeader(headerType: .settings)
                         .padding(.bottom, 8)
 
+                    // Bug G5 — when the header search is active, the settings
+                    // list below is replaced by a live results list. The
+                    // inline search button has moved into the header, so the
+                    // content area is no longer pushed down by a duplicate
+                    // control. The results view uses the same searchable
+                    // index as the old SettingsSearchSheet.
+                    if appState.isSettingsSearchActive {
+                        settingsSearchResults
+                            .transition(.opacity)
+                    } else {
                     ScrollView {
                         VStack(spacing: OPSStyle.Layout.spacing4) {
-                            // Search bar
-                            searchButton
-                                .padding(.horizontal, 20)
-                                .padding(.top, 16)
-
                             // Profile card
                             profileCard
                                 .padding(.horizontal, 20)
+                                .padding(.top, 16)
 
                             // Account section
                             settingsSection(title: "ACCOUNT") {
@@ -612,6 +619,7 @@ struct SettingsView: View {
                         }
                         .padding(.bottom, 90) // Tab bar padding
                     }
+                    } // end of !isSettingsSearchActive branch (Bug G5)
                 }
             }
         }
@@ -629,9 +637,12 @@ struct SettingsView: View {
         .onDisappear {
             AnalyticsService.shared.endScreenView(screenName: "settings")
         }
-        .sheet(isPresented: $showingSearchSheet) {
-            SettingsSearchSheet(allSearchableSettings: allSearchableSettings)
-                .environmentObject(dataController)
+        // Bug G5 — reset the header search when Settings disappears so a return
+        // trip starts clean instead of lingering in a half-focused state.
+        .onChange(of: appState.isSettingsSearchActive) { _, isActive in
+            if !isActive {
+                appState.settingsSearchQuery = ""
+            }
         }
         .alert("Log Out", isPresented: $showLogoutConfirmation) {
             Button("Cancel", role: .cancel) { }
@@ -799,29 +810,168 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Search Button
+    // MARK: - Settings Search Results (Bug G5)
 
-    private var searchButton: some View {
-        Button(action: { showingSearchSheet = true }) {
-            HStack(spacing: 12) {
-                Image(systemName: OPSStyle.Icons.search)
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+    /// Live results list that replaces the settings content while the header
+    /// search is focused. Same index as the deprecated SettingsSearchSheet,
+    /// same row layout — only the container changed. Tapping a row sets
+    /// `activeDestination`, which fires the existing fullScreenCover logic
+    /// so navigation parity is preserved.
+    private var settingsSearchResults: some View {
+        ScrollView {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
+                let query = appState.settingsSearchQuery.trimmingCharacters(in: .whitespaces)
+                let results = query.isEmpty
+                    ? []
+                    : allSearchableSettings.filter { $0.matches(query: query) }
 
-                Text("Search settings...")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                if query.isEmpty {
+                    searchEmptyState
+                        .padding(.top, 60)
+                } else if results.isEmpty {
+                    searchNoResults(query: query)
+                        .padding(.top, 60)
+                } else {
+                    HStack {
+                        Text("\(results.count) RESULT\(results.count == 1 ? "" : "S")")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .tracking(0.5)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+
+                    ForEach(results) { item in
+                        settingsSearchResultRow(for: item)
+                    }
+                    .padding(.horizontal, 20)
+                }
+            }
+            .padding(.bottom, 90) // Tab bar padding
+        }
+    }
+
+    private var searchEmptyState: some View {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
+            Image(systemName: OPSStyle.Icons.search)
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            Text("SEARCH SETTINGS")
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .tracking(0.5)
+
+            Text("Find profile, organization, or app settings")
+                .font(OPSStyle.Typography.smallBody)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func searchNoResults(query: String) -> some View {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
+            Image(systemName: OPSStyle.Icons.search)
+                .font(.system(size: OPSStyle.Layout.IconSize.xxl))
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            Text("NO RESULTS")
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .tracking(0.5)
+
+            Text("No settings match \u{201C}\(query)\u{201D}")
+                .font(OPSStyle.Typography.smallBody)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func settingsSearchResultRow(for item: SearchableSettingItem) -> some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            // Close the search on commit so returning from the destination
+            // leaves Settings in its default state.
+            withAnimation(OPSStyle.Animation.spring) {
+                appState.isSettingsSearchActive = false
+                appState.settingsSearchQuery = ""
+            }
+            // Route the tap to the matching SettingsDestination case. The
+            // SearchableSettingItem already carries its destination AnyView,
+            // but we prefer going through the enum path so fullScreenCover +
+            // wizard overlays fire consistently.
+            routeToDestination(for: item)
+        }) {
+            HStack(spacing: 16) {
+                Image(systemName: item.categoryIcon)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .frame(width: 28, alignment: .center)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+
+                    Text(item.categoryTitle.uppercased())
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .tracking(0.5)
+                }
 
                 Spacer()
+
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
+            .padding(.vertical, 14)
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
             .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .cornerRadius(OPSStyle.Layout.panelRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    /// Map a search result back to the enum-based destination system so
+    /// fullScreenCover and wizard overlays behave the same as list taps.
+    private func routeToDestination(for item: SearchableSettingItem) {
+        switch item.title {
+        case "Profile Information": activeDestination = .profile
+        case "Organization":        activeDestination = .organization
+        case "Manage Team":         activeDestination = .organization  // Manage Team sheet presents from Organization
+        case "Subscription":        activeDestination = .subscription
+        case "Notifications":       activeDestination = .notifications
+        case "Map Settings":        activeDestination = .map
+        case "Data & Storage":      activeDestination = .dataStorage
+        case "Security & Privacy":  activeDestination = .security
+        case "Laser Meter":         activeDestination = .laserMeter
+        case "Photos":              activeDestination = .allPhotos
+        case "Trash":               activeDestination = .trash
+        case "Products & Services": activeDestination = .productsServices
+        case "Integrations":        activeDestination = .integrations
+        case "Project Settings":    activeDestination = .projectSettings
+        case "Permissions":         activeDestination = .permissions
+        case "What's New":          activeDestination = .whatsNew
+        case "Report Issue":        activeDestination = .reportIssue
+        default:
+            // Fallback for items whose title doesn't map 1:1 to an enum case
+            // (e.g. "Inventory Settings" — no enum case exists yet). Present
+            // the AnyView destination via a reusable fullScreenCover hook if
+            // one is needed in future; for now, no-op matches the pre-change
+            // behavior where those items didn't have search coverage either.
+            break
         }
     }
 

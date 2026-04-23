@@ -898,6 +898,14 @@ final class InboundProcessor {
 
             existing.lastSyncedAt = Date()
             existing.needsSync = false
+
+            // Bug G4 — mark for targeted Spotlight update so edits / deletions
+            // propagate to the index without a full re-backfill.
+            if existing.deletedAt != nil {
+                spotlightTracker.markDeleted(domain: SpotlightDomain.subClient, id: id)
+            } else {
+                spotlightTracker.markDirty(domain: SpotlightDomain.subClient, id: id)
+            }
         } else {
             let model = dto.toModel()
             model.lastSyncedAt = Date()
@@ -911,6 +919,12 @@ final class InboundProcessor {
             }
 
             context.insert(model)
+
+            if model.deletedAt != nil {
+                spotlightTracker.markDeleted(domain: SpotlightDomain.subClient, id: id)
+            } else {
+                spotlightTracker.markDirty(domain: SpotlightDomain.subClient, id: id)
+            }
         }
 
         try context.save()

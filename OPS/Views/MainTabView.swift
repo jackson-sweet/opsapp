@@ -65,6 +65,13 @@ struct MainTabView: View {
     private let openClientDetailsObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenClientDetails"))
 
+    // Bug G4 — observer for Spotlight taps on sub-client results. The subclient
+    // id is resolved to its parent client id here, then routed through the
+    // existing client detail path so the user lands on the parent's contact
+    // profile (which displays sub-client rows).
+    private let openSubClientDetailsObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenSubClientDetails"))
+
     private let openInvoiceDetailsObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenInvoiceDetails"))
 
@@ -273,16 +280,22 @@ struct MainTabView: View {
                 .environmentObject(dataController)
                 .environmentObject(appState)
         }
-        // Client detail sheet (from Spotlight / deep link)
+        // Client detail sheet (from Spotlight / deep link).
+        //
+        // Bug G1 — Spotlight taps on a client should open the READ-ONLY contact
+        // view, not the edit form. ClientSheet(mode: .edit(...)) was the legacy
+        // behavior; it dumped the user straight into a form with fields active.
+        // ContactDetailView is the canonical surface used from every other
+        // client-surface tap (JobBoard card, UniversalSearchSheet, task details);
+        // deep-links from Spotlight should match that contract. From the detail
+        // view, the user can still tap the pencil to edit when they need to.
         .sheet(isPresented: $appState.showClientDetails) {
             if let clientId = appState.selectedClientId,
                let ctx = dataController.modelContext,
                let client = try? ctx.fetch(FetchDescriptor<Client>(predicate: #Predicate { $0.id == clientId })).first {
-                ClientSheet(mode: .edit(client)) { _ in
-                    appState.showClientDetails = false
-                }
-                .environmentObject(dataController)
-                .environmentObject(permissionStore)
+                ContactDetailView(client: client, project: nil)
+                    .environmentObject(dataController)
+                    .environmentObject(permissionStore)
             }
         }
         // Invoice detail sheet (from Spotlight / deep link)
@@ -410,6 +423,24 @@ struct MainTabView: View {
             if let clientId = notification.userInfo?["clientId"] as? String {
                 print("[PUSH_NAVIGATION] Opening client details for: \(clientId)")
                 openClientWithSync(clientId: clientId)
+            }
+        }
+
+        // Bug G4 — Spotlight tap on a sub-client result. Look up the subclient's
+        // parent in SwiftData and route to the parent's ContactDetailView. If
+        // the subclient isn't present locally (sync lag / purge), fall back to
+        // an access-denied message; triggering a full sync here would surprise
+        // the user with a several-second hang on a tap.
+        .onReceive(openSubClientDetailsObserver) { notification in
+            guard let subClientId = notification.userInfo?["subClientId"] as? String else { return }
+            guard let context = dataController.modelContext else { return }
+            let descriptor = FetchDescriptor<SubClient>(predicate: #Predicate { $0.id == subClientId })
+            if let sub = try? context.fetch(descriptor).first,
+               let parentId = sub.client?.id {
+                print("[PUSH_NAVIGATION] Opening sub-client \(subClientId) via parent \(parentId)")
+                openClientWithSync(clientId: parentId)
+            } else {
+                appState.presentAccessDenied(message: "This contact is no longer available.")
             }
         }
 
@@ -632,6 +663,23 @@ struct MainTabView: View {
                 NotificationCenter.default.post(name: Notification.Name("SettingsOpenPermissions"), object: nil)
             }
         }
+        // Bug G3 — Re-evaluate review stacks when the app returns from
+        // background so the persistent rail notifications fire on the session
+        // where the user actually sees them. Without this the service only
+        // ran at launch and a queue that crossed threshold overnight would
+        // stay silent until the next cold start.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            ReviewThresholdService.evaluate(dataController: dataController)
+        }
+        // Bug G3 — Re-evaluate review stacks after every sync completes
+        // (isSyncing transitions true → false). New tasks / completed projects
+        // arriving via sync are the most common way a stack crosses threshold,
+        // so this is the highest-signal trigger moment.
+        .onChange(of: dataController.syncEngine.isSyncing) { wasSyncing, isSyncing in
+            if wasSyncing && !isSyncing {
+                ReviewThresholdService.evaluate(dataController: dataController)
+            }
+        }
         .onAppear {
             // Clear all pending image syncs on app bootup
             clearPendingImageSyncs()
@@ -642,7 +690,9 @@ struct MainTabView: View {
             print("[MAIN_TAB_VIEW] onAppear - Current user: \(String(describing: dataController.currentUser?.fullName))")
             print("[MAIN_TAB_VIEW] onAppear - Tab count: \(tabs.count)")
 
-            // Check for overdue payment reviews after giving sync time to complete
+            // Check for overdue payment reviews after giving sync time to complete.
+            // This also kicks ReviewThresholdService via checkOverdueProjects so
+            // the initial evaluation runs once sync has had time to populate.
             DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
                 appState.checkOverdueProjects(dataController: dataController)
             }

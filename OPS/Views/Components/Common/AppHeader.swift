@@ -22,6 +22,12 @@ struct AppHeader: View {
     @EnvironmentObject private var appState: AppState
     @State private var showLockedMessage: String? = nil
     @State private var showLockedAlert: Bool = false
+
+    // Bug G5 — Settings-tab search: the magnifying glass icon expands in place
+    // into a full-width text field. Focus state is local; the text value and
+    // the active flag live on AppState so SettingsView can swap its body for
+    // a search-results list while the input is focused.
+    @FocusState private var settingsSearchFocused: Bool
     var headerType: HeaderType
     var onSearchTapped: (() -> Void)? = nil
     var onRefreshTapped: (() -> Void)? = nil
@@ -203,14 +209,23 @@ struct AppHeader: View {
                 appState.refreshUnreadCount()
             }
 
+        } else if headerType == .settings && appState.isSettingsSearchActive {
+            // Bug G5 — expanded search state for Settings tab. The title and
+            // trailing actions collapse; the full row becomes a single input
+            // with a leading magnifier, inline clear button, and trailing
+            // CANCEL action. Animation is spring-driven via OPSStyle tokens.
+            settingsSearchField
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .transition(.opacity)
         } else {
-            
+
             HStack {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(title)
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                    
+
                     // Show date subtitle for schedule view
                     if headerType == .schedule {
                         HStack(spacing: 8) {
@@ -406,9 +421,25 @@ struct AppHeader: View {
                         .buttonStyle(PlainButtonStyle())
                     }
 
-                    // Universal search button (all pages except home)
+                    // Universal search button (all pages except home).
+                    // Bug G5 — Settings tab uses an expanding-in-place input;
+                    // tapping the icon flips appState.isSettingsSearchActive
+                    // so the header re-renders as the full-width input (see
+                    // the `.settings && isSettingsSearchActive` branch above).
                     Button(action: {
-                        appState.showingUniversalSearch = true
+                        if headerType == .settings {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(OPSStyle.Animation.spring) {
+                                appState.isSettingsSearchActive = true
+                            }
+                            // Focus on the next tick so the focus state binds
+                            // after the field exists in the hierarchy.
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                settingsSearchFocused = true
+                            }
+                        } else {
+                            appState.showingUniversalSearch = true
+                        }
                     }) {
                         Image(systemName: "magnifyingglass")
                             .font(OPSStyle.Typography.bodyBold)
@@ -429,6 +460,71 @@ struct AppHeader: View {
                 Text(showLockedMessage ?? "")
             }
 
+        }
+    }
+
+    // MARK: - Settings Search Field (Bug G5)
+
+    /// Full-width text input that replaces the Settings header when
+    /// `appState.isSettingsSearchActive` is true. Owned by the header so the
+    /// visual transition (icon → full input) stays in one place. Canceling
+    /// clears the query on AppState, lowering focus so the keyboard dismisses,
+    /// and flips the active flag off — SettingsView swaps back to its
+    /// content on the same animation.
+    private var settingsSearchField: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            TextField("Search settings…", text: $appState.settingsSearchQuery)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .focused($settingsSearchFocused)
+                .autocorrectionDisabled(true)
+                .autocapitalization(.none)
+                .submitLabel(.search)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minHeight: 32)
+
+            if !appState.settingsSearchQuery.isEmpty {
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    appState.settingsSearchQuery = ""
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .frame(width: 32, height: 32)
+            }
+
+            Button(action: closeSettingsSearch) {
+                Text("CANCEL")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+            }
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .buttonStyle(PlainButtonStyle())
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .frame(minHeight: 44)
+        .background(OPSStyle.Colors.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
+                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
+    private func closeSettingsSearch() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        settingsSearchFocused = false
+        withAnimation(OPSStyle.Animation.spring) {
+            appState.isSettingsSearchActive = false
+            appState.settingsSearchQuery = ""
         }
     }
 

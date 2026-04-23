@@ -42,6 +42,15 @@ class AppState: ObservableObject {
     @Published var showingJobBoardSearch: Bool = false
     @Published var showingUniversalSearch: Bool = false
 
+    // Bug G5 — Settings-scoped search lives in the AppHeader for the Settings
+    // tab. The header owns the input field (so it can animate from icon to
+    // full-width), SettingsView owns the results list (so the ScrollView
+    // below the header can be replaced). Sharing state through AppState is
+    // the lightest coupling between the two that still lets each side keep
+    // its own view hierarchy.
+    @Published var isSettingsSearchActive: Bool = false
+    @Published var settingsSearchQuery: String = ""
+
     // MARK: - Payment Review
     @Published var showPaymentReview: Bool = false
 

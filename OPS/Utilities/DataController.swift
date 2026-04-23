@@ -4343,6 +4343,13 @@ class DataController: ObservableObject {
     /// Non-geocodable free text (e.g. "at the end of Maple Rd, beside the red
     /// barn") is saved verbatim — coordinates are cleared so the map pin can't
     /// point at the *previous* address's location.
+    ///
+    /// Crash-hardening (Bug d40120ea): custom address text (e.g. "beside the
+    /// old oak tree") is explicitly supported. The geocoder is allowed to
+    /// throw, return empty placemarks, or return NaN/infinite coordinates —
+    /// in every failure mode we preserve the address text and clear coords.
+    /// The function is guaranteed not to throw from the geocoder path; only
+    /// context-save failures propagate.
     @MainActor
     func updateProjectAddress(project: Project, address: String) async throws {
         // Normalize: strip leading/trailing whitespace AND collapse any
@@ -4360,36 +4367,30 @@ class DataController: ObservableObject {
         // Geocode the address to update lat/long for map display.
         // Three outcomes — each one syncs a consistent lat/lng to the server
         // so the map never lies about where the address is:
-        //   1. Success → write new coords.
-        //   2. No result OR error → clear coords (non-geocodable address).
+        //   1. Success → write new coords (validated, finite).
+        //   2. No result OR error OR invalid coords → clear coords.
         //   3. Empty input → clear coords.
         if !sanitized.isEmpty {
-            let geocoder = CLGeocoder()
-            do {
-                let placemarks = try await geocoder.geocodeAddressString(sanitized)
-                if let location = placemarks.first?.location {
-                    project.latitude = location.coordinate.latitude
-                    project.longitude = location.coordinate.longitude
-                    changedFields["latitude"] = location.coordinate.latitude
-                    changedFields["longitude"] = location.coordinate.longitude
-                    print("[DataController] ✅ Geocoded address to \(location.coordinate.latitude), \(location.coordinate.longitude)")
-                } else {
-                    // Geocoder returned no placemarks — treat as non-geocodable
-                    project.latitude = nil
-                    project.longitude = nil
-                    changedFields["latitude"] = NSNull()
-                    changedFields["longitude"] = NSNull()
-                    print("[DataController] ⚠️ Geocoder returned no placemarks for \"\(sanitized)\" — clearing coordinates")
-                }
-            } catch {
-                // Non-geocodable free text (custom descriptions, rural
-                // addresses, etc). Clear coords rather than leaving stale
-                // ones pointing at the previous address's location.
+            // Catch-all around the whole geocoder block. Even if CLGeocoder
+            // raises an unexpected Objective-C exception (rare but seen in
+            // the wild with malformed inputs), we keep the address string
+            // and proceed with nil coordinates rather than crashing.
+            let resolvedCoord: CLLocationCoordinate2D? = await Self.safelyGeocode(sanitized)
+
+            if let coord = resolvedCoord {
+                project.latitude = coord.latitude
+                project.longitude = coord.longitude
+                changedFields["latitude"] = coord.latitude
+                changedFields["longitude"] = coord.longitude
+                print("[DataController] ✅ Geocoded address to \(coord.latitude), \(coord.longitude)")
+            } else {
+                // Geocoder failed, returned nothing, or returned an invalid
+                // coordinate. Treat as non-geocodable free text.
                 project.latitude = nil
                 project.longitude = nil
                 changedFields["latitude"] = NSNull()
                 changedFields["longitude"] = NSNull()
-                print("[DataController] ⚠️ Geocoding failed for \"\(sanitized)\": \(error.localizedDescription) — clearing coordinates")
+                print("[DataController] ⚠️ Non-geocodable address \"\(sanitized)\" — saved as plain text, coords cleared")
             }
         } else {
             // Clear coordinates when address is cleared
@@ -4413,6 +4414,42 @@ class DataController: ObservableObject {
             operationType: "update",
             changedFields: changedFields
         )
+    }
+
+    /// Attempt a forward geocode, catching every possible failure.
+    /// Returns nil when: input is empty, geocoder throws, placemarks is
+    /// empty, or the returned coordinate is invalid (NaN/infinite/zero-zero).
+    /// This is the single crash-hardening boundary for address save — Bug
+    /// d40120ea (custom address text crash on save).
+    private static func safelyGeocode(_ address: String) async -> CLLocationCoordinate2D? {
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let geocoder = CLGeocoder()
+        do {
+            let placemarks = try await geocoder.geocodeAddressString(trimmed)
+            guard let location = placemarks.first?.location else { return nil }
+            let coord = location.coordinate
+
+            // Reject NaN, infinity, and the null island (0,0 usually means
+            // the geocoder silently failed). Feeding these into MapKit or
+            // MKCoordinateRegion triggers CoreAnimation / MapKit asserts
+            // that crash the app.
+            guard coord.latitude.isFinite,
+                  coord.longitude.isFinite,
+                  abs(coord.latitude) <= 90,
+                  abs(coord.longitude) <= 180,
+                  !(abs(coord.latitude) < 0.0001 && abs(coord.longitude) < 0.0001)
+            else {
+                print("[DataController] ⚠️ Geocoder returned invalid coord (\(coord.latitude), \(coord.longitude)) for \"\(trimmed)\"")
+                return nil
+            }
+
+            return coord
+        } catch {
+            print("[DataController] ⚠️ Geocoding threw for \"\(trimmed)\": \(error.localizedDescription)")
+            return nil
+        }
     }
 
     /// Trim whitespace and strip control characters from free-text address

@@ -177,7 +177,29 @@ struct ProjectDetailsView: View {
                                 itemType: .task(task),
                                 currentStartDate: task.startDate,
                                 currentEndDate: task.endDate,
-                                onScheduleUpdate: viewModel.handleTaskScheduleUpdate
+                                onScheduleUpdate: viewModel.handleTaskScheduleUpdate,
+                                onClearDates: {
+                                    // Bug f3604d52 — allow clearing the task's
+                                    // dates from the scheduler sheet toolbar.
+                                    // Mirrors CalendarEventCard.clearTaskDates.
+                                    task.startDate = nil
+                                    task.endDate = nil
+                                    task.duration = 0
+                                    task.needsSync = true
+                                    try? dataController.modelContext?.save()
+                                    dataController.scheduledTasksDidChange.toggle()
+                                    let taskId = task.id
+                                    Task {
+                                        try? await dataController.updateTaskFields(
+                                            taskId: taskId,
+                                            fields: [
+                                                "start_date": .null,
+                                                "end_date": .null,
+                                                "duration": .integer(0)
+                                            ]
+                                        )
+                                    }
+                                }
                             )
                             .environmentObject(dataController)
                         }
@@ -327,8 +349,10 @@ struct ProjectDetailsView: View {
             // Layer 2: Scrollable content that slides up over the map
             ScrollView {
                 LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    // Initial spacer — positions content in lower portion of map
-                    Color.clear.frame(height: ProjectMapHeader.mapHeight - 170)
+                    // Initial spacer — positions content in lower portion of map.
+                    // Pulled down 40pt so the gradient starts later, revealing
+                    // more map above the title (Bug a2f7e6fa).
+                    Color.clear.frame(height: ProjectMapHeader.mapHeight - 130)
 
                     // Gradient scrolls with content (not pinned — avoids content peeking through)
                     mapScrollGradient
@@ -375,6 +399,14 @@ struct ProjectDetailsView: View {
                         onAddTask: { viewModel.showingAddTaskSheet = true },
                         onDeckDesign: permissionStore.isFeatureEnabled("deck_builder") ? { showingDeckCreationPicker = true } : nil,
                         onShare: { shareProject() },
+                        onPhotoLibrary: {
+                            // Bug 1b7e59f7 — open the existing image picker
+                            // sheet (which wraps PhotosPicker). The selected
+                            // images flow into viewModel.addPhotosToProject
+                            // exactly like camera-captured images.
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            viewModel.showingImagePicker = true
+                        },
                         allTasksComplete: {
                             let activeTasks = project.tasks.filter { $0.deletedAt == nil && $0.status != .cancelled }
                             return !activeTasks.isEmpty && activeTasks.allSatisfy { $0.status == .completed }
@@ -423,19 +455,23 @@ struct ProjectDetailsView: View {
         )
     }
 
-    /// Gradient overlay that scrolls with title content — fades map into background
+    /// Gradient overlay that scrolls with title content — fades map into background.
+    /// Stops stay mostly-transparent through the top two-thirds so the map
+    /// underneath reads through, then ramps quickly to solid at the title
+    /// edge. Bug a2f7e6fa: previous stops produced too much opaque black
+    /// space above the title.
     private var mapScrollGradient: some View {
         LinearGradient(
             gradient: Gradient(stops: [
                 .init(color: .clear, location: 0),
-                .init(color: OPSStyle.Colors.background.opacity(0.5), location: 0.3),
-                .init(color: OPSStyle.Colors.background.opacity(0.85), location: 0.7),
+                .init(color: OPSStyle.Colors.background.opacity(0.25), location: 0.55),
+                .init(color: OPSStyle.Colors.background.opacity(0.75), location: 0.85),
                 .init(color: OPSStyle.Colors.background, location: 1.0)
             ]),
             startPoint: .top,
             endPoint: .bottom
         )
-        .frame(height: 70)
+        .frame(height: 90)
         .allowsHitTesting(false)
     }
 

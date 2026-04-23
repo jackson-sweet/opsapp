@@ -22,13 +22,66 @@ struct MiniMapView: View {
     var status: Status? = nil
     var taskColorHexes: [String] = []
 
+    /// Optional callback invoked when the mini map successfully resolves
+    /// the address string to coordinates. Callers (ProjectDetailsView,
+    /// ProjectSummaryCard) forward these to DataController so the project
+    /// model gets hydrated and subsequent renders short-circuit the
+    /// geocode. Bug bec71df9.
+    var onResolvedCoordinate: ((CLLocationCoordinate2D) -> Void)? = nil
+
+    /// Locally-resolved coordinate from geocoding the address string when
+    /// the parent didn't supply one. Prefers the parent's coordinate when
+    /// both are present to avoid UI flicker mid-load.
+    @State private var resolvedCoordinate: CLLocationCoordinate2D? = nil
+    @State private var isResolving: Bool = false
+
+    /// The coordinate to actually render — parent-supplied takes priority,
+    /// fallback to the locally-resolved value.
+    private var effectiveCoordinate: CLLocationCoordinate2D? {
+        coordinate ?? resolvedCoordinate
+    }
+
     var body: some View {
         Button(action: onTap) {
             ZStack {
-                if let coordinate = coordinate {
-                    mapContent(coordinate: coordinate)
+                if let coord = effectiveCoordinate {
+                    mapContent(coordinate: coord)
+                } else if !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    // We have an address string but no coordinate (yet).
+                    // Show a placeholder that's distinct from the "no
+                    // address at all" state — indicates loading / pending
+                    // resolution. Bug bec71df9.
+                    OPSStyle.Colors.cardBackgroundDark
+                        .overlay(
+                            VStack(spacing: 8) {
+                                if isResolving {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                                        .scaleEffect(0.9)
+                                } else {
+                                    Image(systemName: "mappin.slash.circle")
+                                        .font(.system(size: OPSStyle.Layout.IconSize.xl))
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                }
+
+                                Text(isResolving ? "LOADING MAP" : "TAP TO SET LOCATION")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal)
+
+                                if !isResolving {
+                                    Text(address)
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.7))
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.center)
+                                        .padding(.horizontal)
+                                }
+                            }
+                        )
                 } else {
-                    // Fallback for no coordinates
+                    // Fallback for no coordinates AND no address at all.
                     OPSStyle.Colors.cardBackgroundDark
                         .overlay(
                             VStack(spacing: 8) {
@@ -67,6 +120,60 @@ struct MiniMapView: View {
         }
         .frame(height: 180)
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+        .onAppear { kickoffGeocodeIfNeeded() }
+        .onChange(of: coordinate?.latitude) { _, _ in
+            // If the parent coordinate arrives after our render-time
+            // geocode kicked off, stop the local attempt.
+            if coordinate != nil { resolvedCoordinate = nil; isResolving = false }
+        }
+        .onChange(of: address) { _, _ in
+            // Address changed — re-attempt geocode with the new value.
+            resolvedCoordinate = nil
+            kickoffGeocodeIfNeeded()
+        }
+    }
+
+    /// Bug bec71df9 — forward-geocode the address string on first render
+    /// when coordinates are missing. Some legacy projects have an address
+    /// but no lat/lng (Bubble import failed, or sync race). Without this,
+    /// the mini map shows an empty-state card even though we could trivially
+    /// resolve the coords on device. Cache the result back via
+    /// onResolvedCoordinate so the parent can persist and skip future
+    /// lookups.
+    private func kickoffGeocodeIfNeeded() {
+        guard coordinate == nil,
+              resolvedCoordinate == nil,
+              !isResolving else { return }
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        isResolving = true
+        Task { @MainActor in
+            defer { isResolving = false }
+            let geocoder = CLGeocoder()
+            do {
+                let placemarks = try await geocoder.geocodeAddressString(trimmed)
+                guard let location = placemarks.first?.location else { return }
+                let coord = location.coordinate
+
+                // Validate finite coords before committing.
+                guard coord.latitude.isFinite,
+                      coord.longitude.isFinite,
+                      abs(coord.latitude) <= 90,
+                      abs(coord.longitude) <= 180,
+                      !(abs(coord.latitude) < 0.0001 && abs(coord.longitude) < 0.0001) else {
+                    return
+                }
+
+                // Skip if the address changed mid-flight.
+                guard address.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed else { return }
+
+                resolvedCoordinate = coord
+                onResolvedCoordinate?(coord)
+            } catch {
+                // Silent — fallback empty state already rendered.
+            }
+        }
     }
 
     // MARK: - Map Content

@@ -176,8 +176,12 @@ struct CalendarSchedulerSheet: View {
 
                     Spacer()
 
-                    // Clear dates button (only if callback is provided and dates exist)
-                    if onClearDates != nil && (currentStartDate != nil || currentEndDate != nil) {
+                    // Clear button — resets the in-sheet date selection AND,
+                    // when dates already exist on the item, clears them on
+                    // save. Bug f3604d52 — always show when onClearDates is
+                    // wired so users can reset their picker mid-flow even
+                    // before committing a schedule.
+                    if onClearDates != nil {
                         Button {
                             handleClearDates()
                         } label: {
@@ -185,6 +189,8 @@ struct CalendarSchedulerSheet: View {
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.errorStatus)
                         }
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                     } else {
                         // Invisible spacer for balance
                         Text("Cancel")
@@ -856,11 +862,29 @@ struct CalendarSchedulerSheet: View {
     }
 
     private func handleClearDates() {
-        // Apply haptic feedback for destructive action
-        let generator = UINotificationFeedbackGenerator()
-        generator.notificationOccurred(.warning)
+        // Bug f3604d52 — Clear resets both the in-sheet picker state AND
+        // (if the item already has dates persisted) fires onClearDates so
+        // the caller can strip them. When no dates are persisted yet the
+        // picker just resets and the sheet closes without a write.
 
-        onClearDates?()
+        // Light haptic on tap (reset is not destructive — user is just
+        // undoing their in-progress selection).
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+        // Reset the in-sheet picker back to a neutral default so if the
+        // sheet reopens without closing, the stale selection is gone.
+        let today = Date()
+        selectedStartDate = today
+        selectedEndDate = Calendar.current.date(byAdding: .day, value: 1, to: today) ?? today
+        viewMode = .selecting
+        conflictingEvents = []
+
+        // If the item currently has persisted dates, warn via success
+        // haptic (the clear will mutate the stored record) and propagate.
+        if currentStartDate != nil || currentEndDate != nil {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            onClearDates?()
+        }
         isPresented = false
     }
 

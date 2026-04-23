@@ -577,9 +577,57 @@ class DataController: ObservableObject {
                 return (false, "NO ACCOUNT FOUND FOR THIS EMAIL. SIGN UP OR CHECK THE ADDRESS.")
             }
         } catch let error as FirebaseAuthService.FirebaseAuthServiceError {
+            // Preserve the FirebaseAuthService error text — it already handles
+            // provider-aware messaging via the migration path.
             return (false, error.errorDescription)
         } catch {
-            return (false, "WRONG EMAIL OR PASSWORD.")
+            // Bare Firebase NSError path — when email-enumeration-protection is OFF,
+            // Firebase returns `.wrongPassword` directly and the signIn migration path
+            // is skipped. Check the backend method-hint endpoint to see if this email
+            // is actually registered with Apple or Google sign-in and surface a
+            // provider-specific message instead of the generic "wrong password".
+            let providerSpecific = await providerHintErrorMessage(for: username)
+            return (false, providerSpecific ?? "WRONG EMAIL OR PASSWORD.")
+        }
+    }
+
+    /// Queries the ops-web `/api/auth/method-hint` endpoint. When the email is
+    /// registered with Apple or Google sign-in, returns a provider-specific
+    /// error message. Returns nil when the lookup fails or the provider isn't
+    /// Apple/Google — the caller should fall back to the generic wrong-password copy.
+    private func providerHintErrorMessage(for email: String) async -> String? {
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let url = AppConfiguration.apiBaseURL.appendingPathComponent("/api/auth/method-hint")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 6
+
+        guard let body = try? JSONSerialization.data(withJSONObject: ["email": trimmed]) else {
+            return nil
+        }
+        request.httpBody = body
+
+        struct MethodHintResponse: Decodable { let providers: [String] }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return nil
+            }
+            let decoded = try JSONDecoder().decode(MethodHintResponse.self, from: data)
+            if decoded.providers.contains("apple.com") {
+                return "This email is registered through Sign in with Apple. Tap \"Continue with Apple\" to sign in."
+            }
+            if decoded.providers.contains("google.com") {
+                return "This email is registered through Google. Tap \"Continue with Google\" to sign in."
+            }
+            return nil
+        } catch {
+            print("[DATA_CONTROLLER] method-hint lookup failed: \(error.localizedDescription)")
+            return nil
         }
     }
     

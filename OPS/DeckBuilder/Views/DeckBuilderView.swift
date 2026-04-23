@@ -17,7 +17,6 @@ struct DeckBuilderView: View {
     @State private var showing3DScreenshotShare = false
     @State private var screenshotImage: UIImage?
     @State private var editingTitleText: String = ""
-    @State private var titleBarHeight: CGFloat = 56
     @StateObject private var estimateVM = EstimateViewModel()
     @Environment(\.modelContext) private var env_modelContext
     @Query(sort: \TaskType.displayOrder) private var taskTypes: [TaskType]
@@ -115,8 +114,9 @@ struct DeckBuilderView: View {
                     .animation(.easeInOut(duration: 0.25), value: viewModel.showAssignmentToast)
                     } // end canvas ZStack (bottomTrailing)
 
-                    // Floating title bar — crisp card with safe-area aware margins
-                    VStack(spacing: OPSStyle.Layout.spacing2) {
+                    // Floating header stack — title chip + AR banner + level bar as a single
+                    // consistent column with shared horizontal margins. No overlapping layers.
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         titleBar
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                             .padding(.vertical, OPSStyle.Layout.spacing2)
@@ -129,36 +129,26 @@ struct DeckBuilderView: View {
                                     )
                                     .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
                             )
-                            .padding(.horizontal, OPSStyle.Layout.spacing3)
-                            .padding(.top, OPSStyle.Layout.spacing2)
-                            .background(GeometryReader { geo in
-                                Color.clear.preference(key: DeckTitleBarHeightKey.self, value: geo.size.height)
-                            })
 
-                        // AR accuracy banner — also contained with margins so it reads as part of header stack
+                        // Title pill — sits directly below title bar, left aligned to the same
+                        // column so it reads as part of the header stack (no more "floating
+                        // over" the title bar via padding tricks).
+                        floatingTitlePill
+
+                        // AR accuracy banner — spans full width under title bar
                         arAccuracyBanner
-                            .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                         // Level tab bar
                         if viewModel.isMultiLevel || viewModel.drawingData.vertices.count >= 3 {
                             LevelTabBar(viewModel: viewModel)
-                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                         }
 
-                        Spacer()
+                        Spacer(minLength: 0)
                     }
-                    .allowsHitTesting(true)
-
-                    // Floating title pill — left-aligned, sits just below title bar with consistent margin
-                    VStack {
-                        floatingTitlePill
-                            .padding(.top, titleBarHeight + OPSStyle.Layout.spacing2)
-                            .padding(.leading, OPSStyle.Layout.spacing3 + OPSStyle.Layout.spacing2)
-                        Spacer()
-                    }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.top, OPSStyle.Layout.spacing2)
                     .allowsHitTesting(true)
                 } // end ZStack (top-aligned, floating title over canvas)
-                .onPreferenceChange(DeckTitleBarHeightKey.self) { titleBarHeight = $0 }
 
                 // Toolbar — below the canvas
                 DeckToolbar(viewModel: viewModel)
@@ -689,9 +679,3 @@ struct DeckBuilderView: View {
     }
 }
 
-private struct DeckTitleBarHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 56
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}

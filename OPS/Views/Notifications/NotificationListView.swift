@@ -424,46 +424,48 @@ struct NotificationListView: View {
     // MARK: - Row
 
     private func notificationRow(_ notification: NotificationDTO) -> some View {
+        // Condensed two-line row: title (bold/uppercase) + body (demoted, 1 line),
+        // with relative time pinned trailing. Row height ~44pt to preserve the
+        // iOS minimum touch target while staying scannable in one glance.
         Button(action: {
             handleNotificationTap(notification)
         }) {
-            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
-                // Unread indicator
+            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
                 Circle()
                     .fill(notification.isRead ? Color.clear : OPSStyle.Colors.primaryAccent)
-                    .frame(width: 8, height: 8)
-                    .padding(.top, 6)
+                    .frame(width: 6, height: 6)
 
-                // Icon
                 notificationIcon(for: notification.type)
 
-                // Content
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(notification.title)
-                        .font(notification.isRead ? OPSStyle.Typography.caption : OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(notification.title.uppercased())
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(
+                            notification.isRead
+                                ? OPSStyle.Colors.secondaryText
+                                : OPSStyle.Colors.primaryText
+                        )
+                        .tracking(0.5)
                         .lineLimit(1)
 
                     Text(notification.body)
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .lineLimit(2)
-
-                    Text(relativeTime(notification.createdAt))
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
 
-                Spacer()
+                Spacer(minLength: OPSStyle.Layout.spacing2)
 
-                if notification.projectId != nil {
-                    Image(systemName: OPSStyle.Icons.chevronRight)
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
+                Text(relativeTime(notification.createdAt))
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2)
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
@@ -510,6 +512,12 @@ struct NotificationListView: View {
                 return ("calendar.badge.exclamationmark", OPSStyle.Colors.errorStatus)
             case "invoice_overdue":
                 return ("exclamationmark.circle", OPSStyle.Colors.errorStatus)
+            case "task_review_stack":
+                return ("tray.full", OPSStyle.Colors.warningStatus)
+            case "payment_review_stack":
+                return ("dollarsign.circle", OPSStyle.Colors.warningStatus)
+            case "unscheduled_review_stack":
+                return ("calendar.badge.exclamationmark", OPSStyle.Colors.warningStatus)
             case "photo_storage_limit":
                 return ("externaldrive.fill.badge.exclamationmark", OPSStyle.Colors.warningStatus)
             case "update":
@@ -520,9 +528,9 @@ struct NotificationListView: View {
         }()
 
         return Image(systemName: iconName)
-            .font(OPSStyle.Typography.caption)
+            .font(OPSStyle.Typography.smallCaption)
             .foregroundColor(color)
-            .frame(width: 32, height: 32)
+            .frame(width: 28, height: 28)
             .background(OPSStyle.Colors.subtleBackground)
             .clipShape(Circle())
     }
@@ -591,6 +599,14 @@ struct NotificationListView: View {
                 NotificationCenter.default.post(name: Notification.Name("OpenJobBoard"), object: nil)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                     NotificationCenter.default.post(name: Notification.Name("OpenTaskReview"), object: nil)
+                }
+            }
+        case "unscheduledReview":
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("OpenJobBoard"), object: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    NotificationCenter.default.post(name: Notification.Name("OpenUnscheduledReview"), object: nil)
                 }
             }
         case "photoStorage":

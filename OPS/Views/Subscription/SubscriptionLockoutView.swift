@@ -368,12 +368,13 @@ struct SubscriptionLockoutView: View {
                 )
                 .animation(OPSStyle.Animation.standard, value: refreshComplete)
                 .animation(OPSStyle.Animation.standard, value: refreshError)
+                .animation(OPSStyle.Animation.standard, value: refreshResultNegative)
             }
             .disabled(isRefreshing)
             .padding(.horizontal, 40)
         }
     }
-    
+
     private var nonAdminLockoutMessage: String {
         if !subscriptionManager.userHasSeat {
             return "You don't have a seat in your company's OPS subscription. Contact your administrator to request access."
@@ -385,11 +386,13 @@ struct SubscriptionLockoutView: View {
     private var nonAdminRefreshButtonText: String {
         if refreshError {
             return "NETWORK ERROR"
+        } else if refreshResultNegative {
+            return "STILL LOCKED. CONTACT OWNER."
         } else if refreshComplete {
             if subscriptionManager.userHasSeat {
-                return "ACCESS GRANTED"
+                return "ACCESS RESTORED"
             } else {
-                return "NO ACCESS"
+                return "STILL LOCKED. CONTACT OWNER."
             }
         } else {
             return "CHECK ACCESS"
@@ -399,6 +402,8 @@ struct SubscriptionLockoutView: View {
     private var nonAdminRefreshButtonColor: Color {
         if refreshError {
             return OPSStyle.Colors.warningStatus
+        } else if refreshResultNegative {
+            return OPSStyle.Colors.errorStatus
         } else if refreshComplete {
             if subscriptionManager.userHasSeat {
                 return OPSStyle.Colors.successStatus
@@ -955,31 +960,31 @@ struct SubscriptionLockoutView: View {
             let status = subscriptionManager.subscriptionStatus
             refreshResultStatus = status
             let isNegativeStatus = status == .expired || status == .cancelled
+            // For non-admins, the meaningful success is whether they now have access —
+            // company sub can be "active" while they still have no seat.
+            let accessRestored = !subscriptionManager.shouldShowLockout
 
             if isNegativeStatus {
                 // Negative status - fill to 100% with red
                 refreshResultNegative = true
                 refreshProgress = 1.0
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
                 print("[LOCKOUT] ⚠️ Subscription status is \(status.rawValue) - showing red")
 
-                // Wait to show negative result
-                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                // Wait to show negative result (longer so non-admins can read the full message)
+                try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
 
                 // Reset states
                 isRefreshing = false
                 refreshProgress = 0.0
                 refreshResultNegative = false
                 refreshResultStatus = nil
-            } else {
-                // Positive status - fill to 100% with green
+            } else if accessRestored {
+                // Positive status AND access is unlocked - fill to 100% with green
                 refreshComplete = true
                 refreshProgress = 1.0
-                print("[LOCKOUT] ✅ Subscription status is \(status.rawValue) - showing green")
-
-                // If access is now granted, the lockout view will automatically dismiss
-                if !subscriptionManager.shouldShowLockout {
-                    print("[LOCKOUT] ✅ Access granted - lockout will dismiss")
-                }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                print("[LOCKOUT] ✅ Subscription status is \(status.rawValue) - access granted")
 
                 // Wait before fading out
                 try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
@@ -992,11 +997,28 @@ struct SubscriptionLockoutView: View {
                 try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
                 refreshComplete = false
                 refreshResultStatus = nil
+            } else {
+                // Company subscription is healthy but this user still doesn't have a
+                // seat — flag as a failure so non-admins see "STILL LOCKED" feedback.
+                refreshComplete = true
+                refreshProgress = 1.0
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                print("[LOCKOUT] ⚠️ Status \(status.rawValue) but lockout still applies (e.g., no seat) — showing red")
+
+                // Wait to show the failure state
+                try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
+
+                // Reset states
+                isRefreshing = false
+                refreshProgress = 0.0
+                refreshComplete = false
+                refreshResultStatus = nil
             }
         } else {
             // Network error - fill to 100% with red
             refreshError = true
             refreshProgress = 1.0
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
 
             // Wait to show error
             try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds

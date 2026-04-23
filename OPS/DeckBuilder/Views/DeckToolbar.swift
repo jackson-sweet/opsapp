@@ -26,6 +26,19 @@ struct DeckToolbar: View {
         VStack(spacing: 0) {
             if viewModel.activeTool == .tapSelect {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
+                    // Prominent mode indicator + live count — user always knows they're in multi-select
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        Text("MULTI-SELECT")
+                            .font(OPSStyle.Typography.miniLabel)
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(OPSStyle.Colors.primaryAccent.opacity(0.12))
+                    .cornerRadius(4)
+
                     let count = viewModel.selection.selectedEdgeIds.count + viewModel.selection.selectedVertexIds.count + (viewModel.selection.selectedFootprint ? 1 : 0)
                     Text("\(count) selected")
                         .font(OPSStyle.Typography.caption)
@@ -108,7 +121,7 @@ struct DeckToolbar: View {
                     toolButton(icon: "pencil.and.outline", label: "Draw", tool: .draw)
                     toolButton(icon: "rectangle.dashed", label: "Select", tool: .select)
                     toolButton(icon: "lasso", label: "Lasso", tool: .lasso)
-                    toolButton(icon: "plus.square.dashed", label: "Tap+", tool: .tapSelect)
+                    toolButton(icon: "checkmark.circle", label: "Multi", tool: .tapSelect)
 
                     toolDivider
 

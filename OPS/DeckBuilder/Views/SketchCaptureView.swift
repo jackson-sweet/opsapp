@@ -43,6 +43,10 @@ private class ManualSketchCaptureVC: UIViewController, AVCapturePhotoCaptureDele
     private let session = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
     private var previewLayer: AVCaptureVideoPreviewLayer?
+    private weak var shutterButton: UIButton?
+    private weak var shutterInnerCircle: UIView?
+    private weak var statusLabel: UILabel?
+    private var isCapturing = false  // guards against rapid multi-tap firing multiple captures
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -88,16 +92,16 @@ private class ManualSketchCaptureVC: UIViewController, AVCapturePhotoCaptureDele
     }
 
     private func setupUI() {
-        // Instruction label
         let label = UILabel()
-        label.text = "FRAME YOUR SKETCH"
-        label.font = .monospacedSystemFont(ofSize: 14, weight: .semibold)
-        label.textColor = .white.withAlphaComponent(0.8)
+        label.text = "FRAME YOUR SKETCH  ·  TAP SHUTTER WHEN READY"
+        label.font = .monospacedSystemFont(ofSize: 13, weight: .semibold)
+        label.textColor = .white.withAlphaComponent(0.85)
         label.textAlignment = .center
+        label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(label)
+        statusLabel = label
 
-        // Shutter button
         let shutter = UIButton(type: .system)
         shutter.translatesAutoresizingMaskIntoConstraints = false
         let outerSize: CGFloat = 72
@@ -116,8 +120,9 @@ private class ManualSketchCaptureVC: UIViewController, AVCapturePhotoCaptureDele
 
         shutter.addTarget(self, action: #selector(shutterTapped), for: .touchUpInside)
         view.addSubview(shutter)
+        shutterButton = shutter
+        shutterInnerCircle = innerCircle
 
-        // Cancel button
         let cancel = UIButton(type: .system)
         cancel.setTitle("Cancel", for: .normal)
         cancel.titleLabel?.font = .systemFont(ofSize: 17, weight: .regular)
@@ -129,6 +134,8 @@ private class ManualSketchCaptureVC: UIViewController, AVCapturePhotoCaptureDele
         NSLayoutConstraint.activate([
             label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             label.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
+            label.leadingAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
             shutter.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             shutter.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -30),
@@ -146,6 +153,13 @@ private class ManualSketchCaptureVC: UIViewController, AVCapturePhotoCaptureDele
     }
 
     @objc private func shutterTapped() {
+        // Root cause of Jackson's "takes multiple scans much too quickly": rapid taps
+        // fired multiple capturePhoto calls in flight. Guard with isCapturing flag.
+        guard !isCapturing else { return }
+        isCapturing = true
+        shutterButton?.isEnabled = false
+        shutterInnerCircle?.backgroundColor = UIColor.white.withAlphaComponent(0.4)
+        statusLabel?.text = "CAPTURING…"
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         let settings = AVCapturePhotoSettings()
         photoOutput.capturePhoto(with: settings, delegate: self)
@@ -157,19 +171,35 @@ private class ManualSketchCaptureVC: UIViewController, AVCapturePhotoCaptureDele
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         if let error = error {
-            onError?(error)
+            Task { @MainActor in
+                self.resetShutter()
+                self.onError?(error)
+            }
             return
         }
         guard let data = photo.fileDataRepresentation(),
               let image = UIImage(data: data) else {
-            onError?(NSError(domain: "SketchCapture", code: 2, userInfo: [NSLocalizedDescriptionKey: "Could not process photo"]))
+            Task { @MainActor in
+                self.resetShutter()
+                self.onError?(NSError(domain: "SketchCapture", code: 2, userInfo: [NSLocalizedDescriptionKey: "Could not process photo"]))
+            }
             return
         }
 
         Task { @MainActor in
+            self.statusLabel?.text = "PROCESSING…"
             let corrected = await SketchPerspectiveCorrector.perspectiveCorrect(image: image)
-            onCapture?(corrected)
+            self.onCapture?(corrected)
+            // Shutter stays disabled — view is dismissing to review screen
         }
+    }
+
+    @MainActor
+    private func resetShutter() {
+        isCapturing = false
+        shutterButton?.isEnabled = true
+        shutterInnerCircle?.backgroundColor = .white
+        statusLabel?.text = "FRAME YOUR SKETCH  ·  TAP SHUTTER WHEN READY"
     }
 }
 
@@ -368,6 +398,7 @@ struct SketchCaptureView: View {
     @State private var showingCleanup = false
     @State private var scannerError: String?
     @State private var isProcessingLibraryImage = false
+    @State private var hasUserConfirmedCapture = false   // gate: pipeline runs only after explicit "Use this"
     @Environment(\.dismiss) private var dismiss
 
     // MARK: - Haptic Generators
@@ -387,20 +418,22 @@ struct SketchCaptureView: View {
                 choiceScreen
             } else if isProcessingLibraryImage {
                 processingLibraryLayer
-            } else if capturedImage != nil && pipeline.stage != .complete && pipeline.stage != .failed {
+            } else if capturedImage != nil && !hasUserConfirmedCapture && pipeline.stage == .idle {
+                // Review-before-process gate: user sees what was captured and confirms
+                reviewScreen
+            } else if capturedImage != nil && hasUserConfirmedCapture && pipeline.stage != .complete && pipeline.stage != .failed {
                 processingLayer
             } else if pipeline.stage == .failed {
                 errorLayer
             } else if pipeline.stage == .complete && pipeline.result != nil {
-                // Invisible placeholder — cleanup view presented via fullScreenCover
                 Color.clear
             }
         }
         .onChange(of: capturedImage) { _, image in
-            guard let image else { return }
-            Task {
-                await pipeline.process(image: image)
-            }
+            // Capture no longer auto-starts the pipeline. User must tap "Use This Scan" on the
+            // review screen. Prevents pipeline from firing on blurry/wrong frames.
+            guard image != nil else { return }
+            hasUserConfirmedCapture = false
         }
         .onChange(of: pipeline.stage) { oldValue, newValue in
             handleStageChange(from: oldValue, to: newValue)
@@ -526,6 +559,100 @@ struct SketchCaptureView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: OPSStyle.Layout.touchTargetStandard)
             }
+            .padding(.bottom, OPSStyle.Layout.spacing5)
+        }
+    }
+
+    // MARK: - Review Screen (preview → confirm)
+
+    /// Shown after capture (camera or library). User sees the perspective-corrected image
+    /// and must explicitly tap "Use This Scan" before we run the pipeline. A "Retake"
+    /// option sends them back to the scanner. This is the fix for Jackson's "takes multiple
+    /// scans much too quickly" — capture is now a two-step confirmed action, never automatic.
+    @ViewBuilder
+    private var reviewScreen: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text("Review Scan")
+                    .font(OPSStyle.Typography.heading)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: OPSStyle.Icons.xmark)
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                }
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing4)
+            .padding(.top, OPSStyle.Layout.spacing4)
+
+            // Image preview
+            if let image = capturedImage {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(OPSStyle.Colors.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                    .padding(OPSStyle.Layout.spacing4)
+            }
+
+            // Guidance
+            Text("Make sure the sketch is clear, flat, and fully in frame. If anything is blurry or cut off, retake.")
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, OPSStyle.Layout.spacing4)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
+
+            // Actions
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                Button {
+                    lightImpact.impactOccurred()
+                    hasUserConfirmedCapture = true
+                    guard let image = capturedImage else { return }
+                    Task { await pipeline.process(image: image) }
+                } label: {
+                    Text("Use This Scan")
+                        .font(OPSStyle.Typography.button)
+                        .foregroundColor(OPSStyle.Colors.buttonText)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: OPSStyle.Layout.touchTargetStandard)
+                        .background(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                                .fill(OPSStyle.Colors.primaryAccent)
+                        )
+                }
+
+                Button {
+                    lightImpact.impactOccurred()
+                    capturedImage = nil
+                    hasUserConfirmedCapture = false
+                    showingDocumentScanner = true
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Image(systemName: "camera.rotate")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        Text("Retake")
+                            .font(OPSStyle.Typography.button)
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: OPSStyle.Layout.touchTargetStandard)
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                            .stroke(OPSStyle.Colors.buttonBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                }
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing4)
             .padding(.bottom, OPSStyle.Layout.spacing5)
         }
     }
@@ -707,5 +834,6 @@ struct SketchCaptureView: View {
         showingPhotoPicker = false
         showingCleanup = false
         isProcessingLibraryImage = false
+        hasUserConfirmedCapture = false
     }
 }

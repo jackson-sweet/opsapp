@@ -115,37 +115,45 @@ struct DeckBuilderView: View {
                     .animation(.easeInOut(duration: 0.25), value: viewModel.showAssignmentToast)
                     } // end canvas ZStack (bottomTrailing)
 
-                    // Floating title bar — compact header over the canvas
-                    VStack(spacing: 0) {
+                    // Floating title bar — crisp card with safe-area aware margins
+                    VStack(spacing: OPSStyle.Layout.spacing2) {
                         titleBar
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
                             .background(
-                                LinearGradient(
-                                    colors: [OPSStyle.Colors.background.opacity(0.92), OPSStyle.Colors.background.opacity(0.7)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .fill(OPSStyle.Colors.cardBackground.opacity(0.96))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                            .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
+                                    )
+                                    .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
                             )
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.top, OPSStyle.Layout.spacing2)
                             .background(GeometryReader { geo in
                                 Color.clear.preference(key: DeckTitleBarHeightKey.self, value: geo.size.height)
                             })
 
-                        // AR accuracy banner
+                        // AR accuracy banner — also contained with margins so it reads as part of header stack
                         arAccuracyBanner
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
 
                         // Level tab bar
                         if viewModel.isMultiLevel || viewModel.drawingData.vertices.count >= 3 {
                             LevelTabBar(viewModel: viewModel)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                         }
 
                         Spacer()
                     }
                     .allowsHitTesting(true)
 
-                    // Floating title — left-aligned, below header, gradient bg
+                    // Floating title pill — left-aligned, sits just below title bar with consistent margin
                     VStack {
                         floatingTitlePill
-                            .padding(.top, titleBarHeight + 4)
-                            .padding(.leading, 16)
+                            .padding(.top, titleBarHeight + OPSStyle.Layout.spacing2)
+                            .padding(.leading, OPSStyle.Layout.spacing3 + OPSStyle.Layout.spacing2)
                         Spacer()
                     }
                     .allowsHitTesting(true)
@@ -430,52 +438,53 @@ struct DeckBuilderView: View {
     @ViewBuilder
     private var floatingTitlePill: some View {
         HStack {
-            if viewModel.isEditingTitle {
-                HStack(spacing: 8) {
-                    TextField("Design name", text: $editingTitleText)
-                        .font(OPSStyle.Typography.bodyEmphasis)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .textFieldStyle(.plain)
-                        .submitLabel(.done)
-                        .onSubmit { commitTitleEdit() }
+            Group {
+                if viewModel.isEditingTitle {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        TextField("Design name", text: $editingTitleText)
+                            .font(OPSStyle.Typography.bodyEmphasis)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .textFieldStyle(.plain)
+                            .submitLabel(.done)
+                            .onSubmit { commitTitleEdit() }
 
+                        Button {
+                            commitTitleEdit()
+                        } label: {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
+                    }
+                } else {
                     Button {
-                        commitTitleEdit()
+                        editingTitleText = viewModel.deckDesign.title
+                        viewModel.isEditingTitle = true
                     } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            Text(viewModel.deckDesign.title)
+                                .font(OPSStyle.Typography.bodyEmphasis)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .lineLimit(1)
+                            Image(systemName: "pencil")
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
+                                .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.6))
+                        }
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(
-                    LinearGradient(
-                        colors: [OPSStyle.Colors.background, OPSStyle.Colors.background.opacity(0)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-            } else {
-                Button {
-                    editingTitleText = viewModel.deckDesign.title
-                    viewModel.isEditingTitle = true
-                } label: {
-                    Text(viewModel.deckDesign.title)
-                        .font(OPSStyle.Typography.bodyEmphasis)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .lineLimit(1)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(
-                            LinearGradient(
-                                colors: [OPSStyle.Colors.background, OPSStyle.Colors.background.opacity(0)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                }
             }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .fill(OPSStyle.Colors.cardBackground.opacity(0.96))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                    .shadow(color: Color.black.opacity(0.2), radius: 6, y: 2)
+            )
+
             Spacer()
         }
     }
@@ -532,9 +541,9 @@ struct DeckBuilderView: View {
                         }
                     }
                 ),
-                iconOptions: [
-                    (false, "square.grid.2x2"),
-                    (true, "cube")
+                options: [
+                    (false, "2D"),
+                    (true, "3D")
                 ]
             )
             .frame(width: 96)
@@ -607,9 +616,19 @@ struct DeckBuilderView: View {
                         .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                 }
             }
+
+            // Always-visible canvas settings — reachable from ANY tool/selection state.
+            // Field fix: the toolbar gear was hidden whenever anything was selected.
+            Button {
+                viewModel.showingSettings = true
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            }
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing2)
-        .padding(.vertical, OPSStyle.Layout.spacing1)
     }
 
     // MARK: - AR Accuracy Banner

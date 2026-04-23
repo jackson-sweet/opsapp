@@ -16,7 +16,6 @@ class ARLineRenderer {
 
     private var vertexEntities: [String: Entity] = [:]
     private var edgeEntities: [String: Entity] = [:]
-    private var labelEntities: [ModelEntity] = []
     private var liveLineEntity: Entity?
     private var liveLabelEntity: ModelEntity?
     private var footprintEntity: ModelEntity?
@@ -24,6 +23,15 @@ class ARLineRenderer {
     private var textMeshCache: [String: MeshResource] = [:]
     private var lastLiveLabelText: String = ""
     private var lastLiveDashCount: Int = 0
+
+    /// Pool of dash segment entities for the live line. Reused across frames:
+    /// segments are repositioned every call, new ones allocated only when dash
+    /// count increases, surplus segments are disabled.
+    private var liveDashPool: [ModelEntity] = []
+
+    /// Hash of the last rendered alignment guide set. Prevents rebuilding the
+    /// entire dashed guide mesh tree every frame when guides haven't changed.
+    private var lastGuidesHash: Int = 0
 
     // MARK: - Colors — white default, no arbitrary blue
 
@@ -129,25 +137,34 @@ class ARLineRenderer {
         let lineEntity = createLineEntity(from: from, to: to, color: color, alpha: 1.0)
         group.addChild(lineEntity)
 
-        // Dimension label — ABOVE the line
-        let dimLabel = createBillboardLabel(
+        // Labels lie flat on the ground along the edge direction — no billboard
+        // tracking required. Dimension label sits centered on the edge, slightly
+        // above it to avoid z-fighting with the edge strip and the ground plane.
+        let edgeDirection = to - from
+        let mid = midpoint(from, to)
+        let perp = groundPerpendicular(direction: edgeDirection)
+        let labelLift: Float = 0.005  // 5mm above edge surface
+
+        let dimLabel = createGroundLabel(
             text: dimensionLabel,
-            position: midpoint(from, to) + SIMD3<Float>(0, 0.07, 0),
+            position: mid + SIMD3<Float>(0, labelLift, 0),
+            direction: edgeDirection,
             fontSize: labelTextSize
         )
         group.addChild(dimLabel)
-        labelEntities.append(dimLabel)
 
-        // Material label — BELOW the line (smaller, dimmer)
+        // Material label — offset 5cm perpendicular to the edge, on the same ground
+        // plane. Puts it beside the edge (not stacked on top of the dim label) so
+        // both stay readable when viewed from above.
         if let matText = materialLabel {
-            let matLabel = createBillboardLabel(
+            let matLabel = createGroundLabel(
                 text: matText,
-                position: midpoint(from, to) + SIMD3<Float>(0, 0.03, 0),
+                position: mid + SIMD3<Float>(0, labelLift, 0) + perp * 0.05,
+                direction: edgeDirection,
                 fontSize: materialLabelSize,
                 color: UIColor.white.withAlphaComponent(0.5)
             )
             group.addChild(matLabel)
-            labelEntities.append(matLabel)
         }
 
         rootAnchor.addChild(group)
@@ -163,15 +180,29 @@ class ARLineRenderer {
 
     func removeEdge(named name: String) {
         if let entity = edgeEntities.removeValue(forKey: name) {
-            labelEntities.removeAll { label in
-                label.parent === entity || entity.children.contains(where: { $0 === label })
-            }
             entity.removeFromParent()
         }
     }
 
     // MARK: - Live Line Operations
 
+    /// Update the live (unplaced) line from the last vertex to the crosshair.
+    ///
+    /// Uses a dash-segment pool keyed to `liveDashPool`:
+    ///   - The parent `Entity` is created once and reused.
+    ///   - Dash segments are created lazily up to the current count, and reused
+    ///     across frames. Surplus segments are disabled (not torn down) when the
+    ///     count drops.
+    ///   - Every call repositions all active segments (cheap — position + quat),
+    ///     so dashes follow the crosshair smoothly as direction changes.
+    ///   - Mesh/material is built once per segment. No per-frame `generateBox` /
+    ///     `SimpleMaterial` allocations regardless of edge length or crosshair speed.
+    ///   - The label is only reconstructed when the text changes; otherwise it's
+    ///     just repositioned.
+    ///
+    /// Before: a 10m edge allocated 55 box meshes 30–60 times/sec as the
+    /// dimension label ticked every 0.5". After: one-time allocation per dash
+    /// count, ~O(N) reposition per frame. Scales cleanly regardless of edge length.
     func updateLiveLine(from: SIMD3<Float>, to: SIMD3<Float>, label: String) {
         let distance = simd_distance(from, to)
         let segmentLength: Float = 0.12
@@ -179,49 +210,88 @@ class ARLineRenderer {
         let stride = segmentLength + gapLength
         let newDashCount = max(1, Int(distance / stride))
 
-        if newDashCount == lastLiveDashCount && label == lastLiveLabelText,
-           let existing = liveLineEntity {
-            existing.position = .zero
-            return
+        // Ensure the container exists.
+        let group: Entity
+        if let existing = liveLineEntity {
+            group = existing
+        } else {
+            let created = Entity()
+            created.name = "live_line"
+            rootAnchor.addChild(created)
+            liveLineEntity = created
+            group = created
         }
-        lastLiveDashCount = newDashCount
-        lastLiveLabelText = label
 
-        liveLineEntity?.removeFromParent()
+        // Grow the pool lazily. Each segment is a fixed-length box; length
+        // variation on the tail is handled by scaling Z.
+        while liveDashPool.count < newDashCount {
+            let mesh = MeshResource.generateBox(
+                width: edgeWidth, height: edgeHeight, depth: segmentLength
+            )
+            var material = SimpleMaterial(
+                color: edgeLiveColor.withAlphaComponent(0.5), isMetallic: false
+            )
+            material.roughness = .float(0.9)
+            let entity = ModelEntity(mesh: mesh, materials: [material])
+            group.addChild(entity)
+            liveDashPool.append(entity)
+        }
 
-        let group = Entity()
-        group.name = "live_line"
+        // Orient all segments with +Z aligned to the edge direction.
         let direction = distance > 0.001 ? simd_normalize(to - from) : SIMD3<Float>(0, 0, 1)
+        let forward = SIMD3<Float>(0, 0, 1)
+        let segOrientation = simd_quatf(from: forward, to: direction)
 
         var d: Float = 0
-        while d < distance {
+        for i in 0..<newDashCount {
+            let segStart = d
             let segEnd = min(d + segmentLength, distance)
-            let segment = createLineEntity(
-                from: from + direction * d,
-                to: from + direction * segEnd,
-                color: edgeLiveColor,
-                alpha: 0.5
-            )
-            group.addChild(segment)
+            let actualLength = segEnd - segStart
+            let dash = liveDashPool[i]
+            dash.isEnabled = true
+            dash.position = from + direction * ((segStart + segEnd) * 0.5)
+            dash.orientation = segOrientation
+            // Scale only the final (shorter) tail dash; full segments render at 1.0.
+            let zScale = max(0.01, actualLength / segmentLength)
+            dash.scale = SIMD3<Float>(1, 1, zScale)
             d = segEnd + gapLength
         }
+        // Disable any surplus pool entries without tearing them down.
+        if liveDashPool.count > newDashCount {
+            for i in newDashCount..<liveDashPool.count {
+                liveDashPool[i].isEnabled = false
+            }
+        }
+        lastLiveDashCount = newDashCount
 
-        // Dimension label above
-        let liveLbl = createBillboardLabel(
-            text: label,
-            position: midpoint(from, to) + SIMD3<Float>(0, 0.07, 0),
-            fontSize: labelTextSize
-        )
-        group.addChild(liveLbl)
-        liveLabelEntity = liveLbl
-
-        rootAnchor.addChild(group)
-        liveLineEntity = group
+        // Label: rebuild only when text changes; otherwise just reposition.
+        // Label lies flat on the ground along the live direction, matching
+        // locked-edge labels for visual consistency.
+        let labelPos = midpoint(from, to) + SIMD3<Float>(0, 0.005, 0)
+        if label != lastLiveLabelText || liveLabelEntity == nil {
+            liveLabelEntity?.removeFromParent()
+            let liveLbl = createGroundLabel(
+                text: label,
+                position: labelPos,
+                direction: direction,
+                fontSize: labelTextSize
+            )
+            group.addChild(liveLbl)
+            liveLabelEntity = liveLbl
+            lastLiveLabelText = label
+        } else if let existing = liveLabelEntity {
+            existing.position = labelPos
+            existing.orientation = groundLabelOrientation(direction: direction)
+        }
     }
 
     func removeLiveLine() {
         liveLineEntity?.removeFromParent()
         liveLineEntity = nil
+        liveLabelEntity = nil
+        liveDashPool.removeAll()  // pool children are gone with the parent
+        lastLiveDashCount = 0
+        lastLiveLabelText = ""
     }
 
     // MARK: - Alignment Guide Lines
@@ -230,7 +300,16 @@ class ARLineRenderer {
 
     /// Render dotted alignment guide lines in AR world space.
     /// Colors match the 2D canvas: cyan for axis, accent for parallel, green for perpendicular.
+    ///
+    /// Hash-gated: the full guide set's endpoints and types are hashed and
+    /// compared to the last rendered state. Skips the entire rebuild when
+    /// nothing has changed — prevents per-frame reallocation while the
+    /// crosshair sits on a stable alignment.
     func updateAlignmentGuides(_ guides: [ARPerimeterViewModel.ARAlignmentGuide]) {
+        let newHash = guidesHash(guides)
+        if newHash == lastGuidesHash { return }
+        lastGuidesHash = newHash
+
         alignmentGuideEntity?.removeFromParent()
         alignmentGuideEntity = nil
         guard !guides.isEmpty else { return }
@@ -275,6 +354,26 @@ class ARLineRenderer {
         alignmentGuideEntity = group
     }
 
+    /// Quantized structural hash of the guide set. Endpoints are bucketed to
+    /// 5mm so raycast jitter doesn't force rebuilds; any meaningful guide
+    /// change still updates the hash.
+    private func guidesHash(_ guides: [ARPerimeterViewModel.ARAlignmentGuide]) -> Int {
+        var hasher = Hasher()
+        hasher.combine(guides.count)
+        for guide in guides {
+            hasher.combine(quantize(guide.from.x))
+            hasher.combine(quantize(guide.from.y))
+            hasher.combine(quantize(guide.from.z))
+            hasher.combine(quantize(guide.to.x))
+            hasher.combine(quantize(guide.to.y))
+            hasher.combine(quantize(guide.to.z))
+            hasher.combine(guide.type)
+        }
+        return hasher.finalize()
+    }
+
+    private func quantize(_ v: Float) -> Int { Int((v * 200).rounded()) }  // 5mm bucket
+
     // MARK: - Footprint Fill
 
     func showFootprintFill(vertices: [SIMD3<Float>]) {
@@ -314,38 +413,9 @@ class ARLineRenderer {
         footprintEntity = nil
     }
 
-    // MARK: - Label Billboarding
-
-    func updateLabelOrientations(cameraPosition: SIMD3<Float>) {
-        for label in labelEntities {
-            billboardToCamera(entity: label, cameraPosition: cameraPosition)
-        }
-        if let liveLabel = liveLabelEntity {
-            billboardToCamera(entity: liveLabel, cameraPosition: cameraPosition)
-        }
-        for label in repositionPreviewLabels {
-            billboardToCamera(entity: label, cameraPosition: cameraPosition)
-        }
-    }
-
-    private func billboardToCamera(entity: ModelEntity, cameraPosition: SIMD3<Float>) {
-        let toCamera = cameraPosition - entity.position
-        let horizontalDist = sqrt(toCamera.x * toCamera.x + toCamera.z * toCamera.z)
-
-        let yAngle = atan2(-toCamera.x, toCamera.z)
-        let yRotation = simd_quatf(angle: yAngle, axis: SIMD3<Float>(0, 1, 0))
-
-        let elevationAngle = atan2(toCamera.y, horizontalDist)
-        let clampedPitch = min(Float.pi / 6, max(0, elevationAngle))
-        let xRotation = simd_quatf(angle: -clampedPitch, axis: SIMD3<Float>(1, 0, 0))
-
-        entity.orientation = yRotation * xRotation
-    }
-
     // MARK: - Reposition Preview
 
     private var repositionPreviewEntity: Entity?
-    private var repositionPreviewLabels: [ModelEntity] = []
     private var hiddenEdgeNames: Set<String> = []
     private var hiddenVertexName: String?
 
@@ -359,14 +429,13 @@ class ARLineRenderer {
         hiddenVertexName = hideVertexName
     }
 
-    /// Render dashed preview lines from connected vertices to the crosshair + a vertex marker
+    /// Render dashed preview lines from connected vertices to the crosshair + a vertex marker.
+    /// Preview labels lie flat on the ground along each preview edge — no billboarding required.
     func updateRepositionPreview(
         vertexPosition: SIMD3<Float>,
-        connectedEndpoints: [(otherVertex: SIMD3<Float>, label: String)],
-        cameraPosition: SIMD3<Float>
+        connectedEndpoints: [(otherVertex: SIMD3<Float>, label: String)]
     ) {
         repositionPreviewEntity?.removeFromParent()
-        repositionPreviewLabels.removeAll()
 
         let group = Entity()
         group.name = "reposition_preview"
@@ -379,7 +448,6 @@ class ARLineRenderer {
         diamond.transform.rotation = simd_quatf(angle: .pi / 4, axis: SIMD3<Float>(0, 1, 0))
         group.addChild(diamond)
 
-        // Dashed lines to each connected vertex
         for connection in connectedEndpoints {
             let from = connection.otherVertex
             let to = vertexPosition
@@ -401,15 +469,13 @@ class ARLineRenderer {
                 d = segEnd + gapLength
             }
 
-            // Dimension label
-            let dimLabel = createBillboardLabel(
+            let dimLabel = createGroundLabel(
                 text: connection.label,
-                position: midpoint(from, to) + SIMD3<Float>(0, 0.07, 0),
+                position: midpoint(from, to) + SIMD3<Float>(0, 0.005, 0),
+                direction: to - from,
                 fontSize: labelTextSize
             )
-            billboardToCamera(entity: dimLabel, cameraPosition: cameraPosition)
             group.addChild(dimLabel)
-            repositionPreviewLabels.append(dimLabel)
         }
 
         rootAnchor.addChild(group)
@@ -420,7 +486,6 @@ class ARLineRenderer {
     func endRepositionPreview() {
         repositionPreviewEntity?.removeFromParent()
         repositionPreviewEntity = nil
-        repositionPreviewLabels.removeAll()
 
         for name in hiddenEdgeNames {
             edgeEntities[name]?.isEnabled = true
@@ -440,14 +505,17 @@ class ARLineRenderer {
         vertexEntities.removeAll()
         for (_, entity) in edgeEntities { entity.removeFromParent() }
         edgeEntities.removeAll()
-        labelEntities.removeAll()
         liveLineEntity?.removeFromParent()
         liveLineEntity = nil
         liveLabelEntity = nil
+        liveDashPool.removeAll()
+        lastLiveDashCount = 0
+        lastLiveLabelText = ""
         footprintEntity?.removeFromParent()
         footprintEntity = nil
         alignmentGuideEntity?.removeFromParent()
         alignmentGuideEntity = nil
+        lastGuidesHash = 0
         endRepositionPreview()
     }
 
@@ -469,34 +537,69 @@ class ARLineRenderer {
         return entity
     }
 
-    /// Create a billboard text label with dark badge background.
-    /// Uses a parent entity for positioning so the text mesh offset is in local space
-    /// and survives billboard rotation. Badge matches canvas dimension badge style.
-    private func createBillboardLabel(
+    /// Compute the orientation that lays a text label flat on the ground plane
+    /// with its reading direction aligned along `direction` (projected to XZ).
+    ///
+    /// RealityKit's generated text sits in the local XY plane facing +Z (readable
+    /// from +Z). Two rotations:
+    ///   1. -90° around world X  → local +Z (face normal) becomes world +Y.
+    ///      Text now lies flat, readable from above.
+    ///   2. Yaw around world Y    → local +X (reading direction) aligns with the
+    ///      horizontal component of `direction`.
+    /// Yaw math: a Y-rotation by θ maps +X to (cos θ, 0, -sin θ), so for
+    /// direction (dx, 0, dz) we need θ = atan2(-dz, dx).
+    private func groundLabelOrientation(direction: SIMD3<Float>) -> simd_quatf {
+        let horizontal = SIMD3<Float>(direction.x, 0, direction.z)
+        let len = simd_length(horizontal)
+        // Always flat on ground — if direction is effectively vertical or zero,
+        // fall back to world +X reading direction.
+        let flat = simd_quatf(angle: -.pi / 2, axis: SIMD3<Float>(1, 0, 0))
+        guard len > 0.001 else { return flat }
+        let dir = horizontal / len
+        let yaw = simd_quatf(angle: atan2(-dir.z, dir.x), axis: SIMD3<Float>(0, 1, 0))
+        return yaw * flat
+    }
+
+    /// Ground-plane perpendicular of a direction vector (rotated +90° around +Y
+    /// in the XZ plane). Used to offset material labels off to the side of an
+    /// edge without stacking them on the dimension label.
+    private func groundPerpendicular(direction: SIMD3<Float>) -> SIMD3<Float> {
+        let horizontal = SIMD3<Float>(direction.x, 0, direction.z)
+        let len = simd_length(horizontal)
+        guard len > 0.001 else { return SIMD3<Float>(0, 0, 1) }
+        let dir = horizontal / len
+        // cross((0,1,0), dir) = (dir.z, 0, -dir.x)
+        return SIMD3<Float>(dir.z, 0, -dir.x)
+    }
+
+    /// Create a ground-plane text label with dark badge background.
+    /// The pivot is oriented so text lies flat on the ground, reading along the
+    /// given direction. No per-frame billboard updates required.
+    private func createGroundLabel(
         text: String,
         position: SIMD3<Float>,
+        direction: SIMD3<Float>,
         fontSize: CGFloat,
         color: UIColor = .white,
         showBadge: Bool = true
     ) -> ModelEntity {
-        let mesh = cachedTextMesh(text, fontSize: fontSize
-        )
+        let mesh = cachedTextMesh(text, fontSize: fontSize)
         let material = SimpleMaterial(color: color, isMetallic: false)
         let textEntity = ModelEntity(mesh: mesh, materials: [material])
 
-        // Center the text mesh in its local space (before billboard rotation)
+        // Center the text mesh in its local space so the pivot's rotation axis
+        // passes through the text's visual center.
         let bounds = textEntity.visualBounds(relativeTo: nil)
         textEntity.position = SIMD3<Float>(-bounds.center.x, -bounds.center.y, 0)
 
-        // Wrap in a pivot entity at the world position — billboard rotates the pivot
         let pivot = ModelEntity()
         pivot.position = position
+        pivot.orientation = groundLabelOrientation(direction: direction)
         pivot.addChild(textEntity)
 
-        // Badge background — dark rounded rect behind text
         if showBadge {
-            let padH: Float = 0.012  // horizontal padding
-            let padV: Float = 0.006  // vertical padding
+            let padH: Float = 0.012
+            let padV: Float = 0.006
             let bgWidth = bounds.extents.x * 2 + padH * 2
             let bgHeight = bounds.extents.y * 2 + padV * 2
             let bgMesh = MeshResource.generateBox(
@@ -508,7 +611,9 @@ class ARLineRenderer {
             )
             bgMaterial.roughness = .float(1.0)
             let bgEntity = ModelEntity(mesh: bgMesh, materials: [bgMaterial])
-            // Position behind text center (slight -Z to avoid z-fighting)
+            // Local -Z = world -Y after pivot rotation — badge sits just below
+            // the text, behind it from the viewer-from-above POV. 2mm separation
+            // clears z-fighting with the text and stays above the edge strip.
             bgEntity.position = SIMD3<Float>(0, 0, -0.002)
             pivot.addChild(bgEntity)
         }

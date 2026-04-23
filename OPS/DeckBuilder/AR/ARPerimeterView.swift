@@ -701,7 +701,6 @@ struct ARViewContainer: UIViewRepresentable {
         private var foregroundObserver: NSObjectProtocol?
         private let locationManager = CLLocationManager()
         private var hasTriggeredGeocode = false
-        private var billboardFrameCount: Int = 0
 
         init(viewModel: ARPerimeterViewModel) {
             self.viewModel = viewModel
@@ -736,16 +735,14 @@ struct ARViewContainer: UIViewRepresentable {
             guard let arView = arView else { return }
 
             let center = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
-            let cameraTransform = frame.camera.transform
-            let cameraPosition = SIMD3<Float>(cameraTransform.columns.3.x, cameraTransform.columns.3.y, cameraTransform.columns.3.z)
 
             if let position = performRaycast(session: session, arView: arView, center: center, target: .existingPlaneGeometry) {
-                handleHit(position: position, cameraPosition: cameraPosition)
+                handleHit(position: position)
                 return
             }
 
             if let position = performRaycast(session: session, arView: arView, center: center, target: .estimatedPlane) {
-                handleHit(position: position, cameraPosition: cameraPosition)
+                handleHit(position: position)
                 return
             }
 
@@ -764,7 +761,7 @@ struct ARViewContainer: UIViewRepresentable {
             )
         }
 
-        private func handleHit(position: SIMD3<Float>, cameraPosition: SIMD3<Float>) {
+        private func handleHit(position: SIMD3<Float>) {
             let renderer = self.renderer
             Task { @MainActor in
                 if !self.viewModel.isPlaneDetected {
@@ -772,7 +769,7 @@ struct ARViewContainer: UIViewRepresentable {
                     self.viewModel.cancelPlaneDetectionTimeout()
                 }
                 self.viewModel.updateCrosshairPosition(position)
-                self.updateRendering(crosshairPosition: position, cameraPosition: cameraPosition, renderer: renderer)
+                self.updateRendering(crosshairPosition: position, renderer: renderer)
 
                 // Trigger reverse geocode once when plane first detected
                 if !self.hasTriggeredGeocode, let loc = self.locationManager.location {
@@ -785,7 +782,7 @@ struct ARViewContainer: UIViewRepresentable {
         // MARK: - Rendering Update (MainActor)
 
         @MainActor
-        private func updateRendering(crosshairPosition: SIMD3<Float>, cameraPosition: SIMD3<Float>, renderer: ARLineRenderer?) {
+        private func updateRendering(crosshairPosition: SIMD3<Float>, renderer: ARLineRenderer?) {
             guard let renderer = renderer else { return }
 
             let version = viewModel.renderVersion
@@ -939,18 +936,12 @@ struct ARViewContainer: UIViewRepresentable {
 
                 renderer.updateRepositionPreview(
                     vertexPosition: previewPos,
-                    connectedEndpoints: connections,
-                    cameraPosition: cameraPosition
+                    connectedEndpoints: connections
                 )
             } else if isShowingRepositionPreview {
                 // Editing ended — clean up preview
                 isShowingRepositionPreview = false
                 renderer.endRepositionPreview()
-            }
-
-            billboardFrameCount += 1
-            if billboardFrameCount % 3 == 0 {
-                renderer.updateLabelOrientations(cameraPosition: cameraPosition)
             }
         }
 

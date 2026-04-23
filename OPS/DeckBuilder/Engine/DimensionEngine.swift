@@ -105,7 +105,14 @@ struct DimensionEngine {
 
     // MARK: - Parsing
 
-    /// Parse a dimension string like "24' 6\"", "24.5'", "24", "7.5m" into inches
+    /// Parse a dimension string like "24' 6\"", "24.5'", "24", "7.5m" into inches.
+    /// Imperial supports:
+    ///   feet only: `24'`, `24.5 ft`, `24 feet`
+    ///   inches only: `6"`, `6 in`, `6 inches`
+    ///   feet+inches: `24' 6"`, `24'6"`, `24-6`, `24 6` (when both apostrophe absent: first=feet, second=inches)
+    ///   fractions: `24' 6 1/2"`, `6 1/2"`, `1/2"`
+    ///   metric: `7.5m`, `150cm`, `0.9` (defaults cm)
+    /// Returns nil only if input is empty or contains no parseable numbers.
     static func parseToInches(_ input: String, system: MeasurementSystem) -> Double? {
         let trimmed = input.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
@@ -118,52 +125,156 @@ struct DimensionEngine {
         }
     }
 
-    private static func parseImperialToInches(_ input: String) -> Double? {
-        // Normalize Unicode quote variants to ASCII equivalents.
-        // iOS smart punctuation converts ' → \u{2019} and " → \u{201D}.
-        // Strip word-unit suffixes (feet/ft) so "12ft" falls through to the plain-number
-        // branch as "12". Longest match first so "feet" isn't turned into "eet" by "ft".
-        let normalized = input
+    /// Normalize smart quotes and word-unit suffixes to a canonical form:
+    /// ' for feet, " for inches, word suffixes stripped to symbols.
+    private static func normalizeImperialInput(_ input: String) -> String {
+        input
+            // Smart single quotes → '
             .replacingOccurrences(of: "\u{2018}", with: "'")
             .replacingOccurrences(of: "\u{2019}", with: "'")
             .replacingOccurrences(of: "\u{02BC}", with: "'")
+            // Smart double quotes → "
             .replacingOccurrences(of: "\u{201C}", with: "\"")
             .replacingOccurrences(of: "\u{201D}", with: "\"")
-            .replacingOccurrences(of: "feet", with: "", options: .caseInsensitive)
-            .replacingOccurrences(of: "ft", with: "", options: .caseInsensitive)
+            // Inch word suffixes → "
+            .replacingOccurrences(of: "inches", with: "\"", options: .caseInsensitive)
+            .replacingOccurrences(of: "inch", with: "\"", options: .caseInsensitive)
+            // "ft" and "feet" come AFTER "inches" so we don't eat the "e" inside "feet" when
+            // rewriting "inches". Order matters: longest first.
+            .replacingOccurrences(of: "feet", with: "'", options: .caseInsensitive)
+            .replacingOccurrences(of: "ft", with: "'", options: .caseInsensitive)
+            // "in" alone (common shorthand); do this last so it doesn't hit "inches"/"inch"
+            .replacingOccurrences(of: "in", with: "\"", options: .caseInsensitive)
+    }
 
-        var totalInches = 0.0
-        var remaining = normalized
+    /// Tokenizer-based imperial parser. Walks the string left-to-right, merging mixed
+    /// numbers (`W N/D`) eagerly so each pending entry is a single complete value.
+    ///
+    /// Handles every field-contractor format I've seen:
+    ///   `24'` · `6"` · `24' 6"` · `24'6"` · `4 1/2'` (mixed feet) · `6 1/2"` (mixed inches) ·
+    ///   `24' 6 1/2"` · `1/2"` · `24` (lone → feet) · `24 6` (→ 24' 6") · `24-6` · smart quotes.
+    private static func parseImperialToInches(_ input: String) -> Double? {
+        let normalized = normalizeImperialInput(input)
+        let chars = Array(normalized)
+        var i = 0
+        var totalInches: Double = 0
+        var sawAnyNumber = false
+        var pendingNumbers: [Double] = []
 
-        // Extract feet
-        if let feetRange = remaining.range(of: #"(\d+\.?\d*)\s*'"#, options: .regularExpression) {
-            let feetStr = remaining[feetRange].replacingOccurrences(of: "'", with: "").trimmingCharacters(in: .whitespaces)
-            if let feet = Double(feetStr) {
-                totalInches += feet * 12.0
+        // Read one number token starting at i. Merges an immediately-following fraction
+        // (both bare `N/D` and mixed `W N/D` forms) into a single value. Advances `i`.
+        func readNumber() -> Double? {
+            guard i < chars.count else { return nil }
+
+            // Read first digit run / decimal
+            let wholeStart = i
+            var sawDot = false
+            var foundDigit = false
+            while i < chars.count, chars[i].isNumber || (chars[i] == "." && !sawDot) {
+                if chars[i] == "." { sawDot = true }
+                if chars[i].isNumber { foundDigit = true }
+                i += 1
             }
-            remaining = String(remaining[feetRange.upperBound...])
+            guard foundDigit, let whole = Double(String(chars[wholeStart..<i])) else {
+                return nil
+            }
+
+            // Bare `N/D` form: the digits we just read are the numerator
+            // (only valid if the caller sees no whitespace between digits and `/`).
+            if i < chars.count, chars[i] == "/" {
+                let slashIndex = i
+                i += 1
+                let denStart = i
+                while i < chars.count, chars[i].isNumber { i += 1 }
+                if i > denStart, let den = Double(String(chars[denStart..<i])), den > 0 {
+                    return whole / den
+                }
+                // Not a valid fraction — rewind to slash, treat number as whole
+                i = slashIndex
+                return whole
+            }
+
+            // Mixed `W N/D` form: whole, whitespace, numerator, `/`, denominator
+            var lookahead = i
+            while lookahead < chars.count, chars[lookahead].isWhitespace { lookahead += 1 }
+            if lookahead < chars.count, chars[lookahead].isNumber {
+                let numStart = lookahead
+                while lookahead < chars.count, chars[lookahead].isNumber { lookahead += 1 }
+                let numEnd = lookahead
+                var afterNum = lookahead
+                while afterNum < chars.count, chars[afterNum].isWhitespace { afterNum += 1 }
+                if afterNum < chars.count, chars[afterNum] == "/" {
+                    afterNum += 1
+                    while afterNum < chars.count, chars[afterNum].isWhitespace { afterNum += 1 }
+                    let denStart = afterNum
+                    while afterNum < chars.count, chars[afterNum].isNumber { afterNum += 1 }
+                    if afterNum > denStart,
+                       let numerator = Double(String(chars[numStart..<numEnd])),
+                       let denom = Double(String(chars[denStart..<afterNum])), denom > 0 {
+                        i = afterNum
+                        return whole + (numerator / denom)
+                    }
+                }
+            }
+
+            return whole
         }
 
-        // Extract inches
-        if let inchRange = remaining.range(of: #"(\d+\.?\d*)\s*\""#, options: .regularExpression) {
-            let inchStr = remaining[inchRange].replacingOccurrences(of: "\"", with: "").trimmingCharacters(in: .whitespaces)
-            if let inches = Double(inchStr) {
-                totalInches += inches
+        while i < chars.count {
+            let c = chars[i]
+
+            if c.isWhitespace || c == "-" || c == "," { i += 1; continue }
+
+            if c.isNumber || c == "." {
+                if let v = readNumber() {
+                    pendingNumbers.append(v)
+                    sawAnyNumber = true
+                } else {
+                    i += 1
+                }
+                continue
+            }
+
+            if c == "'" {
+                // Feet marker: the first pending number is feet, any extra tail → inches.
+                if let feet = pendingNumbers.first {
+                    totalInches += feet * 12.0
+                    pendingNumbers.removeFirst()
+                }
+                // Rare case: leftover pending numbers before a feet marker — treat as inches
+                for n in pendingNumbers { totalInches += n }
+                pendingNumbers.removeAll()
+                i += 1
+                continue
+            }
+
+            if c == "\"" {
+                // Inches marker: every pending number is inches (already merged mixed numbers)
+                for n in pendingNumbers { totalInches += n }
+                pendingNumbers.removeAll()
+                i += 1
+                continue
+            }
+
+            i += 1 // unknown character — skip defensively
+        }
+
+        // Resolve trailing unmarked numbers
+        if !pendingNumbers.isEmpty {
+            switch pendingNumbers.count {
+            case 1:
+                // Lone number → feet (contractor shorthand: "12" = 12 feet)
+                totalInches += pendingNumbers[0] * 12.0
+            case 2:
+                // Two numbers with no marker → feet + inches: "12 6" = 12' 6"
+                totalInches += pendingNumbers[0] * 12.0 + pendingNumbers[1]
+            default:
+                totalInches += pendingNumbers[0] * 12.0
+                for n in pendingNumbers.dropFirst() { totalInches += n }
             }
         }
 
-        // Extract fraction (e.g., "1/2", "3/4", "1/8")
-        if let fracRange = remaining.range(of: #"(\d+)\s*/\s*(\d+)"#, options: .regularExpression) {
-            let fracStr = remaining[fracRange]
-            let parts = fracStr.split(separator: "/").map { $0.trimmingCharacters(in: .whitespaces) }
-            if parts.count == 2, let num = Double(parts[0]), let den = Double(parts[1]), den > 0 {
-                totalInches += num / den
-            }
-        } else if totalInches == 0, let plain = Double(remaining.trimmingCharacters(in: .whitespaces)) {
-            // Plain number — assume feet
-            totalInches = plain * 12.0
-        }
-
+        guard sawAnyNumber else { return nil }
         return totalInches >= 0 ? totalInches : nil
     }
 

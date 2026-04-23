@@ -103,6 +103,12 @@ struct ProjectFormSheet: View {
     @State private var isDatesExpanded = false
     @State private var isPhotosExpanded = false
 
+    // Bug f86cf554 — deck design capture from the create-project form.
+    // Shows the deck creation picker when tapped; the resulting DeckDesign
+    // is held locally and attached to the project after save.
+    @State private var showingDeckCreationPicker = false
+    @State private var capturedDeckDesign: DeckDesign?
+
     // Section ordering - tracks which sections appear first
     @State private var sectionOrder: [OptionalSection] = [.description, .notes, .tasks, .photos]
 
@@ -501,6 +507,30 @@ struct ProjectFormSheet: View {
                 populatedFields: currentlyPopulatedFields
             )
         }
+        // Bug f86cf554 — deck design capture from project create form.
+        .sheet(isPresented: $showingDeckCreationPicker) {
+            deckCreationPickerSheet
+        }
+    }
+
+    /// Deck creation picker presented from the project form. The design is
+    /// built with a placeholder projectId (empty string) since the real
+    /// project id isn't known until after save — attachProjectIdToDeckDesign
+    /// swaps the id in during the save cascade.
+    @ViewBuilder
+    private var deckCreationPickerSheet: some View {
+        let companyId = dataController.currentUser?.companyId ?? ""
+        let userId = dataController.currentUser?.id
+        CreationPickerView(
+            projectId: nil, // attached after project is saved
+            companyId: companyId,
+            userId: userId,
+            onDesignCreated: { design in
+                capturedDeckDesign = design
+                showingDeckCreationPicker = false
+            }
+        )
+        .presentationDetents([.medium])
     }
 
     /// Main scrollable content
@@ -636,6 +666,17 @@ struct ProjectFormSheet: View {
                         statusField
                             .allowsHitTesting(!tutorialMode) // Always disabled in tutorial
                             .opacity(tutorialMode ? 0.5 : 1.0)
+
+                        // Bug f86cf554 — deck design capture in project form.
+                        // Only shown when deck builder feature is enabled for
+                        // the company, and only in create mode (edit mode
+                        // uses the ProjectDetailsView DECK tab).
+                        if mode.isCreate,
+                           !tutorialMode,
+                           PermissionStore.shared.isFeatureEnabled("deck_builder"),
+                           PermissionStore.shared.can("deck_builder.view") {
+                            deckDesignField
+                        }
                     }
                 }
             }
@@ -1113,6 +1154,69 @@ struct ProjectFormSheet: View {
                     }
                 }
             )
+        }
+    }
+
+    /// Bug f86cf554 — deck design capture button shown in the project create
+    /// form. Tapping launches CreationPickerView; the resulting DeckDesign is
+    /// stashed in capturedDeckDesign and re-parented to the real project id
+    /// after save.
+    private var deckDesignField: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("DECK DESIGN")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showingDeckCreationPicker = true
+            }) {
+                HStack(spacing: 12) {
+                    Image(systemName: capturedDeckDesign == nil ? "ruler" : "checkmark.circle.fill")
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                        .foregroundColor(capturedDeckDesign == nil ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.successStatus)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(capturedDeckDesign == nil ? "Record Deck Design" : "Deck Design Attached")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        Text(capturedDeckDesign == nil
+                             ? "Optional — capture now or add later"
+                             : "Tap to replace")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+
+                    Spacer()
+
+                    if capturedDeckDesign != nil {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            capturedDeckDesign = nil
+                        } label: {
+                            Image(systemName: OPSStyle.Icons.xmark)
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .padding(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    } else {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+                .padding(14)
+                .frame(minHeight: 44)
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(capturedDeckDesign == nil ? OPSStyle.Colors.inputFieldBorder : OPSStyle.Colors.successStatus.opacity(0.4),
+                                lineWidth: OPSStyle.Layout.Border.standard)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
         }
     }
 
@@ -1738,8 +1842,14 @@ struct ProjectFormSheet: View {
             throw ProjectError.missingRequiredFields
         }
 
-        // Use DEMO_ prefix in tutorial mode for cleanup
-        let projectId = tutorialMode ? "DEMO_PROJECT_\(UUID().uuidString)" : UUID().uuidString
+        // Use DEMO_ prefix in tutorial mode for cleanup.
+        // Bug f86cf554 — canonicalize to lowercase so the local id matches
+        // Postgres (uuid columns are lowercase). Uppercase UUIDs from
+        // Swift's UUID().uuidString caused fetch-by-id in InboundProcessor
+        // to miss the realtime echo, inserting a second row.
+        let projectId = tutorialMode
+            ? "DEMO_PROJECT_\(UUID().uuidString)"
+            : UUID().uuidString.lowercased()
         print("[PROJECT_CREATE] Creating project locally with ID: \(projectId)")
 
         let project = Project(
@@ -1782,6 +1892,18 @@ struct ProjectFormSheet: View {
             client.projects.append(project)
             try? modelContext.save()
             print("[PROJECT_CREATE] ✅ Project saved locally")
+
+            // Bug f86cf554 — attach any captured deck design to the real
+            // project id. The design was built with a nil projectId from
+            // the form; we re-parent it here so it shows up in the DECK
+            // tab on first load.
+            if let deck = capturedDeckDesign {
+                deck.projectId = project.id
+                deck.needsSync = true
+                deck.updatedAt = Date()
+                try? modelContext.save()
+                print("[PROJECT_CREATE] 🏗️ Attached deck design \(deck.id) to project \(project.id)")
+            }
         }
 
         // Tutorial mode: skip API calls, only save locally
@@ -1956,8 +2078,48 @@ struct ProjectFormSheet: View {
             }
         }
 
+        // ----- Defense against inbound-echo duplicate race (Bug f86cf554) -----
+        // Project.id is not @Attribute(.unique). When OutboundProcessor clears
+        // the pending SyncOperation before the inbound realtime echo arrives,
+        // InboundProcessor.mergeProject can slip past origin-suppression and
+        // insert a second row. Mirror the TaskFormSheet pattern (858fa5e):
+        // dedupe immediately after cascade, and again 3s later to catch slow
+        // realtime echoes. Winner is the copy with needsSync=true (pending
+        // local changes) or the most-recently synced.
+        let createdProjectId = project.id
+        await MainActor.run {
+            Self.dedupeProjectRow(id: createdProjectId, context: modelContext)
+        }
+        Task { @MainActor [weak ctx = modelContext] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if let ctx { Self.dedupeProjectRow(id: createdProjectId, context: ctx) }
+        }
+
         print("[PROJECT_CREATE] ✅ Project creation complete")
         return project
+    }
+
+    /// Remove duplicate Project rows for a given id. Winner is the copy
+    /// with needsSync=true (pending local changes) if present, otherwise
+    /// the most-recently synced. Called from createNewProject to defend
+    /// against the inbound-echo race that slips past origin-suppression.
+    /// Bug f86cf554 — mirrors TaskFormSheet.dedupeTaskRow (858fa5e).
+    @MainActor
+    private static func dedupeProjectRow(id: String, context: ModelContext) {
+        let descriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { $0.id == id }
+        )
+        guard let copies = try? context.fetch(descriptor), copies.count > 1 else { return }
+        print("[PROJECT_FORM] ⚠️ Detected \(copies.count) rows for project \(id), deduping")
+
+        let winner: Project = copies.first(where: { $0.needsSync })
+            ?? copies.max(by: { ($0.lastSyncedAt ?? .distantPast) < ($1.lastSyncedAt ?? .distantPast) })
+            ?? copies[0]
+
+        for dup in copies where dup !== winner {
+            context.delete(dup)
+        }
+        try? context.save()
     }
 
     private func updateExistingProject(_ project: Project) async throws {

@@ -25,9 +25,16 @@ struct DeckCanvasView: View {
     /// every dot sits on a valid snap position — never lies to the user about where snap
     /// points are. At extreme scales we render every Nth snap line (or finer subdivision)
     /// to keep visible density in the 12-60pt range, without changing the underlying snap.
+    /// Pre-scale drawings use the same fallback as DeckBuilderViewModel so visible
+    /// grid dots align with actual snap positions from the very first stroke.
     private var gridSpacing: CGFloat {
         let snapInches = viewModel.drawingData.config.lengthSnapIncrement
-        guard let scale = viewModel.drawingData.scaleFactor, scale > 0 else { return 20.0 }
+        let scale: Double
+        if let s = viewModel.drawingData.scaleFactor, s > 0 {
+            scale = s
+        } else {
+            scale = DeckBuilderViewModel.prescaleFallbackScale
+        }
         let snapPt = CGFloat(snapInches * scale)
         let visiblePt = snapPt * canvasScale
         if visiblePt >= 12 { return snapPt }

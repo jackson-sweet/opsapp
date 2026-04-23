@@ -176,6 +176,7 @@ enum SyncEntityType: String, CaseIterable {
     case formSubmission
     case localPhoto
     case deckDesign
+    case wizardState
 
     /// The corresponding Supabase table name for this entity type.
     var supabaseTable: String {
@@ -207,6 +208,7 @@ enum SyncEntityType: String, CaseIterable {
         case .formSubmission:        return "form_submissions"
         case .localPhoto:            return "local_photos"
         case .deckDesign:            return "deck_designs"
+        case .wizardState:           return "wizard_states"
         }
     }
 
@@ -232,6 +234,7 @@ enum SyncEntityType: String, CaseIterable {
              .formSubmission:                               return 12
         case .localPhoto:                                   return 13
         case .deckDesign:                                   return 7
+        case .wizardState:                                  return 7
         }
     }
 }

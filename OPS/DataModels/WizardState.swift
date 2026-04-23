@@ -11,6 +11,13 @@ import SwiftData
 
 @Model
 final class WizardState {
+    /// Stable UUID primary key matching the Supabase `wizard_states.id` column.
+    /// Generated locally on insert (UUID v4). Must be preserved across sync passes
+    /// so SyncOperation.entityId → Supabase row can be routed unambiguously.
+    /// The `(wizardId, userId)` pair remains the primary lookup key in
+    /// WizardStateManager; `id` exists solely for the sync layer.
+    @Attribute(.unique) var id: String
+
     /// The wizard identifier (e.g., "project_lifecycle")
     var wizardId: String
 
@@ -54,7 +61,8 @@ final class WizardState {
 
     // MARK: - Init
 
-    init(wizardId: String, userId: String) {
+    init(wizardId: String, userId: String, id: String = UUID().uuidString) {
+        self.id = id
         self.wizardId = wizardId
         self.userId = userId
         self.statusRaw = WizardStatus.notStarted.rawValue

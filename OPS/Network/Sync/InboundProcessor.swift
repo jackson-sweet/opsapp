@@ -35,6 +35,7 @@ final class InboundProcessor {
     private var projectNoteRepo: ProjectNoteRepository
     private var photoAnnotationRepo: PhotoAnnotationRepository
     private var deckDesignRepo: DeckDesignRepository
+    private var wizardStateRepo: WizardStateRepository
     private var invoiceRepo: InvoiceRepository
     private var estimateRepo: EstimateRepository
 
@@ -51,6 +52,9 @@ final class InboundProcessor {
             ?? ""
         self.companyId = companyId
 
+        // wizard_states is user-scoped (no company_id). Read userId eagerly for repo.
+        let userId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+
         self.projectRepo = ProjectRepository(companyId: companyId)
         self.taskRepo = TaskRepository(companyId: companyId)
         self.userRepo = UserRepository(companyId: companyId)
@@ -60,6 +64,7 @@ final class InboundProcessor {
         self.projectNoteRepo = ProjectNoteRepository(companyId: companyId)
         self.photoAnnotationRepo = PhotoAnnotationRepository(companyId: companyId)
         self.deckDesignRepo = DeckDesignRepository(companyId: companyId)
+        self.wizardStateRepo = WizardStateRepository(userId: userId)
         self.invoiceRepo = InvoiceRepository(companyId: companyId)
         self.estimateRepo = EstimateRepository(companyId: companyId)
     }
@@ -84,6 +89,7 @@ final class InboundProcessor {
 
         print("[InboundProcessor] Reconfiguring repositories for company: \(newCompanyId)")
         self.companyId = newCompanyId
+        let newUserId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
         self.projectRepo = ProjectRepository(companyId: newCompanyId)
         self.taskRepo = TaskRepository(companyId: newCompanyId)
         self.userRepo = UserRepository(companyId: newCompanyId)
@@ -93,6 +99,7 @@ final class InboundProcessor {
         self.projectNoteRepo = ProjectNoteRepository(companyId: newCompanyId)
         self.photoAnnotationRepo = PhotoAnnotationRepository(companyId: newCompanyId)
         self.deckDesignRepo = DeckDesignRepository(companyId: newCompanyId)
+        self.wizardStateRepo = WizardStateRepository(userId: newUserId)
         self.invoiceRepo = InvoiceRepository(companyId: newCompanyId)
         self.estimateRepo = EstimateRepository(companyId: newCompanyId)
     }
@@ -109,6 +116,7 @@ final class InboundProcessor {
         .taskType,
         .project,
         .projectTask,
+        .wizardState,
         .projectNote,
         .photoAnnotation,
         .deckDesign,
@@ -227,6 +235,8 @@ final class InboundProcessor {
             try await syncPhotoAnnotations(since: since, context: context)
         case .deckDesign:
             try await syncDeckDesigns(since: since, context: context)
+        case .wizardState:
+            try await syncWizardStates(since: since, context: context)
         case .estimate:
             try await syncEstimates(since: since, context: context)
         case .invoice:
@@ -1046,6 +1056,84 @@ final class InboundProcessor {
 
             existing.lastSyncedAt = Date()
             let hasPending = hasPendingOperations(entityType: .deckDesign, entityId: existing.id, context: context)
+            if !hasPending {
+                existing.needsSync = false
+            }
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+
+        try context.save()
+    }
+
+    // MARK: - WizardState Sync
+
+    private func syncWizardStates(since: Date?, context: ModelContext) async throws {
+        // wizard_states is user-scoped. Resolve userId at call time so a fresh login
+        // uses the right value even if reconfigure() hasn't landed yet.
+        let userId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        guard !userId.isEmpty else {
+            print("[InboundProcessor] No userId — skipping wizard_states sync")
+            return
+        }
+
+        let dtos = try await wizardStateRepo.fetchForUser(userId, since: since)
+        for dto in dtos {
+            try mergeWizardState(dto: dto, context: context)
+        }
+        print("[InboundProcessor] Merged \(dtos.count) wizard states")
+    }
+
+    private func mergeWizardState(dto: SupabaseWizardStateDTO, context: ModelContext) throws {
+        let id = dto.id
+        // Primary match on id (new rows synced from other devices).
+        let idDescriptor = FetchDescriptor<WizardState>(
+            predicate: #Predicate { $0.id == id }
+        )
+        var existing = try context.fetch(idDescriptor).first
+
+        // Fallback match on (wizardId, userId) for records created locally BEFORE
+        // this sync landed (they were inserted by WizardStateManager with a fresh
+        // UUID that the server has never seen). If we find one, adopt the server
+        // id so subsequent pulls resolve directly.
+        if existing == nil {
+            let wizardId = dto.wizardId
+            let userId = dto.userId
+            let pairDescriptor = FetchDescriptor<WizardState>(
+                predicate: #Predicate { $0.wizardId == wizardId && $0.userId == userId }
+            )
+            if let fallback = try context.fetch(pairDescriptor).first {
+                fallback.id = id
+                existing = fallback
+            }
+        }
+
+        if let existing = existing {
+            let accept = acceptableFields(
+                entityType: .wizardState,
+                entityId: id,
+                fields: [
+                    "statusRaw", "currentStepIndex", "doNotShow",
+                    "completedAt", "totalDurationMs", "stepsSkipped",
+                    "lastActiveAt", "currentSessionId"
+                ],
+                context: context
+            )
+
+            if accept.contains("statusRaw") { existing.statusRaw = dto.status }
+            if accept.contains("currentStepIndex") { existing.currentStepIndex = dto.currentStepIndex }
+            if accept.contains("doNotShow") { existing.doNotShow = dto.doNotShow }
+            if accept.contains("completedAt") { existing.completedAt = dto.completedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("totalDurationMs") { existing.totalDurationMs = dto.totalDurationMs }
+            if accept.contains("stepsSkipped") { existing.stepsSkipped = dto.stepsSkipped }
+            if accept.contains("lastActiveAt") { existing.lastActiveAt = dto.lastActiveAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("currentSessionId") { existing.currentSessionId = dto.currentSessionId }
+
+            existing.lastSyncedAt = Date()
+            let hasPending = hasPendingOperations(entityType: .wizardState, entityId: existing.id, context: context)
             if !hasPending {
                 existing.needsSync = false
             }

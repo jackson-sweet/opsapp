@@ -337,6 +337,8 @@ final class OutboundProcessor {
             try await handleTaskType(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
         case .deckDesign:
             try await handleDeckDesign(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
+        case .wizardState:
+            try await handleWizardState(entityId: entityId, operationType: operationType, payload: payload)
         default:
             // For entity types without a dedicated handler, use generic table push
             try await genericTablePush(
@@ -416,6 +418,13 @@ final class OutboundProcessor {
         "id", "company_id", "project_id", "title", "drawing_data",
         "thumbnail_url", "version", "created_by",
         "deleted_at", "created_at", "updated_at"
+    ]
+
+    private static let validWizardStateColumns: Set<String> = [
+        "id", "wizard_id", "user_id", "status", "current_step_index",
+        "do_not_show", "completed_at", "total_duration_ms", "steps_skipped",
+        "last_active_at", "current_session_id",
+        "created_at", "updated_at"
     ]
 
     private static let validCompanyColumns: Set<String> = [
@@ -578,6 +587,31 @@ final class OutboundProcessor {
 
         default:
             print("[OutboundProcessor] Unknown operation type '\(operationType)' for deckDesign")
+        }
+    }
+
+    /// Pushes wizard_states rows. No companyId — user-scoped per RLS.
+    /// Hard delete path (wizard_states has no deleted_at column).
+    private func handleWizardState(entityId: String, operationType: String, payload: [String: Any]) async throws {
+        let userId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        let repo = WizardStateRepository(userId: userId)
+        let sanitizedPayload = payload.filter { Self.validWizardStateColumns.contains($0.key) }
+
+        switch operationType {
+        case "create":
+            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
+            let dto = try JSONDecoder().decode(CreateWizardStateDTO.self, from: jsonData)
+            _ = try await repo.create(dto)
+
+        case "update":
+            let fields = payloadToAnyJSON(sanitizedPayload)
+            try await repo.updateFields(entityId, fields: fields)
+
+        case "delete":
+            try await repo.delete(id: entityId)
+
+        default:
+            print("[OutboundProcessor] Unknown operation type '\(operationType)' for wizardState")
         }
     }
 

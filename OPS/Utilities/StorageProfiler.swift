@@ -85,7 +85,7 @@ final class StorageProfiler {
     // MARK: - Queries
 
     /// Current budget in bytes. Returns a 2 GB fallback if not yet calibrated.
-    var budgetBytes: Int64 {
+    nonisolated var budgetBytes: Int64 {
         let stored = Int64(UserDefaults.standard.integer(forKey: Key.budgetBytes))
         return stored > 0 ? stored : Self.fallbackBudget
     }
@@ -93,10 +93,10 @@ final class StorageProfiler {
     /// Current on-disk photo storage usage in bytes.
     ///
     /// Walks the three OPS photo directories and sums allocated file sizes.
-    /// Synchronous; acceptable on main for reasonable photo counts (≤few thousand).
-    /// If this becomes a hot path for very large libraries, wrap in a Task and
-    /// cache the result with an invalidation hook on save/delete.
-    func currentUsageBytes() -> Int64 {
+    /// Marked `nonisolated` so callers can run it off the main actor — this
+    /// is essential for the Settings UI, which otherwise stalls main for
+    /// seconds walking hundreds of megabytes of photos.
+    nonisolated func currentUsageBytes() -> Int64 {
         let fm = FileManager.default
         let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let dirs = [
@@ -107,23 +107,23 @@ final class StorageProfiler {
 
         var total: Int64 = 0
         for dir in dirs {
-            total += directorySize(at: dir)
+            total += Self.directorySize(at: dir)
         }
         return total
     }
 
     /// Remaining budget headroom in bytes. Negative value means over budget.
-    func headroomBytes() -> Int64 {
+    nonisolated func headroomBytes() -> Int64 {
         budgetBytes - currentUsageBytes()
     }
 
     /// Would writing `bytes` of new content exceed the current budget?
-    func wouldExceedBudget(adding bytes: Int64) -> Bool {
+    nonisolated func wouldExceedBudget(adding bytes: Int64) -> Bool {
         currentUsageBytes() + bytes > budgetBytes
     }
 
     /// Current device free space. Nil if the system query fails.
-    func currentDeviceFreeBytes() -> Int64? {
+    nonisolated func currentDeviceFreeBytes() -> Int64? {
         let fm = FileManager.default
         let path = fm.urls(for: .documentDirectory, in: .userDomainMask)[0].path
         do {
@@ -172,7 +172,7 @@ final class StorageProfiler {
     ///  - no higher than 50% of current device free space (leave room for iOS
     ///    and other apps)
     /// Both bounded by the hard floor.
-    func maxAllowedBudget() -> Int64 {
+    nonisolated func maxAllowedBudget() -> Int64 {
         let free = currentDeviceFreeBytes() ?? Self.fallbackFreeBytes
         let halfOfFree = max(Self.minBudget, free / 2)
         let currentUsage = currentUsageBytes()
@@ -183,7 +183,7 @@ final class StorageProfiler {
 
     /// Computes the total allocated size of a directory by walking its contents.
     /// Returns 0 if the directory doesn't exist or isn't enumerable.
-    private func directorySize(at url: URL) -> Int64 {
+    nonisolated private static func directorySize(at url: URL) -> Int64 {
         let fm = FileManager.default
         guard fm.fileExists(atPath: url.path),
               let enumerator = fm.enumerator(

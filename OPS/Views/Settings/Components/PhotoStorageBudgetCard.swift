@@ -36,12 +36,36 @@ struct PhotoStorageBudgetCard: View {
     @State private var committedBudgetMB: Double = 0
     @State private var didLoadInitialBudget = false
 
+    // MARK: - Cache
+    //
+    // Populated once on appear (and after Apply) by `refreshCache()` which
+    // runs expensive directory walks + eviction candidate builds off the
+    // main thread. Every body evaluation reads from these @State values so
+    // SwiftUI can re-render the slider at 60 fps without stalling on
+    // FileManager work that used to re-run on every frame.
+
+    @State private var cachedUsageBytes: Int64 = 0
+    @State private var cachedBudgetBytes: Int64 = 0
+    @State private var cachedMaxBudget: Int64 = 0
+    @State private var cachedDeviceFree: Int64?
+    /// Sorted oldest-project-first. Each entry already carries its on-disk
+    /// file size so eviction preview is an in-memory O(n) sum — no FileManager
+    /// calls per slider frame.
+    @State private var cachedCandidates: [EvictionCandidate] = []
+    @State private var isLoadingCache = true
+
+    struct EvictionCandidate {
+        let projectDate: Date
+        let url: String
+        let fileSize: Int64
+    }
+
     // MARK: - Derived
 
     private var profiler: StorageProfiler { .shared }
 
-    private var currentUsageBytes: Int64 { profiler.currentUsageBytes() }
-    private var budgetBytes: Int64 { profiler.budgetBytes }
+    private var currentUsageBytes: Int64 { cachedUsageBytes }
+    private var budgetBytes: Int64 { cachedBudgetBytes }
 
     private var usagePercent: Double {
         let budget = Double(budgetBytes)
@@ -52,7 +76,10 @@ struct PhotoStorageBudgetCard: View {
     private var isOverBudget: Bool { currentUsageBytes > budgetBytes }
 
     private var sliderMin: Double { Double(StorageProfiler.minBudget) / 1_048_576.0 }
-    private var sliderMax: Double { Double(profiler.maxAllowedBudget()) / 1_048_576.0 }
+    private var sliderMax: Double {
+        let maxBudget = cachedMaxBudget > 0 ? cachedMaxBudget : StorageProfiler.minBudget
+        return Double(maxBudget) / 1_048_576.0
+    }
 
     private var pendingBudgetBytes: Int64 { Int64(budgetSliderMB * 1_048_576) }
 
@@ -62,35 +89,30 @@ struct PhotoStorageBudgetCard: View {
 
     private var wouldTriggerEviction: Bool { pendingBudgetBytes < currentUsageBytes }
 
+    /// Counts how many of the pre-sorted, pre-sized candidates would need to
+    /// evict to reach the slider's target budget. Pure in-memory walk —
+    /// cheap enough to run on every body evaluation (slider drags etc.).
     private var evictionPreview: (count: Int, bytesFreed: Int64) {
-        downloadManager.previewEviction(
-            projectsWithPhotos: projectsWithPhotosPayload,
-            targetBudget: pendingBudgetBytes
-        )
-    }
-
-    private var projectsWithPhotosPayload: [(projectUpdatedAt: Date, photoURLs: [String])] {
-        allProjects.compactMap { project in
-            let urls = project.getProjectImages().filter { $0.contains("://") || $0.hasPrefix("//") }
-            guard !urls.isEmpty else { return nil }
-            let score = max(
-                project.startDate ?? .distantPast,
-                project.endDate ?? .distantPast,
-                project.lastSyncedAt ?? .distantPast
-            )
-            return (projectUpdatedAt: score, photoURLs: urls)
+        guard pendingBudgetBytes < cachedUsageBytes else { return (0, 0) }
+        let toFree = cachedUsageBytes - pendingBudgetBytes
+        var count = 0
+        var freed: Int64 = 0
+        for c in cachedCandidates {
+            if freed >= toFree { break }
+            count += 1
+            freed += c.fileSize
         }
+        return (count, freed)
     }
 
-    /// Fetch projects through DataController. Eviction preview and real
-    /// eviction need project recency to sort oldest-first.
-    private var allProjects: [Project] {
-        guard let ctx = dataController.modelContext else { return [] }
-        let companyId = dataController.currentUser?.companyId ?? ""
-        let descriptor = FetchDescriptor<Project>(
-            predicate: #Predicate<Project> { $0.companyId == companyId }
-        )
-        return ((try? ctx.fetch(descriptor)) ?? []).filter { $0.deletedAt == nil }
+    /// Rebuilds the per-project payload shape that `enforceCapacityPolicy`
+    /// expects. Uses the already-cached candidates so we don't re-walk disk.
+    private var projectsWithPhotosPayload: [(projectUpdatedAt: Date, photoURLs: [String])] {
+        var grouped: [Date: [String]] = [:]
+        for c in cachedCandidates {
+            grouped[c.projectDate, default: []].append(c.url)
+        }
+        return grouped.map { (projectUpdatedAt: $0.key, photoURLs: $0.value) }
     }
 
     // MARK: - Body
@@ -169,17 +191,91 @@ struct PhotoStorageBudgetCard: View {
         .animation(.easeInOut(duration: 0.2), value: hasPendingChange)
         .onAppear {
             if !didLoadInitialBudget {
-                let initial = Double(budgetBytes) / 1_048_576.0
+                // Seed cached budget from UserDefaults (nonisolated, instant)
+                // so the slider can position itself before the async cache
+                // refresh finishes.
+                let storedBudget = profiler.budgetBytes
+                cachedBudgetBytes = storedBudget
+                let initial = Double(storedBudget) / 1_048_576.0
                 budgetSliderMB = initial
                 committedBudgetMB = initial
                 didLoadInitialBudget = true
             }
+        }
+        .task {
+            await refreshCache()
         }
         .onReceive(NotificationCenter.default.publisher(for: .photoStorageBudgetExceeded)) { notification in
             if let report = notification.userInfo?["report"] as? PhotoPrefetchBudgetReport {
                 capHitReport = report
             }
         }
+    }
+
+    // MARK: - Cache Refresh
+
+    /// Populates the heavy @State caches without blocking main. The directory
+    /// walks and per-photo file-size probes run on a detached task; only the
+    /// SwiftData fetch (needed for project recency ordering) hops back to
+    /// main. When this finishes the UI flips from "Calculating…" to real
+    /// numbers and the slider/preview become fully interactive.
+    private func refreshCache() async {
+        isLoadingCache = true
+
+        // SwiftData fetch must be on main actor. Fast for ~hundreds of rows.
+        let projectPayloads: [(date: Date, urls: [String])] = await MainActor.run {
+            guard let ctx = dataController.modelContext else { return [] }
+            let companyId = dataController.currentUser?.companyId ?? ""
+            let descriptor = FetchDescriptor<Project>(
+                predicate: #Predicate<Project> { $0.companyId == companyId }
+            )
+            let projects = ((try? ctx.fetch(descriptor)) ?? []).filter { $0.deletedAt == nil }
+            return projects.compactMap { project -> (date: Date, urls: [String])? in
+                let urls = project.getProjectImages()
+                    .filter { $0.contains("://") || $0.hasPrefix("//") }
+                guard !urls.isEmpty else { return nil }
+                let score = max(
+                    project.startDate ?? .distantPast,
+                    project.endDate ?? .distantPast,
+                    project.lastSyncedAt ?? .distantPast
+                )
+                return (date: score, urls: urls)
+            }
+        }
+
+        let pinned = await MainActor.run { downloadManager.pinnedURLs }
+
+        // All heavy filesystem work happens off main. StorageProfiler's
+        // usage/budget methods are `nonisolated` so they're safe here.
+        let result = await Task.detached {
+            let usage = StorageProfiler.shared.currentUsageBytes()
+            let free = StorageProfiler.shared.currentDeviceFreeBytes()
+            let maxBudget = StorageProfiler.shared.maxAllowedBudget()
+
+            var candidates: [EvictionCandidate] = []
+            for project in projectPayloads {
+                for url in project.urls where !pinned.contains(url) {
+                    let cacheKey = url.hasPrefix("//") ? "https:" + url : url
+                    guard let size = ImageFileManager.shared.imageFileSize(localID: cacheKey),
+                          size > 0 else { continue }
+                    candidates.append(EvictionCandidate(
+                        projectDate: project.date,
+                        url: url,
+                        fileSize: size
+                    ))
+                }
+            }
+            candidates.sort { $0.projectDate < $1.projectDate }
+            return (usage: usage, free: free, maxBudget: maxBudget, candidates: candidates)
+        }.value
+
+        cachedUsageBytes = result.usage
+        cachedDeviceFree = result.free
+        cachedMaxBudget = result.maxBudget
+        cachedCandidates = result.candidates
+        cachedBudgetBytes = profiler.budgetBytes
+        isLoadingCache = false
+        print("[PhotoStorageBudgetCard] Cache refreshed — usage=\(StorageProfiler.formatBytes(result.usage)), candidates=\(result.candidates.count)")
     }
 
     // MARK: - Cap-hit banner
@@ -311,25 +407,11 @@ struct PhotoStorageBudgetCard: View {
 
         if !profiler.wouldExceedBudget(adding: 0) {
             capHitReport = nil
-            resolveCapHitRailNotifications()
+            prefetchService.resolveCapHitRailNotifications()
         }
-    }
 
-    private func resolveCapHitRailNotifications() {
-        prefetchService.clearCapHitCooldown()
-        guard let userId = UserDefaults.standard.string(forKey: "currentUserId"), !userId.isEmpty else {
-            return
-        }
-        Task {
-            do {
-                try await NotificationRepository.shared.markAllAsReadByType(
-                    type: "photo_storage_limit",
-                    userId: userId
-                )
-                print("[PhotoStorageBudgetCard] Resolved photo_storage_limit rail notifications")
-            } catch {
-                print("[PhotoStorageBudgetCard] Failed to resolve rail notifications: \(error)")
-            }
-        }
+        // Refresh the cache after mutation so usage / candidates reflect the
+        // post-eviction state without a full view rebuild.
+        Task { await refreshCache() }
     }
 }

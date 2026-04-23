@@ -26,23 +26,11 @@ struct PhotoStorageManagementView: View {
     }
 
     /// Lightweight entry point for the notification-rail auto-navigate path.
-    /// Builds a minimal PhotoItem list from projects alone.
+    /// Skips the eager PhotoItem materialization — totals and breakdown are
+    /// computed asynchronously in `refreshBreakdown()` off the main actor.
     init(allProjects: [Project]) {
         self.allProjects = allProjects
-        self.allPhotoItems = allProjects.flatMap { project in
-            project.getProjectImages().map { url in
-                PhotoItem(
-                    id: url,
-                    url: url,
-                    projectId: project.id,
-                    projectTitle: project.title,
-                    date: project.lastSyncedAt ?? Date(),
-                    authorId: nil,
-                    note: nil,
-                    searchHaystack: ""
-                )
-            }
-        }
+        self.allPhotoItems = []
     }
 
     // MARK: - State
@@ -50,26 +38,28 @@ struct PhotoStorageManagementView: View {
     @State private var showClearConfirmation = false
     @State private var showFreeUpConfirmation = false
 
+    // MARK: - Cache
+    //
+    // All per-project filesystem inspection happens in `refreshBreakdown()`
+    // off the main actor. SwiftUI body evaluations read these plain @State
+    // values, so slider drags and scroll don't trigger thousands of
+    // FileManager calls per frame.
+
+    @State private var cachedBreakdown: [ProjectSummary] = []
+    @State private var cachedTotalOnDevice: Int = 0
+    @State private var cachedTotalPhotos: Int = 0
+    @State private var isLoadingBreakdown: Bool = true
+
+    struct ProjectSummary: Identifiable {
+        let id: String
+        let title: String
+        let photos: [String]
+        let onDeviceCount: Int
+        let bytesOnDevice: Int64
+        var allOnDevice: Bool { onDeviceCount == photos.count }
+    }
+
     // MARK: - Derived
-
-    private var projectBreakdown: [(project: Project, photos: [String], onDeviceCount: Int)] {
-        allProjects
-            .compactMap { project -> (project: Project, photos: [String], onDeviceCount: Int)? in
-                let photos = project.getProjectImages()
-                guard !photos.isEmpty else { return nil }
-                let onDevice = downloadManager.onDeviceCount(from: photos)
-                return (project: project, photos: photos, onDeviceCount: onDevice)
-            }
-            .sorted { $0.project.title.localizedCaseInsensitiveCompare($1.project.title) == .orderedAscending }
-    }
-
-    private var totalOnDevice: Int {
-        downloadManager.onDeviceCount(from: allPhotoItems.map { $0.url })
-    }
-
-    private var totalPhotos: Int {
-        allPhotoItems.count
-    }
 
     private var projectsWithPhotosPayload: [(projectUpdatedAt: Date, photoURLs: [String])] {
         allProjects.compactMap { project in
@@ -122,6 +112,7 @@ struct PhotoStorageManagementView: View {
                 Button("Cancel", role: .cancel) {}
                 Button("Clear All", role: .destructive) {
                     downloadManager.clearAllCachedPhotos()
+                    Task { await refreshBreakdown() }
                 }
             } message: {
                 Text("This will remove all cached photos from your device. Photos will still be available in the cloud.")
@@ -134,6 +125,9 @@ struct PhotoStorageManagementView: View {
             } message: {
                 Text("This will delete cached photos from your oldest projects until you're back under your budget. Pinned photos are kept.")
             }
+            .task {
+                await refreshBreakdown()
+            }
         }
     }
 
@@ -145,9 +139,15 @@ struct PhotoStorageManagementView: View {
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-            Text("\(totalOnDevice) of \(totalPhotos) photos")
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+            if isLoadingBreakdown {
+                Text("Calculating…")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            } else {
+                Text("\(cachedTotalOnDevice) of \(cachedTotalPhotos) photos")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
@@ -196,53 +196,63 @@ struct PhotoStorageManagementView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
             VStack(spacing: 0) {
-                ForEach(projectBreakdown, id: \.project.id) { item in
-                    VStack(spacing: 8) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(item.project.title)
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .lineLimit(1)
+                if isLoadingBreakdown {
+                    HStack {
+                        ProgressView().tint(OPSStyle.Colors.primaryAccent)
+                        Text("Scanning project photos…")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                    .padding(.vertical, 20)
+                    .frame(maxWidth: .infinity)
+                } else {
+                    ForEach(cachedBreakdown) { item in
+                        VStack(spacing: 8) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(item.title)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .lineLimit(1)
 
-                                let bytes = downloadManager.estimateStorageBytes(urls: item.photos.filter { downloadManager.isOnDevice($0) })
-                                Text("\(item.photos.count) photos · \(item.onDeviceCount) on device · \(StorageProfiler.formatBytes(bytes))")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            }
-
-                            Spacer()
-
-                            if item.onDeviceCount == item.photos.count {
-                                Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
-                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                    .foregroundColor(OPSStyle.Colors.successStatus)
-                            } else {
-                                Button(action: {
-                                    Task { await downloadManager.downloadAllForProject(item.photos) }
-                                }) {
-                                    Text("Download")
+                                    Text("\(item.photos.count) photos · \(item.onDeviceCount) on device · \(StorageProfiler.formatBytes(item.bytesOnDevice))")
                                         .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(OPSStyle.Colors.cardBackgroundDark)
-                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
-                                        )
+                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                }
+
+                                Spacer()
+
+                                if item.allOnDevice {
+                                    Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                                        .foregroundColor(OPSStyle.Colors.successStatus)
+                                } else {
+                                    Button(action: {
+                                        Task { await downloadManager.downloadAllForProject(item.photos) }
+                                    }) {
+                                        Text("Download")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 6)
+                                            .background(OPSStyle.Colors.cardBackgroundDark)
+                                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
+                                            )
+                                    }
                                 }
                             }
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 16)
                         }
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 16)
-                    }
 
-                    if item.project.id != projectBreakdown.last?.project.id {
-                        OPSStyle.Colors.separator
-                            .frame(height: 1)
-                            .padding(.leading, 16)
+                        if item.id != cachedBreakdown.last?.id {
+                            OPSStyle.Colors.separator
+                                .frame(height: 1)
+                                .padding(.leading, 16)
+                        }
                     }
                 }
             }
@@ -292,5 +302,64 @@ struct PhotoStorageManagementView: View {
             projectsWithPhotos: projectsWithPhotosPayload
         )
         print("[PhotoStorageManagementView] Freed \(result.deleted) photos (\(StorageProfiler.formatBytes(result.bytesFreed)))")
+        // If free-up got us back under budget, clear the rail warning. When
+        // pinned photos exhaust the budget on their own, eviction can't free
+        // enough and the warning legitimately stays — only resolve when we
+        // actually made it under.
+        if !StorageProfiler.shared.wouldExceedBudget(adding: 0) {
+            PhotoPrefetchService.shared.resolveCapHitRailNotifications()
+        }
+        Task { await refreshBreakdown() }
+    }
+
+    // MARK: - Cache Refresh
+
+    /// Builds the per-project breakdown off the main actor. Captures project
+    /// snapshots (id, title, photo URLs) on main, then walks the filesystem
+    /// in a detached task so SwiftUI can render the sheet immediately with a
+    /// "Calculating…" state.
+    private func refreshBreakdown() async {
+        isLoadingBreakdown = true
+
+        // Snapshot what we need from SwiftData on main — the detached task
+        // can't safely touch Project models.
+        struct ProjectSnapshot {
+            let id: String
+            let title: String
+            let photos: [String]
+        }
+        let snapshots: [ProjectSnapshot] = allProjects.compactMap { project in
+            let photos = project.getProjectImages()
+            guard !photos.isEmpty else { return nil }
+            return ProjectSnapshot(id: project.id, title: project.title, photos: photos)
+        }
+
+        let summaries: [ProjectSummary] = await Task.detached {
+            snapshots.map { snap -> ProjectSummary in
+                var onDevice = 0
+                var bytes: Int64 = 0
+                for url in snap.photos {
+                    let cacheKey = url.hasPrefix("//") ? "https:" + url : url
+                    guard let size = ImageFileManager.shared.imageFileSize(localID: cacheKey),
+                          size > 0 else { continue }
+                    onDevice += 1
+                    bytes += size
+                }
+                return ProjectSummary(
+                    id: snap.id,
+                    title: snap.title,
+                    photos: snap.photos,
+                    onDeviceCount: onDevice,
+                    bytesOnDevice: bytes
+                )
+            }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        }.value
+
+        cachedBreakdown = summaries
+        cachedTotalOnDevice = summaries.reduce(0) { $0 + $1.onDeviceCount }
+        cachedTotalPhotos = summaries.reduce(0) { $0 + $1.photos.count }
+        isLoadingBreakdown = false
+        print("[PhotoStorageManagementView] Breakdown refreshed — \(summaries.count) projects, \(cachedTotalOnDevice)/\(cachedTotalPhotos) on device")
     }
 }

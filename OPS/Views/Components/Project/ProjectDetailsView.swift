@@ -327,8 +327,10 @@ struct ProjectDetailsView: View {
             // Layer 2: Scrollable content that slides up over the map
             ScrollView {
                 LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    // Initial spacer — positions content in lower portion of map
-                    Color.clear.frame(height: ProjectMapHeader.mapHeight - 170)
+                    // Initial spacer — positions content in lower portion of map.
+                    // Pulled down 40pt so the gradient starts later, revealing
+                    // more map above the title (Bug a2f7e6fa).
+                    Color.clear.frame(height: ProjectMapHeader.mapHeight - 130)
 
                     // Gradient scrolls with content (not pinned — avoids content peeking through)
                     mapScrollGradient
@@ -423,19 +425,23 @@ struct ProjectDetailsView: View {
         )
     }
 
-    /// Gradient overlay that scrolls with title content — fades map into background
+    /// Gradient overlay that scrolls with title content — fades map into background.
+    /// Stops stay mostly-transparent through the top two-thirds so the map
+    /// underneath reads through, then ramps quickly to solid at the title
+    /// edge. Bug a2f7e6fa: previous stops produced too much opaque black
+    /// space above the title.
     private var mapScrollGradient: some View {
         LinearGradient(
             gradient: Gradient(stops: [
                 .init(color: .clear, location: 0),
-                .init(color: OPSStyle.Colors.background.opacity(0.5), location: 0.3),
-                .init(color: OPSStyle.Colors.background.opacity(0.85), location: 0.7),
+                .init(color: OPSStyle.Colors.background.opacity(0.25), location: 0.55),
+                .init(color: OPSStyle.Colors.background.opacity(0.75), location: 0.85),
                 .init(color: OPSStyle.Colors.background, location: 1.0)
             ]),
             startPoint: .top,
             endPoint: .bottom
         )
-        .frame(height: 70)
+        .frame(height: 90)
         .allowsHitTesting(false)
     }
 

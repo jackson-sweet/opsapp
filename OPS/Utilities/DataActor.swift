@@ -617,6 +617,17 @@ actor DataActor {
             existing.lastSyncedAt = Date()
             existing.needsSync = false
         } else {
+            // Origin suppression: see mergeTask above. TaskType.id is not
+            // @Attribute(.unique), so a duplicate insert here produces two rows
+            // with the same id. The UI then resolves task.taskType to either,
+            // and when it picks the stale duplicate (missing dependencies /
+            // defaultTeamMemberIdsString), downstream code hits nil state and
+            // crashes. The "Rail task type crash" repro traces to this path.
+            if hasPendingOperations(entityType: .taskType, entityId: id) {
+                print("[DataActor] Skipping merge insert for task type \(id) — pending local op exists (origin suppression)")
+                return
+            }
+
             let model = dto.toModel()
             model.lastSyncedAt = Date()
             model.needsSync = false
@@ -733,10 +744,17 @@ actor DataActor {
     }
 
     private func mergeTask(dto: SupabaseProjectTaskDTO) throws {
-        let id = dto.id
+        // Canonicalize to lowercase — Postgres uuid storage is lowercase, so
+        // dto.id should already be lowercase, but defense-in-depth in case a
+        // payload path ever delivers mixed-case input. Local ProjectTask.id is
+        // kept lowercase by normalizeTaskIdsToLowercase + new-write canonicalization.
+        let id = dto.id.lowercased()
         let descriptor = FetchDescriptor<ProjectTask>(
             predicate: #Predicate { $0.id == id }
         )
+
+        let existingCount = (try? modelContext.fetchCount(descriptor)) ?? 0
+        print("[DUPE_TRACE] ACTOR.mergeTask id=\(id) existing_count=\(existingCount) ctx=\(ObjectIdentifier(modelContext))")
 
         if let existing = try modelContext.fetch(descriptor).first {
             let accept = acceptableFields(
@@ -755,13 +773,49 @@ actor DataActor {
             if accept.contains("taskNotes") { existing.taskNotes = dto.taskNotes }
             if accept.contains("customTitle") { existing.customTitle = dto.customTitle }
             if accept.contains("taskColor") { existing.taskColor = dto.taskColor ?? "#59779F" }
-            if accept.contains("taskTypeId") { existing.taskTypeId = dto.taskTypeId ?? "" }
+            if accept.contains("taskTypeId") {
+                existing.taskTypeId = dto.taskTypeId ?? ""
+                // Rewire the TaskType `@Relationship` to match the new id. Without
+                // this, UI that reads `task.taskType` (badge color, display name)
+                // stays pointed at the OLD taskType until the next full sync's
+                // linkAllRelationships pass. Realtime + single-row merges never
+                // triggered that pass, so the badge could lag by minutes.
+                if !existing.taskTypeId.isEmpty {
+                    let ttId = existing.taskTypeId
+                    let ttDescriptor = FetchDescriptor<TaskType>(
+                        predicate: #Predicate<TaskType> { $0.id == ttId }
+                    )
+                    if let newType = try? modelContext.fetch(ttDescriptor).first {
+                        if existing.taskType?.id != newType.id { existing.taskType = newType }
+                    }
+                } else if existing.taskType != nil {
+                    existing.taskType = nil
+                }
+            }
             if accept.contains("startDate") { existing.startDate = dto.startDate.flatMap { SupabaseDate.parse($0) } }
             if accept.contains("endDate") { existing.endDate = dto.endDate.flatMap { SupabaseDate.parse($0) } }
             if accept.contains("duration") { existing.duration = dto.duration ?? 1 }
             if accept.contains("displayOrder") { existing.displayOrder = dto.displayOrder ?? 0 }
             if accept.contains("teamMemberIdsString") {
-                existing.teamMemberIdsString = (dto.teamMemberIds ?? []).joined(separator: ",")
+                let newIdString = (dto.teamMemberIds ?? []).joined(separator: ",")
+                existing.teamMemberIdsString = newIdString
+                // Rewire the `teamMembers: [User]` relationship to match the new
+                // id string. Without this, UI that reads `task.teamMembers`
+                // (avatars on the task row) stays stale after any realtime edit
+                // until the next full sync runs linkAllRelationships. That gap
+                // was the source of the "avatars flicker between openings" bug.
+                let ids = existing.getTeamMemberIds()
+                if ids.isEmpty {
+                    if !existing.teamMembers.isEmpty { existing.teamMembers = [] }
+                } else {
+                    let userDescriptor = FetchDescriptor<User>(
+                        predicate: #Predicate<User> { ids.contains($0.id) }
+                    )
+                    let users = (try? modelContext.fetch(userDescriptor)) ?? []
+                    if Set(existing.teamMembers.map(\.id)) != Set(users.map(\.id)) {
+                        existing.teamMembers = users
+                    }
+                }
             }
             if accept.contains("sourceLineItemId") { existing.sourceLineItemId = dto.sourceLineItemId }
             if accept.contains("sourceEstimateId") { existing.sourceEstimateId = dto.sourceEstimateId }
@@ -795,10 +849,59 @@ actor DataActor {
                 markSpotlightDirty(domain: SpotlightDomain.task, id: existing.id)
             }
         } else {
+            // Origin suppression: if we wrote this entityId locally recently —
+            // regardless of the SyncOperation's current status (pending,
+            // inProgress, completed) — the realtime echo/full-sync DTO is our
+            // own write coming back. Inserting here produces a duplicate
+            // because ProjectTask.id lacks @Attribute(.unique) and the actor's
+            // fetch above can miss a row the main context just wrote before
+            // cross-context visibility settles.
+            //
+            // Previous implementation used `hasPendingOperations` (status ==
+            // "pending"), but actor serialization guarantees processPending
+            // runs BEFORE this merge — meaning the op is already "completed"
+            // by the time the echo arrives, so that check always returned
+            // false. A timestamp window correctly captures the full write
+            // lifecycle. 60s is comfortably wider than typical realtime echo
+            // latency while short enough that a stale op couldn't mask a
+            // legitimate remote update minutes later.
+            if hasRecentLocalWrite(entityType: .projectTask, entityId: id, withinSeconds: 60) {
+                print("[DUPE_TRACE] ACTOR.mergeTask SUPPRESSED id=\(id) — recent local write within 60s (origin suppression)")
+                return
+            }
+
+            print("[DUPE_TRACE] ACTOR.mergeTask INSERT id=\(id) — no recent local write, treating as remote create ctx=\(ObjectIdentifier(modelContext))")
             let model = dto.toModel()
+            model.id = id  // enforce lowercase canonicalization
             model.lastSyncedAt = Date()
             model.needsSync = false
             modelContext.insert(model)
+
+            // Wire relationships on the freshly-inserted row so the UI sees a
+            // complete task immediately (project, taskType, teamMembers).
+            // Without this, the row renders missing badge and avatars until
+            // the next sync's linkAllRelationships pass runs.
+            let projId = model.projectId
+            if let project = try? modelContext.fetch(
+                FetchDescriptor<Project>(predicate: #Predicate<Project> { $0.id == projId })
+            ).first {
+                model.project = project
+            }
+            if !model.taskTypeId.isEmpty {
+                let ttId = model.taskTypeId
+                if let taskType = try? modelContext.fetch(
+                    FetchDescriptor<TaskType>(predicate: #Predicate<TaskType> { $0.id == ttId })
+                ).first {
+                    model.taskType = taskType
+                }
+            }
+            let memberIds = model.getTeamMemberIds()
+            if !memberIds.isEmpty {
+                let users = (try? modelContext.fetch(
+                    FetchDescriptor<User>(predicate: #Predicate<User> { memberIds.contains($0.id) })
+                )) ?? []
+                if !users.isEmpty { model.teamMembers = users }
+            }
 
             if model.deletedAt != nil {
                 markSpotlightDeleted(domain: SpotlightDomain.task, id: model.id)
@@ -1315,6 +1418,50 @@ actor DataActor {
         return (try? modelContext.fetchCount(descriptor)) ?? 0 > 0
     }
 
+    /// Returns true if a SyncOperation for this entity had ANY lifecycle event
+    /// (created / attempted / completed) within the given window, regardless of
+    /// current status. Used by merge-insert origin suppression to catch an
+    /// echo or pull-back of our own local writes.
+    ///
+    /// Must consider all three timestamps so the window correctly covers:
+    ///   - Just-recorded op awaiting push: createdAt is recent.
+    ///   - Push-in-flight op (echo arriving before HTTP response): lastAttemptedAt recent.
+    ///   - Post-push op (actor serialization means the common case): completedAt recent.
+    ///   - User offline for longer than `seconds` before push: createdAt may be
+    ///     stale but completedAt/lastAttemptedAt are recent once network returns.
+    ///
+    /// Predicates on @Model fields are constrained, so the fetch filters by
+    /// entity and the timestamp check runs in Swift on the small result set.
+    private func hasRecentLocalWrite(
+        entityType: SyncEntityType,
+        entityId: String,
+        withinSeconds seconds: TimeInterval
+    ) -> Bool {
+        let typeStr = entityType.rawValue
+        // Canonicalize both sides of the compare — existing SyncOperation rows
+        // were recorded before SyncEngine's recordOperation started canonicalizing,
+        // so some may still carry UPPERCASE ids. Match against both cases so an
+        // echo of an edited legacy task finds its pending op.
+        let idLower = entityId.lowercased()
+        let idUpper = entityId.uppercased()
+        let predicate = #Predicate<SyncOperation> { op in
+            op.entityType == typeStr &&
+            (op.entityId == idLower || op.entityId == idUpper || op.entityId == entityId)
+        }
+        let descriptor = FetchDescriptor<SyncOperation>(predicate: predicate)
+        guard let ops = try? modelContext.fetch(descriptor), !ops.isEmpty else {
+            return false
+        }
+
+        let cutoff = Date().addingTimeInterval(-seconds)
+        for op in ops {
+            if op.createdAt >= cutoff { return true }
+            if let last = op.lastAttemptedAt, last >= cutoff { return true }
+            if let completed = op.completedAt, completed >= cutoff { return true }
+        }
+        return false
+    }
+
     // MARK: - Helpers
 
     /// Parse an "HH:mm" string into a Date with today's date and that time.
@@ -1472,6 +1619,97 @@ actor DataActor {
 
     /// Deduplicates local ProjectTask rows. No relationship rewiring needed — tasks
     /// are leaves. Ported from DataController.cleanupDuplicateTasks.
+    /// Normalize UUID ids to lowercase across the entities that reference each
+    /// other by id-string: `ProjectTask.id`, `User.id`, the
+    /// `teamMemberIdsString` CSV columns on `Project` and `ProjectTask`, and
+    /// `SyncOperation.entityId`. Postgres canonicalizes uuid storage to
+    /// lowercase, but Swift's `UUID().uuidString` returns UPPERCASE — any
+    /// entity with an UPPERCASE id stored locally silently fails to match the
+    /// lowercase DTO (string compare misses). That produces duplicates on
+    /// merge AND failed lookups in `linkAllRelationships` (a lowercase id in
+    /// `teamMemberIdsString` can't find an UPPERCASE-id User, so task avatars
+    /// resolve empty). Must run BEFORE `cleanupDuplicateTasks` and
+    /// `rewireRelationships` so both see consistent casing.
+    /// Idempotent — safe to run on every launch.
+    func normalizeTaskIdsToLowercase() async {
+        do {
+            try modelContext.transaction {
+                let allTasks = try modelContext.fetch(FetchDescriptor<ProjectTask>())
+                var taskIdCount = 0
+                var taskMemberStringCount = 0
+                for task in allTasks {
+                    let lowerId = task.id.lowercased()
+                    if task.id != lowerId { task.id = lowerId; taskIdCount += 1 }
+
+                    let original = task.teamMemberIdsString
+                    if !original.isEmpty {
+                        let normalized = original
+                            .split(separator: ",")
+                            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+                            .filter { !$0.isEmpty }
+                            .joined(separator: ",")
+                        if normalized != original {
+                            task.teamMemberIdsString = normalized
+                            taskMemberStringCount += 1
+                        }
+                    }
+                }
+
+                let allProjects = try modelContext.fetch(FetchDescriptor<Project>())
+                var projectMemberStringCount = 0
+                for project in allProjects {
+                    let original = project.teamMemberIdsString
+                    guard !original.isEmpty else { continue }
+                    let normalized = original
+                        .split(separator: ",")
+                        .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+                        .filter { !$0.isEmpty }
+                        .joined(separator: ",")
+                    if normalized != original {
+                        project.teamMemberIdsString = normalized
+                        projectMemberStringCount += 1
+                    }
+                }
+
+                let allUsers = try modelContext.fetch(FetchDescriptor<User>())
+                var userIdCount = 0
+                for user in allUsers {
+                    let lower = user.id.lowercased()
+                    if user.id != lower { user.id = lower; userIdCount += 1 }
+                }
+
+                let taskEntityRaw = SyncEntityType.projectTask.rawValue
+                let taskOpDescriptor = FetchDescriptor<SyncOperation>(
+                    predicate: #Predicate<SyncOperation> { $0.entityType == taskEntityRaw }
+                )
+                let taskOps = try modelContext.fetch(taskOpDescriptor)
+                var taskOpCount = 0
+                for op in taskOps {
+                    let lower = op.entityId.lowercased()
+                    if op.entityId != lower { op.entityId = lower; taskOpCount += 1 }
+                }
+
+                let userEntityRaw = SyncEntityType.user.rawValue
+                let userOpDescriptor = FetchDescriptor<SyncOperation>(
+                    predicate: #Predicate<SyncOperation> { $0.entityType == userEntityRaw }
+                )
+                let userOps = try modelContext.fetch(userOpDescriptor)
+                var userOpCount = 0
+                for op in userOps {
+                    let lower = op.entityId.lowercased()
+                    if op.entityId != lower { op.entityId = lower; userOpCount += 1 }
+                }
+
+                let total = taskIdCount + taskMemberStringCount + projectMemberStringCount + userIdCount + taskOpCount + userOpCount
+                if total > 0 {
+                    print("[DataActor] Normalized to lowercase: \(taskIdCount) ProjectTask.id, \(taskMemberStringCount) ProjectTask.teamMemberIdsString, \(projectMemberStringCount) Project.teamMemberIdsString, \(userIdCount) User.id, \(taskOpCount) projectTask SyncOps, \(userOpCount) user SyncOps (total \(total))")
+                }
+            }
+        } catch {
+            print("[DataActor] normalizeTaskIdsToLowercase failed: \(error)")
+        }
+    }
+
     func cleanupDuplicateTasks() async {
         do {
             let allTasks = try modelContext.fetch(FetchDescriptor<ProjectTask>())
@@ -1807,6 +2045,9 @@ actor DataActor {
     /// state mutations now wrapped in `modelContext.transaction { }` blocks.
     private func executeOperation(_ operation: SyncOperation) async throws {
         print("[DataActor] Pushing \(operation.entityType) \(operation.entityId)...")
+        if operation.entityType == SyncEntityType.projectTask.rawValue {
+            print("[DUPE_TRACE] ACTOR.outbound.inProgress id=\(operation.entityId) op=\(operation.operationType)")
+        }
 
         try? modelContext.transaction {
             operation.status = "inProgress"
@@ -1830,6 +2071,9 @@ actor DataActor {
                 operation.completedAt = Date()
             }
             print("[DataActor] Completed \(operation.entityType) \(operation.entityId)")
+            if operation.entityType == SyncEntityType.projectTask.rawValue {
+                print("[DUPE_TRACE] ACTOR.outbound.completed id=\(operation.entityId) op=\(operation.operationType)")
+            }
 
         } catch {
             let classified = classifySyncError(error)
@@ -2378,6 +2622,18 @@ actor DataActor {
     /// Ported from InboundProcessor.linkAllRelationships. All `context` references
     /// become `self.modelContext`; manual `try context.save()` is replaced by the
     /// surrounding `modelContext.transaction { }` block.
+    ///
+    /// Public wrapper so callers outside the sync flow can trigger a rewire —
+    /// specifically after `cleanupDuplicateTasks` deletes a duplicate, since
+    /// `pickFreshestIndex` may keep the copy whose `teamMembers: [User]`
+    /// relationship was never wired (the actor-inserted echo copy). The stored
+    /// `teamMemberIdsString` is canonical; `linkAllRelationships` rebuilds the
+    /// `[User]` array from it so the UI shows avatars without waiting for the
+    /// next sync.
+    func rewireRelationships() async {
+        linkAllRelationships()
+    }
+
     private func linkAllRelationships() {
         print("[DataActor] Linking all relationships...")
 
@@ -2413,6 +2669,14 @@ actor DataActor {
                     }
                 }
 
+                // Build a case-insensitive user lookup as a fallback — some User
+                // records may have been persisted with UPPERCASE ids from legacy
+                // paths even though Supabase canonicalizes to lowercase. A
+                // straight dictionary lookup misses those, leaving task avatars
+                // blank even when the member string is correct.
+                var userByIdCaseInsensitive: [String: User] = [:]
+                for u in users { userByIdCaseInsensitive[u.id.lowercased()] = u }
+
                 // Link tasks → project, task type, team members
                 for task in tasks {
                     if let project = projectById[task.projectId] {
@@ -2426,7 +2690,24 @@ actor DataActor {
                         }
                     }
                     let memberIds = task.getTeamMemberIds()
-                    let members = memberIds.compactMap { userById[$0] }
+                    // Try exact match first, then case-insensitive fallback.
+                    let members = memberIds.compactMap { id -> User? in
+                        userById[id] ?? userByIdCaseInsensitive[id.lowercased()]
+                    }
+
+                    // Diagnostic: log when the member string can't be fully
+                    // resolved so we can distinguish "users not in store" from
+                    // "users in store but id case mismatch" from "partial
+                    // miss." Remove once this class of bug is confirmed dead.
+                    if !memberIds.isEmpty && members.count != memberIds.count {
+                        let missing = memberIds.filter { id in
+                            userById[id] == nil && userByIdCaseInsensitive[id.lowercased()] == nil
+                        }
+                        let totalUsers = userById.count
+                        let sampleIds = Array(userById.keys.prefix(3))
+                        print("[DataActor] ⚠️ task \(task.id): resolved \(members.count)/\(memberIds.count) member ids. missing=\(missing) storeUserCount=\(totalUsers) sampleStoreIds=\(sampleIds)")
+                    }
+
                     if Set(task.teamMembers.map(\.id)) != Set(members.map(\.id)) {
                         task.teamMembers = members
                     }

@@ -198,12 +198,14 @@ struct WizardOverlayModifier: ViewModifier {
 
                 // Dismiss any pending banner when the user leaves the triggering tab.
                 // Animate the slide-out, then clear the wizard reference after the
-                // transition so the view isn't yanked mid-animation.
+                // transition so the view isn't yanked mid-animation. Timing here
+                // must match the curve/duration on WizardBannerModifier — any
+                // mismatch re-introduces the jerky slide this fix is addressing.
                 if stateManager.showBanner {
-                    withAnimation(OPSStyle.Animation.spring) {
+                    withAnimation(OPSStyle.Animation.page) {
                         stateManager.showBanner = false
                     }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
                         stateManager.pendingBannerWizard = nil
                     }
                 }

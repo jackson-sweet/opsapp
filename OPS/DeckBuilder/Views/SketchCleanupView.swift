@@ -500,6 +500,13 @@ struct SketchCleanupView: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .textFieldStyle(.plain)
+                        .keyboardType(.numbersAndPunctuation)
+                        .autocorrectionDisabled(true)
+                        .textInputAutocapitalization(.never)
+                        .onChange(of: customScaleText) { _, newValue in
+                            let sanitized = DimensionEngine.sanitizeQuotesForLiveInput(newValue)
+                            if sanitized != newValue { customScaleText = sanitized }
+                        }
                         .frame(width: 120)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)

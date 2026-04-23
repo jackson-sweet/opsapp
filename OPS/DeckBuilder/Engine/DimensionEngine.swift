@@ -127,15 +127,24 @@ struct DimensionEngine {
 
     /// Normalize smart quotes and word-unit suffixes to a canonical form:
     /// ' for feet, " for inches, word suffixes stripped to symbols.
-    private static func normalizeImperialInput(_ input: String) -> String {
+    ///
+    /// Handles every common way a field user types feet/inches:
+    ///   U+2018 / U+2019 / U+02BC smart single quotes  → '
+    ///   U+201C / U+201D smart double quotes            → "
+    ///   "inches" / "inch" / "in"                       → "
+    ///   "feet" / "ft"                                  → '
+    ///   Prime / double prime U+2032 / U+2033           → ' / "
+    static func normalizeDimensionInput(_ input: String) -> String {
         input
-            // Smart single quotes → '
+            // Smart / typographic single quotes → '
             .replacingOccurrences(of: "\u{2018}", with: "'")
             .replacingOccurrences(of: "\u{2019}", with: "'")
             .replacingOccurrences(of: "\u{02BC}", with: "'")
-            // Smart double quotes → "
+            .replacingOccurrences(of: "\u{2032}", with: "'")  // prime
+            // Smart / typographic double quotes → "
             .replacingOccurrences(of: "\u{201C}", with: "\"")
             .replacingOccurrences(of: "\u{201D}", with: "\"")
+            .replacingOccurrences(of: "\u{2033}", with: "\"")  // double prime
             // Inch word suffixes → "
             .replacingOccurrences(of: "inches", with: "\"", options: .caseInsensitive)
             .replacingOccurrences(of: "inch", with: "\"", options: .caseInsensitive)
@@ -145,6 +154,27 @@ struct DimensionEngine {
             .replacingOccurrences(of: "ft", with: "'", options: .caseInsensitive)
             // "in" alone (common shorthand); do this last so it doesn't hit "inches"/"inch"
             .replacingOccurrences(of: "in", with: "\"", options: .caseInsensitive)
+    }
+
+    /// Backwards-compatible shim — callers inside DimensionEngine keep using the
+    /// private name. The public `normalizeDimensionInput` is intended for input
+    /// fields that want to sanitize as the user types.
+    private static func normalizeImperialInput(_ input: String) -> String {
+        normalizeDimensionInput(input)
+    }
+
+    /// Live-typing sanitizer. Swaps ONLY smart quotes to ASCII `'`/`"`, leaves
+    /// word suffixes like "ft"/"in"/"feet"/"inches" alone so the user doesn't
+    /// see their text rewritten mid-word. Apply in a TextField's onChange.
+    static func sanitizeQuotesForLiveInput(_ input: String) -> String {
+        input
+            .replacingOccurrences(of: "\u{2018}", with: "'")
+            .replacingOccurrences(of: "\u{2019}", with: "'")
+            .replacingOccurrences(of: "\u{02BC}", with: "'")
+            .replacingOccurrences(of: "\u{2032}", with: "'")
+            .replacingOccurrences(of: "\u{201C}", with: "\"")
+            .replacingOccurrences(of: "\u{201D}", with: "\"")
+            .replacingOccurrences(of: "\u{2033}", with: "\"")
     }
 
     /// Tokenizer-based imperial parser. Walks the string left-to-right, merging mixed
@@ -159,6 +189,7 @@ struct DimensionEngine {
         var i = 0
         var totalInches: Double = 0
         var sawAnyNumber = false
+        var sawFeetMarker = false  // once a `'` is consumed, unmarked trailing numbers are inches
         var pendingNumbers: [Double] = []
 
         // Read one number token starting at i. Merges an immediately-following fraction
@@ -244,6 +275,7 @@ struct DimensionEngine {
                 // Rare case: leftover pending numbers before a feet marker — treat as inches
                 for n in pendingNumbers { totalInches += n }
                 pendingNumbers.removeAll()
+                sawFeetMarker = true
                 i += 1
                 continue
             }
@@ -261,16 +293,22 @@ struct DimensionEngine {
 
         // Resolve trailing unmarked numbers
         if !pendingNumbers.isEmpty {
-            switch pendingNumbers.count {
-            case 1:
-                // Lone number → feet (contractor shorthand: "12" = 12 feet)
-                totalInches += pendingNumbers[0] * 12.0
-            case 2:
-                // Two numbers with no marker → feet + inches: "12 6" = 12' 6"
-                totalInches += pendingNumbers[0] * 12.0 + pendingNumbers[1]
-            default:
-                totalInches += pendingNumbers[0] * 12.0
-                for n in pendingNumbers.dropFirst() { totalInches += n }
+            if sawFeetMarker {
+                // Already consumed a `'` — trailing numbers are inches ("8' 6" → 8ft + 6in).
+                // Covers the common "user forgot the quote mark" case.
+                for n in pendingNumbers { totalInches += n }
+            } else {
+                switch pendingNumbers.count {
+                case 1:
+                    // Lone number → feet (contractor shorthand: "12" = 12 feet)
+                    totalInches += pendingNumbers[0] * 12.0
+                case 2:
+                    // Two numbers with no marker → feet + inches: "12 6" = 12' 6"
+                    totalInches += pendingNumbers[0] * 12.0 + pendingNumbers[1]
+                default:
+                    totalInches += pendingNumbers[0] * 12.0
+                    for n in pendingNumbers.dropFirst() { totalInches += n }
+                }
             }
         }
 

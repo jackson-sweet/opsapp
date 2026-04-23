@@ -14,6 +14,9 @@ struct DeckSettingsSheet: View {
         ("5°", 5.0), ("10°", 10.0), ("15°", 15.0), ("30°", 30.0), ("45°", 45.0), ("90°", 90.0)
     ]
 
+    /// Haptic on apply so user feels the settings commit
+    private let mediumImpact = UIImpactFeedbackGenerator(style: .medium)
+
     var body: some View {
         NavigationView {
             List {
@@ -137,12 +140,20 @@ struct DeckSettingsSheet: View {
             .navigationTitle("Canvas Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
+                        mediumImpact.impactOccurred()
                         viewModel.save()
                         dismiss()
                     }
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .fontWeight(.bold)
                 }
             }
         }

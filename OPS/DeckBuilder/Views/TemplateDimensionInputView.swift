@@ -320,7 +320,15 @@ struct TemplateDimensionInputView: View {
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .keyboardType(.numbersAndPunctuation)
+                .autocorrectionDisabled(true)
+                .textInputAutocapitalization(.never)
                 .textFieldStyle(.plain)
+                .onChange(of: dimensionStrings[index]) { _, newValue in
+                    // Swap iOS smart-quotes back to ASCII `'` / `"` so the visible
+                    // text always matches what the parser expects.
+                    let sanitized = DimensionEngine.sanitizeQuotesForLiveInput(newValue)
+                    if sanitized != newValue { dimensionStrings[index] = sanitized }
+                }
                 .padding(.horizontal, OPSStyle.Layout.spacing2)
                 .padding(.vertical, OPSStyle.Layout.spacing2)
                 .background(OPSStyle.Colors.cardBackground)

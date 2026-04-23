@@ -70,7 +70,9 @@ struct DeckRenderer {
                         gc.move(to: transform(positions[0]))
                         for i in 1..<positions.count { gc.addLine(to: transform(positions[i])) }
                         gc.closePath()
-                        gc.fillPath(using: .evenOdd)
+                        // Non-zero winding matches the visible boundary on concave polygons.
+                    // Even-odd leaves holes in "crossing" regions of construction-mole shapes.
+                    gc.fillPath(using: .winding)
                     }
 
                     // Edges
@@ -139,7 +141,9 @@ struct DeckRenderer {
                     gc.move(to: transform(positions[0]))
                     for i in 1..<positions.count { gc.addLine(to: transform(positions[i])) }
                     gc.closePath()
-                    gc.fillPath(using: .evenOdd)
+                    // Non-zero winding matches the visible boundary on concave polygons.
+                    // Even-odd leaves holes in "crossing" regions of construction-mole shapes.
+                    gc.fillPath(using: .winding)
                 }
 
                 gc.setLineWidth(2.0)

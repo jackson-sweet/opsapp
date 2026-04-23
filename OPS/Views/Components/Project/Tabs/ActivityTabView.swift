@@ -294,7 +294,7 @@ struct ActivityTabView: View {
                 ForEach(notesViewModel.mentionSuggestions, id: \.id) { member in
                     Button(action: { notesViewModel.insertMention(member) }) {
                         HStack(spacing: OPSStyle.Layout.spacing1) {
-                            UserAvatar(teamMember: member, size: 24)
+                            TeamMemberAvatar(teamMember: member, size: 24)
                             Text(member.fullName)
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.primaryText)

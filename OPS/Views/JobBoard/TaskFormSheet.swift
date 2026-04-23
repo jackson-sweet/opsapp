@@ -52,7 +52,12 @@ struct TaskFormSheet: View {
     @Environment(\.tutorialPhase) private var tutorialPhase
     @Query private var allProjects: [Project]
     @Query private var allTaskTypes: [TaskType]
-    @State private var fetchedTeamMembers: [TeamMember] = []
+    /// Team members as full `User` objects. Using `User` (not the lightweight
+    /// `TeamMember`) means `UserAvatar` has access to `profileImageData`,
+    /// `profileImageURL`, and `userColor` — so rows render real avatars
+    /// instead of falling back to initials when the remote URL is slow or
+    /// the user only has locally-cached image bytes.
+    @State private var fetchedTeamMembers: [User] = []
 
     // Tutorial mode filtering - only show DEMO_ entities when in tutorial
     private var availableProjects: [Project] {
@@ -69,14 +74,14 @@ struct TaskFormSheet: View {
         return allTaskTypes
     }
 
-    private var availableTeamMembers: [TeamMember] {
+    private var availableTeamMembers: [User] {
         if tutorialMode {
             return fetchedTeamMembers.filter { $0.id.hasPrefix("DEMO_") }
         }
         return fetchedTeamMembers
     }
 
-    private var uniqueTeamMembers: [TeamMember] {
+    private var uniqueTeamMembers: [User] {
         var seen = Set<String>()
         return availableTeamMembers.filter { member in
             guard !seen.contains(member.id) else { return false }
@@ -198,9 +203,21 @@ struct TaskFormSheet: View {
         if projectSearchText.isEmpty {
             return availableProjects.sorted(by: { $0.title < $1.title })
         }
-        return availableProjects.filter {
-            $0.title.localizedCaseInsensitiveContains(projectSearchText) ||
-            $0.effectiveClientName.localizedCaseInsensitiveContains(projectSearchText)
+        let q = projectSearchText
+        return availableProjects.filter { project in
+            if project.title.localizedCaseInsensitiveContains(q) { return true }
+            if project.effectiveClientName.localizedCaseInsensitiveContains(q) { return true }
+            // Match on sub-client contacts so the task picker surfaces the
+            // project when users search for a site contact by name.
+            if let subClients = project.client?.subClients {
+                for sub in subClients where sub.deletedAt == nil {
+                    if sub.name.localizedCaseInsensitiveContains(q) { return true }
+                    if sub.title?.localizedCaseInsensitiveContains(q) == true { return true }
+                    if sub.email?.localizedCaseInsensitiveContains(q) == true { return true }
+                    if sub.phoneNumber?.localizedCaseInsensitiveContains(q) == true { return true }
+                }
+            }
+            return false
         }.sorted(by: { $0.title < $1.title })
     }
 
@@ -409,10 +426,12 @@ struct TaskFormSheet: View {
                 projectSearchText = selectedProject.title
             }
 
-            // Fetch team members from DataController (User objects → TeamMember)
+            // Fetch team members as full User objects — required for UserAvatar
+            // to render real profile photos (uses profileImageData / profileImageURL
+            // / userColor). The lightweight TeamMember projection was dropping
+            // profileImageData, forcing every avatar to the initials placeholder.
             if let companyId = dataController.currentUser?.companyId {
                 fetchedTeamMembers = dataController.getTeamMembers(companyId: companyId)
-                    .map { TeamMember.fromUser($0) }
                     .sorted { $0.fullName < $1.fullName }
             }
 
@@ -1076,7 +1095,7 @@ struct TaskFormSheet: View {
                     let selectedMembers = uniqueTeamMembers.filter { selectedTeamMemberIds.contains($0.id) }
                     HStack(spacing: -8) {
                         ForEach(selectedMembers.prefix(3), id: \.id) { member in
-                            UserAvatar(teamMember: member, size: 24)
+                            UserAvatar(user: member, size: 24)
                         }
                         if selectedMembers.count > 3 {
                             Text("+\(selectedMembers.count - 3)")
@@ -1405,7 +1424,13 @@ struct TaskFormSheet: View {
                     print("[TASK_CREATE] 🎨 Creating task with color: \(taskColor) from taskType: \(snapshotTaskType?.display ?? "nil")")
 
                     let newTask = ProjectTask(
-                        id: UUID().uuidString,
+                        // Postgres canonicalizes UUID storage to lowercase; Swift's
+                        // UUID().uuidString returns UPPERCASE. Storing uppercase
+                        // locally causes fetch-by-id to miss when the realtime echo
+                        // / pulled DTO comes back lowercase, which produced
+                        // duplicate rows. Always canonicalize to lowercase so local
+                        // and remote ids compare equal.
+                        id: UUID().uuidString.lowercased(),
                         projectId: projectId,
                         taskTypeId: taskTypeId,
                         companyId: snapshotCompanyId,
@@ -1415,6 +1440,7 @@ struct TaskFormSheet: View {
                     // Insert into the context BEFORE wiring relationships so
                     // SwiftData never sees a half-managed model referenced by
                     // managed objects (a crash vector on iOS 18).
+                    print("[DUPE_TRACE] SAVETASK.insert id=\(newTask.id) ctx=\(ObjectIdentifier(modelContext)) thread=\(Thread.current)")
                     modelContext.insert(newTask)
 
                     if let project = selectedProject {
@@ -1684,7 +1710,9 @@ struct TaskFormSheet: View {
 // MARK: - Team Member Picker Sheet
 struct TeamMemberPickerSheet: View {
     @Binding var selectedTeamMemberIds: Set<String>
-    let allTeamMembers: [TeamMember]
+    /// Full `User` objects so each row renders a real avatar (profile photo
+    /// or cached local bytes) rather than the initials placeholder.
+    let allTeamMembers: [User]
     @Environment(\.dismiss) private var dismiss
     @Environment(\.tutorialMode) private var isTutorialMode
 
@@ -1718,7 +1746,7 @@ struct TeamMemberPickerSheet: View {
                                         .font(.system(size: OPSStyle.Layout.IconSize.md))
 
                                     // Avatar
-                                    UserAvatar(teamMember: member, size: 40)
+                                    UserAvatar(user: member, size: 40)
 
                                     // Name and role
                                     VStack(alignment: .leading, spacing: 4) {
@@ -1726,7 +1754,7 @@ struct TeamMemberPickerSheet: View {
                                             .font(OPSStyle.Typography.bodyBold)
                                             .foregroundColor(OPSStyle.Colors.primaryText)
 
-                                        Text(member.role)
+                                        Text(member.role.displayName)
                                             .font(OPSStyle.Typography.caption)
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                     }

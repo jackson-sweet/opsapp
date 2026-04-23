@@ -27,7 +27,7 @@ struct ActivityEntryView: View {
             HStack(spacing: 8) {
                 // Avatar
                 if let member = teamMember {
-                    UserAvatar(teamMember: member, size: 28)
+                    TeamMemberAvatar(teamMember: member, size: 28)
                 } else {
                     Circle()
                         .fill(OPSStyle.Colors.cardBackgroundDark)

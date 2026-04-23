@@ -44,7 +44,7 @@ struct SharePhotoToProjectSheet: View {
         filter: #Predicate<Project> { project in
             project.deletedAt == nil
         },
-        sort: \Project.updatedAt,
+        sort: \Project.lastSyncedAt,
         order: .reverse
     ) private var allProjects: [Project]
 
@@ -327,15 +327,18 @@ struct SharePhotoToProjectSheet: View {
         Task { @MainActor in
             defer { isUploading = false }
 
-            if let imageSyncManager = dataController.imageSyncManager {
-                let urls = await imageSyncManager.saveImages(images, for: project)
+            // imageSyncManager is an implicitly-unwrapped optional on
+            // DataController; treat it defensively in case the setup method
+            // hasn't run yet (shouldn't happen in practice but don't crash).
+            if dataController.imageSyncManager != nil {
+                let urls = await dataController.imageSyncManager.saveImages(images, for: project)
                 if urls.isEmpty {
                     uploadError = "Upload failed. Check your connection and try again."
                     showingUploadError = true
                     return
                 }
             } else {
-                // Local fallback
+                // Local fallback — encode and save to disk.
                 for image in images {
                     guard let data = image.jpegData(compressionQuality: 0.7) else { continue }
                     let localID = "project_\(project.id)_\(UUID().uuidString).jpg"

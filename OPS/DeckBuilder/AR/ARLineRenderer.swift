@@ -638,9 +638,22 @@ class ARLineRenderer {
         return entity
     }
 
-    // Former ground-plane orientation helper was removed when labels moved to
-    // BillboardComponent. BillboardComponent rotates the pivot toward the camera
-    // every frame, which makes any manual ground-aligned orientation wrong anyway.
+    /// iOS 17 fallback orientation — lays a text label flat on the ground
+    /// aligned with the edge direction. Used only on iOS 17 where
+    /// BillboardComponent isn't available; iOS 18+ uses BillboardComponent for
+    /// camera-facing labels. Text mesh extrudes along local -Z by default, so
+    /// we rotate -π/2 around X to lay it flat, then yaw by atan2(-z, x) to
+    /// point along the edge (in RealityKit's right-handed frame with +Y up,
+    /// a ground direction (dx, 0, dz) needs θ = atan2(-dz, dx)).
+    private func groundLabelOrientation(direction: SIMD3<Float>) -> simd_quatf {
+        let horizontal = SIMD3<Float>(direction.x, 0, direction.z)
+        let len = simd_length(horizontal)
+        let flat = simd_quatf(angle: -.pi / 2, axis: SIMD3<Float>(1, 0, 0))
+        guard len > 0.001 else { return flat }
+        let dir = horizontal / len
+        let yaw = simd_quatf(angle: atan2(-dir.z, dir.x), axis: SIMD3<Float>(0, 1, 0))
+        return yaw * flat
+    }
 
     /// Ground-plane perpendicular of a direction vector (rotated +90° around +Y
     /// in the XZ plane). Used to offset material labels off to the side of an
@@ -674,19 +687,27 @@ class ARLineRenderer {
         color: UIColor = .white,
         showBadge: Bool = true
     ) -> ModelEntity {
-        _ = direction  // intentionally unused — BillboardComponent handles orientation
         let mesh = cachedTextMesh(text, fontSize: fontSize)
         let material = SimpleMaterial(color: color, isMetallic: false)
         let textEntity = ModelEntity(mesh: mesh, materials: [material])
 
-        // Center the text mesh in its local space so BillboardComponent rotates
-        // around the text's visual center (not its generated-text anchor point).
+        // Center the text mesh in its local space so rotation happens around
+        // the text's visual center (not its generated-text anchor point).
         let bounds = textEntity.visualBounds(relativeTo: nil)
         textEntity.position = SIMD3<Float>(-bounds.center.x, -bounds.center.y, 0)
 
         let pivot = ModelEntity()
         pivot.position = position
-        pivot.components.set(BillboardComponent())
+        if #available(iOS 18.0, *) {
+            // Billboard the pivot toward the camera every frame — labels stay
+            // legible from any approach angle around the deck perimeter.
+            pivot.components.set(BillboardComponent())
+        } else {
+            // iOS 17 fallback: lay the label flat on the ground oriented along
+            // the edge direction. Readable when approached from one side;
+            // upside-down from the far side — accepted tradeoff pre-iOS 18.
+            pivot.orientation = groundLabelOrientation(direction: direction)
+        }
         pivot.addChild(textEntity)
 
         if showBadge {

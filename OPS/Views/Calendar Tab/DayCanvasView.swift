@@ -211,6 +211,10 @@ struct DayPageView: View {
     @State private var swipeOffset: [String: CGFloat] = [:]
     @AppStorage("showCascadePreview") private var showCascadePreviewPref = true
     @State private var showingScheduler = false
+    /// Task targeted by the context-menu Reschedule button. Separate from
+    /// selectedTaskIds so the scheduler can open outside of bulk-select mode
+    /// (Bug f7c663c7).
+    @State private var contextMenuRescheduleTask: ProjectTask?
 
     private var tasksForDate: [ProjectTask] {
         viewModel.scheduledTasks(for: date)
@@ -325,10 +329,40 @@ struct DayPageView: View {
                             try? await dataController.updateTaskSchedule(task: task, startDate: newStart, endDate: newEnd)
                         }
                         exitSelectMode()
+                    },
+                    onClearDates: {
+                        Task {
+                            try? await dataController.updateTaskSchedule(task: task, startDate: nil, endDate: nil)
+                        }
+                        exitSelectMode()
                     }
                 )
                 .environmentObject(dataController)
             }
+        }
+        // Bug f7c663c7 — context-menu Reschedule opens this sheet directly,
+        // independent of the bulk-select mode state.
+        .sheet(item: $contextMenuRescheduleTask) { task in
+            CalendarSchedulerSheet(
+                isPresented: Binding(
+                    get: { contextMenuRescheduleTask != nil },
+                    set: { if !$0 { contextMenuRescheduleTask = nil } }
+                ),
+                itemType: .task(task),
+                currentStartDate: task.startDate,
+                currentEndDate: task.endDate,
+                onScheduleUpdate: { newStart, newEnd in
+                    Task {
+                        try? await dataController.updateTaskSchedule(task: task, startDate: newStart, endDate: newEnd)
+                    }
+                },
+                onClearDates: {
+                    Task {
+                        try? await dataController.updateTaskSchedule(task: task, startDate: nil, endDate: nil)
+                    }
+                }
+            )
+            .environmentObject(dataController)
         }
         .sheet(isPresented: $showingCascadePreview) {
             if let cascade = pendingCascade, let task = pendingTask {
@@ -458,7 +492,14 @@ struct DayPageView: View {
                     }
 
                     Section {
-                        Button(action: { handleTaskTap(task) }) {
+                        Button(action: {
+                            // Bug f7c663c7 — Reschedule from quick actions
+                            // must open the scheduler sheet directly, not
+                            // route through ShowCalendarTaskDetails (which
+                            // opens the project details view).
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            contextMenuRescheduleTask = task
+                        }) {
                             Label("Reschedule...", systemImage: "calendar")
                         }
                         Button(action: {

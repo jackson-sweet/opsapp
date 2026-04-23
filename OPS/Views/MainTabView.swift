@@ -36,21 +36,6 @@ struct MainTabView: View {
     @State private var assignRoleMemberId: String?
     @State private var assignRoleWasSeated: Bool = false
 
-    // photo_storage_limit push → PhotoStorageManagementView
-    @State private var showPhotoStorageSheet = false
-
-    /// Non-deleted projects for the current company, used by the photo storage
-    /// sheet when presented via rail-notification auto-navigate.
-    private var photoStorageProjects: [Project] {
-        guard let ctx = dataController.modelContext else { return [] }
-        let companyId = dataController.currentUser?.companyId ?? ""
-        let descriptor = FetchDescriptor<Project>(
-            predicate: #Predicate<Project> { $0.companyId == companyId }
-        )
-        let projects = (try? ctx.fetch(descriptor)) ?? []
-        return projects.filter { $0.deletedAt == nil }
-    }
-
     // Track inventory access for conditional tab
     private var hasInventoryAccess: Bool {
         permissionStore.can("inventory.view", requiredScope: "all")
@@ -106,9 +91,6 @@ struct MainTabView: View {
 
     private let openAppFromWebObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenAppFromWeb"))
-
-    private let openPhotoStorageObserver = NotificationCenter.default
-        .publisher(for: Notification.Name("OpenPhotoStorage"))
 
     // Keyboard observers
     private let keyboardWillShow = NotificationCenter.default
@@ -494,15 +476,6 @@ struct MainTabView: View {
             }
         }
 
-        // photo_storage_limit rail tap → present PhotoStorageManagementView
-        .onReceive(openPhotoStorageObserver) { _ in
-            print("[PUSH_NAVIGATION] Opening photo storage management")
-            showPhotoStorageSheet = true
-        }
-        .sheet(isPresented: $showPhotoStorageSheet) {
-            PhotoStorageManagementView(allProjects: photoStorageProjects)
-                .environmentObject(dataController)
-        }
 
         // Handle navigating to Clients tab in Job Board
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NavigateToClients"))) { _ in

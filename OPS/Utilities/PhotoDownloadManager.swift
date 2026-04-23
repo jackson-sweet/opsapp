@@ -154,6 +154,10 @@ class PhotoDownloadManager: ObservableObject {
         ImageFileManager.shared.clearRemoteImageCache()
         ImageCache.shared.clear()
         cacheVersion += 1
+        // Clearing always leaves the user under budget — resolve any
+        // outstanding cap-hit rail notifications so the user isn't left
+        // staring at a persistent warning after they've already acted on it.
+        PhotoPrefetchService.shared.resolveCapHitRailNotifications()
     }
 
     /// Dry-run of enforceCapacityPolicy against a hypothetical target budget.
@@ -249,7 +253,13 @@ class PhotoDownloadManager: ObservableObject {
             if currentUsage <= budget { break }
 
             let cacheKey = candidate.url.hasPrefix("//") ? "https:" + candidate.url : candidate.url
-            let fileSize = ImageFileManager.shared.imageFileSize(localID: cacheKey) ?? 0
+            // Skip candidates not actually on disk. Without this guard, missing/
+            // zero-byte files still invoke removeFromDevice but contribute 0 to
+            // bytesFreed, so the loop exhausts all candidates while
+            // currentUsage never drops below budget.
+            guard let fileSize = ImageFileManager.shared.imageFileSize(localID: cacheKey), fileSize > 0 else {
+                continue
+            }
 
             if removeFromDevice(candidate.url) {
                 // Per-photo eviction log for test verification. Chronological

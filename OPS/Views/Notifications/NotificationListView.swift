@@ -510,6 +510,8 @@ struct NotificationListView: View {
                 return ("calendar.badge.exclamationmark", OPSStyle.Colors.errorStatus)
             case "invoice_overdue":
                 return ("exclamationmark.circle", OPSStyle.Colors.errorStatus)
+            case "photo_storage_limit":
+                return ("externaldrive.fill.badge.exclamationmark", OPSStyle.Colors.warningStatus)
             case "update":
                 return (OPSStyle.Icons.sync, OPSStyle.Colors.secondaryText)
             default:
@@ -592,16 +594,12 @@ struct NotificationListView: View {
                 }
             }
         case "photoStorage":
-            // Cap-hit from PhotoPrefetchService. Dismiss the notification list,
-            // then present the Photo Storage management sheet from MainTabView
-            // so the user lands on the fix screen with one tap.
+            // Cap-hit from PhotoPrefetchService. Hand the baton to the
+            // notification sheet's onDismiss callback (AppHeader) so the
+            // photo-storage sheet only presents AFTER this sheet is fully
+            // gone — avoids sheet-on-sheet deadlock.
+            appState.pendingRailDeepLink = "photoStorage"
             dismiss()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                NotificationCenter.default.post(
-                    name: Notification.Name("OpenPhotoStorage"),
-                    object: nil
-                )
-            }
         default:
             // Deep link to project if applicable
             if let projectId = notification.projectId, !projectId.isEmpty {

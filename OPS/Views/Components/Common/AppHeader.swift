@@ -170,7 +170,20 @@ struct AppHeader: View {
                 )
                 .ignoresSafeArea()
             )
-            .sheet(isPresented: $appState.showingNotifications) {
+            .sheet(isPresented: $appState.showingNotifications, onDismiss: {
+                // Process any deep-link baton left by a notification row tap.
+                // Fires AFTER this sheet is fully gone, so the target sheet
+                // can present without a sheet-on-sheet race.
+                if let deepLink = appState.pendingRailDeepLink {
+                    appState.pendingRailDeepLink = nil
+                    switch deepLink {
+                    case "photoStorage":
+                        appState.showPhotoStorage = true
+                    default:
+                        break
+                    }
+                }
+            }) {
                 NavigationStack {
                     NotificationListView()
                         .environmentObject(dataController)

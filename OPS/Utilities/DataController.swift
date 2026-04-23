@@ -218,11 +218,28 @@ class DataController: ObservableObject {
         // async and we don't want to block setModelContext's caller.
         Task { @MainActor in
             if FeatureFlags.useDataActor, let actor = self.dataActor {
+                // Canonicalize task UUIDs to lowercase BEFORE dedup so
+                // `7F7C90FF-...` and `7f7c90ff-...` (same underlying task)
+                // group together in `cleanupDuplicateTasks`. Must run before
+                // any sync so outbound pushes use canonicalized ids too.
+                await actor.normalizeTaskIdsToLowercase()
+
                 await actor.cleanupDuplicateUsers()
                 await actor.cleanupDuplicateProjects()
                 await actor.cleanupDuplicateTasks()
                 await actor.cleanupDuplicateClients()
                 await actor.cleanupDuplicateTaskTypes()
+
+                // After dedup, rewire relationships from the stored id-string
+                // columns (Project.teamMemberIdsString, ProjectTask.teamMemberIdsString,
+                // ProjectTask.taskTypeId, etc.) into `@Relationship` arrays. The
+                // dedup's `pickFreshestIndex` may retain the copy that was
+                // inserted via a realtime echo — which never had its `[User]`
+                // relationship wired (DTO→model only copies the id string).
+                // Without this pass the UI would show no avatars until the
+                // next full/delta sync runs, which could be minutes or a
+                // foreground-resume away.
+                await actor.rewireRelationships()
             } else {
                 await cleanupDuplicateUsers()
                 await cleanupDuplicateProjects()
@@ -1101,6 +1118,10 @@ class DataController: ObservableObject {
 
         // Clear on-disk client avatar cache
         ClientAvatarCache.shared.clearAll()
+
+        // Cancel any in-flight photo prefetch so downloads don't land in a
+        // signed-out user's directory. Safe no-op if nothing is running.
+        PhotoPrefetchService.shared.cancelPrefetch()
 
         // Capture the current user id BEFORE clearAuthentication() wipes it,
         // so SpotlightIndexManager.clearAll can remove the user-scoped backfill
@@ -4399,11 +4420,13 @@ class DataController: ObservableObject {
             predicate: #Predicate<ProjectTask> { $0.id == taskId }
         )
         let existing = try? context.fetch(existingDescriptor)
+        print("[DUPE_TRACE] CREATETASK_DTO.fetch id=\(taskId) existing_count=\(existing?.count ?? -1) ctx=\(ObjectIdentifier(context))")
 
         if existing?.isEmpty != false {
             // Convert DTO to model and insert locally
             let task = dto.toModel()
             task.needsSync = true
+            print("[DUPE_TRACE] CREATETASK_DTO.insert id=\(taskId) ctx=\(ObjectIdentifier(context))")
             context.insert(task)
 
             // Link to project

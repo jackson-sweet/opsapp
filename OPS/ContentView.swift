@@ -595,6 +595,11 @@ struct PINGatedView: View {
                 .environmentObject(dataController)
                 .environmentObject(subscriptionManager)
         }
+        // MARK: - Photo Storage (deep linked from photo_storage_limit rail notifications)
+        .sheet(isPresented: $appState.showPhotoStorage) {
+            PhotoStorageManagementView(allProjects: currentCompanyProjects())
+                .environmentObject(dataController)
+        }
         // MARK: - Bug Report Sheet (Shake-to-Report)
         .sheet(isPresented: $appState.showingBugReport, onDismiss: {
             appState.bugReportScreenshot = nil
@@ -621,6 +626,21 @@ struct PINGatedView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Photo Storage Sheet Helper
+
+    /// Non-deleted projects scoped to the current user's company. Consumed by
+    /// the Photo Storage management sheet presented at this level (see
+    /// `.sheet(isPresented: $appState.showPhotoStorage)` above).
+    private func currentCompanyProjects() -> [Project] {
+        guard let ctx = dataController.modelContext else { return [] }
+        let companyId = dataController.currentUser?.companyId ?? ""
+        let descriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { $0.companyId == companyId }
+        )
+        let projects = (try? ctx.fetch(descriptor)) ?? []
+        return projects.filter { $0.deletedAt == nil }
     }
 
     // MARK: - Permission Refresh

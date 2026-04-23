@@ -49,6 +49,20 @@ class AppState: ObservableObject {
     @Published var showingPlanSelection: Bool = false
     @Published var pendingPromoCode: String? = nil
 
+    // MARK: - Photo Storage
+    /// Present the Photo Storage management sheet. Attached at PINGatedView
+    /// level so the sheet-to-sheet transition from the notification rail
+    /// actually presents instead of racing the dismissing notification sheet.
+    @Published var showPhotoStorage: Bool = false
+
+    // MARK: - Notification Rail Deep Link Baton
+    /// Baton passed from the notification rail to the sheet's `onDismiss`
+    /// callback so the next presentation only fires AFTER the notification
+    /// sheet is fully gone. Prevents sheet-on-sheet deadlock that shows up as
+    /// a frozen UI when presenting from an ancestor while a descendant's
+    /// sheet animation is still unwinding.
+    @Published var pendingRailDeepLink: String? = nil
+
     // MARK: - Bug Reporting
     @Published var showingBugReport: Bool = false
     @Published var bugReportScreenshot: UIImage?

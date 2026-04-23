@@ -56,6 +56,11 @@ final class PhotoPrefetchService: ObservableObject {
     @Published private(set) var lastRunDownloaded: Int = 0
     @Published private(set) var lastRunSkippedForBudget: Int = 0
 
+    /// Handle to the in-flight prefetch task. Retained so logout (or any
+    /// other teardown path) can cancel the pass and prevent downloads from
+    /// completing under a signed-out user's directory.
+    private var prefetchTask: Task<Void, Never>?
+
     // MARK: - UserDefaults Keys
 
     private enum Key {
@@ -105,9 +110,21 @@ final class PhotoPrefetchService: ObservableObject {
             return
         }
 
-        Task { [weak self] in
+        prefetchTask?.cancel()
+        prefetchTask = Task { [weak self] in
             await self?.runPrefetch(modelContext: modelContext, connectivity: connectivity)
+            self?.prefetchTask = nil
         }
+    }
+
+    /// Cancel any in-flight prefetch pass. Call from the logout path so we
+    /// don't keep pulling photos under a signed-out user. No-op if nothing
+    /// is running.
+    func cancelPrefetch() {
+        guard let task = prefetchTask else { return }
+        print("[PhotoPrefetch] Cancelling in-flight prefetch")
+        task.cancel()
+        prefetchTask = nil
     }
 
     // MARK: - Prefetch Core
@@ -329,6 +346,28 @@ final class PhotoPrefetchService: ObservableObject {
     /// the 24-hour window to expire.
     func clearCapHitCooldown() {
         UserDefaults.standard.removeObject(forKey: RailKey.lastPostedAt)
+    }
+
+    /// Clears the cooldown AND marks any outstanding `photo_storage_limit`
+    /// rail notifications as read. Call this from any path that makes the
+    /// cap-hit state no longer true: budget raised, photos cleared, free-up
+    /// succeeded, etc. Safe to call even when there's nothing to resolve.
+    func resolveCapHitRailNotifications() {
+        clearCapHitCooldown()
+        guard let userId = UserDefaults.standard.string(forKey: "currentUserId"), !userId.isEmpty else {
+            return
+        }
+        Task {
+            do {
+                try await NotificationRepository.shared.markAllAsReadByType(
+                    type: "photo_storage_limit",
+                    userId: userId
+                )
+                print("[PhotoPrefetch] Resolved photo_storage_limit rail notifications")
+            } catch {
+                print("[PhotoPrefetch] Failed to resolve rail notifications: \(error)")
+            }
+        }
     }
 
     /// Inserts a persistent cap-hit notification into the Supabase notifications

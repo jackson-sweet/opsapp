@@ -198,8 +198,10 @@ class WizardStateManager: ObservableObject {
     func bannerLaunchTapped() {
         guard let wizard = pendingBannerWizard else { return }
 
-        showBanner = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+        withAnimation(OPSStyle.Animation.spring) {
+            showBanner = false
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
             self?.pendingBannerWizard = nil
         }
 
@@ -229,8 +231,10 @@ class WizardStateManager: ObservableObject {
             userRole: userRole?.rawValue
         )
 
-        showBanner = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+        withAnimation(OPSStyle.Animation.spring) {
+            showBanner = false
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
             self?.pendingBannerWizard = nil
         }
 
@@ -257,8 +261,10 @@ class WizardStateManager: ObservableObject {
             try? modelContext?.save()
         }
 
-        showBanner = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+        withAnimation(OPSStyle.Animation.spring) {
+            showBanner = false
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
             self?.pendingBannerWizard = nil
         }
 
@@ -600,8 +606,10 @@ class WizardStateManager: ObservableObject {
         completedWizardId = wizardId
         deactivate()
 
-        // Auto-dismiss celebration after 2 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+        // Auto-dismiss celebration after 4 seconds — the previous 2s was too
+        // quick for a proper "nice, you finished it" moment and blew past
+        // users who were in the middle of closing a sheet.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
             if self?.completedWizardId == wizardId {
                 self?.completedWizardId = nil
             }
@@ -797,10 +805,11 @@ class WizardStateManager: ObservableObject {
                 shouldAutoSkip = true
             }
         case "swipe_status":
-            // Auto-skip when user lacks projects.edit permission or no swipeable projects
+            // Auto-skip only when the user can't swipe at all. If they have
+            // projects.edit but no project is currently in a swipe-forward
+            // state, we intentionally leave the step visible so users still
+            // learn that swiping changes status — they can hit SKIP to move on.
             if !PermissionStore.shared.can("projects.edit") {
-                shouldAutoSkip = true
-            } else if swipeableProjectCount == 0 {
                 shouldAutoSkip = true
             }
         case "view_photo":

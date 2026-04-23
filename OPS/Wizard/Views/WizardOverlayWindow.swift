@@ -45,28 +45,48 @@ struct WizardOverlayModifier: ViewModifier {
                     .zIndex(998)
                 }
             }
-            // Completion toast pinned to bottom
+            // Completion toast pinned to bottom — a prominent two-line confirmation
+            // so the user actually registers that the guide wrapped up, instead
+            // of a thin bar that blinks past in 2 seconds.
             .safeAreaInset(edge: .bottom) {
-                if stateManager.completedWizardId != nil {
-                    let isWelcomeTour = stateManager.completedWizardId == "welcome_tour"
-                    HStack(spacing: 10) {
-                        Image(systemName: isWelcomeTour ? "hand.thumbsup.fill" : "checkmark.circle.fill")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(OPSStyle.Colors.wizardAccent)
+                if let completedId = stateManager.completedWizardId {
+                    let isWelcomeTour = completedId == "welcome_tour"
+                    HStack(alignment: .center, spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(OPSStyle.Colors.wizardAccent.opacity(0.18))
+                                .frame(width: 36, height: 36)
+                            Image(systemName: isWelcomeTour ? "hand.thumbsup.fill" : "checkmark")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(OPSStyle.Colors.wizardAccent)
+                        }
 
-                        Text(isWelcomeTour ? "YOU'RE ALL SET." : "GUIDE COMPLETE.")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .tracking(1.2)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(isWelcomeTour ? "YOU'RE ALL SET." : "GUIDE COMPLETE.")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .tracking(1.2)
+                            Text(isWelcomeTour ? "Start running your jobs." : "You know the board — get after it.")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .multilineTextAlignment(.leading)
+                        }
+
+                        Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 20)
                     .padding(.vertical, 16)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         BlurView(style: .systemUltraThinMaterialDark)
-                            .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.9))
+                            .overlay(OPSStyle.Colors.cardBackgroundDark.opacity(0.92))
                             .ignoresSafeArea(edges: .bottom)
                     )
+                    .overlay(alignment: .top) {
+                        Rectangle()
+                            .fill(OPSStyle.Colors.wizardAccent.opacity(0.45))
+                            .frame(height: 2)
+                    }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -176,10 +196,16 @@ struct WizardOverlayModifier: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardCurrentTabChanged"))) { notification in
                 guard let tabName = notification.userInfo?["tabName"] as? String else { return }
 
-                // Dismiss any pending banner when the user leaves the triggering tab
+                // Dismiss any pending banner when the user leaves the triggering tab.
+                // Animate the slide-out, then clear the wizard reference after the
+                // transition so the view isn't yanked mid-animation.
                 if stateManager.showBanner {
-                    stateManager.showBanner = false
-                    stateManager.pendingBannerWizard = nil
+                    withAnimation(OPSStyle.Animation.spring) {
+                        stateManager.showBanner = false
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                        stateManager.pendingBannerWizard = nil
+                    }
                 }
 
                 guard stateManager.isActive else { return }

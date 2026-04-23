@@ -122,8 +122,8 @@ struct WizardBanner: View {
                 .frame(height: 2)
         }
         .transition(.asymmetric(
-            insertion: .move(edge: .top),
-            removal: .move(edge: .top)
+            insertion: .move(edge: .top).combined(with: .opacity),
+            removal: .move(edge: .top).combined(with: .opacity)
         ))
     }
 }
@@ -148,7 +148,6 @@ struct WizardBannerModifier: ViewModifier {
                 .zIndex(998)
             }
         }
-        .animation(OPSStyle.Animation.spring, value: stateManager.showBanner)
     }
 }
 

@@ -64,6 +64,7 @@ class WizardStateManager: ObservableObject {
     private var modelContext: ModelContext?
     private var userId: String?
     private var userRole: UserRole?
+    private weak var syncEngine: SyncEngine?
     private var stepStartTime: Date?
     private var wizardStartTime: Date?
     private var cancellables = Set<AnyCancellable>()
@@ -93,10 +94,11 @@ class WizardStateManager: ObservableObject {
 
     // MARK: - Configuration
 
-    func configure(modelContext: ModelContext, userId: String, userRole: UserRole) {
+    func configure(modelContext: ModelContext, userId: String, userRole: UserRole, syncEngine: SyncEngine? = nil) {
         self.modelContext = modelContext
         self.userId = userId
         self.userRole = userRole
+        self.syncEngine = syncEngine
         self.isEnabled = UserDefaults.standard.object(forKey: "wizard_system_enabled") as? Bool ?? true
 
         backgroundObserver = NotificationCenter.default.addObserver(
@@ -123,9 +125,13 @@ class WizardStateManager: ObservableObject {
             return existing
         }
 
+        // First time we've seen this wizard for this user — create the row and
+        // mark it for sync so other devices receive the default (not_started) state.
         let newState = WizardState(wizardId: wizardId, userId: userId)
+        newState.needsSync = true
+        newState.lastActiveAt = Date()
         modelContext.insert(newState)
-        try? modelContext.save()
+        persistAndSync(newState)
         return newState
     }
 
@@ -258,7 +264,7 @@ class WizardStateManager: ObservableObject {
             state.doNotShow = true
             state.status = .dismissed
             state.needsSync = true
-            try? modelContext?.save()
+            persistAndSync(state)
         }
 
         withAnimation(OPSStyle.Animation.spring) {
@@ -287,7 +293,7 @@ class WizardStateManager: ObservableObject {
 
         let isRestart = state.status == .completed
         state.start()
-        try? modelContext?.save()
+        persistAndSync(state)
 
         activeWizard = wizard
         currentStepIndex = state.currentStepIndex
@@ -330,11 +336,12 @@ class WizardStateManager: ObservableObject {
 
         if doNotShowAgain {
             state.doNotShow = true
+            state.needsSync = true
         }
 
         let isRestart = state.status == .completed
         state.start()
-        try? modelContext?.save()
+        persistAndSync(state)
 
         activeWizard = wizard
         currentStepIndex = state.currentStepIndex
@@ -379,7 +386,7 @@ class WizardStateManager: ObservableObject {
         } else {
             state.start()
         }
-        try? modelContext?.save()
+        persistAndSync(state)
 
         activeWizard = wizard
         currentStepIndex = state.currentStepIndex
@@ -424,7 +431,7 @@ class WizardStateManager: ObservableObject {
             state.doNotShow = true
             state.status = .dismissed
             state.needsSync = true
-            try? modelContext?.save()
+            persistAndSync(state)
 
             analytics.recordEvent(
                 event: "wizard_do_not_show",
@@ -484,7 +491,7 @@ class WizardStateManager: ObservableObject {
         state.advanceStep(totalSteps: totalSteps)
         currentStepIndex = state.currentStepIndex
         stepStartTime = Date()
-        try? modelContext?.save()
+        persistAndSync(state)
 
         updateInstructionForCurrentStep()
         observeStepCompletion()
@@ -532,7 +539,7 @@ class WizardStateManager: ObservableObject {
         state.recordSkip(totalSteps: totalSteps)
         currentStepIndex = state.currentStepIndex
         stepStartTime = Date()
-        try? modelContext?.save()
+        persistAndSync(state)
 
         updateInstructionForCurrentStep()
         observeStepCompletion()
@@ -563,7 +570,8 @@ class WizardStateManager: ObservableObject {
         let stepDuration = stepStartTime.map { Int(Date().timeIntervalSince($0) * 1000) } ?? 0
         state.addDuration(stepDuration)
         state.lastActiveAt = Date()
-        try? modelContext?.save()
+        state.needsSync = true
+        persistAndSync(state)
 
         analytics.recordEvent(
             event: "wizard_abandoned",
@@ -586,7 +594,7 @@ class WizardStateManager: ObservableObject {
               let state = wizardState(for: wizard.wizardId) else { return }
 
         state.markCompleted()
-        try? modelContext?.save()
+        persistAndSync(state)
 
         analytics.recordEvent(
             event: "wizard_completed",
@@ -891,6 +899,7 @@ class WizardStateManager: ObservableObject {
         )
         if let states = try? modelContext.fetch(descriptor) {
             for state in states {
+                enqueueDeleteOperation(for: state.id)
                 modelContext.delete(state)
             }
             try? modelContext.save()
@@ -901,12 +910,27 @@ class WizardStateManager: ObservableObject {
     /// Reset a single wizard's state
     func resetState(for wizardId: String) {
         if let state = wizardState(for: wizardId) {
+            let id = state.id
+            enqueueDeleteOperation(for: id)
             modelContext?.delete(state)
             try? modelContext?.save()
         }
         if activeWizard?.wizardId == wizardId {
             deactivate()
         }
+    }
+
+    /// Records a delete SyncOperation for a wizard state id so server learns
+    /// of a local reset. No-op if syncEngine isn't wired.
+    private func enqueueDeleteOperation(for id: String) {
+        guard let syncEngine else { return }
+        syncEngine.recordOperation(
+            entityType: .wizardState,
+            entityId: id,
+            operationType: "delete",
+            changedFields: ["_deleted": true],
+            priority: 1
+        )
     }
 
     /// Force trigger a wizard's banner (bypasses trigger conditions)
@@ -923,7 +947,8 @@ class WizardStateManager: ObservableObject {
         state.currentStepIndex = index
         state.status = .inProgress
         state.lastActiveAt = Date()
-        try? modelContext?.save()
+        state.needsSync = true
+        persistAndSync(state)
 
         currentStepIndex = index
         stepStartTime = Date()
@@ -942,6 +967,65 @@ class WizardStateManager: ObservableObject {
         }
     }
 
+    // MARK: - Sync Enqueue
+
+    /// Saves the current modelContext and, if the state has needsSync=true,
+    /// records a SyncOperation with SyncEngine so OutboundProcessor picks it up
+    /// on the next push cycle. Mirrors the pattern used by TaskListView and
+    /// ProjectFormSheet.recordProjectSyncOperation.
+    ///
+    /// This is a no-op when syncEngine is nil (tests, previews, or configure
+    /// variants that don't inject the engine).
+    private func persistAndSync(_ state: WizardState) {
+        try? modelContext?.save()
+        enqueueSyncOperation(for: state)
+    }
+
+    /// Records a SyncOperation for the WizardState if and only if it has local
+    /// changes that need to reach the server. Uses the presence of lastSyncedAt
+    /// to choose between a create and an update operation.
+    private func enqueueSyncOperation(for state: WizardState) {
+        guard state.needsSync else { return }
+        guard let syncEngine else {
+            // No sync engine wired (pre-login, tests). Local save already happened;
+            // needsSync stays true so the next full sync cycle can still drain it
+            // via `hasPendingOperations == false` branch clearing on merge if
+            // server state matches, or an explicit drain call.
+            return
+        }
+
+        // Build payload in the Supabase snake_case wire format so the sanitizer
+        // in OutboundProcessor.handleWizardState keeps every field.
+        let iso = ISO8601DateFormatter()
+        var payload: [String: Any] = [
+            "id": state.id,
+            "wizard_id": state.wizardId,
+            "user_id": state.userId,
+            "status": state.statusRaw,
+            "current_step_index": state.currentStepIndex,
+            "do_not_show": state.doNotShow,
+            "total_duration_ms": state.totalDurationMs,
+            "steps_skipped": state.stepsSkipped,
+            "current_session_id": state.currentSessionId
+        ]
+        if let completedAt = state.completedAt {
+            payload["completed_at"] = iso.string(from: completedAt)
+        }
+        if let lastActiveAt = state.lastActiveAt {
+            payload["last_active_at"] = iso.string(from: lastActiveAt)
+        }
+
+        let operationType = state.lastSyncedAt == nil ? "create" : "update"
+
+        syncEngine.recordOperation(
+            entityType: .wizardState,
+            entityId: state.id,
+            operationType: operationType,
+            changedFields: payload,
+            priority: 1
+        )
+    }
+
     // MARK: - Background Save
 
     private func saveCurrentState() {
@@ -950,6 +1034,7 @@ class WizardStateManager: ObservableObject {
         let stepDuration = stepStartTime.map { Int(Date().timeIntervalSince($0) * 1000) } ?? 0
         state.addDuration(stepDuration)
         state.lastActiveAt = Date()
-        try? modelContext?.save()
+        state.needsSync = true
+        persistAndSync(state)
     }
 }

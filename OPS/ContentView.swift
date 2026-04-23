@@ -394,7 +394,8 @@ struct PINGatedView: View {
                             wizardStateManager.configure(
                                 modelContext: context,
                                 userId: user.id,
-                                userRole: role
+                                userRole: role,
+                                syncEngine: dataController.syncEngine
                             )
                             wizardTriggerService.configure(
                                 stateManager: wizardStateManager,

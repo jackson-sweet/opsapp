@@ -385,6 +385,14 @@ struct ProjectDetailsView: View {
                         onAddTask: { viewModel.showingAddTaskSheet = true },
                         onDeckDesign: permissionStore.isFeatureEnabled("deck_builder") ? { showingDeckCreationPicker = true } : nil,
                         onShare: { shareProject() },
+                        onPhotoLibrary: {
+                            // Bug 1b7e59f7 — open the existing image picker
+                            // sheet (which wraps PhotosPicker). The selected
+                            // images flow into viewModel.addPhotosToProject
+                            // exactly like camera-captured images.
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            viewModel.showingImagePicker = true
+                        },
                         allTasksComplete: {
                             let activeTasks = project.tasks.filter { $0.deletedAt == nil && $0.status != .cancelled }
                             return !activeTasks.isEmpty && activeTasks.allSatisfy { $0.status == .completed }

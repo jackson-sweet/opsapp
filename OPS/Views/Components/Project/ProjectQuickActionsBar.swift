@@ -24,6 +24,14 @@ struct ProjectQuickActionsBar: View {
     let onAddTask: () -> Void
     var onDeckDesign: (() -> Void)? = nil
     var onShare: (() -> Void)? = nil
+    /// Bug 1b7e59f7 — in-app equivalent of the requested Photos → OPS share
+    /// extension flow. Tapping opens the Photos library picker for this
+    /// project so the user can attach existing library photos without
+    /// going through the camera first. The full Share Extension target
+    /// requires project.pbxproj edits which are out of scope for this
+    /// agent sweep; this covers the core "attach photo from library to
+    /// project" user need.
+    var onPhotoLibrary: (() -> Void)? = nil
     var allTasksComplete: Bool = false
     var projectIsActive: Bool = true
     var onCompleteProject: (() -> Void)? = nil
@@ -52,6 +60,16 @@ struct ProjectQuickActionsBar: View {
 
         items.append(contentsOf: [
             ActionItem(icon: "camera.fill", label: "PHOTO", action: onPhoto),
+        ])
+
+        // Bug 1b7e59f7 — library import button. Shown immediately after
+        // the camera capture action so the two photo paths (capture vs
+        // attach from library) sit side-by-side.
+        if let onPhotoLibrary = onPhotoLibrary {
+            items.append(ActionItem(icon: "photo.on.rectangle.angled", label: "LIBRARY", action: onPhotoLibrary))
+        }
+
+        items.append(contentsOf: [
             ActionItem(icon: "note.text", label: "NOTE", action: onNote),
             ActionItem(icon: "doc.text.viewfinder", label: "EXPENSE", action: onExpense),
         ])

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 // MARK: - Color Extension for Hex Support
 extension Color {
@@ -72,16 +73,6 @@ struct UserAvatar: View {
         self.imageData = user.profileImageData
         self.size = size
         self.backgroundColor = Color(hex: user.userColor ?? "#A49577") ?? OPSStyle.Colors.primaryAccent
-    }
-    
-    init(teamMember: TeamMember, size: CGFloat = 40) {
-        self.firstName = teamMember.firstName
-        self.lastName = teamMember.lastName
-        self.imageURL = teamMember.avatarURL
-        self.imageData = nil // TeamMember doesn't store image data
-        self.size = size
-        // TeamMember doesn't have userColor, use default
-        self.backgroundColor = OPSStyle.Colors.primaryAccent
     }
     
     init(client: Client, size: CGFloat = 40) {
@@ -227,6 +218,45 @@ struct UserAvatar: View {
                 }
             }
             _ = url // silence unused warning; ClientAvatarCache does its own URL construction
+        }
+    }
+}
+
+// MARK: - TeamMember-backed Avatar
+
+/// Wrapper that resolves a `User` from a `TeamMember` (matched by id) before
+/// rendering. Use this whenever you have a `TeamMember` but want the full
+/// avatar experience — profile photo from `User.profileImageData` (local
+/// cached bytes), `User.profileImageURL` (remote), and `User.userColor` (the
+/// per-user accent). The bare `TeamMember` projection drops all three of
+/// those, which is why TeamMember-only avatars used to render as initials
+/// even for users that had a real photo locally.
+///
+/// Falls back to TeamMember's `avatarURL` + initials only when no matching
+/// `User` is found in the local store (e.g. legacy or orphaned member rows).
+struct TeamMemberAvatar: View {
+    let teamMember: TeamMember
+    let size: CGFloat
+
+    @Query private var matchingUsers: [User]
+
+    init(teamMember: TeamMember, size: CGFloat = 40) {
+        self.teamMember = teamMember
+        self.size = size
+        let id = teamMember.id
+        _matchingUsers = Query(filter: #Predicate<User> { $0.id == id })
+    }
+
+    var body: some View {
+        if let user = matchingUsers.first {
+            UserAvatar(user: user, size: size)
+        } else {
+            UserAvatar(
+                firstName: teamMember.firstName,
+                lastName: teamMember.lastName,
+                imageURL: teamMember.avatarURL,
+                size: size
+            )
         }
     }
 }

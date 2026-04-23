@@ -47,6 +47,8 @@ private class ManualSketchCaptureVC: UIViewController, AVCapturePhotoCaptureDele
     private weak var shutterInnerCircle: UIView?
     private weak var statusLabel: UILabel?
     private var isCapturing = false  // guards against rapid multi-tap firing multiple captures
+    private var lastCaptureStartedAt: Date?  // debounce window (2s) on top of isCapturing
+    private static let minCaptureInterval: TimeInterval = 2.0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -154,12 +156,21 @@ private class ManualSketchCaptureVC: UIViewController, AVCapturePhotoCaptureDele
 
     @objc private func shutterTapped() {
         // Root cause of Jackson's "takes multiple scans much too quickly": rapid taps
-        // fired multiple capturePhoto calls in flight. Guard with isCapturing flag.
+        // fired multiple capturePhoto calls in flight. Two defenses:
+        //   1. `isCapturing` flag — refuses a second tap while the first is in flight.
+        //   2. 2-second interval — refuses a second tap within the min window even if
+        //      the first already completed. Covers the edge case where AVFoundation
+        //      fires very fast back-to-back captures.
         guard !isCapturing else { return }
+        if let last = lastCaptureStartedAt, Date().timeIntervalSince(last) < Self.minCaptureInterval {
+            return
+        }
         isCapturing = true
+        lastCaptureStartedAt = Date()
         shutterButton?.isEnabled = false
         shutterInnerCircle?.backgroundColor = UIColor.white.withAlphaComponent(0.4)
         statusLabel?.text = "CAPTURING…"
+        // Medium impact = commit-level feedback so the user feels the shutter fire.
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         let settings = AVCapturePhotoSettings()
         photoOutput.capturePhoto(with: settings, delegate: self)
@@ -189,6 +200,9 @@ private class ManualSketchCaptureVC: UIViewController, AVCapturePhotoCaptureDele
         Task { @MainActor in
             self.statusLabel?.text = "PROCESSING…"
             let corrected = await SketchPerspectiveCorrector.perspectiveCorrect(image: image)
+            // Success haptic on a clean capture — lets the user know the scan is good
+            // without waiting for the review screen to render.
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
             self.onCapture?(corrected)
             // Shutter stays disabled — view is dismissing to review screen
         }

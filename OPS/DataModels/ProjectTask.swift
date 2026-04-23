@@ -203,9 +203,11 @@ final class ProjectTask {
         return teamMemberIdsString.isEmpty ? [] : teamMemberIdsString.components(separatedBy: ",")
     }
     
-    /// Set team member IDs from array
+    /// Set team member IDs from array. Canonicalizes each id to lowercase so
+    /// the CSV matches Postgres's stored uuid casing, which is what
+    /// `linkAllRelationships` and merge-path rewires look up User by.
     func setTeamMemberIds(_ ids: [String]) {
-        teamMemberIdsString = ids.joined(separator: ",")
+        teamMemberIdsString = ids.map { $0.lowercased() }.joined(separator: ",")
     }
     
     /// Get display title (custom title, TaskType, or fallback)

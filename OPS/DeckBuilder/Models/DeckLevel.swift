@@ -86,7 +86,7 @@ struct DeckLevel: Identifiable, Codable, Equatable {
 
         for _ in 0..<vertices.count - 1 {
             guard let neighbors = adjacency[currentId] else { break }
-            guard let nextId = neighbors.subtracting(visited).first else { break }
+            guard let nextId = neighbors.subtracting(visited).sorted().first else { break }
             visited.insert(nextId)
             currentId = nextId
             if let v = vertex(byId: nextId) { ordered.append(v.position) }

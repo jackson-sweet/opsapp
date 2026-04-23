@@ -133,7 +133,7 @@ struct TeamMemberRowV2: View {
     var body: some View {
         HStack(spacing: 12) {
             // Avatar - using unified UserAvatar component
-            UserAvatar(teamMember: teamMember, size: 40)
+            TeamMemberAvatar(teamMember: teamMember, size: 40)
             
             // Details
             VStack(alignment: .leading, spacing: 4) {

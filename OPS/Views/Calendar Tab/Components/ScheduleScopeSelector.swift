@@ -40,7 +40,7 @@ struct ScheduleScopeSelector: View {
             }
         }) {
             HStack(spacing: 6) {
-                UserAvatar(teamMember: member, size: 22)
+                TeamMemberAvatar(teamMember: member, size: 22)
 
                 Text(member.initials)
                     .font(OPSStyle.Typography.cardBody)

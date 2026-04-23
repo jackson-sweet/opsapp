@@ -578,6 +578,15 @@ final class InboundProcessor {
             existing.lastSyncedAt = Date()
             existing.needsSync = false
         } else {
+            // Origin suppression: if a pending SyncOperation exists for this
+            // id, the main context just wrote this row. Inserting here would
+            // leave two TaskType rows with the same id (no @Attribute(.unique)),
+            // and relationship resolution can pick the stale duplicate.
+            if hasPendingOperations(entityType: .taskType, entityId: id, context: context) {
+                print("[InboundProcessor] Skipping merge insert for task type \(id) — pending local op exists (origin suppression)")
+                return
+            }
+
             let model = dto.toModel()
             model.lastSyncedAt = Date()
             model.needsSync = false
@@ -683,7 +692,10 @@ final class InboundProcessor {
     }
 
     private func mergeTask(dto: SupabaseProjectTaskDTO, context: ModelContext) throws {
-        let id = dto.id
+        // Canonicalize to lowercase — Postgres uuid storage is lowercase; Swift's
+        // historical UPPERCASE id created a case mismatch. Local rows are kept
+        // lowercase by DataActor.normalizeTaskIdsToLowercase + new-write canonicalization.
+        let id = dto.id.lowercased()
         let descriptor = FetchDescriptor<ProjectTask>(
             predicate: #Predicate { $0.id == id }
         )
@@ -706,13 +718,41 @@ final class InboundProcessor {
             if accept.contains("taskNotes") { existing.taskNotes = dto.taskNotes }
             if accept.contains("customTitle") { existing.customTitle = dto.customTitle }
             if accept.contains("taskColor") { existing.taskColor = dto.taskColor ?? "#59779F" }
-            if accept.contains("taskTypeId") { existing.taskTypeId = dto.taskTypeId ?? "" }
+            if accept.contains("taskTypeId") {
+                existing.taskTypeId = dto.taskTypeId ?? ""
+                // Rewire TaskType `@Relationship` to match the new id. The
+                // end-of-sync `linkAllRelationships` pass also does this, but
+                // rewiring inline keeps the view consistent if it reads mid-pass.
+                if !existing.taskTypeId.isEmpty {
+                    let ttId = existing.taskTypeId
+                    if let newType = try? context.fetch(
+                        FetchDescriptor<TaskType>(predicate: #Predicate<TaskType> { $0.id == ttId })
+                    ).first {
+                        if existing.taskType?.id != newType.id { existing.taskType = newType }
+                    }
+                } else if existing.taskType != nil {
+                    existing.taskType = nil
+                }
+            }
             if accept.contains("startDate") { existing.startDate = dto.startDate.flatMap { SupabaseDate.parse($0) } }
             if accept.contains("endDate") { existing.endDate = dto.endDate.flatMap { SupabaseDate.parse($0) } }
             if accept.contains("duration") { existing.duration = dto.duration ?? 1 }
             if accept.contains("displayOrder") { existing.displayOrder = dto.displayOrder ?? 0 }
             if accept.contains("teamMemberIdsString") {
                 existing.teamMemberIdsString = (dto.teamMemberIds ?? []).joined(separator: ",")
+                // Rewire `teamMembers` to match the new id string. See the
+                // equivalent block in DataActor.mergeTask for rationale.
+                let ids = existing.getTeamMemberIds()
+                if ids.isEmpty {
+                    if !existing.teamMembers.isEmpty { existing.teamMembers = [] }
+                } else {
+                    let users = (try? context.fetch(
+                        FetchDescriptor<User>(predicate: #Predicate<User> { ids.contains($0.id) })
+                    )) ?? []
+                    if Set(existing.teamMembers.map(\.id)) != Set(users.map(\.id)) {
+                        existing.teamMembers = users
+                    }
+                }
             }
             if accept.contains("sourceLineItemId") { existing.sourceLineItemId = dto.sourceLineItemId }
             if accept.contains("sourceEstimateId") { existing.sourceEstimateId = dto.sourceEstimateId }
@@ -753,10 +793,48 @@ final class InboundProcessor {
                 spotlightTracker.markDirty(domain: SpotlightDomain.task, id: existing.id)
             }
         } else {
+            // Origin suppression: if we wrote this entityId locally within the
+            // last 60s — regardless of SyncOperation status (pending, inProgress,
+            // completed, failed) — the inbound DTO is our own write coming back
+            // via pull. Inserting would produce a duplicate because ProjectTask.id
+            // lacks @Attribute(.unique). The previous `hasPendingOperations`
+            // check missed the common case where the outbound push had already
+            // flipped the op to "completed" before the pull pass ran.
+            if hasRecentLocalWrite(entityType: .projectTask, entityId: id, withinSeconds: 60, context: context) {
+                print("[DUPE_TRACE] INBOUND.mergeTask SUPPRESSED id=\(id) — recent local write within 60s")
+                return
+            }
+
+            print("[DUPE_TRACE] INBOUND.mergeTask INSERT id=\(id) — no recent local write, treating as remote create")
             let model = dto.toModel()
+            model.id = id  // enforce lowercase canonicalization
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)
+
+            // Wire project / taskType / teamMembers on the fresh row so the UI
+            // has a complete task from the first render.
+            let projId = model.projectId
+            if let project = try? context.fetch(
+                FetchDescriptor<Project>(predicate: #Predicate<Project> { $0.id == projId })
+            ).first {
+                model.project = project
+            }
+            if !model.taskTypeId.isEmpty {
+                let ttId = model.taskTypeId
+                if let taskType = try? context.fetch(
+                    FetchDescriptor<TaskType>(predicate: #Predicate<TaskType> { $0.id == ttId })
+                ).first {
+                    model.taskType = taskType
+                }
+            }
+            let memberIds = model.getTeamMemberIds()
+            if !memberIds.isEmpty {
+                let users = (try? context.fetch(
+                    FetchDescriptor<User>(predicate: #Predicate<User> { memberIds.contains($0.id) })
+                )) ?? []
+                if !users.isEmpty { model.teamMembers = users }
+            }
 
             if model.deletedAt != nil {
                 spotlightTracker.markDeleted(domain: SpotlightDomain.task, id: model.id)
@@ -1069,6 +1147,38 @@ final class InboundProcessor {
         }
         let descriptor = FetchDescriptor<SyncOperation>(predicate: predicate)
         return (try? context.fetchCount(descriptor)) ?? 0 > 0
+    }
+
+    /// Returns true if a SyncOperation for this entity had ANY lifecycle event
+    /// (created / attempted / completed) within the given window, regardless
+    /// of current status. Considers all three timestamps so the window covers
+    /// freshly-recorded, push-in-flight, recently-completed, and
+    /// offline-delayed-push cases.
+    private func hasRecentLocalWrite(
+        entityType: SyncEntityType,
+        entityId: String,
+        withinSeconds seconds: TimeInterval,
+        context: ModelContext
+    ) -> Bool {
+        let typeStr = entityType.rawValue
+        let idLower = entityId.lowercased()
+        let idUpper = entityId.uppercased()
+        let predicate = #Predicate<SyncOperation> { op in
+            op.entityType == typeStr &&
+            (op.entityId == idLower || op.entityId == idUpper || op.entityId == entityId)
+        }
+        let descriptor = FetchDescriptor<SyncOperation>(predicate: predicate)
+        guard let ops = try? context.fetch(descriptor), !ops.isEmpty else {
+            return false
+        }
+
+        let cutoff = Date().addingTimeInterval(-seconds)
+        for op in ops {
+            if op.createdAt >= cutoff { return true }
+            if let last = op.lastAttemptedAt, last >= cutoff { return true }
+            if let completed = op.completedAt, completed >= cutoff { return true }
+        }
+        return false
     }
 
     // MARK: - Helpers

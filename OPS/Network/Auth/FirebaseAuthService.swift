@@ -236,7 +236,7 @@ class FirebaseAuthService: ObservableObject {
             print("[FIREBASE AUTH] Supabase validation failed — checking if user exists with different auth method")
             let userExists = await checkUserExistsByEmail(email)
             if userExists {
-                throw FirebaseAuthServiceError.wrongAuthMethod
+                throw await wrongAuthMethodError(for: email)
             }
             throw FirebaseAuthServiceError.invalidCredentials
         }
@@ -261,10 +261,54 @@ class FirebaseAuthService: ObservableObject {
                 // Account exists in Firebase with a different provider (Google/Apple).
                 // The user needs to sign in with that provider, not email+password.
                 print("[FIREBASE AUTH] Firebase account exists with different provider for: \(email)")
-                throw FirebaseAuthServiceError.wrongAuthMethod
+                throw await wrongAuthMethodError(for: email)
             } else {
                 throw error
             }
+        }
+    }
+
+    /// Resolves the most specific `wrongAuthMethod` variant for a given email by
+    /// calling the ops-web `/api/auth/method-hint` endpoint, which uses the
+    /// Firebase Admin SDK to inspect `providerData`. Falls back to the generic
+    /// `wrongAuthMethod` error when the lookup fails or the provider is unknown.
+    private func wrongAuthMethodError(for email: String) async -> FirebaseAuthServiceError {
+        let providers = await fetchAuthMethodHint(email: email)
+        if providers.contains("apple.com") {
+            return .registeredWithApple
+        }
+        if providers.contains("google.com") {
+            return .registeredWithGoogle
+        }
+        return .wrongAuthMethod
+    }
+
+    /// Query the ops-web method-hint endpoint for a list of Firebase provider IDs
+    /// tied to the given email. Returns an empty array on any failure — callers
+    /// must treat "no hint" identically to "lookup failed" to avoid enumeration.
+    private func fetchAuthMethodHint(email: String) async -> [String] {
+        let url = AppConfiguration.apiBaseURL.appendingPathComponent("/api/auth/method-hint")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 6
+
+        let payload: [String: String] = ["email": email]
+        guard let body = try? JSONSerialization.data(withJSONObject: payload) else {
+            return []
+        }
+        request.httpBody = body
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return []
+            }
+            let decoded = try JSONDecoder().decode(MethodHintResponse.self, from: data)
+            return decoded.providers
+        } catch {
+            print("[FIREBASE AUTH] method-hint lookup failed: \(error.localizedDescription)")
+            return []
         }
     }
 
@@ -321,22 +365,28 @@ class FirebaseAuthService: ObservableObject {
         case nonceGenerationFailed
         case invalidCredentials
         case wrongAuthMethod
+        case registeredWithApple
+        case registeredWithGoogle
         case migrationFailed(String)
 
         var errorDescription: String? {
             switch self {
             case .notAuthenticated:
-                return "Not signed in. Please log in."
+                return "NOT SIGNED IN. LOG IN TO CONTINUE."
             case .missingNonce:
-                return "Apple Sign-In configuration error. Please try again."
+                return "APPLE SIGN IN FAILED. TRY AGAIN."
             case .nonceGenerationFailed:
-                return "Unable to generate secure token. Please try again."
+                return "COULDN'T GENERATE SECURE TOKEN. TRY AGAIN."
             case .invalidCredentials:
-                return "Incorrect email or password. Please try again."
+                return "WRONG EMAIL OR PASSWORD."
             case .wrongAuthMethod:
-                return "This account uses Google or Apple Sign-In. Please use the same method you signed up with."
+                return "EMAIL REGISTERED WITH APPLE OR GOOGLE. USE THAT METHOD TO SIGN IN."
+            case .registeredWithApple:
+                return "EMAIL REGISTERED WITH APPLE. SIGN IN WITH APPLE TO CONTINUE."
+            case .registeredWithGoogle:
+                return "EMAIL REGISTERED WITH GOOGLE. SIGN IN WITH GOOGLE TO CONTINUE."
             case .migrationFailed(let message):
-                return "Account migration failed: \(message)"
+                return "ACCOUNT MIGRATION FAILED. \(message.uppercased())"
             }
         }
     }
@@ -349,4 +399,9 @@ private struct UserExistsResponse: Decodable {
     enum CodingKeys: String, CodingKey {
         case userExists = "user_exists"
     }
+}
+
+/// Response type for the ops-web `/api/auth/method-hint` endpoint.
+private struct MethodHintResponse: Decodable {
+    let providers: [String]
 }

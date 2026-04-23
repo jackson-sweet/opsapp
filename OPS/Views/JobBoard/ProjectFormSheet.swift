@@ -2003,7 +2003,10 @@ struct ProjectFormSheet: View {
             return
         }
 
-        let taskId = UUID().uuidString
+        // Canonicalize to lowercase: Postgres stores uuid lowercase, Swift's
+        // UUID().uuidString returns UPPERCASE. Mismatched case causes local
+        // fetch-by-id to miss the realtime echo and produces duplicate rows.
+        let taskId = UUID().uuidString.lowercased()
         print("[TASK_CREATE] Creating task with ID: \(taskId)")
 
         let task = ProjectTask(

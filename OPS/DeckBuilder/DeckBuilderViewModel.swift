@@ -615,19 +615,24 @@ class DeckBuilderViewModel: ObservableObject {
 
     func endMarquee() {
         guard case .selecting(let rect) = drawingMode else { return }
-        selection.clear()
+        let additive = activeTool == .tapSelect   // Multi-select mode: add, never replace
+        if !additive { selection.clear() }
 
-        // Select all vertices inside the rectangle
+        // Collect vertices hit by the rectangle
+        var hitVertexIds: Set<String> = []
         for vertex in activeVertices {
             if rect.contains(vertex.position) {
+                hitVertexIds.insert(vertex.id)
                 selection.selectedVertexIds.insert(vertex.id)
             }
         }
 
-        // Select all edges where both endpoints are inside
+        // Edges fully inside (both endpoints hit). Union with existing endpoint selection
+        // so additive mode picks up edges even if one endpoint was pre-selected.
+        let effectiveVertexIds = selection.selectedVertexIds
         for edge in activeEdges {
-            if selection.selectedVertexIds.contains(edge.startVertexId) &&
-               selection.selectedVertexIds.contains(edge.endVertexId) {
+            if effectiveVertexIds.contains(edge.startVertexId) &&
+               effectiveVertexIds.contains(edge.endVertexId) {
                 selection.selectedEdgeIds.insert(edge.id)
             }
         }
@@ -653,19 +658,19 @@ class DeckBuilderViewModel: ObservableObject {
             drawingMode = .idle
             return
         }
-        selection.clear()
+        let additive = activeTool == .tapSelect
+        if !additive { selection.clear() }
 
-        // Select all vertices inside the lasso polygon
         for vertex in activeVertices {
             if PolygonMath.pointInPolygon(vertex.position, vertices: points) {
                 selection.selectedVertexIds.insert(vertex.id)
             }
         }
 
-        // Select all edges where both endpoints are inside
+        let effectiveVertexIds = selection.selectedVertexIds
         for edge in activeEdges {
-            if selection.selectedVertexIds.contains(edge.startVertexId) &&
-               selection.selectedVertexIds.contains(edge.endVertexId) {
+            if effectiveVertexIds.contains(edge.startVertexId) &&
+               effectiveVertexIds.contains(edge.endVertexId) {
                 selection.selectedEdgeIds.insert(edge.id)
             }
         }
@@ -1365,12 +1370,12 @@ class DeckBuilderViewModel: ObservableObject {
 
     private func lengthSnapInCanvasPoints() -> Double {
         guard let scale = drawingData.scaleFactor, scale > 0 else {
-            // No scale set yet — snap to visible grid (20pt matches DeckCanvasView.gridSpacing fallback)
+            // No scale set yet — snap to visible grid (20pt matches DeckCanvasView fallback)
             return 20.0
         }
-        let spacing = SnapEngine.inchesToCanvasPoints(drawingData.config.lengthSnapIncrement, scaleFactor: scale)
-        // Clamp to match DeckCanvasView gridSpacing bounds (too-dense snaps are unusable)
-        return max(8, min(80, spacing))
+        // No clamping. Snap must always reflect the exact user-configured increment.
+        // Clamping here caused field bug: small scales pushed snap up to 1'8" instead of 6".
+        return SnapEngine.inchesToCanvasPoints(drawingData.config.lengthSnapIncrement, scaleFactor: scale)
     }
 
     // MARK: - Haptics

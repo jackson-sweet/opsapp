@@ -56,8 +56,8 @@ struct JobBoardWizard: WizardDefinitionProtocol {
         ),
         WizardStepDefinition(
             id: "swipe_status",
-            instruction: "SWIPE A PROJECT CARD RIGHT",
-            description: "Swipe right to advance the project to its next status.",
+            instruction: "SWIPE A PROJECT RIGHT TO CHANGE STATUS",
+            description: "Swipe right to move a project forward — accepted, in progress, completed. Swipe left to walk it back.",
             targetScreen: "JobBoard",
             canSkip: true,
             completionNotification: "WizardProjectStatusChanged"
@@ -73,7 +73,7 @@ struct JobBoardWizard: WizardDefinitionProtocol {
         WizardStepDefinition(
             id: "view_closed",
             instruction: "TAP CLOSED TO SEE FINISHED WORK",
-            description: "Find the CLOSED button below your active projects on the project list.",
+            description: "Scroll down to find the CLOSED button, tap to review finished jobs, then close the sheet.",
             targetScreen: "JobBoard",
             canSkip: true,
             completionNotification: "WizardJobBoardClosedViewed"

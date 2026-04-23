@@ -32,7 +32,8 @@ struct UnscheduledTaskReviewView: View {
     @State private var showAllDone: Bool = false
     @State private var celebrationScale: CGFloat = 0
     @State private var celebrationOpacity: Double = 0
-    @State private var fetchedTeamMembers: [TeamMember] = []
+    /// Full User objects so the crew picker shows real profile photos.
+    @State private var fetchedTeamMembers: [User] = []
 
     /// Tracks why the crew picker was opened
     private enum CrewPickerSource {
@@ -40,7 +41,7 @@ struct UnscheduledTaskReviewView: View {
         case swipeRight // Must assign before auto-scheduling
     }
 
-    private var activeTeamMembers: [TeamMember] {
+    private var activeTeamMembers: [User] {
         var seen = Set<String>()
         return fetchedTeamMembers.filter { member in
             guard !seen.contains(member.id) else { return false }
@@ -166,10 +167,12 @@ struct UnscheduledTaskReviewView: View {
             Text("This will cancel the task. You can reactivate it later if needed.")
         }
         .onAppear {
-            // Fetch team members from User objects (same pattern as TaskFormSheet)
+            // Fetch team members as full User objects so the crew picker shows
+            // real profile photos (UserAvatar needs profileImageData /
+            // profileImageURL / userColor — none of which the lightweight
+            // TeamMember projection carried).
             if let companyId = dataController.currentUser?.companyId {
                 fetchedTeamMembers = dataController.getTeamMembers(companyId: companyId)
-                    .map { TeamMember.fromUser($0) }
                     .sorted { $0.fullName < $1.fullName }
             }
         }

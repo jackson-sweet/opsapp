@@ -295,7 +295,8 @@ struct DeckDrawingData: Codable {
     }
 
     /// Ordered vertex positions for rendering — walks edge graph for correct polygon winding.
-    /// Falls back to array order if the polygon is not closed.
+    /// Uses sorted neighbor IDs so the walk is deterministic across runs and across the
+    /// active/inactive rendering passes. Falls back to array order if the polygon is not closed.
     var orderedPositions: [CGPoint] {
         guard vertices.count >= 3, edges.count >= 3 else {
             return vertices.map { $0.position }
@@ -323,7 +324,7 @@ struct DeckDrawingData: Codable {
 
         for _ in 0..<vertices.count - 1 {
             guard let neighbors = adjacency[currentId] else { break }
-            let unvisited = neighbors.subtracting(visited)
+            let unvisited = neighbors.subtracting(visited).sorted()  // deterministic
             guard let nextId = unvisited.first else { break }
             visited.insert(nextId)
             currentId = nextId

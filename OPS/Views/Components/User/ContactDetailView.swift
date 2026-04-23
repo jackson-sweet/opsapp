@@ -554,7 +554,7 @@ struct ContactDetailView: View {
                     if let user = user {
                         UserAvatar(user: user, size: 56)
                     } else if let teamMember = teamMember {
-                        UserAvatar(teamMember: teamMember, size: 56)
+                        TeamMemberAvatar(teamMember: teamMember, size: 56)
                     } else if let client = client {
                         UserAvatar(client: client, size: 56)
                     } else {

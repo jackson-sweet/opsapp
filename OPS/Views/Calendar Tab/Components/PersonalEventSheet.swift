@@ -186,8 +186,8 @@ struct PersonalEventSheet: View {
         .colorScheme(.dark)
         .sheet(isPresented: $showingTeamPicker) {
             if let companyId = dataController.currentUser?.companyId {
+                // Use full User objects so the picker renders real profile photos.
                 let members = dataController.getTeamMembers(companyId: companyId)
-                    .map { TeamMember.fromUser($0) }
                     .sorted { $0.fullName < $1.fullName }
                 TeamMemberPickerSheet(
                     selectedTeamMemberIds: $selectedTeamMemberIds,

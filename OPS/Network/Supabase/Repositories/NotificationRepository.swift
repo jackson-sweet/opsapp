@@ -112,6 +112,20 @@ class NotificationRepository {
         return response.count ?? 0
     }
 
+    /// Returns true if the user has at least one unread notification of the given type.
+    /// Used for threshold-based rail notifications that should not duplicate while
+    /// the underlying condition still stands.
+    func hasUnreadOfType(type: String, userId: String) async throws -> Bool {
+        let response = try await client
+            .from("notifications")
+            .select("id", head: true, count: .exact)
+            .eq("user_id", value: userId)
+            .eq("type", value: type)
+            .eq("is_read", value: false)
+            .execute()
+        return (response.count ?? 0) > 0
+    }
+
     /// Fetch recent notifications for a user (last 50)
     func fetchRecent(userId: String, limit: Int = 50) async throws -> [NotificationDTO] {
         try await client

@@ -307,10 +307,17 @@ final class SyncEngine {
         // Extract field names from changedFields dictionary
         let fieldNames = Array(changedFields.keys)
 
+        // Canonicalize the entityId to lowercase. Postgres stores uuid lowercase;
+        // Swift's UUID().uuidString is UPPERCASE, so pre-canonicalized local
+        // entities carried UPPERCASE ids that didn't match echoed lowercase ids
+        // from Supabase. Normalizing here ensures origin-suppression comparisons
+        // and outbound-route lookups use the same canonical form as DTOs.
+        let canonicalEntityId = entityId.lowercased()
+
         // Create the SyncOperation
         let operation = SyncOperation(
             entityType: entityType.rawValue,
-            entityId: entityId,
+            entityId: canonicalEntityId,
             operationType: operationType,
             payload: payloadData,
             changedFields: fieldNames,
@@ -331,7 +338,10 @@ final class SyncEngine {
         // Update pending count
         refreshPendingCount()
 
-        print("[SYNC_ENGINE] Recorded \(operationType) for \(entityType.rawValue) [\(entityId)]")
+        print("[SYNC_ENGINE] Recorded \(operationType) for \(entityType.rawValue) [\(canonicalEntityId)]")
+        if entityType == .projectTask {
+            print("[DUPE_TRACE] SYNCOP.record id=\(canonicalEntityId) op=\(operationType) status=pending createdAt=\(operation.createdAt) ctx=\(ObjectIdentifier(modelContext))")
+        }
 
         // Attempt immediate push if online
         if connectivity?.shouldAttemptSync == true {

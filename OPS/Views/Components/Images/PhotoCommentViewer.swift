@@ -621,7 +621,7 @@ struct PhotoCommentViewer: View {
                 ForEach(viewModel.mentionSuggestions, id: \.id) { member in
                     Button(action: { viewModel.insertMention(member) }) {
                         HStack(spacing: OPSStyle.Layout.spacing1) {
-                            UserAvatar(teamMember: member, size: 24)
+                            TeamMemberAvatar(teamMember: member, size: 24)
                             Text(member.fullName)
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -831,7 +831,7 @@ struct PhotoCommentRow: View {
             // Header: avatar + name + timestamp + menu
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 if let member = teamMember {
-                    UserAvatar(teamMember: member, size: 28)
+                    TeamMemberAvatar(teamMember: member, size: 28)
                 } else {
                     ZStack {
                         Circle()

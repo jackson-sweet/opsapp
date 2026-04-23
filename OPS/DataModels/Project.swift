@@ -126,8 +126,11 @@ final class Project: Identifiable {
         return teamMemberIdsString.isEmpty ? [] : teamMemberIdsString.components(separatedBy: ",")
     }
     
+    /// Canonicalizes each id to lowercase. See ProjectTask.setTeamMemberIds for
+    /// rationale — Postgres stores uuid lowercase, Swift UUID() is uppercase,
+    /// and User lookup compares exact strings.
     func setTeamMemberIds(_ ids: [String]) {
-        teamMemberIdsString = ids.joined(separator: ",")
+        teamMemberIdsString = ids.map { $0.lowercased() }.joined(separator: ",")
     }
     
     // Project images accessor methods

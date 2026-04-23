@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import MapKit
 
 struct DetailsTabView: View {
@@ -22,6 +23,28 @@ struct DetailsTabView: View {
     var onCancelTask: ((ProjectTask) -> Void)? = nil
     var onDeleteTask: ((ProjectTask) -> Void)? = nil
     var onClientLongPress: (() -> Void)? = nil
+
+    /// All Users in the store. Used to resolve team member avatars from the
+    /// authoritative `teamMemberIdsString` CSV on both Project and ProjectTask.
+    /// We render from this lookup rather than the `teamMembers: [User]`
+    /// SwiftData relationship because that relationship can be empty even
+    /// when the id-string has values (hydration lag: user-objects may sync
+    /// in a separate batch, or `linkAllRelationships` may not have run yet
+    /// for a freshly-inserted local row).
+    @Query private var allUsers: [User]
+
+    private var userById: [String: User] {
+        Dictionary(allUsers.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Resolve the project's team members from the canonical id string.
+    /// Falls back to the relationship only if the id string is empty — that's
+    /// the legitimate "no one assigned" case.
+    private var resolvedProjectTeam: [User] {
+        let ids = project.getTeamMemberIds()
+        guard !ids.isEmpty else { return [] }
+        return ids.compactMap { userById[$0] }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -58,6 +81,7 @@ struct DetailsTabView: View {
                 selectedTask: viewModel.selectedTask,
                 project: project,
                 canEdit: viewModel.canEditProject,
+                userById: userById,
                 onTaskTap: onTaskTap,
                 onAddTask: onAddTask,
                 onSelectTask: onSelectTask,
@@ -78,7 +102,7 @@ struct DetailsTabView: View {
 
             // TEAM (at bottom)
             TeamSection(
-                teamMembers: project.teamMembers,
+                teamMembers: resolvedProjectTeam,
                 canEdit: viewModel.canEditProject,
                 onMemberTap: onTeamMemberTap
             )
@@ -404,6 +428,10 @@ struct TaskListSection: View {
     let selectedTask: ProjectTask?
     let project: Project
     let canEdit: Bool
+    /// User lookup keyed by id — used to resolve task team-member avatars from
+    /// the authoritative `teamMemberIdsString` CSV. Passed down from
+    /// DetailsTabView so the @Query only runs once per project view.
+    let userById: [String: User]
     let onTaskTap: (ProjectTask) -> Void
     let onAddTask: () -> Void
     var onSelectTask: ((ProjectTask) -> Void)? = nil
@@ -447,18 +475,22 @@ struct TaskListSection: View {
                                 )
                             }
 
-                            // Assigned team avatars (overlapping)
-                            if !task.teamMembers.isEmpty {
+                            // Assigned team avatars — resolved from `teamMemberIdsString`
+                            // (the authoritative source) via the parent's User lookup.
+                            // Reading `task.teamMembers` directly would miss rows whose
+                            // relationship hasn't been rewired yet (post-insert, pre-sync).
+                            let assignedMembers: [User] = task.getTeamMemberIds().compactMap { userById[$0] }
+                            if !assignedMembers.isEmpty {
                                 HStack(spacing: -6) {
-                                    ForEach(Array(task.teamMembers.prefix(3)), id: \.id) { member in
+                                    ForEach(Array(assignedMembers.prefix(3)), id: \.id) { member in
                                         UserAvatar(user: member, size: 22)
                                             .overlay(
                                                 Circle()
                                                     .stroke(OPSStyle.Colors.cardBackgroundDark, lineWidth: 1.5)
                                             )
                                     }
-                                    if task.teamMembers.count > 3 {
-                                        Text("+\(task.teamMembers.count - 3)")
+                                    if assignedMembers.count > 3 {
+                                        Text("+\(assignedMembers.count - 3)")
                                             .font(OPSStyle.Typography.smallCaption)
                                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                                             .padding(.leading, 8)

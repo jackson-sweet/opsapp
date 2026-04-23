@@ -242,4 +242,45 @@ extension View {
     func wizardTarget(style: WizardTargetStyle, _ stepIds: String...) -> some View {
         modifier(WizardTargetModifier(stepIds: stepIds, style: style))
     }
+
+    /// Reserves additional bottom space proportional to the wizard instruction
+    /// bar height whenever the wizard is active. Needed in screens whose scroll
+    /// content uses `.ignoresSafeArea(edges: .bottom)` (e.g. tabs inside
+    /// MainTabView) — the safeAreaInset that hosts the instruction bar does not
+    /// propagate to the scroll content, so the last items end up behind the bar.
+    func wizardBottomInset(extra: CGFloat = 110) -> some View {
+        modifier(WizardBottomInsetModifier(extra: extra))
+    }
+}
+
+// MARK: - Wizard Bottom Inset
+
+/// Inserts an invisible spacer whose height depends on whether a wizard is
+/// active. Uses the same @Environment → @ObservedObject bridge as the glow
+/// modifier so SwiftUI actually re-renders when `isActive` publishes.
+struct WizardBottomInsetModifier: ViewModifier {
+    let extra: CGFloat
+    @Environment(\.wizardStateManager) private var stateManager
+
+    func body(content: Content) -> some View {
+        if let manager = stateManager {
+            WizardBottomInsetView(extra: extra, stateManager: manager) {
+                content
+            }
+        } else {
+            content
+        }
+    }
+}
+
+private struct WizardBottomInsetView<Content: View>: View {
+    let extra: CGFloat
+    @ObservedObject var stateManager: WizardStateManager
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content
+            .padding(.bottom, stateManager.isActive ? extra : 0)
+            .animation(OPSStyle.Animation.spring, value: stateManager.isActive)
+    }
 }

@@ -30,7 +30,11 @@ struct TaskDetailsView: View {
     @State private var showingTeamMemberDetails = false
     @State private var showingTeamMemberPicker = false
     @State private var selectedTeamMemberIds: Set<String> = []
-    @State private var allTeamMembers: [TeamMember] = []
+    /// Team members as full User objects so UserAvatar can render real profile
+    /// photos (profileImageData / profileImageURL / userColor). The previous
+    /// TeamMember projection stripped profileImageData, forcing every row to
+    /// fall back to the initials placeholder.
+    @State private var allTeamMembers: [User] = []
     @State private var showTeamUpdateMessage = false
     @State private var showingProjectCompletionAlert = false
     @State private var showingScheduler = false
@@ -494,7 +498,7 @@ struct TaskDetailsView: View {
                         }
                     )
                     if let users = try? dataController.modelContext?.fetch(descriptor) {
-                        self.allTeamMembers = users.map { TeamMember.fromUser($0) }
+                        self.allTeamMembers = users
                     }
                 }
             } catch {

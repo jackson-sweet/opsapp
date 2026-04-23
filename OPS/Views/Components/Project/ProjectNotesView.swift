@@ -208,7 +208,7 @@ struct ProjectNotesView: View {
     // MARK: - Helpers
 
     private func memberAvatar(_ member: TeamMember) -> some View {
-        UserAvatar(teamMember: member, size: 24)
+        TeamMemberAvatar(teamMember: member, size: 24)
     }
 
     private func setupViewModel() {

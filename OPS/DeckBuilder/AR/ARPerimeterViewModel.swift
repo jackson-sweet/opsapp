@@ -686,12 +686,18 @@ class ARPerimeterViewModel: ObservableObject {
         }
 
         // --- Parallel / Perpendicular to existing edges ---
+        // Build id→vertex map once so inner edge lookup is O(1) instead of O(V).
+        // This drops detectARAlignmentGuides from O(V*E) to O(V+E) per frame.
+        var vertexMap: [String: ARCoordinateConverter.ARVertex] = [:]
+        vertexMap.reserveCapacity(arVertices.count)
+        for v in arVertices { vertexMap[v.id] = v }
+
         let snappedEnd = SIMD3<Float>(snappedX, currentEnd.y, snappedZ)
         let currentAngle = atan2(Double(snappedEnd.z - start.z), Double(snappedEnd.x - start.x)) * 180.0 / .pi
 
         for edge in arEdges {
-            guard let sv = arVertices.first(where: { $0.id == edge.startVertexId }),
-                  let ev = arVertices.first(where: { $0.id == edge.endVertexId }) else { continue }
+            guard let sv = vertexMap[edge.startVertexId],
+                  let ev = vertexMap[edge.endVertexId] else { continue }
             if edge.startVertexId == startVertexId || edge.endVertexId == startVertexId { continue }
 
             let edgeAngle = atan2(ev.z - sv.z, ev.x - sv.x) * 180.0 / .pi

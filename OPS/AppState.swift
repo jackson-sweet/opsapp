@@ -321,19 +321,9 @@ class AppState: ObservableObject {
             reminderFrequencyDays: frequency
         )
 
-        // Mirror the local push as an in-app notification (bell rail)
-        // so the user sees a persistent badge until they review.
-        if overdueCount > 0 {
-            createInAppReviewNotification(
-                dataController: dataController,
-                throttleKey: "lastPaymentReviewInAppNotification",
-                frequencyDays: frequency,
-                type: "payment_review_overdue",
-                title: "Close Out Review",
-                body: "\(overdueCount) project\(overdueCount == 1 ? "" : "s") overdue for payment review",
-                deepLinkType: "paymentReview"
-            )
-        }
+        // The in-app rail entry for payment review is now handled by
+        // ReviewThresholdService (fires at 5+, persistent, auto-clears).
+        // The local push above remains in place as a periodic iOS reminder.
 
         // Check for overdue invoices and notify admin/office users
         checkOverdueInvoices(dataController: dataController)
@@ -344,6 +334,12 @@ class AppState: ObservableObject {
         // Check for projects stuck in the estimated phase — the "rotting
         // quote" problem where a quote is sent and never followed up.
         checkStaleEstimates(dataController: dataController, frequencyDays: frequency)
+
+        // Stacked-review rail notifications: upsert a persistent rail entry
+        // whenever any review queue crosses the 5-item threshold, auto-clear
+        // when it drops below. Runs after all other review checks so the
+        // condensed stack notification reflects the freshest data.
+        ReviewThresholdService.evaluate(dataController: dataController)
     }
 
     // MARK: - Stale Estimate Check
@@ -400,17 +396,9 @@ class AppState: ObservableObject {
             reminderFrequencyDays: frequencyDays
         )
 
-        if reviewableCount > 0 {
-            createInAppReviewNotification(
-                dataController: dataController,
-                throttleKey: "lastTaskReviewInAppNotification",
-                frequencyDays: frequencyDays,
-                type: "task_review_overdue",
-                title: "Tasks Need Review",
-                body: "\(reviewableCount) task\(reviewableCount == 1 ? "" : "s") past scheduled completion",
-                deepLinkType: "taskReview"
-            )
-        }
+        // The in-app rail entry for task review is now handled by
+        // ReviewThresholdService (fires at 5+, persistent, auto-clears).
+        // The local push above remains in place as a periodic iOS reminder.
     }
 
     /// Creates an in-app notification for a review queue, throttled by frequencyDays

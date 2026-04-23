@@ -234,9 +234,12 @@ final class RealtimeProcessor: ObservableObject {
 
                 // Bug G9 — client-side scope guards removed. See "projects" case above.
 
+                // Canonicalize uuid to lowercase to match local storage.
+                let id = dto.id.lowercased()
                 let model = dto.toModel()
-                let pendingFields = pendingFieldsForEntity(entityType: .projectTask, entityId: dto.id, context: context)
-                try upsertProjectTask(context: context, id: dto.id, model: model, pendingFields: pendingFields)
+                model.id = id
+                let pendingFields = pendingFieldsForEntity(entityType: .projectTask, entityId: id, context: context)
+                try upsertProjectTask(context: context, id: id, model: model, pendingFields: pendingFields)
 
             case "users":
                 let dto = try record.decodeRecord(as: SupabaseUserDTO.self, decoder: decoder)
@@ -449,6 +452,7 @@ final class RealtimeProcessor: ObservableObject {
             case "project_tasks":
                 // Bug G9 — client-side scope guards removed. See "projects" case.
                 let dto = try record.decodeRecord(as: SupabaseProjectTaskDTO.self, decoder: decoder)
+                print("[DUPE_TRACE] RT.dispatch id=\(dto.id) → DataActor.handleRealtimeUpdate(.task)")
                 Task { await actor.handleRealtimeUpdate(.task(dto)) }
 
             case "users":
@@ -601,6 +605,38 @@ final class RealtimeProcessor: ObservableObject {
         return fields
     }
 
+    /// Returns true if a SyncOperation for this entity had ANY lifecycle event
+    /// (created / attempted / completed) within the given window, regardless
+    /// of current status. Considers all three timestamps so the window covers
+    /// freshly-recorded, push-in-flight, recently-completed, and
+    /// offline-delayed-push cases.
+    private func hasRecentLocalWrite(
+        entityType: SyncEntityType,
+        entityId: String,
+        withinSeconds seconds: TimeInterval,
+        context: ModelContext
+    ) -> Bool {
+        let typeStr = entityType.rawValue
+        let idLower = entityId.lowercased()
+        let idUpper = entityId.uppercased()
+        let predicate = #Predicate<SyncOperation> { op in
+            op.entityType == typeStr &&
+            (op.entityId == idLower || op.entityId == idUpper || op.entityId == entityId)
+        }
+        let descriptor = FetchDescriptor<SyncOperation>(predicate: predicate)
+        guard let ops = try? context.fetch(descriptor), !ops.isEmpty else {
+            return false
+        }
+
+        let cutoff = Date().addingTimeInterval(-seconds)
+        for op in ops {
+            if op.createdAt >= cutoff { return true }
+            if let last = op.lastAttemptedAt, last >= cutoff { return true }
+            if let completed = op.completedAt, completed >= cutoff { return true }
+        }
+        return false
+    }
+
     // MARK: - Per-Type Upsert Helpers (field-level merge with pending check)
 
     private func upsertProject(context: ModelContext, id: String, model: Project, pendingFields: Set<String>) throws {
@@ -638,17 +674,52 @@ final class RealtimeProcessor: ObservableObject {
 
     private func upsertProjectTask(context: ModelContext, id: String, model: ProjectTask, pendingFields: Set<String>) throws {
         let descriptor = FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == id })
+        let existingCount = (try? context.fetchCount(descriptor)) ?? 0
+        print("[DUPE_TRACE] RT.upsertProjectTask id=\(id) existing_count=\(existingCount) ctx=\(ObjectIdentifier(context))")
+
         if let existing = try context.fetch(descriptor).first {
             if !pendingFields.contains("status")                { existing.status = model.status }
             if !pendingFields.contains("taskNotes")             { existing.taskNotes = model.taskNotes }
             if !pendingFields.contains("customTitle")           { existing.customTitle = model.customTitle }
             if !pendingFields.contains("taskColor")             { existing.taskColor = model.taskColor }
-            if !pendingFields.contains("taskTypeId")            { existing.taskTypeId = model.taskTypeId }
+            if !pendingFields.contains("taskTypeId") {
+                existing.taskTypeId = model.taskTypeId
+                // Rewire TaskType `@Relationship` to match the new id so UI
+                // (badge color, display name) updates immediately. Realtime
+                // updates do not trigger the end-of-sync linkAllRelationships
+                // pass, so without this the relationship stays stale.
+                if !existing.taskTypeId.isEmpty {
+                    let ttId = existing.taskTypeId
+                    if let newType = try? context.fetch(
+                        FetchDescriptor<TaskType>(predicate: #Predicate<TaskType> { $0.id == ttId })
+                    ).first {
+                        if existing.taskType?.id != newType.id { existing.taskType = newType }
+                    }
+                } else if existing.taskType != nil {
+                    existing.taskType = nil
+                }
+            }
             if !pendingFields.contains("startDate")             { existing.startDate = model.startDate }
             if !pendingFields.contains("endDate")               { existing.endDate = model.endDate }
             if !pendingFields.contains("duration")              { existing.duration = model.duration }
             if !pendingFields.contains("displayOrder")          { existing.displayOrder = model.displayOrder }
-            if !pendingFields.contains("teamMemberIdsString")   { existing.teamMemberIdsString = model.teamMemberIdsString }
+            if !pendingFields.contains("teamMemberIdsString") {
+                existing.teamMemberIdsString = model.teamMemberIdsString
+                // Rewire `teamMembers: [User]` to match the new id string. See
+                // equivalent block in DataActor.mergeTask for rationale — this
+                // is what fixes the avatars-flicker-between-openings bug.
+                let ids = existing.getTeamMemberIds()
+                if ids.isEmpty {
+                    if !existing.teamMembers.isEmpty { existing.teamMembers = [] }
+                } else {
+                    let users = (try? context.fetch(
+                        FetchDescriptor<User>(predicate: #Predicate<User> { ids.contains($0.id) })
+                    )) ?? []
+                    if Set(existing.teamMembers.map(\.id)) != Set(users.map(\.id)) {
+                        existing.teamMembers = users
+                    }
+                }
+            }
             if !pendingFields.contains("sourceLineItemId")      { existing.sourceLineItemId = model.sourceLineItemId }
             if !pendingFields.contains("sourceEstimateId")      { existing.sourceEstimateId = model.sourceEstimateId }
             if !pendingFields.contains("deletedAt")             { existing.deletedAt = model.deletedAt }
@@ -658,18 +729,53 @@ final class RealtimeProcessor: ObservableObject {
                 existing.needsSync = false
             }
         } else {
-            // Origin suppression: pendingFields non-empty means the main context
-            // just wrote this row locally. Inserting here would leave two rows
-            // with the same id (ProjectTask.id lacks @Attribute(.unique)).
-            if !pendingFields.isEmpty {
-                print("[RealtimeProcessor] Skipping upsert insert for task \(id) — pending local op exists (origin suppression)")
+            // Origin suppression: if we wrote this entityId locally within the
+            // last 60s — regardless of SyncOperation status (pending, inProgress,
+            // completed) — the realtime payload is our own write echoing back.
+            // Inserting here would produce a duplicate because ProjectTask.id
+            // lacks @Attribute(.unique).
+            //
+            // Previous implementation relied on `pendingFields` being non-empty,
+            // which is derived from SyncOperations with status == "pending".
+            // Under the DataActor path, outbound push had already flipped the
+            // op to "completed" before the echo arrived, so `pendingFields` was
+            // empty and suppression silently failed. A timestamp window catches
+            // the echo regardless of where the op is in its lifecycle.
+            if hasRecentLocalWrite(entityType: .projectTask, entityId: id, withinSeconds: 60, context: context) {
+                print("[DUPE_TRACE] RT.upsertProjectTask SUPPRESSED id=\(id) — recent local write within 60s")
                 try context.save()
                 return
             }
 
+            print("[DUPE_TRACE] RT.upsertProjectTask INSERT id=\(id) — no recent local write, treating as remote create")
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)
+
+            // Wire relationships on the fresh row so the UI sees a complete
+            // task immediately instead of waiting for the next sync's
+            // linkAllRelationships pass.
+            let projId = model.projectId
+            if let project = try? context.fetch(
+                FetchDescriptor<Project>(predicate: #Predicate<Project> { $0.id == projId })
+            ).first {
+                model.project = project
+            }
+            if !model.taskTypeId.isEmpty {
+                let ttId = model.taskTypeId
+                if let taskType = try? context.fetch(
+                    FetchDescriptor<TaskType>(predicate: #Predicate<TaskType> { $0.id == ttId })
+                ).first {
+                    model.taskType = taskType
+                }
+            }
+            let memberIds = model.getTeamMemberIds()
+            if !memberIds.isEmpty {
+                let users = (try? context.fetch(
+                    FetchDescriptor<User>(predicate: #Predicate<User> { memberIds.contains($0.id) })
+                )) ?? []
+                if !users.isEmpty { model.teamMembers = users }
+            }
         }
         try context.save()
     }

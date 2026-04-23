@@ -933,8 +933,11 @@ struct UniversalJobBoardCard: View {
 
     /// Returns an inline "DONE", "CLOSED", or "ARCHIVED" pill for terminal
     /// project statuses so a completed job reads as finished at a glance —
-    /// even before the user looks at the corner status chip.
-    @ViewBuilder
+    /// even before the user looks at the corner status chip. Non-terminal
+    /// statuses return `nil` so no badge renders.
+    ///
+    /// Not a `@ViewBuilder` — we need an optional return, and @ViewBuilder
+    /// can't construct `Optional<View>` from explicit `return nil`.
     private func terminalStatusBadge(for status: Status) -> AnyView? {
         switch status {
         case .completed:

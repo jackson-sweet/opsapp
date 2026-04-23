@@ -174,4 +174,61 @@ extension Font {
     public static var smallButton: Font {
         return Font.custom("Mohave-Medium", size: 14)
     }
+
+    // MARK: - Legacy roles (preserved for backwards compatibility)
+    // Kosugi was retired in v2; micro/compact labels remap to JetBrains Mono Regular
+    // per the v2 spec ("tabular numbers, brackets, and micro labels").
+
+    public static var miniLabel: Font {
+        return Font.custom("JetBrainsMono-Regular", size: 10)
+    }
+
+    public static var microLabel: Font {
+        return Font.custom("JetBrainsMono-Regular", size: 11)
+    }
+
+    public static var tagLabel: Font {
+        return Font.custom("JetBrainsMono-Regular", size: 12)
+    }
+
+    public static var previewLabel: Font {
+        return Font.custom("JetBrainsMono-Regular", size: 18)
+    }
+
+    public static var sectionLabel: Font {
+        return Font.custom("JetBrainsMono-Regular", size: 12)
+    }
+
+    public static var buttonLarge: Font {
+        return Font.custom("Mohave-SemiBold", size: 18)
+    }
+
+    public static var heading: Font {
+        return Font.custom("Mohave-Medium", size: 20)
+    }
+
+    public static var headingBold: Font {
+        return Font.custom("Mohave-Bold", size: 22)
+    }
+
+    public static var headingLarge: Font {
+        return Font.custom("Mohave-SemiBold", size: 24)
+    }
+
+    public static var displayQuantity: Font {
+        return Font.custom("Mohave-Bold", size: 56)
+    }
+
+    public static var displayLarge: Font {
+        return Font.custom("Mohave-Bold", size: 48)
+    }
+
+    public static var displayXL: Font {
+        return Font.custom("Mohave-Bold", size: 60)
+    }
+
+    /// Avatar initials — Mohave Bold at caller-specified size.
+    public static func avatarInitials(size: CGFloat) -> Font {
+        return Font.custom("Mohave-Bold", size: size)
+    }
 }

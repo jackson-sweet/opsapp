@@ -76,14 +76,13 @@ extension StatusBadge {
         return StatusBadge(status: status.rawValue, color: color, size: size)
     }
 
-    /// TaskStatus palette per spec v2: tan (Booked) → steel (InProgress) → sage (Completed) → dim rose (Cancelled).
+    /// TaskStatus palette per spec v2: steel (Active) → sage (Completed) → dim rose (Cancelled).
     static func forTaskStatus(_ status: TaskStatus, size: StatusBadgeSize = .small) -> StatusBadge {
         let color: Color
         switch status {
-        case .booked:     color = Color(hex: "#CFB074") // tan — generated from line item
-        case .inProgress: color = Color(hex: "#6E9CB8") // warm steel — crew on site
-        case .completed:  color = Color(hex: "#95B07A") // sage — signed off by lead
-        case .cancelled:  color = Color(hex: "#8E6E73") // dim rose — removed from scope
+        case .active:     color = Color(hex: "#6E9CB8")! // warm steel — crew on site
+        case .completed:  color = Color(hex: "#95B07A")! // sage — signed off by lead
+        case .cancelled:  color = Color(hex: "#8E6E73")! // dim rose — removed from scope
         }
         return StatusBadge(status: status.rawValue, color: color, size: size)
     }

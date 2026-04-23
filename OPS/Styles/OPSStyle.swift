@@ -94,9 +94,15 @@ enum OPSStyle {
         static let buttonText = Color.white  // For text on accent backgrounds
         static let invertedText = Color.black  // For light-on-dark inversions
 
+        // Wizard accent (muted warm amber — used for wizard highlights, onboarding spotlights)
+        static let wizardAccent = Color(red: 0.85, green: 0.68, blue: 0.35) // #D9AD59
+
         // Overlays & Loading
         static let modalOverlay = Color.black.opacity(0.5)  // Modal and loading overlay backgrounds
         static let imageOverlay = Color.black.opacity(0.7)  // Photo/image overlays (for thumbnails, photo grids)
+        static let overlayMedium = Color.black.opacity(0.6)   // Medium overlay (tooltips, dimming)
+        static let overlayStrong = Color.black.opacity(0.7)   // Strong overlay (popups, menus) — same value as imageOverlay
+        static let overlayHeavy = Color.black.opacity(0.85)   // Heavy overlay (full-screen dimming)
         static let avatarOverlay = Color.black.opacity(0.3) // Avatar badge overlays
         static let loadingSpinner = Color("TextPrimary")    // Loading spinner/ProgressView tint (white)
 
@@ -114,6 +120,13 @@ enum OPSStyle {
         // Separators & Subtle Backgrounds
         static let separator = Color.white.opacity(0.15)  // For divider lines
         static let subtleBackground = Color.white.opacity(0.1) // Subtle row backgrounds within cards (consolidated from 0.05, 0.1 variations)
+
+        // Accounting palette
+        static let accountingRevenue = Color("Accounting/AccountingRevenue")     // Amber gold (#C4A868)
+        static let accountingProfit = Color("Accounting/AccountingProfit")       // Muted green (#9DB582)
+        static let accountingCost = Color("Accounting/AccountingCost")           // Muted rose (#B58289)
+        static let accountingReceivables = Color("Accounting/AccountingReceivables") // Warm amber (#D4A574)
+        static let accountingOverdue = Color("Accounting/AccountingOverdue")     // Deep red (#93321A)
         
         // Gradients
         static let backgroundGradient = LinearGradient(
@@ -204,14 +217,14 @@ enum OPSStyle {
         // olive (won) / rose (lost). Every hex is unique across all enum palettes.
         static func pipelineStageColor(for stage: PipelineStage) -> Color {
             switch stage {
-            case .newLead:     return Color(hex: "#6A7A8A") // cool slate
-            case .qualifying:  return Color(hex: "#6F94B0") // = opsAccent (steel)
-            case .quoting:     return Color(hex: "#7CA5B8") // teal-steel
-            case .quoted:      return Color(hex: "#BFAE8A") // warm gold
-            case .followUp:    return Color(hex: "#C4A868") // = tan
-            case .negotiation: return Color(hex: "#CA9670") // terracotta
-            case .won:         return Color(hex: "#9DB582") // = olive
-            case .lost:        return Color(hex: "#B58289") // = rose
+            case .newLead:     return Color(hex: "#6A7A8A")! // cool slate
+            case .qualifying:  return Color(hex: "#6F94B0")! // = opsAccent (steel)
+            case .quoting:     return Color(hex: "#7CA5B8")! // teal-steel
+            case .quoted:      return Color(hex: "#BFAE8A")! // warm gold
+            case .followUp:    return Color(hex: "#C4A868")! // = tan
+            case .negotiation: return Color(hex: "#CA9670")! // terracotta
+            case .won:         return Color(hex: "#9DB582")! // = olive
+            case .lost:        return Color(hex: "#B58289")! // = rose
             }
         }
 
@@ -309,6 +322,29 @@ enum OPSStyle {
         static let button = Font.button
         static let smallButton = Font.smallButton
         static let smallButtonBold = Font.smallButton.weight(.bold)
+        static let buttonLarge = Font.buttonLarge
+
+        // Compact UI labels (legacy Kosugi → remapped to JetBrains Mono)
+        static let miniLabel = Font.miniLabel
+        static let microLabel = Font.microLabel
+        static let tagLabel = Font.tagLabel
+        static let previewLabel = Font.previewLabel
+        static let sectionLabel = Font.sectionLabel
+
+        // Legacy headings (Mohave)
+        static let heading = Font.heading
+        static let headingBold = Font.headingBold
+        static let headingLarge = Font.headingLarge
+
+        // Legacy display (Mohave)
+        static let displayLarge = Font.displayLarge
+        static let displayQuantity = Font.displayQuantity
+        static let displayXL = Font.displayXL
+
+        // Legacy monospaced numeric display — for dimensions, measurements, stair specs
+        static let headlineMono = SwiftUI.Font.system(size: 24, weight: .bold, design: .monospaced)
+        static let titleMono = SwiftUI.Font.system(size: 20, weight: .bold, design: .monospaced)
+        static let monoValue = SwiftUI.Font.system(size: 14, weight: .bold, design: .monospaced)
     }
     
     // MARK: - Layout
@@ -317,6 +353,8 @@ enum OPSStyle {
         static let spacing1 = 4.0
         static let spacing2 = 8.0
         static let spacing3 = 16.0
+        static let spacing2_5: CGFloat = 12.0  // Between spacing2 (8) and spacing3 (16)
+        static let spacing3_5: CGFloat = 20.0  // Between spacing3 (16) and spacing4 (24)
         static let spacing4 = 24.0
         static let spacing5 = 32.0
 
@@ -350,6 +388,31 @@ enum OPSStyle {
         static let smallCornerRadius = 4.0    // Was 2.5 — now aligned to chipRadius
         static let cardCornerRadius = 10.0    // Was 8 — now aligned to panelRadius
         static let largeCornerRadius = 12.0   // Modals / sheets (spec: 12) — aligned to modalRadius
+
+        // Icon sizes
+        enum IconSize {
+            static let xs: CGFloat = 12.0   // Tiny indicators
+            static let sm: CGFloat = 16.0   // Inline icons, captions
+            static let md: CGFloat = 20.0   // Standard icons
+            static let lg: CGFloat = 24.0   // Section header icons
+            static let xl: CGFloat = 32.0   // Action icons, prominent UI
+            static let xxl: CGFloat = 48.0  // Large decorative icons (location overlay, etc.)
+        }
+
+        // Tab bar icon size
+        static let tabBarIconSize: CGFloat = 28.0
+
+        // Border widths
+        enum Border {
+            static let standard: CGFloat = 1.0
+            static let thick: CGFloat = 2.0
+        }
+
+        // Dot/indicator sizes
+        enum Indicator {
+            static let dotSM: CGFloat = 6.0
+            static let dotMD: CGFloat = 8.0
+        }
 
         // Opacity presets
         enum Opacity {
@@ -487,6 +550,11 @@ enum OPSStyle {
         static let standard = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.250)
         /// Deprecated — prefer `.hover` (150ms). Kept for existing call sites.
         static let quick    = SwiftUI.Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.150)
+        /// Deprecated — prefer `.hover` (150ms).
+        static let fast     = SwiftUI.Animation.easeInOut(duration: 0.2)
+        static let faster   = SwiftUI.Animation.easeOut(duration: 0.15)
+        static let spring     = SwiftUI.Animation.spring(response: 0.3, dampingFraction: 0.7)
+        static let springFast = SwiftUI.Animation.spring(response: 0.2, dampingFraction: 0.7)
     }
 
     // MARK: - Icons
@@ -634,6 +702,133 @@ enum OPSStyle {
         static let accountingChart  = "chart.bar.fill"
         static let productTag       = "tag.fill"
         static let stale            = "exclamationmark.triangle.fill"
+        static let expense          = "dollarsign.circle"
+        static let banknoteFill     = "banknote.fill"
+        static let undo             = "arrow.uturn.backward"
+        static let sendFill         = "arrow.up.circle.fill"
+        static let bell             = "bell"
+        static let mention          = "at"
+        static let assignmentNotification = "person.badge.plus"
+        static let pencilTip        = "pencil.tip"
+        static let receipt          = "doc.text.viewfinder"
+        static let clockFill        = "clock.fill"
+        static let exclamationmarkCircleFill = "exclamationmark.circle.fill"
+    }
+
+    // MARK: - Wizard
+    enum Wizard {
+        static let accentColor = Colors.wizardAccent
+        static let pulseDuration: Double = 1.0
+
+        /// Button / tappable element — rounded rectangle glow
+        enum Button {
+            static let fillOpacityHigh: Double = 0.35
+            static let fillOpacityLow: Double = 0.15
+            static let borderOpacityHigh: Double = 0.9
+            static let borderOpacityLow: Double = 0.4
+            static let borderWidth: CGFloat = 2
+            static let cornerRadius: CGFloat = Layout.cornerRadius
+        }
+
+        /// Circular element — FAB, avatar, round button
+        enum Circle {
+            static let fillOpacityHigh: Double = 0.35
+            static let fillOpacityLow: Double = 0.15
+            static let borderOpacityHigh: Double = 0.9
+            static let borderOpacityLow: Double = 0.4
+            static let borderWidth: CGFloat = 2
+        }
+
+        /// Input field — subtle fill so text stays readable, prominent border
+        enum Input {
+            static let fillOpacityHigh: Double = 0.12
+            static let fillOpacityLow: Double = 0.04
+            static let borderOpacityHigh: Double = 0.9
+            static let borderOpacityLow: Double = 0.4
+            static let borderWidth: CGFloat = 2
+            static let cornerRadius: CGFloat = Layout.smallCornerRadius
+        }
+
+        /// List row / card — full-width highlight
+        enum Row {
+            static let fillOpacityHigh: Double = 0.25
+            static let fillOpacityLow: Double = 0.10
+            static let borderOpacityHigh: Double = 0.7
+            static let borderOpacityLow: Double = 0.3
+            static let borderWidth: CGFloat = 1.5
+            static let cornerRadius: CGFloat = Layout.cornerRadius
+        }
+    }
+
+    // MARK: - Inventory
+    enum Inventory {
+        /// Size variants for tag badges
+        enum TagSize {
+            case compact   // For display in cards, lists
+            case standard  // Default size
+            case button    // Larger for touch targets in management screens
+
+            var font: Font {
+                switch self {
+                case .compact: return Typography.smallCaption
+                case .standard: return Typography.smallCaption
+                case .button: return Typography.caption
+                }
+            }
+
+            var paddingHorizontal: CGFloat {
+                switch self {
+                case .compact: return 6
+                case .standard: return 6
+                case .button: return 12
+                }
+            }
+
+            var paddingVertical: CGFloat {
+                switch self {
+                case .compact: return 2
+                case .standard: return 2
+                case .button: return 8
+                }
+            }
+
+            var cornerRadius: CGFloat {
+                switch self {
+                case .compact: return 4
+                case .standard: return 4
+                case .button: return 6
+                }
+            }
+        }
+
+        // Tag badge styling (monochromatic)
+        enum TagBadge {
+            static let font = Typography.smallCaption
+            static let textColor = Colors.secondaryText
+            static let backgroundColor = Colors.cardBackgroundDark
+            static let borderColor = Colors.cardBorder
+            static let paddingHorizontal: CGFloat = 8
+            static let paddingVertical: CGFloat = 4
+            static let cornerRadius: CGFloat = Layout.cornerRadius
+            static let spacing: CGFloat = 6
+        }
+
+        // Status/threshold badge styling
+        enum ThresholdBadge {
+            static let font = Typography.smallCaption
+            static let paddingHorizontal: CGFloat = 6
+            static let paddingVertical: CGFloat = 2
+            static let cornerRadius: CGFloat = 4
+            static let maxWidth: CGFloat = 60
+        }
+
+        // Card scaling
+        enum CardScale {
+            static let minScale: CGFloat = 0.8
+            static let maxScale: CGFloat = 1.5
+            static let tagVisibilityThreshold: CGFloat = 0.9
+            static let metadataVisibilityThreshold: CGFloat = 1.0
+        }
     }
 }
 
@@ -780,16 +975,7 @@ struct BlurView: UIViewRepresentable {
 
 }
 
-// MARK: - Non-Failable Color(hex:) Initializer
-// Used by pipelineStageColor and other places where hex values are compile-time constants
-extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let r = Double((int >> 16) & 0xFF) / 255.0
-        let g = Double((int >> 8) & 0xFF) / 255.0
-        let b = Double(int & 0xFF) / 255.0
-        self.init(red: r, green: g, blue: b)
-    }
-}
+// MARK: - Color(hex:) Initializer
+// The failable `init?(hex:)` lives in OPS/Views/Components/UserAvatar.swift and
+// handles both 6- and 8-char hex (with or without `#`). All call sites use the
+// failable form with `?? fallback` or `if let c = Color(hex:)`.

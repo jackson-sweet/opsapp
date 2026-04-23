@@ -16,8 +16,24 @@ struct DeckCanvasView: View {
     // 4800 × 4800 pt workspace ≈ 400' × 400'
     private let canvasSize: CGFloat = 4800
 
+    /// Zoom range over which annotation scaling is active. Outside this range we
+    /// clamp to the nearest end so labels never become microscopic (at extreme
+    /// zoom-in) or overwhelm the viewport (at extreme zoom-out).
+    private static let annotationMinZoom: CGFloat = 0.3
+    private static let annotationMaxZoom: CGFloat = 4.0
+
+    /// Compute a canvas-space size for an annotation so it stays legible across the
+    /// full zoom range. The returned value is in canvas points (pre-zoom). When the
+    /// canvas is transformed by `canvasScale`, the on-screen size lives in the range
+    /// [`minPt`, `maxPt`] as long as zoom is inside [annotationMinZoom,
+    /// annotationMaxZoom]. Outside that range we hold the endpoint size so extreme
+    /// zoom doesn't produce illegible text.
     private func scaledSize(_ basePt: CGFloat, min minPt: CGFloat = 8, max maxPt: CGFloat = 24) -> CGFloat {
-        let compensated = basePt / canvasScale
+        // Clamp zoom into the "labels track zoom" band before compensating. Pinning
+        // to the endpoint outside the band gives a fixed on-screen size instead of
+        // continuing to explode or shrink.
+        let clampedZoom = Swift.min(Self.annotationMaxZoom, Swift.max(Self.annotationMinZoom, canvasScale))
+        let compensated = basePt / clampedZoom
         return Swift.min(maxPt, Swift.max(minPt, compensated))
     }
 

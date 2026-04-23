@@ -286,7 +286,26 @@ struct TaskDetailsView: View {
                     status: project.status,
                     taskColorHexes: project.tasks
                         .filter { $0.deletedAt == nil && $0.status == .active }
-                        .map { $0.effectiveColor }
+                        .map { $0.effectiveColor },
+                    onResolvedCoordinate: { coord in
+                        // Bug bec71df9 — persist the resolved coord so the
+                        // project's map pin renders immediately on the next
+                        // load and the server row gets hydrated.
+                        project.latitude = coord.latitude
+                        project.longitude = coord.longitude
+                        project.needsSync = true
+                        try? modelContext.save()
+
+                        dataController.syncEngine.recordOperation(
+                            entityType: .project,
+                            entityId: project.id,
+                            operationType: "update",
+                            changedFields: [
+                                "latitude": coord.latitude,
+                                "longitude": coord.longitude
+                            ]
+                        )
+                    }
                 )
                 .frame(height: 180)
                 .cornerRadius(OPSStyle.Layout.cornerRadius)

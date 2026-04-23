@@ -265,8 +265,8 @@ class ARLineRenderer {
         lastLiveDashCount = newDashCount
 
         // Label: rebuild only when text changes; otherwise just reposition.
-        // Label lies flat on the ground along the live direction, matching
-        // locked-edge labels for visual consistency.
+        // Orientation is handled by BillboardComponent on the label pivot, so we only
+        // need to update position when the text is unchanged.
         let labelPos = midpoint(from, to) + SIMD3<Float>(0, 0.005, 0)
         if label != lastLiveLabelText || liveLabelEntity == nil {
             liveLabelEntity?.removeFromParent()
@@ -281,7 +281,6 @@ class ARLineRenderer {
             lastLiveLabelText = label
         } else if let existing = liveLabelEntity {
             existing.position = labelPos
-            existing.orientation = groundLabelOrientation(direction: direction)
         }
     }
 
@@ -537,28 +536,9 @@ class ARLineRenderer {
         return entity
     }
 
-    /// Compute the orientation that lays a text label flat on the ground plane
-    /// with its reading direction aligned along `direction` (projected to XZ).
-    ///
-    /// RealityKit's generated text sits in the local XY plane facing +Z (readable
-    /// from +Z). Two rotations:
-    ///   1. -90° around world X  → local +Z (face normal) becomes world +Y.
-    ///      Text now lies flat, readable from above.
-    ///   2. Yaw around world Y    → local +X (reading direction) aligns with the
-    ///      horizontal component of `direction`.
-    /// Yaw math: a Y-rotation by θ maps +X to (cos θ, 0, -sin θ), so for
-    /// direction (dx, 0, dz) we need θ = atan2(-dz, dx).
-    private func groundLabelOrientation(direction: SIMD3<Float>) -> simd_quatf {
-        let horizontal = SIMD3<Float>(direction.x, 0, direction.z)
-        let len = simd_length(horizontal)
-        // Always flat on ground — if direction is effectively vertical or zero,
-        // fall back to world +X reading direction.
-        let flat = simd_quatf(angle: -.pi / 2, axis: SIMD3<Float>(1, 0, 0))
-        guard len > 0.001 else { return flat }
-        let dir = horizontal / len
-        let yaw = simd_quatf(angle: atan2(-dir.z, dir.x), axis: SIMD3<Float>(0, 1, 0))
-        return yaw * flat
-    }
+    // Former ground-plane orientation helper was removed when labels moved to
+    // BillboardComponent. BillboardComponent rotates the pivot toward the camera
+    // every frame, which makes any manual ground-aligned orientation wrong anyway.
 
     /// Ground-plane perpendicular of a direction vector (rotated +90° around +Y
     /// in the XZ plane). Used to offset material labels off to the side of an
@@ -572,9 +552,18 @@ class ARLineRenderer {
         return SIMD3<Float>(dir.z, 0, -dir.x)
     }
 
-    /// Create a ground-plane text label with dark badge background.
-    /// The pivot is oriented so text lies flat on the ground, reading along the
-    /// given direction. No per-frame billboard updates required.
+    /// Create a text label with a dark badge background that always faces the user.
+    ///
+    /// Prior version laid labels flat on the ground aligned with the edge direction.
+    /// On large decks where users walk all the way around a perimeter, labels on the
+    /// far side read upside-down or sideways depending on approach angle. Fix: apply
+    /// `BillboardComponent` so RealityKit keeps the pivot rotated toward the camera
+    /// every frame. Text stays legible from any viewing position with no per-frame
+    /// work on our side.
+    ///
+    /// `direction` is kept in the signature for source compatibility but is no longer
+    /// used now that labels billboard — every call site already passed a direction,
+    /// and future work may revive direction-based anchoring for specific label types.
     private func createGroundLabel(
         text: String,
         position: SIMD3<Float>,
@@ -583,18 +572,19 @@ class ARLineRenderer {
         color: UIColor = .white,
         showBadge: Bool = true
     ) -> ModelEntity {
+        _ = direction  // intentionally unused — BillboardComponent handles orientation
         let mesh = cachedTextMesh(text, fontSize: fontSize)
         let material = SimpleMaterial(color: color, isMetallic: false)
         let textEntity = ModelEntity(mesh: mesh, materials: [material])
 
-        // Center the text mesh in its local space so the pivot's rotation axis
-        // passes through the text's visual center.
+        // Center the text mesh in its local space so BillboardComponent rotates
+        // around the text's visual center (not its generated-text anchor point).
         let bounds = textEntity.visualBounds(relativeTo: nil)
         textEntity.position = SIMD3<Float>(-bounds.center.x, -bounds.center.y, 0)
 
         let pivot = ModelEntity()
         pivot.position = position
-        pivot.orientation = groundLabelOrientation(direction: direction)
+        pivot.components.set(BillboardComponent())
         pivot.addChild(textEntity)
 
         if showBadge {
@@ -611,9 +601,9 @@ class ARLineRenderer {
             )
             bgMaterial.roughness = .float(1.0)
             let bgEntity = ModelEntity(mesh: bgMesh, materials: [bgMaterial])
-            // Local -Z = world -Y after pivot rotation — badge sits just below
-            // the text, behind it from the viewer-from-above POV. 2mm separation
-            // clears z-fighting with the text and stays above the edge strip.
+            // Badge sits just behind the text from the camera's POV — 2mm offset
+            // along local -Z clears z-fighting. BillboardComponent keeps the whole
+            // pivot facing the camera, so the badge stays behind the text.
             bgEntity.position = SIMD3<Float>(0, 0, -0.002)
             pivot.addChild(bgEntity)
         }

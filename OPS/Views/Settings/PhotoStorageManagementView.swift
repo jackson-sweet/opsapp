@@ -37,6 +37,14 @@ struct PhotoStorageManagementView: View {
 
     @State private var showClearConfirmation = false
     @State private var showFreeUpConfirmation = false
+    // Bug e5be360d: project breakdown was occupying too much space inline.
+    // Moved to a sheet so the scroll page stays compact; the user opens the
+    // full list on demand from a summary tile.
+    @State private var showProjectBreakdown = false
+    // Bug e5be360d: tapping a downloaded project's checkmark removes its
+    // local photos (previously the checkmark was a passive indicator).
+    @State private var projectPendingLocalRemoval: ProjectSummary? = nil
+    @State private var isRemovingLocalPhotos = false
 
     // MARK: - Cache
     //
@@ -125,6 +133,32 @@ struct PhotoStorageManagementView: View {
             } message: {
                 Text("This will delete cached photos from your oldest projects until you're back under your budget. Pinned photos are kept.")
             }
+            .alert(
+                "Remove local photos?",
+                isPresented: Binding(
+                    get: { projectPendingLocalRemoval != nil },
+                    set: { if !$0 { projectPendingLocalRemoval = nil } }
+                ),
+                presenting: projectPendingLocalRemoval
+            ) { item in
+                Button("Cancel", role: .cancel) {
+                    projectPendingLocalRemoval = nil
+                }
+                Button("Remove", role: .destructive) {
+                    Task { await removeLocalPhotos(for: item) }
+                }
+            } message: { item in
+                let removable = removableOnDeviceCount(for: item)
+                let pinnedCount = item.onDeviceCount - removable
+                if pinnedCount > 0 {
+                    Text("Remove \(removable) cached photos from \(item.title)? \(pinnedCount) pinned photo\(pinnedCount == 1 ? "" : "s") will stay on device. Photos remain available in the cloud.")
+                } else {
+                    Text("Remove \(removable) cached photo\(removable == 1 ? "" : "s") from \(item.title)? Photos remain available in the cloud.")
+                }
+            }
+            .sheet(isPresented: $showProjectBreakdown) {
+                projectBreakdownSheet
+            }
             .task {
                 await refreshBreakdown()
             }
@@ -189,81 +223,212 @@ struct PhotoStorageManagementView: View {
         .padding(.horizontal, 20)
     }
 
+    // Summary tile that opens the full breakdown list in a sheet. The inline
+    // list version was pushing the page length past three screens on iPhone —
+    // field users only want the slider + actions on the main screen; the
+    // project-level drill-in belongs in a modal.
     private var projectBreakdownSection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("[ BY PROJECT ]")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-            VStack(spacing: 0) {
-                if isLoadingBreakdown {
-                    HStack {
+            Button(action: {
+                guard !isLoadingBreakdown else { return }
+                showProjectBreakdown = true
+            }) {
+                HStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("MANAGE BY PROJECT")
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .tracking(1.0)
+
+                        if isLoadingBreakdown {
+                            Text("Scanning project photos…")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        } else {
+                            let total = cachedBreakdown.count
+                            let fullyDownloaded = cachedBreakdown.filter { $0.allOnDevice && !$0.photos.isEmpty }.count
+                            Text("\(fullyDownloaded) of \(total) project\(total == 1 ? "" : "s") fully downloaded")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
+                    }
+
+                    Spacer()
+
+                    if isLoadingBreakdown {
                         ProgressView().tint(OPSStyle.Colors.primaryAccent)
-                        Text("Scanning project photos…")
-                            .font(OPSStyle.Typography.smallCaption)
+                    } else {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
-                    .padding(.vertical, 20)
-                    .frame(maxWidth: .infinity)
-                } else {
-                    ForEach(cachedBreakdown) { item in
-                        VStack(spacing: 8) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(item.title)
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                        .lineLimit(1)
-
-                                    Text("\(item.photos.count) photos · \(item.onDeviceCount) on device · \(StorageProfiler.formatBytes(item.bytesOnDevice))")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                }
-
-                                Spacer()
-
-                                if item.allOnDevice {
-                                    Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
-                                        .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                        .foregroundColor(OPSStyle.Colors.successStatus)
-                                } else {
-                                    Button(action: {
-                                        Task { await downloadManager.downloadAllForProject(item.photos) }
-                                    }) {
-                                        Text("Download")
-                                            .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 6)
-                                            .background(OPSStyle.Colors.cardBackgroundDark)
-                                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
-                                            )
-                                    }
-                                }
-                            }
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 16)
-                        }
-
-                        if item.id != cachedBreakdown.last?.id {
-                            OPSStyle.Colors.separator
-                                .frame(height: 1)
-                                .padding(.leading, 16)
-                        }
-                    }
                 }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
             }
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
+            .buttonStyle(.plain)
+            .disabled(isLoadingBreakdown)
         }
         .padding(.horizontal, 20)
+    }
+
+    // MARK: - Project Breakdown Sheet
+
+    private var projectBreakdownSheet: some View {
+        NavigationStack {
+            ZStack {
+                OPSStyle.Colors.backgroundGradient
+                    .edgesIgnoringSafeArea(.all)
+
+                ScrollView {
+                    VStack(spacing: OPSStyle.Layout.spacing3) {
+                        Text("Tap the green check to remove a project's photos from this device. Photos stay in the cloud.")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 20)
+
+                        VStack(spacing: 0) {
+                            ForEach(cachedBreakdown) { item in
+                                projectBreakdownRow(item: item)
+
+                                if item.id != cachedBreakdown.last?.id {
+                                    OPSStyle.Colors.separator
+                                        .frame(height: 1)
+                                        .padding(.leading, 16)
+                                }
+                            }
+                        }
+                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        )
+                        .padding(.horizontal, 20)
+                    }
+                    .padding(.vertical, OPSStyle.Layout.spacing3)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("BY PROJECT")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .tracking(1.2)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { showProjectBreakdown = false }
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func projectBreakdownRow(item: ProjectSummary) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.title)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .lineLimit(1)
+
+                Text("\(item.photos.count) photos · \(item.onDeviceCount) on device · \(StorageProfiler.formatBytes(item.bytesOnDevice))")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+
+            Spacer()
+
+            // All-on-device checkmark is tappable — it removes the project's
+            // local photos (respecting pins). Previously passive indicator.
+            if item.allOnDevice {
+                Button(action: {
+                    guard !isRemovingLocalPhotos else { return }
+                    guard removableOnDeviceCount(for: item) > 0 else { return }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    projectPendingLocalRemoval = item
+                }) {
+                    Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                        .foregroundColor(OPSStyle.Colors.successStatus)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove \(item.title) photos from device")
+            } else if item.onDeviceCount > 0 {
+                // Partial on device — offer both complete download and remove
+                HStack(spacing: 8) {
+                    Button(action: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        projectPendingLocalRemoval = item
+                    }) {
+                        Image(systemName: "trash")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.errorStatus)
+                            .frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Remove \(item.title) photos from device")
+
+                    Button(action: {
+                        Task {
+                            await downloadManager.downloadAllForProject(item.photos)
+                            await refreshBreakdown()
+                        }
+                    }) {
+                        Text("Download")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
+                            )
+                    }
+                }
+            } else {
+                Button(action: {
+                    Task {
+                        await downloadManager.downloadAllForProject(item.photos)
+                        await refreshBreakdown()
+                    }
+                }) {
+                    Text("Download")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(OPSStyle.Colors.cardBackgroundDark)
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
+                        )
+                }
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
     }
 
     private var actionsSection: some View {
@@ -310,6 +475,48 @@ struct PhotoStorageManagementView: View {
             PhotoPrefetchService.shared.resolveCapHitRailNotifications()
         }
         Task { await refreshBreakdown() }
+    }
+
+    /// Number of on-device photos that can actually be removed for this
+    /// project — excludes pinned photos. Used to show accurate counts in the
+    /// confirmation message and to no-op the tap when everything is pinned.
+    private func removableOnDeviceCount(for item: ProjectSummary) -> Int {
+        var count = 0
+        for url in item.photos {
+            let cacheKey = url.hasPrefix("//") ? "https:" + url : url
+            guard downloadManager.isOnDevice(cacheKey) else { continue }
+            guard !downloadManager.isPinned(cacheKey) else { continue }
+            count += 1
+        }
+        return count
+    }
+
+    /// Removes every on-device photo for this project except pins.
+    /// PhotoDownloadManager is @MainActor, so the filesystem walk happens on
+    /// main; per-file FileManager ops are fast (sub-ms each) so hundreds of
+    /// removals still finish well under a frame.
+    private func removeLocalPhotos(for item: ProjectSummary) async {
+        isRemovingLocalPhotos = true
+        defer {
+            isRemovingLocalPhotos = false
+            projectPendingLocalRemoval = nil
+        }
+
+        for url in item.photos {
+            let cacheKey = url.hasPrefix("//") ? "https:" + url : url
+            guard downloadManager.isOnDevice(cacheKey) else { continue }
+            guard !downloadManager.isPinned(cacheKey) else { continue }
+            _ = downloadManager.removeFromDevice(cacheKey)
+        }
+
+        // If removal dropped us under budget, clear any lingering cap-hit
+        // notification so the user isn't staring at a warning for a state
+        // they've already resolved.
+        if !StorageProfiler.shared.wouldExceedBudget(adding: 0) {
+            PhotoPrefetchService.shared.resolveCapHitRailNotifications()
+        }
+
+        await refreshBreakdown()
     }
 
     // MARK: - Cache Refresh

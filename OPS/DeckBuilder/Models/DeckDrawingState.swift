@@ -19,7 +19,12 @@ enum SelectableElementType: String, CaseIterable {
 
 enum DrawingMode: Equatable {
     case idle                                      // no active gesture
-    case drawing(fromVertexId: String, currentEnd: CGPoint) // actively dragging a line
+    /// Actively dragging a line.
+    /// `fromVertexId` is nil when the drag started in empty space — the start
+    /// vertex is created on commit (endLine), not when the drag begins, so
+    /// cancelled drags don't leak orphan vertices into the data.
+    /// `startPosition` is the canvas-coordinate anchor of the line.
+    case drawing(fromVertexId: String?, startPosition: CGPoint, currentEnd: CGPoint)
     case selecting(rect: CGRect)                   // dragging a selection rectangle
     case lassoing(points: [CGPoint])               // drawing a freeform lasso
     case draggingVertex(vertexId: String)           // repositioning a vertex in 2D

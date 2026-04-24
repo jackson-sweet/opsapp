@@ -497,11 +497,14 @@ struct EstimateGeneratorService {
     }
 
     static func calculatePerimeterFt(drawingData: DeckDrawingData) -> Double {
+        // Without a scale factor, edge.dimension values are canvas-point
+        // lengths (the pre-scale fallback). Returning their sum would print
+        // "84 lin ft" when the underlying numbers are pixels — silently wrong
+        // on the share preview / material summary. Refuse until scale exists.
+        guard let scaleFactor = drawingData.scaleFactor, scaleFactor > 0 else { return 0 }
+        _ = scaleFactor // edge.dimension is already real-world inches once scale is set
         let edges = drawingData.isMultiLevel ? drawingData.allEdges : drawingData.edges
-        var totalInches = 0.0
-        for edge in edges {
-            totalInches += edge.dimension ?? 0
-        }
+        let totalInches = edges.reduce(0.0) { $0 + ($1.dimension ?? 0) }
         return totalInches / 12.0
     }
 

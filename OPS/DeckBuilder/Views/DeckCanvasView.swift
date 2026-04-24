@@ -186,8 +186,8 @@ struct DeckCanvasView: View {
                     for edge in activeLevel.edges {
                         drawEdge(context: context, edge: edge, vertexLookup: activeLevel.vertex(byId:))
                     }
-                    if case .drawing(let fromId, let currentEnd) = viewModel.drawingMode {
-                        drawActiveLine(context: context, fromVertexId: fromId, currentEnd: currentEnd)
+                    if case .drawing(_, let startPos, let currentEnd) = viewModel.drawingMode {
+                        drawActiveLine(context: context, startPosition: startPos, currentEnd: currentEnd)
                         drawAlignmentGuides(context: context)
                     }
                     for vertex in activeLevel.vertices {
@@ -206,8 +206,8 @@ struct DeckCanvasView: View {
                 for edge in viewModel.drawingData.edges {
                     drawEdge(context: context, edge: edge, vertexLookup: viewModel.drawingData.vertex(byId:))
                 }
-                if case .drawing(let fromId, let currentEnd) = viewModel.drawingMode {
-                    drawActiveLine(context: context, fromVertexId: fromId, currentEnd: currentEnd)
+                if case .drawing(_, let startPos, let currentEnd) = viewModel.drawingMode {
+                    drawActiveLine(context: context, startPosition: startPos, currentEnd: currentEnd)
                     drawAlignmentGuides(context: context)
                 }
                 for vertex in viewModel.drawingData.vertices {
@@ -693,15 +693,18 @@ struct DeckCanvasView: View {
 
     // MARK: - Active Drawing Line
 
-    private func drawActiveLine(context: GraphicsContext, fromVertexId: String, currentEnd: CGPoint) {
-        guard let startVertex = resolveVertex(byId: fromVertexId) else { return }
-        var path = Path(); path.move(to: startVertex.position); path.addLine(to: currentEnd)
+    /// Render the in-progress line from `startPosition` to `currentEnd`.
+    /// `startPosition` comes straight from the DrawingMode case and is the
+    /// authoritative anchor — when the drag began in empty space the start
+    /// vertex doesn't exist yet, so a vertex lookup would fail.
+    private func drawActiveLine(context: GraphicsContext, startPosition: CGPoint, currentEnd: CGPoint) {
+        var path = Path(); path.move(to: startPosition); path.addLine(to: currentEnd)
         let activeStroke = scaledSize(1.5, min: 1, max: 3)
         let activeDash = [scaledSize(8, min: 5, max: 14), scaledSize(4, min: 3, max: 8)]
         context.stroke(path, with: .color(Color.white.opacity(0.6)),
                         style: StrokeStyle(lineWidth: activeStroke, dash: activeDash))
 
-        let distance = SnapEngine.distance(startVertex.position, currentEnd)
+        let distance = SnapEngine.distance(startPosition, currentEnd)
         guard distance > 1 else { return }
 
         // Dimension — show real-world length if calibrated, canvas distance if not
@@ -714,27 +717,34 @@ struct DeckCanvasView: View {
             dimText = String(format: "~%.0f'", rawFeet)
         }
 
-        // Angle — relative if extending from existing edge, else absolute
-        let edges = viewModel.isMultiLevel ? (viewModel.activeLevel?.edges ?? []) : viewModel.drawingData.edges
-        let connected = edges.filter { $0.startVertexId == fromVertexId || $0.endVertexId == fromVertexId }
+        // Angle — relative if extending from an existing vertex, else absolute.
+        // We only attempt the relative-angle lookup when the start is anchored
+        // on a real vertex (fromVertexId != nil in DrawingMode).
         let angleText: String
-        if let prev = connected.last {
-            let otherId = prev.startVertexId == fromVertexId ? prev.endVertexId : prev.startVertexId
-            if let other = resolveVertex(byId: otherId) {
-                let prevA = SnapEngine.lineAngle(from: startVertex.position, to: other.position)
-                let newA = SnapEngine.lineAngle(from: startVertex.position, to: currentEnd)
-                var rel = newA - prevA; if rel < 0 { rel += 360 }; if rel > 180 { rel = 360 - rel }
-                angleText = String(format: "%.0f\u{00B0}", rel)
+        if case .drawing(let fromId, _, _) = viewModel.drawingMode,
+           let fromVertexId = fromId {
+            let edges = viewModel.isMultiLevel ? (viewModel.activeLevel?.edges ?? []) : viewModel.drawingData.edges
+            let connected = edges.filter { $0.startVertexId == fromVertexId || $0.endVertexId == fromVertexId }
+            if let prev = connected.last {
+                let otherId = prev.startVertexId == fromVertexId ? prev.endVertexId : prev.startVertexId
+                if let other = resolveVertex(byId: otherId) {
+                    let prevA = SnapEngine.lineAngle(from: startPosition, to: other.position)
+                    let newA = SnapEngine.lineAngle(from: startPosition, to: currentEnd)
+                    var rel = newA - prevA; if rel < 0 { rel += 360 }; if rel > 180 { rel = 360 - rel }
+                    angleText = String(format: "%.0f\u{00B0}", rel)
+                } else {
+                    angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
+                }
             } else {
-                angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startVertex.position, to: currentEnd))
+                angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
             }
         } else {
-            angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startVertex.position, to: currentEnd))
+            angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
         }
 
         let label = "\(dimText)  \(angleText)"
-        let midX = (startVertex.position.x + currentEnd.x) / 2
-        let midY = (startVertex.position.y + currentEnd.y) / 2
+        let midX = (startPosition.x + currentEnd.x) / 2
+        let midY = (startPosition.y + currentEnd.y) / 2
 
         // Dark pill background
         let aCharW = scaledSize(7.5, min: 5, max: 12)
@@ -855,8 +865,14 @@ struct DeckCanvasView: View {
 
         let midX = (start.position.x + end.position.x) / 2
         let midY = (start.position.y + end.position.y) / 2
-        let label = DimensionEngine.format(dim, system: viewModel.drawingData.config.measurementSystem)
+        // Stale flag wins over the raw value: prefix the label so the user
+        // sees at a glance that the typed dimension and the drawn length are
+        // out of sync (e.g. they dragged a vertex that was on a manually-typed
+        // edge — the field crew expects a warning, not silent mismatch).
+        let baseLabel = DimensionEngine.format(dim, system: viewModel.drawingData.config.measurementSystem)
+        let label = edge.dimensionStale ? "\u{26A0} \(baseLabel)" : baseLabel
         let hasAccuracy = edge.accuracyPercent != nil
+        let isStale = edge.dimensionStale
 
         // Offset label perpendicular to the edge so it doesn't sit on the line
         let dx = end.position.x - start.position.x
@@ -874,7 +890,7 @@ struct DeckCanvasView: View {
         let pillH = scaledSize(20, min: 14, max: 28)
         let cr = scaledSize(4, min: 2, max: 6)
         let pillRect = CGRect(x: labelX - pillW / 2, y: labelY - pillH / 2, width: pillW, height: pillH)
-        let pillColor: Color = hasAccuracy
+        let pillColor: Color = (isStale || hasAccuracy)
             ? OPSStyle.Colors.warningStatus.opacity(0.15)
             : OPSStyle.Colors.cardBackground.opacity(0.95)
         context.fill(Path(roundedRect: pillRect, cornerRadius: cr), with: .color(pillColor))
@@ -882,15 +898,18 @@ struct DeckCanvasView: View {
                        with: .color(Color.white.opacity(0.08)), lineWidth: 0.5)
 
         let fontSize = scaledSize(11, min: 8, max: 18)
-        let labelColor: Color = hasAccuracy ? OPSStyle.Colors.warningStatus : Color.white
+        let labelColor: Color = (isStale || hasAccuracy) ? OPSStyle.Colors.warningStatus : Color.white
         context.draw(Text(label).font(.system(size: fontSize, weight: .medium, design: .monospaced))
             .foregroundColor(labelColor), at: CGPoint(x: labelX, y: labelY))
 
-        // Secondary label below dimension: accuracy OR material/type
+        // Secondary label below dimension: stale notice > accuracy > material/type.
         var secondaryLabel: String?
         var secondaryColor: Color = OPSStyle.Colors.secondaryText
 
-        if let accuracy = edge.accuracyPercent {
+        if isStale {
+            secondaryLabel = "DRAWN LENGTH CHANGED"
+            secondaryColor = OPSStyle.Colors.warningStatus
+        } else if let accuracy = edge.accuracyPercent {
             secondaryLabel = AccuracyModel.formatAccuracy(dimensionInches: dim, accuracyPercent: accuracy,
                                                            system: viewModel.drawingData.config.measurementSystem)
             secondaryColor = OPSStyle.Colors.warningStatus

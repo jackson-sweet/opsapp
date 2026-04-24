@@ -12,12 +12,21 @@ struct DimensionEngine {
             print("[DeckBuilder] formatImperial: negative value \(totalInches), using absolute")
             return formatImperial(abs(totalInches))
         }
-        let feet = Int(totalInches) / 12
+        var feet = Int(totalInches) / 12
         let inches = totalInches - Double(feet * 12)
-        if inches < 0.5 {
+
+        // Round to nearest 0.5". 11.95" → 12.0" must roll over to the next foot,
+        // otherwise we print nonsense like "11' 12\"". Roll BEFORE the < 0.5 check
+        // so e.g. 11.99" reaches the rollover branch.
+        var roundedInches = (inches * 2).rounded() / 2
+        if roundedInches >= 12 {
+            feet += 1
+            roundedInches = 0
+        }
+
+        if roundedInches < 0.5 {
             return "\(feet)'"
         }
-        let roundedInches = (inches * 2).rounded() / 2  // round to nearest 0.5"
         if roundedInches == roundedInches.rounded() {
             return "\(feet)' \(Int(roundedInches))\""
         }
@@ -333,25 +342,94 @@ struct DimensionEngine {
         return totalInches >= 0 ? totalInches : nil
     }
 
+    /// Tokenizer-based metric parser. Walks the string left-to-right matching
+    /// number tokens against the longest unit suffix at each position (mm > cm > m).
+    /// Sums every (number, unit) pair into total centimeters, then converts to inches.
+    ///
+    /// Handles every field-contractor format I've seen:
+    ///   `7.5m` · `150cm` · `100mm` · `2m 50cm` (compound) · `2.5m 30cm 5mm` ·
+    ///   `150` (lone → cm fallback) · whitespace / dash / comma separators.
+    ///
+    /// Previous implementation had two breaking bugs:
+    /// - `100mm` matched `.contains("m")` and was treated as 100 metres (off by 100×).
+    /// - Compound entries (`2m 50cm`) cleaned to `"2 50"` which Double can't parse,
+    ///   so the field returned nil and the user's input was silently rejected.
     private static func parseMetricToInches(_ input: String) -> Double? {
-        let hasCm = input.contains("cm")
-        let hasM = input.contains("m") && !hasCm  // "m" but not "cm"
+        let chars = Array(input.lowercased())
+        var i = 0
+        var totalCm: Double = 0
+        var sawAnyNumber = false
+        var pendingValue: Double?
 
-        let cleaned = input.replacingOccurrences(of: "cm", with: "")
-            .replacingOccurrences(of: "m", with: "")
-            .trimmingCharacters(in: .whitespaces)
-
-        guard let value = Double(cleaned) else { return nil }
-
-        if hasCm {
-            return value / 2.54
-        } else if hasM {
-            return (value * 100.0) / 2.54
-        } else {
-            // No unit suffix — default to centimeters (more common for deck measurements)
-            print("[DeckBuilder] parseMetric: no unit suffix on '\(input)', defaulting to cm")
-            return value / 2.54
+        // Read one numeric token starting at i; advances `i` past the digits.
+        func readNumber() -> Double? {
+            let start = i
+            var sawDot = false
+            var foundDigit = false
+            while i < chars.count, chars[i].isNumber || (chars[i] == "." && !sawDot) {
+                if chars[i] == "." { sawDot = true }
+                if chars[i].isNumber { foundDigit = true }
+                i += 1
+            }
+            guard foundDigit, let v = Double(String(chars[start..<i])) else { return nil }
+            return v
         }
+
+        // Flush a pending number using the supplied unit multiplier (cm per unit).
+        func consume(unitToCm: Double) {
+            if let v = pendingValue {
+                totalCm += v * unitToCm
+                pendingValue = nil
+            }
+        }
+
+        while i < chars.count {
+            let c = chars[i]
+            if c.isWhitespace || c == "-" || c == "," {
+                i += 1; continue
+            }
+            if c.isNumber || c == "." {
+                if let v = readNumber() {
+                    // Two numbers in a row with no unit between them — flush
+                    // the previous one as cm (default), then queue the new value.
+                    if let prev = pendingValue {
+                        totalCm += prev
+                    }
+                    pendingValue = v
+                    sawAnyNumber = true
+                } else {
+                    i += 1
+                }
+                continue
+            }
+            // Unit detection — longest suffix first so `mm` doesn't get eaten by `m`.
+            if i + 1 < chars.count, chars[i] == "m", chars[i + 1] == "m" {
+                consume(unitToCm: 0.1)   // mm → cm
+                i += 2
+                continue
+            }
+            if i + 1 < chars.count, chars[i] == "c", chars[i + 1] == "m" {
+                consume(unitToCm: 1.0)   // cm
+                i += 2
+                continue
+            }
+            if c == "m" {
+                consume(unitToCm: 100.0) // m → cm
+                i += 1
+                continue
+            }
+            // Unknown character — skip defensively
+            i += 1
+        }
+
+        // Trailing number with no unit → default to cm (matches the contractor
+        // shorthand the previous parser used for raw numeric input).
+        if let v = pendingValue {
+            totalCm += v
+        }
+
+        guard sawAnyNumber else { return nil }
+        return totalCm / 2.54
     }
 
     // MARK: - Post Calculation

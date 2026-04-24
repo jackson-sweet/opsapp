@@ -58,6 +58,12 @@ struct DeckEdge: Identifiable, Codable, Equatable {
     var stairConfig: StairConfig?
     var assignedItems: [AssignedItem] = []
     var accuracyPercent: Double?    // e.g., 3.0 means ±3%. nil = manually verified / no AR
+    /// Set to true when a vertex drag changed the canvas length of this edge
+    /// but its stored `dimension` was preserved because the source was manual /
+    /// laser / AR (user-authoritative). The renderer surfaces a warning glyph
+    /// so the user knows the typed value and the drawn length disagree. Cleared
+    /// when the user retypes / re-measures the dimension.
+    var dimensionStale: Bool = false
 
     init(
         id: String = UUID().uuidString,
@@ -433,9 +439,13 @@ struct DeckDrawingData: Codable {
         guard let data = json.data(using: .utf8) else { return nil }
         guard var decoded = try? JSONDecoder().decode(DeckDrawingData.self, from: data) else { return nil }
 
-        // Referential integrity: remove edges with orphaned vertex references
+        // Referential integrity, single-level: drop edges that reference
+        // missing vertices, then drop vertices that no surviving edge
+        // references. Without the second pass an orphan vertex makes the
+        // adjacency walk fail (`connections != 2`) and `isClosed` returns
+        // false forever, so the polygon never opens as a valid shape again.
         let vertexIds = Set(decoded.vertices.map { $0.id })
-        let beforeCount = decoded.edges.count
+        let beforeEdgeCount = decoded.edges.count
         decoded.edges.removeAll { edge in
             let startMissing = !vertexIds.contains(edge.startVertexId)
             let endMissing = !vertexIds.contains(edge.endVertexId)
@@ -445,16 +455,43 @@ struct DeckDrawingData: Codable {
             }
             return false
         }
-        if decoded.edges.count != beforeCount {
-            print("[DeckBuilder] fromJSON: removed \(beforeCount - decoded.edges.count) orphaned edges")
+        if decoded.edges.count != beforeEdgeCount {
+            print("[DeckBuilder] fromJSON: removed \(beforeEdgeCount - decoded.edges.count) orphaned edges")
         }
 
-        // Same check per level
+        let connectedVertexIds = Set(decoded.edges.flatMap { [$0.startVertexId, $0.endVertexId] })
+        let beforeVertexCount = decoded.vertices.count
+        decoded.vertices.removeAll { !connectedVertexIds.contains($0.id) }
+        if decoded.vertices.count != beforeVertexCount {
+            print("[DeckBuilder] fromJSON: removed \(beforeVertexCount - decoded.vertices.count) orphaned vertices")
+        }
+
+        // Same two-pass check per level.
         for i in decoded.levels.indices {
             let levelVertexIds = Set(decoded.levels[i].vertices.map { $0.id })
             decoded.levels[i].edges.removeAll { edge in
                 !levelVertexIds.contains(edge.startVertexId) || !levelVertexIds.contains(edge.endVertexId)
             }
+            let connected = Set(decoded.levels[i].edges.flatMap { [$0.startVertexId, $0.endVertexId] })
+            decoded.levels[i].vertices.removeAll { !connected.contains($0.id) }
+        }
+
+        // Drop any LevelConnection whose referenced edges no longer exist
+        // after the integrity pass — otherwise the connection becomes a
+        // phantom (renderer silently early-returns) but still ships into
+        // estimates. Same rule as runtime delete paths.
+        // Snapshot the levels into a local because Swift forbids reading
+        // `decoded.levels` from inside a predicate that also mutates
+        // `decoded.levelConnections` (overlapping access).
+        let levelsSnapshot = decoded.levels
+        decoded.levelConnections.removeAll { conn in
+            guard let upper = levelsSnapshot.first(where: { $0.id == conn.upperLevelId }),
+                  upper.edge(byId: conn.upperEdgeId) != nil else { return true }
+            if let lowerEdgeId = conn.lowerEdgeId {
+                guard let lower = levelsSnapshot.first(where: { $0.id == conn.lowerLevelId }),
+                      lower.edge(byId: lowerEdgeId) != nil else { return true }
+            }
+            return false
         }
 
         // Clamp negative scale factor to nil

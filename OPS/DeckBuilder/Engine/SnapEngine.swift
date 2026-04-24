@@ -192,8 +192,12 @@ struct SnapEngine {
         for edge in edges {
             guard let eStart = vertexLookup(edge.startVertexId),
                   let eEnd = vertexLookup(edge.endVertexId) else { continue }
-            // Skip edges connected to the start vertex (trivially parallel to themselves)
-            if edge.startVertexId == excludeVertexIds.first || edge.endVertexId == excludeVertexIds.first {
+            // Skip edges touching ANY excluded vertex. Previous code used
+            // `excludeVertexIds.first` which honors a non-deterministic single
+            // ID from the Set — silently broke once callers passed more than
+            // one (e.g. vertex-drag exclusion).
+            if excludeVertexIds.contains(edge.startVertexId) ||
+               excludeVertexIds.contains(edge.endVertexId) {
                 continue
             }
 

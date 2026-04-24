@@ -417,61 +417,58 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Drawing Operations
 
     func beginLine(from position: CGPoint) {
-        let snappedPosition: CGPoint
-        let existingVertexId: String?
-
-        // Check if near an existing vertex (magnetic snap)
+        // Magnetic snap to an existing vertex when starting near one. Otherwise
+        // snap to the grid and DEFER vertex creation until endLine commits — a
+        // cancelled drag must not leave an orphan vertex behind. The undo
+        // snapshot is also deferred; nothing has happened yet.
         if let snapId = SnapEngine.findSnapTarget(
             point: position,
             vertices: activeVertices,
             snapRadius: drawingData.config.endpointSnapRadius
         ) {
-            existingVertexId = snapId
-            snappedPosition = activeVertex(byId: snapId)?.position ?? position
+            let snappedPosition = activeVertex(byId: snapId)?.position ?? position
+            drawingMode = .drawing(
+                fromVertexId: snapId,
+                startPosition: snappedPosition,
+                currentEnd: snappedPosition
+            )
         } else {
-            existingVertexId = nil
-            // Snap new vertex to the nearest grid intersection
-            snappedPosition = SnapEngine.snapToGrid(position, gridSpacing: lengthSnapInCanvasPoints())
+            let snappedPosition = SnapEngine.snapToGrid(
+                position,
+                gridSpacing: lengthSnapInCanvasPoints()
+            )
+            drawingMode = .drawing(
+                fromVertexId: nil,
+                startPosition: snappedPosition,
+                currentEnd: snappedPosition
+            )
         }
-
-        // Snapshot BEFORE any mutations — one undo undoes the entire draw
-        // (start vertex + end vertex + edge all revert together)
-        pushUndo("draw line")
-
-        let vertexId: String
-        if let existing = existingVertexId {
-            vertexId = existing
-        } else {
-            let vertex = DeckVertex(position: snappedPosition)
-            vertexId = vertex.id
-            activeVertices.append(vertex)
-        }
-
-        drawingMode = .drawing(fromVertexId: vertexId, currentEnd: snappedPosition)
     }
 
     func updateLine(to rawEnd: CGPoint) {
-        guard case .drawing(let fromId, _) = drawingMode else { return }
-        guard let startVertex = activeVertex(byId: fromId) else { return }
+        guard case .drawing(let fromId, let startPos, _) = drawingMode else { return }
 
         // First apply angle/length snapping
         var snapped = SnapEngine.snapEndpoint(
-            from: startVertex.position,
+            from: startPos,
             rawEnd: rawEnd,
             angleIncrement: drawingData.config.angleSnapIncrement,
             lengthIncrement: lengthSnapInCanvasPoints(),
             snappingEnabled: drawingData.config.snappingEnabled
         )
 
-        // Then detect alignment guides (axis-aligned, parallel, perpendicular)
+        // Then detect alignment guides (axis-aligned, parallel, perpendicular).
+        // Exclude the start vertex's edges only when it actually exists in the
+        // store — a pending start has nothing to filter against yet.
+        let exclude: Set<String> = fromId.map { [$0] } ?? []
         let alignment = SnapEngine.detectAlignmentGuides(
-            from: startVertex.position,
+            from: startPos,
             currentEnd: snapped,
             vertices: activeVertices,
             edges: activeEdges,
             vertexLookup: { self.activeVertex(byId: $0) },
             threshold: 8.0,
-            excludeVertexIds: [fromId]
+            excludeVertexIds: exclude
         )
 
         // Apply axis alignment snap (overrides angle/length snap for X or Y)
@@ -480,61 +477,97 @@ class DeckBuilderViewModel: ObservableObject {
         }
 
         alignmentGuides = alignment.guides
-        drawingMode = .drawing(fromVertexId: fromId, currentEnd: snapped)
+        drawingMode = .drawing(fromVertexId: fromId, startPosition: startPos, currentEnd: snapped)
     }
 
     func endLine(at rawEnd: CGPoint) {
-        guard case .drawing(let fromId, _) = drawingMode else { return }
-        guard let startVertex = activeVertex(byId: fromId) else {
-            print("[DeckBuilder] endLine: start vertex \(fromId) not found, cancelling line")
-            drawingMode = .idle
-            return
-        }
-
-        // No pushUndo here — snapshot was taken in beginLine() so one undo
-        // reverts start vertex + end vertex + edge atomically
+        guard case .drawing(let fromId, let startPos, _) = drawingMode else { return }
 
         let snapped = SnapEngine.snapEndpoint(
-            from: startVertex.position,
+            from: startPos,
             rawEnd: rawEnd,
             angleIncrement: drawingData.config.angleSnapIncrement,
             lengthIncrement: lengthSnapInCanvasPoints(),
             snappingEnabled: drawingData.config.snappingEnabled
         )
 
-        // Check if snapping to an existing vertex (especially the first one for closing)
-        let endVertexId: String
-        if let snapId = SnapEngine.findSnapTarget(
+        // Resolve the end position FIRST without mutating state. Either we
+        // snap to an existing vertex (preferred — closes the polygon when the
+        // user finishes near the first vertex) or we use a grid-snapped point.
+        let exclude: Set<String> = fromId.map { [$0] } ?? []
+        let snapEndId = SnapEngine.findSnapTarget(
             point: snapped,
             vertices: activeVertices,
             snapRadius: drawingData.config.endpointSnapRadius,
-            excludeVertexIds: [fromId]
-        ) {
-            endVertexId = snapId
+            excludeVertexIds: exclude
+        )
+        let endPosition: CGPoint
+        if let snapId = snapEndId, let v = activeVertex(byId: snapId) {
+            endPosition = v.position
         } else {
-            // Snap new endpoint to nearest grid intersection
-            let gridSnapped = SnapEngine.snapToGrid(snapped, gridSpacing: lengthSnapInCanvasPoints())
-            let newVertex = DeckVertex(position: gridSnapped)
-            endVertexId = newVertex.id
-            activeVertices.append(newVertex)
+            endPosition = SnapEngine.snapToGrid(snapped, gridSpacing: lengthSnapInCanvasPoints())
         }
 
-        // Create the edge
-        var edge = DeckEdge(startVertexId: fromId, endVertexId: endVertexId)
-
-        // Calculate and store the real-world dimension on the edge
-        let endPosition = activeVertex(byId: endVertexId)?.position ?? snapped
-        let canvasDistance = SnapEngine.distance(startVertex.position, endPosition)
-        if canvasDistance > 0 {
-            if let scale = drawingData.scaleFactor, scale > 0 {
-                edge.dimension = canvasDistance / scale  // inches
-            } else {
-                // No scale factor — store canvas-point length so dimension label renders;
-                // recalculated when scale is set via autoFillDimensionsFromScale()
-                edge.dimension = canvasDistance
-            }
-            edge.dimensionSource = .scale  // always .scale when auto-calculated from drawing
+        // H7: discard near-zero-length lines. A drag that barely moved is
+        // almost always an accidental tap-and-twitch, not a real line. Without
+        // this guard a 0.5pt edge ends up in the model — countable in the
+        // perimeter, drawable as a label in zero space, hit-targetable.
+        let canvasDistance = SnapEngine.distance(startPos, endPosition)
+        let minEdgeLength = drawingData.config.endpointSnapRadius / 2.0
+        guard canvasDistance >= minEdgeLength else {
+            // Nothing was committed — no undo step, no orphaned start vertex
+            // (we deferred its creation). Just drop back to idle.
+            alignmentGuides = []
+            drawingMode = .idle
+            return
         }
+
+        // Now we know the line is real. Snapshot BEFORE creating any vertices
+        // so one undo reverts the entire draw (start vertex + end vertex +
+        // edge) atomically.
+        pushUndo("draw line")
+
+        // Commit the START vertex if it was deferred (drag began in empty space).
+        let startVertexId: String
+        if let existing = fromId {
+            startVertexId = existing
+        } else {
+            let v = DeckVertex(position: startPos)
+            startVertexId = v.id
+            activeVertices.append(v)
+        }
+
+        // Commit the END vertex if we didn't snap to an existing one.
+        let endVertexId: String
+        if let existing = snapEndId {
+            endVertexId = existing
+        } else {
+            let v = DeckVertex(position: endPosition)
+            endVertexId = v.id
+            activeVertices.append(v)
+        }
+
+        // Self-loop guard — can only happen if both ends snapped to the same
+        // vertex past the H7 length check, which the snap-radius filter
+        // ordinarily prevents but we belt-and-brace it.
+        guard startVertexId != endVertexId else {
+            // Roll back the snapshot since we won't actually mutate.
+            _ = undoStack.popLast()
+            alignmentGuides = []
+            drawingMode = .idle
+            return
+        }
+
+        // Build the edge
+        var edge = DeckEdge(startVertexId: startVertexId, endVertexId: endVertexId)
+        if let scale = drawingData.scaleFactor, scale > 0 {
+            edge.dimension = canvasDistance / scale  // inches
+        } else {
+            // No scale factor — store canvas-point length so dimension label renders;
+            // recalculated when scale is set via autoFillDimensions().
+            edge.dimension = canvasDistance
+        }
+        edge.dimensionSource = .scale
 
         // Apply active assignment if set
         if let assignment = activeAssignment,
@@ -582,7 +615,13 @@ class DeckBuilderViewModel: ObservableObject {
         }
 
         if tapSelectFilter.contains(.face),
-           activeIsClosed && PolygonMath.pointInPolygon(point, vertices: activeOrderedPositions) {
+           activeIsClosed,
+           // Block face-selection on self-intersecting shapes: the renderer
+           // fills via non-zero while pointInPolygon uses even-odd, so the
+           // visible fill region and tap-targetable region disagree. Force the
+           // user to fix the shape (the EDGES CROSS warning is already on screen).
+           !PolygonMath.isSelfIntersecting(vertices: activeOrderedPositions),
+           PolygonMath.pointInPolygon(point, vertices: activeOrderedPositions) {
             if !additive { selection.clear() }
             selection.selectedFootprint.toggle()
             hapticLight()
@@ -603,7 +642,12 @@ class DeckBuilderViewModel: ObservableObject {
         if activeTool == .tapSelect {
             let hitsVertex = PolygonMath.findVertexAtPoint(point, vertices: activeVertices, hitThreshold: hitThreshold) != nil
             let hitsEdge = PolygonMath.findEdgeAtPoint(point, edges: activeEdges, vertices: activeVertices, hitThreshold: hitThreshold * 0.8) != nil
-            let hitsFootprint = activeIsClosed && PolygonMath.pointInPolygon(point, vertices: activeOrderedPositions)
+            // Mirror handleTap: footprint is only hittable when the shape is
+            // valid. Otherwise long-press on a bowtie's interior would register
+            // as "selecting the surface" while the renderer shows a warning fill.
+            let hitsFootprint = activeIsClosed
+                && !PolygonMath.isSelfIntersecting(vertices: activeOrderedPositions)
+                && PolygonMath.pointInPolygon(point, vertices: activeOrderedPositions)
 
             if !hitsVertex && !hitsEdge && !hitsFootprint {
                 exitMultiSelect()
@@ -791,20 +835,36 @@ class DeckBuilderViewModel: ObservableObject {
         save()
     }
 
-    /// Recalculate dimension values for edges connected to a vertex (after drag/move)
+    /// Recalculate dimension values for edges connected to a vertex (after drag/move).
+    /// `.scale` edges are recomputed automatically. Manual / laser / AR edges
+    /// preserve their user-typed value but are flagged `dimensionStale = true`
+    /// when the new geometry would yield a meaningfully different length, so
+    /// the renderer can surface a "this no longer matches the drawn length" warning.
     private func recalculateEdgeDimensions(connectedTo vertexId: String) {
+        let staleThresholdInches: Double = 0.5  // ignore sub-half-inch drift to avoid false alarms
         for i in activeEdges.indices {
             let edge = activeEdges[i]
             guard edge.startVertexId == vertexId || edge.endVertexId == vertexId else { continue }
-            // Only recalculate scale-derived dimensions; manual/laser/AR dimensions are user-set
-            guard edge.dimensionSource == .scale else { continue }
             guard let start = activeVertex(byId: edge.startVertexId),
                   let end = activeVertex(byId: edge.endVertexId) else { continue }
             let canvasDistance = SnapEngine.distance(start.position, end.position)
-            if let scale = drawingData.scaleFactor, scale > 0 {
-                activeEdges[i].dimension = canvasDistance / scale
+
+            if edge.dimensionSource == .scale {
+                if let scale = drawingData.scaleFactor, scale > 0 {
+                    activeEdges[i].dimension = canvasDistance / scale
+                } else {
+                    activeEdges[i].dimension = canvasDistance
+                }
+                activeEdges[i].dimensionStale = false
             } else {
-                activeEdges[i].dimension = canvasDistance
+                // User-set source — keep their value but flag drift.
+                guard let typed = edge.dimension,
+                      let scale = drawingData.scaleFactor, scale > 0 else {
+                    activeEdges[i].dimensionStale = false
+                    continue
+                }
+                let drawnInches = canvasDistance / scale
+                activeEdges[i].dimensionStale = abs(drawnInches - typed) >= staleThresholdInches
             }
         }
     }
@@ -820,6 +880,9 @@ class DeckBuilderViewModel: ObservableObject {
         if source == .manual || source == .laser {
             edge.accuracyPercent = nil
         }
+        // Any explicit retype/measure is the user reaffirming the dimension —
+        // clear any "doesn't match drawn length" warning the previous drag set.
+        edge.dimensionStale = false
         activeUpdateEdge(edge)
 
         // If this is the first manual dimension on a closed shape, derive scale

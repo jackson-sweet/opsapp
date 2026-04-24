@@ -31,61 +31,25 @@ struct OPSApp: App {
     @StateObject private var variantManager = OnboardingVariantManager.shared
     @StateObject private var permissionStore = PermissionStore.shared
 
-    // Create the model container for SwiftData
+    // Create the model container for SwiftData.
+    // Schema is driven by the current VersionedSchema (`OPSSchemaV2`) and the
+    // container runs `OPSMigrationPlan` on launch so stores written by earlier
+    // builds (e.g. pre-`WizardState.id`) are migrated in place.
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            // Core data models
-            User.self,
-            Project.self,
-            Company.self,
-            TeamMember.self,
-            Client.self,
-            SubClient.self,
-            ProjectTask.self,
-            TaskType.self,
-            TaskStatusOption.self,
-            SyncOperation.self,
-            OpsContact.self,
-            // Supabase-backed models
-            Opportunity.self,
-            Activity.self,
-            FollowUp.self,
-            StageTransition.self,
-            Estimate.self,
-            EstimateLineItem.self,
-            Invoice.self,
-            InvoiceLineItem.self,
-            Payment.self,
-            Product.self,
-            SiteVisit.self,
-            ProjectNote.self,
-            PhotoAnnotation.self,
-            CalendarUserEvent.self,
-            // Offline-first sync models
-            TimeEntry.self,
-            SignatureCapture.self,
-            FormSubmission.self,
-            LocalPhoto.self,
-            // Inventory models
-            InventoryItem.self,
-            InventorySnapshot.self,
-            InventorySnapshotItem.self,
-            InventoryTag.self,
-            InventoryUnit.self,
-            // Wizard system
-            WizardState.self,
-            // Deck builder
-            DeckDesign.self
-        ])
-        
+        let schema = Schema(versionedSchema: OPSSchemaV2.self)
+
         let modelConfiguration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: false,
             allowsSave: true
         )
-        
+
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            return try ModelContainer(
+                for: schema,
+                migrationPlan: OPSMigrationPlan.self,
+                configurations: [modelConfiguration]
+            )
         } catch {
             // In production app, we would handle this more gracefully
             fatalError("Failed to create model container: \(error.localizedDescription)")

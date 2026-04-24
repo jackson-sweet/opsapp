@@ -4,9 +4,9 @@
 //
 //  Full-screen Tinder-style review for tasks that are unscheduled or unassigned.
 //  Actions adapt based on task state:
-//  - Unassigned: right = assign crew (must assign before scheduling)
-//  - Unscheduled (assigned): right = auto-schedule
-//  - Up = assign/edit crew always, Left = skip, Down = cancel
+//  - Unassigned: right = assign crew (must assign before scheduling), up = assign crew
+//  - Unscheduled (assigned): right = auto-schedule, up = mark complete
+//  - Left = skip, Down = cancel
 //
 
 import SwiftUI
@@ -35,10 +35,21 @@ struct UnscheduledTaskReviewView: View {
     /// Full User objects so the crew picker shows real profile photos.
     @State private var fetchedTeamMembers: [User] = []
 
+    // Transient confirmation banner so swipes have visible effect
+    // (previously auto-schedule and mark-complete fired silently).
+    @State private var toastMessage: String? = nil
+    @State private var toastKind: ToastKind = .success
+    @State private var toastDismissTask: Task<Void, Never>? = nil
+
     /// Tracks why the crew picker was opened
     private enum CrewPickerSource {
         case swipeUp    // Explicit assign action
         case swipeRight // Must assign before auto-scheduling
+    }
+
+    private enum ToastKind {
+        case success
+        case error
     }
 
     private var activeTeamMembers: [User] {
@@ -121,6 +132,9 @@ struct UnscheduledTaskReviewView: View {
                         .ignoresSafeArea(.container, edges: .bottom)
                 }
             }
+
+            // Confirmation banner (success/error) sits above card stack
+            toastOverlay
         }
         .sheet(isPresented: $showBio) {
             if let task = selectedTask {
@@ -196,7 +210,13 @@ struct UnscheduledTaskReviewView: View {
         case .left:
             return SwipeActionConfig(label: "SKIP", icon: "arrow.right.circle", color: OPSStyle.Colors.tertiaryText)
         case .up:
-            return SwipeActionConfig(label: "ASSIGN CREW", icon: "person.badge.plus", color: OPSStyle.Colors.primaryAccent)
+            if isUnassigned {
+                // No crew yet — can't complete; assign first.
+                return SwipeActionConfig(label: "ASSIGN CREW", icon: "person.badge.plus", color: OPSStyle.Colors.primaryAccent)
+            } else {
+                // Already assigned — swipe up marks the work done.
+                return SwipeActionConfig(label: "MARK COMPLETE", icon: "checkmark.circle", color: OPSStyle.Colors.successStatus)
+            }
         case .down:
             return SwipeActionConfig(label: "CANCEL", icon: "xmark.circle", color: OPSStyle.Colors.errorStatus)
         }
@@ -246,11 +266,75 @@ struct UnscheduledTaskReviewView: View {
                 hintPill(icon: "arrow.right", label: "SCHEDULE", color: OPSStyle.Colors.successStatus)
             }
 
-            hintPill(icon: "arrow.up", label: "ASSIGN", color: OPSStyle.Colors.primaryAccent)
+            // Up hint changes based on current card
+            if currentTaskIsUnassigned {
+                hintPill(icon: "arrow.up", label: "ASSIGN", color: OPSStyle.Colors.primaryAccent)
+            } else {
+                hintPill(icon: "arrow.up", label: "COMPLETE", color: OPSStyle.Colors.successStatus)
+            }
+
             hintPill(icon: "arrow.down", label: "CANCEL", color: OPSStyle.Colors.errorStatus)
         }
         .padding(.horizontal, 16)
         .animation(.easeInOut(duration: 0.2), value: currentTopIndex)
+    }
+
+    // MARK: - Toast Overlay
+
+    @ViewBuilder
+    private var toastOverlay: some View {
+        VStack {
+            if let message = toastMessage {
+                HStack(spacing: 10) {
+                    Image(systemName: toastKind == .success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(toastKind == .success ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus)
+                    Text(message)
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(OPSStyle.Colors.cardBackground.opacity(0.96))
+                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .strokeBorder((toastKind == .success ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus).opacity(0.35), lineWidth: 1)
+                )
+                .shadow(color: Color.black.opacity(0.35), radius: 10, y: 4)
+                .padding(.horizontal, 16)
+                .padding(.top, 68)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            Spacer()
+        }
+        .allowsHitTesting(false)
+        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: toastMessage)
+    }
+
+    private func showToast(_ message: String, kind: ToastKind) {
+        toastDismissTask?.cancel()
+        toastMessage = message
+        toastKind = kind
+
+        toastDismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            guard !Task.isCancelled else { return }
+            toastMessage = nil
+        }
+    }
+
+    private func formatScheduledRange(start: Date, end: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE MMM d"
+        let startStr = formatter.string(from: start).uppercased()
+        if Calendar.current.isDate(start, inSameDayAs: end) {
+            return "FOR \(startStr)"
+        }
+        let endStr = formatter.string(from: end).uppercased()
+        return "FOR \(startStr) – \(endStr)"
     }
 
     private func hintPill(icon: String, label: String, color: Color) -> some View {
@@ -396,11 +480,19 @@ struct UnscheduledTaskReviewView: View {
             checkCompletion()
 
         case .up:
-            // Assign/edit crew
-            pendingAssignTask = task
-            assignSelectedIds = Set(task.getTeamMemberIds())
-            crewPickerSource = .swipeUp
-            showCrewPicker = true
+            let isUnassigned = task.getTeamMemberIds().isEmpty
+            if isUnassigned {
+                // No crew yet — open picker so user can assign.
+                pendingAssignTask = task
+                assignSelectedIds = Set(task.getTeamMemberIds())
+                crewPickerSource = .swipeUp
+                showCrewPicker = true
+            } else {
+                // Assigned — mark complete via canonical path.
+                markTaskComplete(task)
+                reviewedCount += 1
+                checkCompletion()
+            }
 
         case .down:
             // Cancel — show confirmation
@@ -436,6 +528,28 @@ struct UnscheduledTaskReviewView: View {
         checkCompletion()
     }
 
+    private func markTaskComplete(_ task: ProjectTask) {
+        // Canonical path — persists status, records SyncOperation, fires
+        // team-completion notifications, tracks analytics.
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        let taskTitle = task.displayTitle
+
+        Task {
+            do {
+                try await dataController.updateTaskStatus(task: task, to: .completed)
+                await MainActor.run {
+                    showToast("COMPLETED — \(taskTitle.uppercased())", kind: .success)
+                }
+            } catch {
+                print("[UNSCHEDULED_REVIEW] Failed to mark task complete: \(error)")
+                await MainActor.run {
+                    showToast("COULDN'T MARK COMPLETE — TRY AGAIN", kind: .error)
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
+            }
+        }
+    }
+
     private func autoScheduleTask(_ task: ProjectTask) {
         let plan = dataController.autoScheduleSingleTask(
             task,
@@ -443,9 +557,19 @@ struct UnscheduledTaskReviewView: View {
             anchorDate: Date()
         )
 
-        guard let placement = plan.placements.first else { return }
+        // If the scheduler couldn't place the task, surface why — previously
+        // this was a silent no-op ("swipe has no visible effect").
+        guard let placement = plan.placements.first else {
+            let reason = plan.conflicts.first?.message ?? "no available slot"
+            showToast("COULDN'T SCHEDULE — \(reason.uppercased())", kind: .error)
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
 
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+        let capturedStart = placement.startDate
+        let capturedEnd = placement.endDate
 
         // Canonical path — saves context, computes duration, records the
         // SyncOperation, and fires schedule-change notifications to team
@@ -455,11 +579,21 @@ struct UnscheduledTaskReviewView: View {
             do {
                 try await dataController.updateTaskSchedule(
                     task: task,
-                    startDate: placement.startDate,
-                    endDate: placement.endDate
+                    startDate: capturedStart,
+                    endDate: capturedEnd
                 )
+                await MainActor.run {
+                    showToast(
+                        "SCHEDULED \(formatScheduledRange(start: capturedStart, end: capturedEnd))",
+                        kind: .success
+                    )
+                }
             } catch {
                 print("[UNSCHEDULED_REVIEW] Failed to auto-schedule task: \(error)")
+                await MainActor.run {
+                    showToast("SCHEDULE FAILED — TAP TASK LATER TO RETRY", kind: .error)
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
             }
         }
     }

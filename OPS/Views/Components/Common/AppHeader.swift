@@ -22,6 +22,13 @@ struct AppHeader: View {
     @EnvironmentObject private var appState: AppState
     @State private var showLockedMessage: String? = nil
     @State private var showLockedAlert: Bool = false
+    // Bug 5d66ee80: avatar dimming during sync used to be wired via nested
+    // `.animation(_, value:)` modifiers which created an animation boundary
+    // and caused the avatar to skip the tab-switch slide (it rendered at its
+    // final position before the transition started). We now keep the derived
+    // dimming state in local @State and drive it via onChange + withAnimation,
+    // so parent transitions flow through cleanly.
+    @State private var avatarIsDimmed: Bool = false
 
     // Bug G5 — Settings-tab search: the magnifying glass icon expands in place
     // into a full-width text field. Focus state is local; the text value and
@@ -107,7 +114,11 @@ struct AppHeader: View {
                     appState.showingNotifications = true
                 }) {
                     ZStack {
-                        // Avatar — dimmed when sync operations are pending/active
+                        // Avatar — dimmed when sync operations are pending/active.
+                        // Opacity is driven by local @State (avatarIsDimmed), not
+                        // the live published values, so tab-switch transitions
+                        // render the avatar's final opacity up front and the slide
+                        // animates uniformly with the rest of the header.
                         Group {
                             if let user = dataController.currentUser {
                                 UserAvatar(user: user, size: 44)
@@ -128,9 +139,7 @@ struct AppHeader: View {
                                     )
                             }
                         }
-                        .opacity(dataController.syncEngine.pendingOperationCount > 0 || dataController.syncEngine.isSyncing ? 0.35 : 1.0)
-                        .animation(OPSStyle.Animation.standard, value: dataController.syncEngine.pendingOperationCount)
-                        .animation(OPSStyle.Animation.standard, value: dataController.syncEngine.isSyncing)
+                        .opacity(avatarIsDimmed ? 0.35 : 1.0)
 
                         // Sync overlay — spinning icon with count in center
                         if dataController.syncEngine.pendingOperationCount > 0 || dataController.syncEngine.isSyncing {
@@ -198,6 +207,19 @@ struct AppHeader: View {
             }
             .onAppear {
                 appState.refreshUnreadCount()
+                // Seed dim state without animation so tab-enter renders the
+                // final opacity immediately — the tab-slide carries the avatar.
+                avatarIsDimmed = dataController.syncEngine.pendingOperationCount > 0 || dataController.syncEngine.isSyncing
+            }
+            .onChange(of: dataController.syncEngine.pendingOperationCount) { _, _ in
+                withAnimation(OPSStyle.Animation.standard) {
+                    avatarIsDimmed = dataController.syncEngine.pendingOperationCount > 0 || dataController.syncEngine.isSyncing
+                }
+            }
+            .onChange(of: dataController.syncEngine.isSyncing) { _, _ in
+                withAnimation(OPSStyle.Animation.standard) {
+                    avatarIsDimmed = dataController.syncEngine.pendingOperationCount > 0 || dataController.syncEngine.isSyncing
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .notificationReceived)) { _ in
                 appState.refreshUnreadCount()
@@ -332,6 +354,13 @@ struct AppHeader: View {
                                             .background(OPSStyle.Colors.warningStatus)
                                             .clipShape(Capsule())
                                             .offset(x: 6, y: -4)
+                                            // Explicit entry animation so the
+                                            // count visibly lands when the tab
+                                            // slide completes — without this
+                                            // the badge renders at its offset
+                                            // instantly and reads as "already
+                                            // in place" (bug 5d66ee80).
+                                            .transition(.scale(scale: 0.6).combined(with: .opacity))
                                     }
                                 }
                             }
@@ -365,6 +394,7 @@ struct AppHeader: View {
                                             .background(OPSStyle.Colors.warningStatus)
                                             .clipShape(Capsule())
                                             .offset(x: 6, y: -4)
+                                            .transition(.scale(scale: 0.6).combined(with: .opacity))
                                     }
                                 }
                             }
@@ -399,6 +429,7 @@ struct AppHeader: View {
                                             .background(OPSStyle.Colors.warningStatus)
                                             .clipShape(Capsule())
                                             .offset(x: 6, y: -4)
+                                            .transition(.scale(scale: 0.6).combined(with: .opacity))
                                     }
                                 }
                             }

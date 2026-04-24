@@ -10,6 +10,15 @@ struct PolygonMath {
     /// Calculate the area of a polygon defined by ordered vertices (canvas coordinates)
     /// Returns area in canvas points squared
     static func area(vertices: [CGPoint]) -> Double {
+        abs(signedArea(vertices: vertices))
+    }
+
+    /// Signed shoelace area. Sign encodes winding direction: in SwiftUI canvas
+    /// coordinates (Y-down) a positive result means the vertices wind CW
+    /// visually, negative means CCW. Used by `orderedPositions` to normalize
+    /// winding so downstream code (3D extrusion normals, AR placement, any
+    /// future fill-rule-sensitive consumer) sees a consistent direction.
+    static func signedArea(vertices: [CGPoint]) -> Double {
         guard vertices.count >= 3 else { return 0 }
         var sum = 0.0
         let n = vertices.count
@@ -18,7 +27,7 @@ struct PolygonMath {
             sum += Double(vertices[i].x * vertices[j].y)
             sum -= Double(vertices[j].x * vertices[i].y)
         }
-        return abs(sum) / 2.0
+        return sum / 2.0
     }
 
     /// Calculate area in real-world square inches given a scale factor

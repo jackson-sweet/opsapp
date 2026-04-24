@@ -178,8 +178,14 @@ struct DimensionEngine {
             // rewriting "inches". Order matters: longest first.
             .replacingOccurrences(of: "feet", with: "'", options: .caseInsensitive)
             .replacingOccurrences(of: "ft", with: "'", options: .caseInsensitive)
-            // "in" alone (common shorthand); do this last so it doesn't hit "inches"/"inch"
-            .replacingOccurrences(of: "in", with: "\"", options: .caseInsensitive)
+            // "in" alone (common shorthand). Use a word-boundary regex so we
+            // don't eat the "in" inside unrelated tokens (e.g. a stray "min"
+            // or contractor's notes appended to a dimension field).
+            .replacingOccurrences(
+                of: "\\bin\\b",
+                with: "\"",
+                options: [.regularExpression, .caseInsensitive]
+            )
     }
 
     /// Backwards-compatible shim — callers inside DimensionEngine keep using the

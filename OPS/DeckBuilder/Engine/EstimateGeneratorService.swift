@@ -522,17 +522,39 @@ struct EstimateGeneratorService {
     }
 
     /// Calculate total rise for stairs on an edge (in inches). Returns nil if elevation is not set.
+    /// Searches across all levels in multi-level mode — `drawingData.vertex(byId:)`
+    /// only checks the top-level array, so without this the multi-level path would
+    /// always fall through to the overallElevation branch and use the wrong height.
     static func calculateTotalRise(edge: DeckEdge, drawingData: DeckDrawingData) -> Double? {
-        // Get elevation from connected vertices (elevation is in feet)
-        if let startVertex = drawingData.vertex(byId: edge.startVertexId),
-           let endVertex = drawingData.vertex(byId: edge.endVertexId) {
-            guard let overallElev = drawingData.overallElevation else { return nil }
-            let startElev = startVertex.elevation ?? overallElev
-            let endElev = endVertex.elevation ?? overallElev
-            return max(startElev, endElev) * 12.0 // feet to inches
+        // Lookup helper that walks the active geometry source (single-level or
+        // every level), plus the level whose elevation overrides per-vertex
+        // elevation when per-vertex isn't enabled.
+        func findVertexAndLevelElev(_ id: String) -> (vertex: DeckVertex, levelElev: Double?)? {
+            if drawingData.isMultiLevel {
+                for level in drawingData.levels {
+                    if let v = level.vertex(byId: id) {
+                        return (v, level.elevation)
+                    }
+                }
+                return nil
+            }
+            if let v = drawingData.vertex(byId: id) {
+                return (v, drawingData.overallElevation)
+            }
+            return nil
         }
-        guard let overallElev = drawingData.overallElevation else { return nil }
-        return overallElev * 12.0
+
+        guard let startInfo = findVertexAndLevelElev(edge.startVertexId),
+              let endInfo = findVertexAndLevelElev(edge.endVertexId) else {
+            // Edge belongs to no known level — fall back to top-level elevation.
+            guard let overallElev = drawingData.overallElevation else { return nil }
+            return overallElev * 12.0
+        }
+
+        let startElev = startInfo.vertex.elevation ?? startInfo.levelElev ?? drawingData.overallElevation
+        let endElev = endInfo.vertex.elevation ?? endInfo.levelElev ?? drawingData.overallElevation
+        guard let s = startElev, let e = endElev else { return nil }
+        return max(s, e) * 12.0  // feet to inches
     }
 
     private static func edgeDescription(_ edge: DeckEdge, drawingData: DeckDrawingData) -> String? {

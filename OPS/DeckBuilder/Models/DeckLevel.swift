@@ -104,6 +104,11 @@ struct DeckLevel: Identifiable, Codable, Equatable {
         }
 
         guard ordered.count == vertices.count else { return vertices.map { $0.position } }
+        // Match DeckDrawingData.orderedPositions: normalize winding so any
+        // direction-sensitive consumer sees a stable orientation.
+        if PolygonMath.signedArea(vertices: ordered) > 0 {
+            ordered.reverse()
+        }
         return ordered
     }
 

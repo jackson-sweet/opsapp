@@ -1099,9 +1099,17 @@ struct DeckCanvasView: View {
     // MARK: - Coordinate Conversion
 
     private func canvasPoint(from location: CGPoint, in size: CGSize) -> CGPoint {
-        CGPoint(
+        // Clamp to the canvas workspace so vertices created from the gesture
+        // can't drift to (7200, 6800) when the user pinches way out and taps
+        // beyond the canvas edge. Off-workspace vertices render invisible but
+        // still count toward perimeter / area.
+        let raw = CGPoint(
             x: (location.x - canvasOffset.width) / canvasScale,
             y: (location.y - canvasOffset.height) / canvasScale
+        )
+        return CGPoint(
+            x: min(max(0, raw.x), canvasSize),
+            y: min(max(0, raw.y), canvasSize)
         )
     }
 

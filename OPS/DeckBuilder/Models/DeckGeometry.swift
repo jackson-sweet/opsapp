@@ -359,6 +359,15 @@ struct DeckDrawingData: Codable {
             return vertices.map { $0.position }
         }
 
+        // Normalize winding so the walk always returns vertices in the same
+        // visual direction (CCW in SwiftUI canvas coordinates → negative
+        // shoelace). The first-step pick is otherwise arbitrary and depends
+        // on UUID sort, which would silently flip direction for any future
+        // consumer that cares (3D normals, fill rules, etc.).
+        if PolygonMath.signedArea(vertices: ordered) > 0 {
+            ordered.reverse()
+        }
+
         return ordered
     }
 
@@ -420,7 +429,14 @@ struct DeckDrawingData: Codable {
         firstLevel.footprint = footprint
         firstLevel.elevation = overallElevation
         levels = [firstLevel]
-        // Keep top-level fields for backward compat but levels takes precedence
+        // Clear the top-level shape state — the data lives in `levels[0]` now.
+        // Without this, deleting every level later flips `isMultiLevel` back
+        // to false, and the original single-level vertices/edges silently
+        // resurface (the user dragged a deck into existence twice).
+        vertices = []
+        edges = []
+        footprint = DeckFootprint()
+        overallElevation = nil
     }
 
     // MARK: - Serialization

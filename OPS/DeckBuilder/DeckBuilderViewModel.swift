@@ -45,10 +45,20 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var showingARVisualization: Bool = false
 
     var can3DMode: Bool {
+        // Self-intersecting shapes can't be extruded (the 3D mesh would fold
+        // through itself). The renderer already shows the EDGES CROSS warning
+        // — disabling 3D mirrors that gating so the action surface stays
+        // consistent with what the deck actually allows.
         if isMultiLevel {
-            return drawingData.levels.contains { $0.isClosed && $0.vertices.count >= 3 }
+            return drawingData.levels.contains { level in
+                level.isClosed &&
+                level.vertices.count >= 3 &&
+                !PolygonMath.isSelfIntersecting(vertices: level.orderedPositions)
+            }
         }
-        return drawingData.vertices.count >= 3 && drawingData.isClosed
+        return drawingData.vertices.count >= 3
+            && drawingData.isClosed
+            && !PolygonMath.isSelfIntersecting(vertices: drawingData.orderedPositions)
     }
 
     var canViewInAR: Bool { can3DMode }
@@ -577,10 +587,17 @@ class DeckBuilderViewModel: ObservableObject {
 
         activeEdges.append(edge)
 
-        // Check if we closed the polygon
+        // Check if we closed the polygon. Success haptic is reserved for
+        // valid closures — a bowtie is topologically closed but visually
+        // wrong, and celebrating that with a success buzz misleads the user
+        // into thinking the deck is good.
         if activeIsClosed {
             activeFootprint.isClosed = true
-            hapticSuccess() // polygon closed — key moment
+            if PolygonMath.isSelfIntersecting(vertices: activeOrderedPositions) {
+                hapticMedium()
+            } else {
+                hapticSuccess()
+            }
         } else {
             hapticMedium() // line committed
         }
@@ -822,10 +839,14 @@ class DeckBuilderViewModel: ObservableObject {
                 // Recalculate dimensions on edges now connected to the merge target
                 recalculateEdgeDimensions(connectedTo: mergeTargetId)
 
-                // Check if we closed the polygon
+                // Check if we closed the polygon. Same gating as endLine: a
+                // bowtie is topologically closed but doesn't earn a success
+                // haptic until the user fixes the crossings.
                 if activeIsClosed {
                     activeFootprint.isClosed = true
-                    hapticSuccess()
+                    if !PolygonMath.isSelfIntersecting(vertices: activeOrderedPositions) {
+                        hapticSuccess()
+                    }
                 }
             } else {
                 recalculateEdgeDimensions(connectedTo: vertexId)
@@ -1045,6 +1066,11 @@ class DeckBuilderViewModel: ObservableObject {
         activeFootprint = fp
         pruneOrphanedLevelConnections()
         selection.clear()
+        // Footprint can no longer be selected if the polygon just broke open.
+        // selection.clear() above resets selectedFootprint to false; calling
+        // out the dependency explicitly so the rule survives any future
+        // refactor that uses a partial-clear instead of full clear.
+        if !activeIsClosed { selection.selectedFootprint = false }
         hapticMedium()
         save()
     }
@@ -1065,6 +1091,7 @@ class DeckBuilderViewModel: ObservableObject {
         activeFootprint = fp
         pruneOrphanedLevelConnections()
         selection.clear()
+        if !activeIsClosed { selection.selectedFootprint = false }
         hapticMedium()
         save()
     }
@@ -1148,6 +1175,10 @@ class DeckBuilderViewModel: ObservableObject {
         do {
             try modelContext?.save()
             isLocallySaved = true
+            // Clear any previous failure now that we've succeeded — otherwise
+            // the toast keeps showing a stale error after the user has worked
+            // around whatever caused it.
+            saveError = nil
         } catch {
             print("[DeckBuilder] Save failed: \(error)")
             saveError = "Save failed — check storage"
@@ -1354,8 +1385,23 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Estimate & Share
 
     var canGenerateEstimate: Bool {
-        EstimateGeneratorService.hasAssignments(drawingData) &&
-        drawingData.allEdges.contains(where: { $0.dimension != nil })
+        // Require a CLOSED valid polygon so the action affordance matches what
+        // the estimate path can actually produce. Otherwise the button enables
+        // the moment a railing is assigned to a half-drawn outline, then errors
+        // out the moment the user taps it.
+        let hasClosedShape: Bool
+        if isMultiLevel {
+            hasClosedShape = drawingData.levels.contains { level in
+                level.isClosed &&
+                !PolygonMath.isSelfIntersecting(vertices: level.orderedPositions)
+            }
+        } else {
+            hasClosedShape = drawingData.isClosed &&
+                !PolygonMath.isSelfIntersecting(vertices: drawingData.orderedPositions)
+        }
+        return hasClosedShape &&
+            EstimateGeneratorService.hasAssignments(drawingData) &&
+            drawingData.allEdges.contains(where: { $0.dimension != nil })
     }
 
     /// Check if an estimate already exists for this deck design
@@ -1552,10 +1598,18 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Photo Overlay
 
     var canShowOverlay: Bool {
+        // Mirror can3DMode's gating — a self-intersecting outline would
+        // overlay the photo with a meaningless polygon shape.
         if isMultiLevel {
-            return drawingData.levels.contains { $0.isClosed && $0.vertices.count >= 3 }
+            return drawingData.levels.contains { level in
+                level.isClosed &&
+                level.vertices.count >= 3 &&
+                !PolygonMath.isSelfIntersecting(vertices: level.orderedPositions)
+            }
         }
-        return drawingData.vertices.count >= 3 && drawingData.isClosed
+        return drawingData.vertices.count >= 3
+            && drawingData.isClosed
+            && !PolygonMath.isSelfIntersecting(vertices: drawingData.orderedPositions)
     }
 
     func savePhotoOverlayState(_ state: PhotoOverlayState) {

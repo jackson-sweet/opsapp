@@ -229,7 +229,21 @@ class DeckBuilderViewModel: ObservableObject {
 
     private var undoStack: [DrawingSnapshot] = []
     private var redoStack: [DrawingSnapshot] = []
-    private let maxUndoDepth = 50
+
+    /// Adaptive cap on undo history. Each snapshot is a full deep copy of
+    /// `DeckDrawingData`, which is cheap for a typical 6-vertex deck but
+    /// grows quickly once a photo overlay or many vertices are in play.
+    /// Keep the standard 50 for light drawings, halve it for heavy ones so
+    /// memory doesn't grow unboundedly during a long editing session on a
+    /// multi-level deck with a field-photo overlay.
+    private var maxUndoDepth: Int {
+        let totalVertices = drawingData.allVertices.count
+        let hasPhotoOverlay = drawingData.photoOverlay != nil
+        if hasPhotoOverlay || totalVertices > 60 {
+            return 25
+        }
+        return 50
+    }
 
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
@@ -285,11 +299,27 @@ class DeckBuilderViewModel: ObservableObject {
         setupLaserSubscription()
     }
 
+    deinit {
+        // Invalidate any in-flight toast / buffer timers so a deck builder
+        // dismissed mid-toast doesn't leave a Timer running for up to 10s
+        // against a deallocated owner. `[weak self]` in the closures already
+        // prevents leaks, but tidying up here keeps the runloop clean.
+        // Timer.invalidate() is safe to call from any actor context.
+        assignmentToastTimer?.invalidate()
+        bufferTimer?.invalidate()
+        errorTimer?.invalidate()
+        disconnectTimer?.invalidate()
+        // Set<AnyCancellable> auto-cancels its members on deinit.
+    }
+
     // MARK: - Undo/Redo
 
     private func pushUndo(_ description: String) {
         undoStack.append(DrawingSnapshot(drawingData: drawingData, description: description))
-        if undoStack.count > maxUndoDepth {
+        // `while` (not `if`) so a cap that just dropped — e.g. user added a
+        // photo overlay mid-session and triggered the heavier-data branch —
+        // trims down to the new limit instead of leaving it one-over.
+        while undoStack.count > maxUndoDepth {
             undoStack.removeFirst()
         }
         redoStack.removeAll()
@@ -427,6 +457,10 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Drawing Operations
 
     func beginLine(from position: CGPoint) {
+        // Wipe any stale alignment guides left over from a previously cancelled
+        // draw. Without this, the first frame after begin renders the old
+        // guides because updateLine hasn't replaced them yet.
+        alignmentGuides = []
         // Magnetic snap to an existing vertex when starting near one. Otherwise
         // snap to the grid and DEFER vertex creation until endLine commits — a
         // cancelled drag must not leave an orphan vertex behind. The undo
@@ -679,6 +713,23 @@ class DeckBuilderViewModel: ObservableObject {
             return
         }
 
+        // Pre-check for any hit before delegating to handleTap. Without this,
+        // a long-press on empty canvas in .draw mode silently clears the
+        // user's selection (handleTap's else branch). Field workers complained
+        // that long-pressing to inspect deselected things they didn't intend
+        // to deselect — only act when there's actually something under the
+        // finger.
+        let hitsVertex = PolygonMath.findVertexAtPoint(
+            point, vertices: activeVertices, hitThreshold: hitThreshold
+        ) != nil
+        let hitsEdge = PolygonMath.findEdgeAtPoint(
+            point, edges: activeEdges, vertices: activeVertices, hitThreshold: hitThreshold * 0.8
+        ) != nil
+        let hitsFootprint = activeIsClosed
+            && !PolygonMath.isSelfIntersecting(vertices: activeOrderedPositions)
+            && PolygonMath.pointInPolygon(point, vertices: activeOrderedPositions)
+        guard hitsVertex || hitsEdge || hitsFootprint else { return }
+
         // Same hit detection as tap, but always shows property sheet
         handleTap(at: point, hitThreshold: hitThreshold)
         if !selection.isEmpty {
@@ -773,6 +824,10 @@ class DeckBuilderViewModel: ObservableObject {
 
     func beginVertexDrag(_ vertexId: String) {
         pushUndo("move vertex")
+        // Drop any leftover guides from a previous draw — none of the non-
+        // .drawing modes render guides, but clearing the array prevents a
+        // stale value from being restored next time .drawing begins.
+        alignmentGuides = []
         drawingMode = .draggingVertex(vertexId: vertexId)
     }
 

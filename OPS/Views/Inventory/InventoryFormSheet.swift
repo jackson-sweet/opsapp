@@ -34,6 +34,10 @@ struct InventoryFormSheet: View {
     @State private var isSaving = false
     @State private var showingDeleteConfirmation = false
     @State private var errorMessage: String? = nil
+    // Bug 3cacb606: expose the spreadsheet-import flow from inside the new-item
+    // sheet. Shown only in .create mode — editing an existing row wouldn't
+    // mean the user wants to bulk-import others.
+    @State private var showingImportFromForm: Bool = false
 
     // Section expansion
     @State private var isItemDetailsExpanded = true
@@ -148,6 +152,13 @@ struct InventoryFormSheet: View {
                             .padding(.top, OPSStyle.Layout.spacing2)
                         }
 
+                        // Import from spreadsheet — new-item only. Bulk paths
+                        // don't belong inside an Edit sheet for an existing row.
+                        if !isEditing {
+                            importFromSpreadsheetButton
+                                .padding(.top, OPSStyle.Layout.spacing2)
+                        }
+
                         Spacer().frame(height: 100)
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -162,6 +173,13 @@ struct InventoryFormSheet: View {
                 onCancel: { dismiss() },
                 onAction: { saveItem() }
             )
+            .fullScreenCover(isPresented: $showingImportFromForm) {
+                // Full-screen cover (not nested sheet) so the import flow's own
+                // multi-step header / progress bar has room to breathe and
+                // iOS doesn't stack two sheet chromes on the user.
+                SpreadsheetImportSheet()
+                    .environmentObject(dataController)
+            }
             .alert("Delete Item", isPresented: $showingDeleteConfirmation) {
                 Button("Cancel", role: .cancel) { }
                 Button("Delete", role: .destructive) { deleteItem() }
@@ -170,6 +188,34 @@ struct InventoryFormSheet: View {
             }
             .onAppear { loadItemData() }
         }
+    }
+
+    // MARK: - Persistent Import CTA
+
+    /// Bottom-of-form button that opens the spreadsheet import flow. Muted
+    /// outline styling so it reads as a secondary option — the primary path
+    /// is still the toolbar Save button above.
+    private var importFromSpreadsheetButton: some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showingImportFromForm = true
+        }) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                Text("IMPORT FROM SPREADSHEET")
+                    .font(OPSStyle.Typography.captionBold)
+                    .tracking(1.1)
+            }
+            .foregroundColor(OPSStyle.Colors.primaryAccent)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Item Details Content

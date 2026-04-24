@@ -223,6 +223,14 @@ struct InventoryView: View {
                                 enterSelectionMode(with: item)
                             }
                         )
+
+                        // Bug 3cacb606: persistent import CTA at the bottom of
+                        // the list so users don't have to empty their inventory
+                        // (or dig through settings) to find it.
+                        if !isSelectionMode {
+                            importFromSpreadsheetRow
+                                .padding(.top, OPSStyle.Layout.spacing3)
+                        }
                     }
 
                     Spacer()
@@ -463,6 +471,51 @@ struct InventoryView: View {
             )
         }
         .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Persistent Import CTA
+
+    /// Bottom-of-list row that opens the spreadsheet import flow. Muted
+    /// styling so it doesn't compete with the inventory cards above it — the
+    /// user's attention should stay on their current items; this row is for
+    /// the moment they realize they'd rather paste a spreadsheet in.
+    private var importFromSpreadsheetRow: some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showingImportSheet = true
+        }) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("IMPORT FROM SPREADSHEET")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .tracking(1.1)
+                    Text("CSV or XLSX — map columns and bulk-tag in one pass")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Empty State

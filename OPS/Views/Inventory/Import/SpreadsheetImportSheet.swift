@@ -23,6 +23,12 @@ struct SpreadsheetImportSheet: View {
     @State private var parsedItems: [ParsedInventoryItem] = []
     @State private var selectedItemIds: Set<UUID> = []
 
+    // Bug f60d9de8: tags the user chose (or typed) to apply to EVERY imported
+    // item. Merged with per-row tags in performImport(). Stored as a Set of
+    // lowercased-unique names — the import loop already handles case-sensitive
+    // display names and does the existing-tag lookup case-insensitively.
+    @State private var bulkTagNames: Set<String> = []
+
     // Configuration state
     @State private var dataOrientation: DataOrientation = .rowsAreItems
     @State private var importMode: ImportMode = .multipleItems
@@ -93,6 +99,8 @@ struct SpreadsheetImportSheet: View {
                         ColumnMappingView(
                             spreadsheetData: data,
                             mappings: $columnMappings,
+                            availableTags: companyTags,
+                            bulkTagNames: $bulkTagNames,
                             onContinue: processMappings
                         )
                     }
@@ -540,11 +548,22 @@ struct SpreadsheetImportSheet: View {
 
             modelContext.insert(newItem)
 
-            // Apply tags from spreadsheet
-            for tagName in item.tags {
-                let trimmedTagName = tagName.trimmingCharacters(in: .whitespaces)
-                guard !trimmedTagName.isEmpty else { continue }
+            // Merge per-row tags with bulk tags, deduping case-insensitively so
+            // we don't apply the same label twice when e.g. the spreadsheet has
+            // "steel" and the bulk picker also has "Steel".
+            var seenLower = Set<String>()
+            var effectiveTagNames: [String] = []
+            for raw in item.tags + Array(bulkTagNames) {
+                let trimmed = raw.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty else { continue }
+                let lower = trimmed.lowercased()
+                guard !seenLower.contains(lower) else { continue }
+                seenLower.insert(lower)
+                effectiveTagNames.append(trimmed)
+            }
 
+            // Apply tags — per-row + bulk combined (deduped above)
+            for trimmedTagName in effectiveTagNames {
                 // Look for existing tag (case-insensitive)
                 if let existingTag = companyTags.first(where: {
                     $0.name.lowercased() == trimmedTagName.lowercased()

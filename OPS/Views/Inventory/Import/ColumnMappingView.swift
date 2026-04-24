@@ -11,12 +11,28 @@ import SwiftUI
 struct ColumnMappingView: View {
     let spreadsheetData: SpreadsheetData
     @Binding var mappings: [ColumnMapping]
+    /// Existing company tags — shown as chips in the bulk-tag picker.
+    let availableTags: [InventoryTag]
+    /// Tags the user wants applied to EVERY imported item (bug f60d9de8).
+    /// Merged with per-row column-mapped tags in SpreadsheetImportSheet
+    /// during performImport().
+    @Binding var bulkTagNames: Set<String>
     let onContinue: () -> Void
 
     @State private var errorMessage: String?
+    @State private var newTagDraft: String = ""
+    @FocusState private var newTagFocused: Bool
 
     private var hasNameMapping: Bool {
         mappings.contains { $0.field == .name }
+    }
+
+    /// Existing tags the user hasn't picked yet — shown as chips to toggle.
+    private var unpickedAvailableTags: [InventoryTag] {
+        let pickedLower = Set(bulkTagNames.map { $0.lowercased() })
+        return availableTags
+            .filter { !pickedLower.contains($0.name.lowercased()) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     var body: some View {
@@ -24,7 +40,7 @@ struct ColumnMappingView: View {
             // Info banner
             infoBanner
 
-            // Mappings list
+            // Mappings list + bulk-tag picker
             ScrollView {
                 LazyVStack(spacing: 1) {
                     ForEach($mappings) { $mapping in
@@ -32,7 +48,10 @@ struct ColumnMappingView: View {
                     }
                 }
                 .padding(.top, OPSStyle.Layout.spacing2)
-                .padding(.bottom, 120)
+
+                bulkTagsSection
+                    .padding(.top, OPSStyle.Layout.spacing3)
+                    .padding(.bottom, 120)
             }
 
             Spacer()
@@ -148,6 +167,166 @@ struct ColumnMappingView: View {
         )
     }
 
+    // MARK: - Bulk Tags Section
+
+    /// Lets the user tag every imported item without needing a tags column in
+    /// the spreadsheet. Existing tags render as chips that toggle on tap; new
+    /// tag names can be typed into the inline field and are created during
+    /// import (SpreadsheetImportSheet.performImport handles the lookup-or-create).
+    private var bulkTagsSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: 6) {
+                Image(systemName: "tag.fill")
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Text("[ APPLY TAGS TO ALL ITEMS ]")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .tracking(1.2)
+            }
+
+            Text("Everything you import gets these tags in addition to anything mapped from a Tags column.")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Currently-selected tags
+            if !bulkTagNames.isEmpty {
+                FlowLayout(spacing: 6) {
+                    ForEach(Array(bulkTagNames).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }, id: \.self) { name in
+                        selectedTagChip(name)
+                    }
+                }
+            }
+
+            // New-tag input
+            HStack(spacing: 8) {
+                TextField("New tag…", text: $newTagDraft)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .autocorrectionDisabled(true)
+                    .textInputAutocapitalization(.never)
+                    .focused($newTagFocused)
+                    .onSubmit { addDraftTag() }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(OPSStyle.Colors.background)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(newTagFocused ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+
+                Button(action: addDraftTag) {
+                    Text("ADD")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(canAddDraftTag ? .black : OPSStyle.Colors.tertiaryText)
+                        .tracking(1.1)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(canAddDraftTag ? Color.white : OPSStyle.Colors.cardBackgroundDark)
+                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                .stroke(canAddDraftTag ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        )
+                }
+                .disabled(!canAddDraftTag)
+            }
+
+            // Existing tags the user can one-tap add
+            if !unpickedAvailableTags.isEmpty {
+                Text("TAP TO ADD EXISTING TAG")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .tracking(1.0)
+                    .padding(.top, 4)
+
+                FlowLayout(spacing: 6) {
+                    ForEach(unpickedAvailableTags) { tag in
+                        existingTagChip(tag)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .overlay(
+            Rectangle()
+                .fill(OPSStyle.Colors.cardBorder)
+                .frame(height: 1),
+            alignment: .top
+        )
+    }
+
+    private var canAddDraftTag: Bool {
+        let trimmed = newTagDraft.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return false }
+        return !bulkTagNames.contains(where: { $0.lowercased() == trimmed.lowercased() })
+    }
+
+    private func addDraftTag() {
+        let trimmed = newTagDraft.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        // Dedupe case-insensitively — keep the first casing the user typed.
+        let lower = trimmed.lowercased()
+        if bulkTagNames.contains(where: { $0.lowercased() == lower }) {
+            newTagDraft = ""
+            return
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        bulkTagNames.insert(trimmed)
+        newTagDraft = ""
+    }
+
+    private func selectedTagChip(_ name: String) -> some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            bulkTagNames.remove(name)
+        }) {
+            HStack(spacing: 5) {
+                Text(name)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(OPSStyle.Colors.primaryText.opacity(0.7))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(OPSStyle.Colors.primaryAccent)
+            .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Remove \(name) from bulk tags")
+    }
+
+    private func existingTagChip(_ tag: InventoryTag) -> some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            bulkTagNames.insert(tag.name)
+        }) {
+            HStack(spacing: 5) {
+                Image(systemName: "plus")
+                    .font(.system(size: 9, weight: .bold))
+                Text(tag.name)
+                    .font(OPSStyle.Typography.smallCaption)
+            }
+            .foregroundColor(OPSStyle.Colors.secondaryText)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(OPSStyle.Colors.background)
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add \(tag.name) to bulk tags")
+    }
+
     // MARK: - Continue Button
 
     private var continueButton: some View {
@@ -212,6 +391,8 @@ struct ColumnMappingView: View {
         ColumnMappingView(
             spreadsheetData: sampleData,
             mappings: .constant(mappings),
+            availableTags: [],
+            bulkTagNames: .constant([]),
             onContinue: { }
         )
     }

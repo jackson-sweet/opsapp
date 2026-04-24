@@ -78,7 +78,11 @@ struct PolygonMath {
         let n = vertices.count
         guard n >= 4 else { return false } // triangles can't self-intersect
 
-        for i in 0..<n {
+        // Outer loop stops at n - 1: when i == n - 1 the inner range
+        // (i + 2)..<n would be (n + 1)..<n and crash Swift's Range init.
+        // Every non-adjacent pair involving the last edge is already
+        // visited by earlier i values, so skipping i = n - 1 is lossless.
+        for i in 0..<(n - 1) {
             let a1 = vertices[i]
             let a2 = vertices[(i + 1) % n]
 

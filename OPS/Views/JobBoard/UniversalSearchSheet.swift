@@ -38,6 +38,12 @@ struct UniversalSearchSheet: View {
     @State private var selectedEstimate: Estimate?
     @State private var selectedInventoryItem: InventoryItem?
 
+    // Collapsed-by-default inactive folders (bug f2f87911). Closed/archived
+    // projects and completed/cancelled tasks live behind a disclosure so the
+    // active results aren't drowned in old work.
+    @State private var showInactiveProjects: Bool = false
+    @State private var showInactiveTasks: Bool = false
+
     // MARK: - Permission Filters
 
     private var isFieldCrew: Bool {
@@ -180,6 +186,35 @@ struct UniversalSearchSheet: View {
         !matchingEstimates.isEmpty
     }
 
+    // MARK: - Active / Inactive Splits
+    //
+    // Inactive = work the user is unlikely to be searching for. Keeping these
+    // visible but collapsed stops old projects from drowning out the two
+    // active jobs the field user actually needs to pull up.
+
+    /// Project statuses that are considered archived — hidden behind a
+    /// disclosure in search results.
+    private static let inactiveProjectStatuses: Set<Status> = [.completed, .closed, .archived]
+
+    /// Task statuses that are considered archived — hidden behind a disclosure.
+    private static let inactiveTaskStatuses: Set<TaskStatus> = [.completed, .cancelled]
+
+    private var matchingActiveProjects: [Project] {
+        matchingProjects.filter { !Self.inactiveProjectStatuses.contains($0.status) }
+    }
+
+    private var matchingInactiveProjects: [Project] {
+        matchingProjects.filter { Self.inactiveProjectStatuses.contains($0.status) }
+    }
+
+    private var matchingActiveTasks: [ProjectTask] {
+        matchingTasks.filter { !Self.inactiveTaskStatuses.contains($0.status) }
+    }
+
+    private var matchingInactiveTasks: [ProjectTask] {
+        matchingTasks.filter { Self.inactiveTaskStatuses.contains($0.status) }
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -278,35 +313,39 @@ struct UniversalSearchSheet: View {
         ScrollView {
             LazyVStack(spacing: 0, pinnedViews: .sectionHeaders) {
 
-                // Projects
+                // Projects — active results expanded; closed/archived/completed
+                // tucked behind a disclosure so they don't bury active work.
                 if !matchingProjects.isEmpty {
                     searchSection("PROJECTS", icon: "folder.fill", count: matchingProjects.count) {
-                        ForEach(matchingProjects) { project in
-                            SearchResultRow(
-                                icon: "folder.fill",
-                                title: project.title,
-                                subtitle: project.effectiveClientName.isEmpty ? project.address : project.effectiveClientName,
-                                trailingText: project.status.displayName,
-                                accentColor: project.status.color
-                            ) {
-                                navigateToProject(project)
+                        ForEach(matchingActiveProjects) { project in
+                            projectRow(project)
+                        }
+                        inactiveDisclosure(
+                            label: "CLOSED & ARCHIVED",
+                            count: matchingInactiveProjects.count,
+                            isOpen: $showInactiveProjects
+                        ) {
+                            ForEach(matchingInactiveProjects) { project in
+                                projectRow(project)
                             }
                         }
                     }
                 }
 
-                // Tasks
+                // Tasks — active expanded; completed/cancelled tucked behind a
+                // disclosure for the same reason.
                 if !matchingTasks.isEmpty {
                     searchSection("TASKS", icon: "checklist", count: matchingTasks.count) {
-                        ForEach(matchingTasks) { task in
-                            SearchResultRow(
-                                icon: "checklist",
-                                title: task.displayTitle,
-                                subtitle: task.project?.title,
-                                trailingText: task.status.displayName,
-                                accentColor: task.status.color
-                            ) {
-                                navigateToTask(task)
+                        ForEach(matchingActiveTasks) { task in
+                            taskRow(task)
+                        }
+                        inactiveDisclosure(
+                            label: "COMPLETED & CANCELLED",
+                            count: matchingInactiveTasks.count,
+                            isOpen: $showInactiveTasks
+                        ) {
+                            ForEach(matchingInactiveTasks) { task in
+                                taskRow(task)
                             }
                         }
                     }
@@ -400,6 +439,77 @@ struct UniversalSearchSheet: View {
             .padding(.bottom, 40)
         }
         .animation(.accessibleEaseInOut(duration: 0.15), value: query)
+    }
+
+    // MARK: - Row Builders
+
+    private func projectRow(_ project: Project) -> some View {
+        SearchResultRow(
+            icon: "folder.fill",
+            title: project.title,
+            subtitle: project.effectiveClientName.isEmpty ? project.address : project.effectiveClientName,
+            trailingText: project.status.displayName,
+            accentColor: project.status.color
+        ) {
+            navigateToProject(project)
+        }
+    }
+
+    private func taskRow(_ task: ProjectTask) -> some View {
+        SearchResultRow(
+            icon: "checklist",
+            title: task.displayTitle,
+            subtitle: task.project?.title,
+            trailingText: task.status.displayName,
+            accentColor: task.status.color
+        ) {
+            navigateToTask(task)
+        }
+    }
+
+    // MARK: - Inactive Disclosure
+
+    /// Collapsible footer inside a search section. When there are inactive
+    /// matches, renders a tap target that reveals them — otherwise it's a
+    /// no-op so empty sections stay tight. Designed for gloved taps: 44pt
+    /// vertical hit region.
+    @ViewBuilder
+    private func inactiveDisclosure<Content: View>(
+        label: String,
+        count: Int,
+        isOpen: Binding<Bool>,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        if count > 0 {
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isOpen.wrappedValue.toggle()
+                }
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: isOpen.wrappedValue ? "chevron.down" : "chevron.right")
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text("[ \(label) · \(count) ]")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .tracking(1.1)
+                    Spacer()
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(isOpen.wrappedValue ? "Hide" : "Show") \(count) \(label.lowercased()) results")
+
+            if isOpen.wrappedValue {
+                VStack(spacing: 6) {
+                    content()
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
     }
 
     // MARK: - Section Builder

@@ -54,6 +54,36 @@ struct PhotoStorageBudgetCard: View {
     @State private var cachedCandidates: [EvictionCandidate] = []
     @State private var isLoadingCache = true
 
+    // Bug fcaec15c: lowering the slider was "not cutting excess" from the
+    // user's POV because the apply path committed the budget, called
+    // enforceCapacityPolicy synchronously, and then only kicked off an async
+    // cache refresh — the progress bar stayed stuck on the old usage/budget
+    // until the refresh completed and the banner of what actually happened
+    // never appeared. These three flags close the feedback gap:
+    //   • `isApplyingBudget` disables the Apply buttons and shows a spinner
+    //     while the commit + eviction run (brief but not instant when the
+    //     user has hundreds of cached photos).
+    //   • `applyBanner` surfaces the result — photo count + bytes freed —
+    //     for 3.5 s so the user sees the action landed.
+    //   • We also mutate cachedUsageBytes / cachedBudgetBytes optimistically
+    //     before refreshCache runs so the progress bar snaps to its new
+    //     target immediately.
+    @State private var isApplyingBudget = false
+    @State private var applyBanner: ApplyBanner? = nil
+    @State private var applyBannerDismissTask: Task<Void, Never>? = nil
+
+    struct ApplyBanner: Equatable {
+        let kind: Kind
+        let evictedCount: Int
+        let bytesFreed: Int64
+
+        enum Kind: Equatable {
+            case evicted
+            case raised(headroom: Int64)
+            case unchanged
+        }
+    }
+
     struct EvictionCandidate {
         let projectDate: Date
         let url: String
@@ -187,8 +217,14 @@ struct PhotoStorageBudgetCard: View {
                 applyPendingCard
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
+
+            if let banner = applyBanner {
+                applyResultBanner(banner)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .animation(.easeInOut(duration: 0.2), value: hasPendingChange)
+        .animation(.easeInOut(duration: 0.25), value: applyBanner)
         .onAppear {
             if !didLoadInitialBudget {
                 // Seed cached budget from UserDefaults (nonisolated, instant)
@@ -341,17 +377,84 @@ struct PhotoStorageBudgetCard: View {
                                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 }
+                .disabled(isApplyingBudget)
 
                 Button(action: applyPendingChange) {
-                    Text(wouldTriggerEviction ? "Apply & Delete" : "Apply")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(accent)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    HStack(spacing: 8) {
+                        if isApplyingBudget {
+                            ProgressView()
+                                .tint(.white)
+                                .scaleEffect(0.85)
+                        }
+                        Text(applyButtonLabel)
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(.white)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(accent)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
+                .disabled(isApplyingBudget)
             }
+        }
+        .padding()
+        .background(accent.opacity(0.12))
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(accent, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+    }
+
+    private var applyButtonLabel: String {
+        if isApplyingBudget {
+            return wouldTriggerEviction ? "Deleting…" : "Applying…"
+        }
+        return wouldTriggerEviction ? "Apply & Delete" : "Apply"
+    }
+
+    @ViewBuilder
+    private func applyResultBanner(_ banner: ApplyBanner) -> some View {
+        let (accent, icon, title, body): (Color, String, String, String) = {
+            switch banner.kind {
+            case .evicted:
+                return (
+                    OPSStyle.Colors.successStatus,
+                    "checkmark.circle.fill",
+                    "LIMIT APPLIED",
+                    "Removed \(banner.evictedCount) photo\(banner.evictedCount == 1 ? "" : "s") (\(StorageProfiler.formatBytes(banner.bytesFreed))) from your oldest projects."
+                )
+            case .raised(let headroom):
+                return (
+                    OPSStyle.Colors.primaryAccent,
+                    "arrow.up.circle.fill",
+                    "LIMIT RAISED",
+                    "Added \(StorageProfiler.formatBytes(headroom)) of headroom. Next sync will fill it from your most recent projects."
+                )
+            case .unchanged:
+                return (
+                    OPSStyle.Colors.primaryAccent,
+                    "checkmark.circle.fill",
+                    "LIMIT APPLIED",
+                    "Current usage already fits — no photos were removed."
+                )
+            }
+        }()
+
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .foregroundColor(accent)
+                Text(title)
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(accent)
+                    .tracking(1.2)
+            }
+            Text(body)
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding()
         .background(accent.opacity(0.12))
@@ -389,17 +492,47 @@ struct PhotoStorageBudgetCard: View {
     }
 
     private func applyPendingChange() {
+        guard !isApplyingBudget else { return }
+        isApplyingBudget = true
+
+        let previousCommittedBytes = Int64(committedBudgetMB * 1_048_576)
         let newBytes = pendingBudgetBytes
         profiler.setBudget(newBytes)
         let resolvedBudget = profiler.budgetBytes
 
-        if resolvedBudget < currentUsageBytes {
-            let result = downloadManager.enforceCapacityPolicy(
+        // Snapshot usage before eviction so the banner / optimistic update can
+        // describe the change in one coherent read.
+        let usageBefore = cachedUsageBytes
+
+        var evicted: (deleted: Int, bytesFreed: Int64) = (0, 0)
+        if resolvedBudget < usageBefore {
+            evicted = downloadManager.enforceCapacityPolicy(
                 projectsWithPhotos: projectsWithPhotosPayload
             )
-            print("[PhotoStorageBudgetCard] Apply+Delete: evicted \(result.deleted), freed \(StorageProfiler.formatBytes(result.bytesFreed))")
+            print("[PhotoStorageBudgetCard] Apply+Delete: evicted \(evicted.deleted), freed \(StorageProfiler.formatBytes(evicted.bytesFreed))")
         } else {
             print("[PhotoStorageBudgetCard] Apply: budget set to \(StorageProfiler.formatBytes(resolvedBudget)); no eviction needed")
+        }
+
+        // Optimistic cache update so the progress bar + numeric labels reflect
+        // the new budget and post-eviction usage BEFORE the async refreshCache
+        // finishes its disk walk. Without this, the UI looks like the Apply
+        // button did nothing for a second or two.
+        cachedBudgetBytes = resolvedBudget
+        cachedUsageBytes = max(0, usageBefore - evicted.bytesFreed)
+        if evicted.bytesFreed > 0 {
+            // Drop the oldest candidates that summed up to the freed bytes —
+            // same oldest-first ordering enforceCapacityPolicy uses, so the
+            // preview math for any follow-up Apply stays honest.
+            var remaining = evicted.bytesFreed
+            var dropCount = 0
+            while dropCount < cachedCandidates.count && remaining > 0 {
+                remaining -= cachedCandidates[dropCount].fileSize
+                dropCount += 1
+            }
+            if dropCount > 0 {
+                cachedCandidates.removeFirst(min(dropCount, cachedCandidates.count))
+            }
         }
 
         committedBudgetMB = Double(resolvedBudget) / 1_048_576.0
@@ -410,8 +543,38 @@ struct PhotoStorageBudgetCard: View {
             prefetchService.resolveCapHitRailNotifications()
         }
 
+        // Pick the banner shape that matches what actually happened.
+        let banner: ApplyBanner
+        if evicted.deleted > 0 {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            banner = ApplyBanner(kind: .evicted, evictedCount: evicted.deleted, bytesFreed: evicted.bytesFreed)
+        } else if resolvedBudget > previousCommittedBytes {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            let headroom = max(0, resolvedBudget - usageBefore)
+            banner = ApplyBanner(kind: .raised(headroom: headroom), evictedCount: 0, bytesFreed: 0)
+        } else {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            banner = ApplyBanner(kind: .unchanged, evictedCount: 0, bytesFreed: 0)
+        }
+        showApplyBanner(banner)
+
         // Refresh the cache after mutation so usage / candidates reflect the
-        // post-eviction state without a full view rebuild.
-        Task { await refreshCache() }
+        // real post-eviction state (supersedes the optimistic update).
+        Task { @MainActor in
+            await refreshCache()
+            isApplyingBudget = false
+        }
+    }
+
+    /// Shows the apply result banner for 3.5 s, then clears it. Subsequent
+    /// applies cancel the pending dismiss so the latest result always wins.
+    private func showApplyBanner(_ banner: ApplyBanner) {
+        applyBannerDismissTask?.cancel()
+        applyBanner = banner
+        applyBannerDismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            guard !Task.isCancelled else { return }
+            applyBanner = nil
+        }
     }
 }

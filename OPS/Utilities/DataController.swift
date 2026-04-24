@@ -225,7 +225,9 @@ class DataController: ObservableObject {
                 await actor.normalizeTaskIdsToLowercase()
 
                 await actor.cleanupDuplicateUsers()
+                #if DEBUG
                 await actor.cleanupDuplicateProjects()
+                #endif
                 await actor.cleanupDuplicateTasks()
                 await actor.cleanupDuplicateClients()
                 await actor.cleanupDuplicateTaskTypes()
@@ -242,7 +244,9 @@ class DataController: ObservableObject {
                 await actor.rewireRelationships()
             } else {
                 await cleanupDuplicateUsers()
+                #if DEBUG
                 await cleanupDuplicateProjects()
+                #endif
                 await cleanupDuplicateTasks()
                 await cleanupDuplicateClients()
                 await cleanupDuplicateTaskTypes()

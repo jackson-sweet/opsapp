@@ -677,6 +677,8 @@ actor DataActor {
         let descriptor = FetchDescriptor<Project>(
             predicate: #Predicate { $0.id == id }
         )
+        let existingCount = (try? modelContext.fetchCount(descriptor)) ?? 0
+        print("[DUPE_TRACE] DataActor.mergeProject id=\(id) existing_count=\(existingCount)")
 
         if let existing = try modelContext.fetch(descriptor).first {
             let accept = acceptableFields(
@@ -725,6 +727,20 @@ actor DataActor {
                 markSpotlightDirty(domain: SpotlightDomain.project, id: existing.id)
             }
         } else {
+            // Origin suppression: if we wrote this entityId locally within the
+            // last 60s — regardless of SyncOperation status (pending, inProgress,
+            // completed) — the inbound/realtime payload is our own write echoing
+            // back. Inserting here would produce a duplicate because Project.id
+            // lacks @Attribute(.unique). Mirrors the ProjectTask suppression
+            // below (bug f86cf554 / 858fa5e): under the DataActor path, the
+            // outbound push flips the SyncOperation to "completed" before the
+            // echo arrives, so the earlier pending-ops check failed silently.
+            if hasRecentLocalWrite(entityType: .project, entityId: id, withinSeconds: 60) {
+                print("[DUPE_TRACE] DataActor.mergeProject SUPPRESSED id=\(id) — recent local write within 60s")
+                return
+            }
+
+            print("[DUPE_TRACE] DataActor.mergeProject INSERT id=\(id) — no recent local write, treating as remote create")
             let model = dto.toModel()
             model.lastSyncedAt = Date()
             model.needsSync = false

@@ -641,6 +641,9 @@ final class RealtimeProcessor: ObservableObject {
 
     private func upsertProject(context: ModelContext, id: String, model: Project, pendingFields: Set<String>) throws {
         let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == id })
+        let existingCount = (try? context.fetchCount(descriptor)) ?? 0
+        print("[DUPE_TRACE] RT.upsertProject id=\(id) existing_count=\(existingCount) ctx=\(ObjectIdentifier(context))")
+
         if let existing = try context.fetch(descriptor).first {
             if !pendingFields.contains("title")                 { existing.title = model.title }
             if !pendingFields.contains("status")                { existing.status = model.status }
@@ -665,6 +668,19 @@ final class RealtimeProcessor: ObservableObject {
                 existing.needsSync = false
             }
         } else {
+            // Origin suppression: if we wrote this entityId locally within the
+            // last 60s — regardless of SyncOperation status (pending, inProgress,
+            // completed) — the realtime payload is our own write echoing back.
+            // Inserting here would produce a duplicate because Project.id
+            // lacks @Attribute(.unique). Mirrors the ProjectTask suppression
+            // below (bug f86cf554 / 858fa5e).
+            if hasRecentLocalWrite(entityType: .project, entityId: id, withinSeconds: 60, context: context) {
+                print("[DUPE_TRACE] RT.upsertProject SUPPRESSED id=\(id) — recent local write within 60s")
+                try context.save()
+                return
+            }
+
+            print("[DUPE_TRACE] RT.upsertProject INSERT id=\(id) — no recent local write, treating as remote create")
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)

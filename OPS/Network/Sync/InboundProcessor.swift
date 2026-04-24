@@ -623,6 +623,8 @@ final class InboundProcessor {
         let descriptor = FetchDescriptor<Project>(
             predicate: #Predicate { $0.id == id }
         )
+        let existingCount = (try? context.fetchCount(descriptor)) ?? 0
+        print("[DUPE_TRACE] INBOUND.mergeProject id=\(id) existing_count=\(existingCount) ctx=\(ObjectIdentifier(context))")
 
         if let existing = try context.fetch(descriptor).first {
             let accept = acceptableFields(
@@ -674,6 +676,20 @@ final class InboundProcessor {
                 spotlightTracker.markDirty(domain: SpotlightDomain.project, id: existing.id)
             }
         } else {
+            // Origin suppression: if we wrote this entityId locally within the
+            // last 60s — regardless of SyncOperation status (pending, inProgress,
+            // completed, failed) — the inbound DTO is our own write coming back
+            // via pull. Inserting would produce a duplicate because Project.id
+            // lacks @Attribute(.unique). Mirrors mergeTask suppression (bug
+            // f86cf554 / 858fa5e): the previous `hasPendingOperations` check
+            // missed the common case where the outbound push had already
+            // flipped the op to "completed" before the pull pass ran.
+            if hasRecentLocalWrite(entityType: .project, entityId: id, withinSeconds: 60, context: context) {
+                print("[DUPE_TRACE] INBOUND.mergeProject SUPPRESSED id=\(id) — recent local write within 60s")
+                return
+            }
+
+            print("[DUPE_TRACE] INBOUND.mergeProject INSERT id=\(id) — no recent local write, treating as remote create")
             let model = dto.toModel()
             model.lastSyncedAt = Date()
             model.needsSync = false

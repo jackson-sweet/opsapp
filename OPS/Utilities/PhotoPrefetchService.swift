@@ -15,9 +15,18 @@
 //     that they're guaranteed not to be evicted; pins themselves still count
 //     toward budget)
 //
-//  Order: projects with the most-recent activity first. Activity score is the
-//  max of (startDate, endDate, lastSyncedAt) — this surfaces projects the
-//  user is actively working on before archived work.
+//  Order: projects closest to "happening now" first. Priority is distance
+//  (in seconds) from today to the nearer of startDate/endDate — so the
+//  project the user is on today leads, then work scheduled next week, then
+//  recently finished work, then archives. Future-only far-out projects rank
+//  by their start date's distance. Undated projects fall back to lastSyncedAt
+//  with a fixed penalty so any dated project outranks them.
+//
+//  Previous scheme used max(startDate, endDate, lastSyncedAt) as a single
+//  date. Because sync refreshes lastSyncedAt for every project on every
+//  pass, that score collapsed — old and new projects landed at the same
+//  "now" value, sort order became unstable, and the budget cap cut off
+//  active work because archived jobs had already eaten the quota.
 //
 //  Cap-hit behaviour: when the next candidate photo would exceed the budget,
 //  the service posts `.photoStorageBudgetExceeded` (Notification.Name) with a
@@ -150,13 +159,12 @@ final class PhotoPrefetchService: ObservableObject {
             return
         }
 
-        // Sort projects by activity recency (most recent first). Activity score
-        // = max(startDate, endDate, lastSyncedAt). A project with a scheduled
-        // start next week wins over one that synced last month with no dates.
+        // Sort projects by proximity to "now" (smallest distance first). See
+        // `priorityDistance` for the scoring rules.
         let ordered = projects
             .filter { $0.deletedAt == nil }
             .sorted { lhs, rhs in
-                activityScore(for: lhs) > activityScore(for: rhs)
+                priorityDistance(for: lhs) < priorityDistance(for: rhs)
             }
 
         var downloaded = 0
@@ -258,15 +266,35 @@ final class PhotoPrefetchService: ObservableObject {
         }
     }
 
-    /// Composite recency score for project ordering. Projects that the user is
-    /// actively working on (scheduled today, ending tomorrow) should rank above
-    /// projects that last saw server activity but are otherwise dormant.
-    private func activityScore(for project: Project) -> Date {
-        var best = Date.distantPast
-        if let d = project.startDate, d > best { best = d }
-        if let d = project.endDate, d > best { best = d }
-        if let d = project.lastSyncedAt, d > best { best = d }
-        return best
+    /// Distance from "now" to the project's most relevant date, in seconds.
+    /// Smaller = higher priority. Rules:
+    ///
+    /// 1. Project is active today (start ≤ now ≤ end) → distance 0.
+    /// 2. Project has start/end → distance to the nearer of the two
+    ///    (so an upcoming next-week start and a just-finished end both
+    ///    rank ahead of a project that ended three months ago).
+    /// 3. Project is undated → fall back to lastSyncedAt plus a fixed
+    ///    penalty so any dated project outranks an undated one. This
+    ///    keeps brand-new projects visible without letting a stale
+    ///    server-side lastSyncedAt refresh masquerade as active work.
+    private func priorityDistance(for project: Project) -> TimeInterval {
+        let now = Date()
+
+        if let start = project.startDate, let end = project.endDate,
+           start <= now && now <= end {
+            return 0
+        }
+
+        let startDist = project.startDate.map { abs(now.timeIntervalSince($0)) }
+        let endDist = project.endDate.map { abs(now.timeIntervalSince($0)) }
+        if let nearest = [startDist, endDist].compactMap({ $0 }).min() {
+            return nearest
+        }
+
+        // Undated — 90-day penalty keeps these behind any dated project.
+        let undatedPenalty: TimeInterval = 90 * 86_400
+        let syncDist = project.lastSyncedAt.map { abs(now.timeIntervalSince($0)) } ?? .greatestFiniteMagnitude
+        return undatedPenalty + syncDist
     }
 
     /// WiFi-only by default. Returns true if prefetch should proceed given the

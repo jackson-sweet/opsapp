@@ -13,8 +13,22 @@ struct DeckCanvasView: View {
     @State private var drawingStarted = false
     @State private var hasInitializedOffset = false
 
+    // Drives the auto-pan when the user drags toward the viewport edge.
+    // Lives on the view so its timer is torn down with the view.
+    @StateObject private var edgePan = EdgePanController()
+
     // 4800 × 4800 pt workspace ≈ 400' × 400'
     private let canvasSize: CGFloat = 4800
+
+    /// Width of the auto-pan zone along each viewport edge (canvas-untransformed pt).
+    /// Thumb-sized so a finger naturally driven to the edge engages the pan, and so
+    /// the gradient of pan velocity has enough room to feel proportional.
+    private static let edgePanZone: CGFloat = 70
+
+    /// Pan speed in pt/sec at the very edge of the viewport. Tunes the "feels right"
+    /// of the auto-scroll. 700 pt/s clears a typical iPhone viewport in ~0.6s, which
+    /// matches the tempo of dragging across the canvas at a normal sketch pace.
+    private static let edgePanMaxSpeed: CGFloat = 700
 
     /// Zoom range over which annotation scaling is active. Outside this range we
     /// clamp to the nearest end so labels never become microscopic (at extreme
@@ -100,9 +114,54 @@ struct DeckCanvasView: View {
             .simultaneousGesture(tapGesture(size: geometry.size))
             .simultaneousGesture(longPressGesture(size: geometry.size))
             .onAppear {
-                guard !hasInitializedOffset else { return }
-                hasInitializedOffset = true
-                centerViewportOnGeometry(viewportSize: geometry.size)
+                if !hasInitializedOffset {
+                    hasInitializedOffset = true
+                    centerViewportOnGeometry(viewportSize: geometry.size)
+                }
+                wireEdgePan(viewportSize: geometry.size)
+            }
+            .onChange(of: geometry.size) { _, newSize in
+                // GeometryReader can re-fire on rotation / split-view; keep the
+                // controller's notion of viewport in lockstep so edge zones don't
+                // drift after a layout change.
+                wireEdgePan(viewportSize: newSize)
+            }
+        }
+    }
+
+    /// Bind the edge-pan controller to the live view state. Called on appear and
+    /// on viewport size changes so the closures always read current `canvasOffset`,
+    /// `canvasScale`, viewport size, and drawingMode.
+    private func wireEdgePan(viewportSize: CGSize) {
+        edgePan.getCanvasOffset = { canvasOffset }
+        edgePan.setCanvasOffset = { canvasOffset = $0 }
+        edgePan.viewportSize = { viewportSize }
+        edgePan.edgeZone = Self.edgePanZone
+        edgePan.maxSpeed = Self.edgePanMaxSpeed
+        edgePan.isDragActive = {
+            switch viewModel.drawingMode {
+            case .drawing, .draggingVertex, .selecting, .lassoing: return true
+            case .idle: return false
+            }
+        }
+        edgePan.onPan = {
+            // Convert the latest finger position (in viewport coords) into canvas
+            // space using the now-updated offset, then re-emit the drawing update
+            // for whichever mode is active. Without this, the line/marquee would
+            // appear frozen as the canvas slides past the finger.
+            guard let location = edgePan.lastLocation else { return }
+            let canvasPt = canvasPoint(from: location, in: viewportSize)
+            switch viewModel.drawingMode {
+            case .drawing:
+                viewModel.updateLine(to: canvasPt)
+            case .draggingVertex:
+                viewModel.updateVertexDrag(to: canvasPt)
+            case .selecting:
+                viewModel.updateMarquee(to: canvasPt)
+            case .lassoing:
+                viewModel.updateLasso(to: canvasPt)
+            case .idle:
+                break
             }
         }
     }
@@ -1050,6 +1109,7 @@ struct DeckCanvasView: View {
                             } else {
                                 viewModel.beginLine(from: startPoint)
                             }
+                            edgePan.startTracking(location: drag.location)
                         }
                         if case .draggingVertex = viewModel.drawingMode {
                             viewModel.updateVertexDrag(to: point)
@@ -1057,13 +1117,24 @@ struct DeckCanvasView: View {
                             viewModel.updateLine(to: point)
                         }
                     case .select:
-                        if !drawingStarted { drawingStarted = true; viewModel.beginMarquee(at: startPoint) }
+                        if !drawingStarted {
+                            drawingStarted = true
+                            viewModel.beginMarquee(at: startPoint)
+                            edgePan.startTracking(location: drag.location)
+                        }
                         viewModel.updateMarquee(to: point)
                     case .lasso:
-                        if !drawingStarted { drawingStarted = true; viewModel.beginLasso(at: startPoint) }
+                        if !drawingStarted {
+                            drawingStarted = true
+                            viewModel.beginLasso(at: startPoint)
+                            edgePan.startTracking(location: drag.location)
+                        }
                         viewModel.updateLasso(to: point)
                     case .tapSelect, .none: break
                     }
+                    // Keep the auto-pan controller in sync with the latest finger
+                    // position on every frame regardless of which sub-mode we're in.
+                    edgePan.updateLocation(drag.location)
                 default: break
                 }
             }
@@ -1085,6 +1156,7 @@ struct DeckCanvasView: View {
                     }
                 default: break
                 }
+                edgePan.stopTracking()
                 drawingStarted = false
             }
     }
@@ -1106,12 +1178,14 @@ struct DeckCanvasView: View {
                     } else {
                         viewModel.beginMarquee(at: startPoint)
                     }
+                    edgePan.startTracking(location: value.location)
                 }
                 if useLasso {
                     viewModel.updateLasso(to: point)
                 } else {
                     viewModel.updateMarquee(to: point)
                 }
+                edgePan.updateLocation(value.location)
             }
             .onEnded { _ in
                 if viewModel.activeTool == .lasso {
@@ -1119,6 +1193,7 @@ struct DeckCanvasView: View {
                 } else {
                     viewModel.endMarquee()
                 }
+                edgePan.stopTracking()
                 drawingStarted = false
             }
     }
@@ -1149,6 +1224,105 @@ struct DeckCanvasView: View {
                 default: break
                 }
             }
+    }
+}
+
+// MARK: - Edge Pan Controller
+
+/// Drives auto-pan when a drawing/selection drag enters the viewport edge zone.
+/// Owns its own display-rate timer and only ticks while a drag is active. The
+/// view wires four closures (offset getter/setter, viewport size, drag-active
+/// predicate) plus a per-tick `onPan` callback that re-emits the drawing update
+/// for whichever mode is active so the in-progress shape tracks the new canvas
+/// coordinates while the canvas slides past the finger.
+@MainActor
+final class EdgePanController: ObservableObject {
+    private var timer: Timer?
+    private(set) var lastLocation: CGPoint?
+
+    var getCanvasOffset: (() -> CGSize)?
+    var setCanvasOffset: ((CGSize) -> Void)?
+    var viewportSize: (() -> CGSize)?
+    var isDragActive: (() -> Bool)?
+    var onPan: (() -> Void)?
+
+    var edgeZone: CGFloat = 60
+    var maxSpeed: CGFloat = 600
+
+    /// Tick at the device's display refresh — Timer at 60Hz is close enough for
+    /// pan smoothness without bringing in CADisplayLink plumbing.
+    private static let tickInterval: TimeInterval = 1.0 / 60.0
+
+    func startTracking(location: CGPoint) {
+        lastLocation = location
+        guard timer == nil else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.tick() }
+        }
+    }
+
+    func updateLocation(_ location: CGPoint) {
+        lastLocation = location
+    }
+
+    func stopTracking() {
+        timer?.invalidate()
+        timer = nil
+        lastLocation = nil
+    }
+
+    deinit {
+        timer?.invalidate()
+    }
+
+    private func tick() {
+        // Self-cancel if the drag ended without onEnded firing (gesture cancelled
+        // by the system, sheet presentation, etc.) so we don't keep panning.
+        guard isDragActive?() == true else {
+            stopTracking()
+            return
+        }
+        guard let location = lastLocation,
+              let viewport = viewportSize?(),
+              viewport.width > 0, viewport.height > 0 else { return }
+
+        // Press is the depth of the finger into the edge zone, in [-1, 1] per axis.
+        // 0 means outside the zone, ±1 means right at the viewport boundary.
+        var pressX: CGFloat = 0
+        var pressY: CGFloat = 0
+        if location.x < edgeZone {
+            pressX = -(1 - location.x / edgeZone)
+        } else if location.x > viewport.width - edgeZone {
+            pressX = 1 - (viewport.width - location.x) / edgeZone
+        }
+        if location.y < edgeZone {
+            pressY = -(1 - location.y / edgeZone)
+        } else if location.y > viewport.height - edgeZone {
+            pressY = 1 - (viewport.height - location.y) / edgeZone
+        }
+        guard pressX != 0 || pressY != 0 else { return }
+
+        // Ease the pan velocity so the very corner doesn't slingshot. Squaring
+        // turns the linear depth into a gentler ramp (0 → 0, 0.5 → 0.25, 1 → 1).
+        let easedX = pressX * abs(pressX)
+        let easedY = pressY * abs(pressY)
+
+        // Finger pressing toward +X (right edge) should reveal more of the canvas
+        // to the right, which means the canvas's offset.width must DECREASE
+        // (canvas content shifts left to expose its right side under the finger).
+        // Same logic applies to the Y axis.
+        let dx = -easedX * maxSpeed * CGFloat(Self.tickInterval)
+        let dy = -easedY * maxSpeed * CGFloat(Self.tickInterval)
+
+        guard let getOffset = getCanvasOffset, let setOffset = setCanvasOffset else { return }
+        var offset = getOffset()
+        offset.width += dx
+        offset.height += dy
+        setOffset(offset)
+
+        // Re-emit the drawing update so the in-progress line/marquee/vertex
+        // follows the finger in the new canvas coordinate space.
+        onPan?()
     }
 }
 

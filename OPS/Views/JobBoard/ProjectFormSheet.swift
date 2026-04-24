@@ -35,6 +35,9 @@ struct ProjectFormSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
+    // Wizard state so the project-lifecycle banner + instruction bar stay
+    // visible when this sheet is presented over the root view.
+    @Environment(\.wizardStateManager) private var wizardStateManager
     @Query private var allClients: [Client]
     @Query private var allTeamMembers: [TeamMember]
     @Query private var allTaskTypes: [TaskType]
@@ -323,6 +326,11 @@ struct ProjectFormSheet: View {
                 userInfo: ["screen": "ProjectForm"]
             )
         }
+        // Sheets present above the root view where wizardBanner / wizardOverlay
+        // live, so the project-lifecycle guide is invisible here unless the
+        // sheet re-attaches the wizard UI itself.
+        .wizardBannerIfAvailable(stateManager: wizardStateManager)
+        .wizardOverlayIfAvailable(stateManager: wizardStateManager)
     }
 
     /// Content with custom header for tutorial mode

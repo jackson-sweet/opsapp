@@ -50,6 +50,9 @@ struct TaskFormSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
+    // Wizard state so the project-lifecycle / task-flow banner + instruction
+    // bar stay visible when this sheet is presented over the root view.
+    @Environment(\.wizardStateManager) private var wizardStateManager
     @Query private var allProjects: [Project]
     @Query private var allTaskTypes: [TaskType]
     /// Team members as full `User` objects. Using `User` (not the lightweight
@@ -458,6 +461,11 @@ struct TaskFormSheet: View {
                 userInfo: ["screen": "TaskForm"]
             )
         }
+        // Sheets present above the root view where wizardBanner / wizardOverlay
+        // live, so the task-flow guide is invisible here unless the sheet
+        // re-attaches the wizard UI itself.
+        .wizardBannerIfAvailable(stateManager: wizardStateManager)
+        .wizardOverlayIfAvailable(stateManager: wizardStateManager)
         .loadingOverlay(isPresented: $isSaving, message: "Saving...")
         .onChange(of: selectedTaskTypeId) { _, newId in
             // Auto-populate default team members from task type in create mode

@@ -55,6 +55,15 @@ struct TaskTypeSheet: View {
     @State private var showingDependencyPicker = false
     @State private var editingDependencyId: String?
 
+    // Bug 6aa8182e — delete/merge from inside the edit sheet. When the type
+    // is in use, deleting is blocked and the alert routes to the merge sheet.
+    @State private var showDeleteConfirmation = false
+    @State private var showBlockedDeleteAlert = false
+    @State private var showMergeSheet = false
+    @State private var isDeleting = false
+    @State private var deleteErrorMessage: String? = nil
+    @State private var existingTaskTypesForMerge: [TaskType] = []
+
     // Curated OPS color palette — 35 desaturated pastels for task type labels
     // Grouped by family. Names from the job site — materials, weather, textures.
     // Matches OPS-Web: src/lib/data/curated-colors.ts
@@ -148,6 +157,13 @@ struct TaskTypeSheet: View {
 
                         // Dependencies section
                         dependenciesSection
+
+                        // Delete — edit mode only, and only for non-default
+                        // types. Default types ship with the app and can't be
+                        // removed (would orphan tasks across every company).
+                        if case .edit(let taskType, _) = mode, !taskType.isDefault {
+                            deleteTypeSection(for: taskType)
+                        }
                     }
                     .padding()
                     .padding(.bottom, 100)
@@ -195,7 +211,142 @@ struct TaskTypeSheet: View {
         } message: {
             Text(errorMessage ?? "An error occurred")
         }
+        .alert(
+            "Delete this type?",
+            isPresented: $showDeleteConfirmation,
+            presenting: editTaskType
+        ) { type in
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                Task { await performDelete(type) }
+            }
+        } message: { type in
+            Text("\(type.display) has no tasks using it. Delete it for good?")
+        }
+        .alert(
+            "Can't delete — still in use",
+            isPresented: $showBlockedDeleteAlert,
+            presenting: editTaskType
+        ) { type in
+            Button("Cancel", role: .cancel) {}
+            Button("Merge Into Another Type") {
+                showMergeSheet = true
+            }
+        } message: { type in
+            let count = type.tasks.filter { $0.deletedAt == nil }.count
+            Text("\(count) task\(count == 1 ? "" : "s") still use \(type.display). Merge it into another type to move the tasks before deleting.")
+        }
+        .alert(
+            "Delete failed",
+            isPresented: Binding(
+                get: { deleteErrorMessage != nil },
+                set: { if !$0 { deleteErrorMessage = nil } }
+            ),
+            presenting: deleteErrorMessage
+        ) { _ in
+            Button("OK", role: .cancel) { deleteErrorMessage = nil }
+        } message: { message in
+            Text(message)
+        }
+        .sheet(isPresented: $showMergeSheet) {
+            if let source = editTaskType {
+                TaskTypeMergeSheet(
+                    source: source,
+                    allCompanyTypes: existingTaskTypesForMerge,
+                    onComplete: {
+                        // Merge sheet already soft-deleted the source — bubble
+                        // up so parent can refresh, then close this edit sheet.
+                        if case .edit(_, let onSave) = mode {
+                            onSave()
+                        }
+                        dismiss()
+                    }
+                )
+                .environmentObject(dataController)
+            }
+        }
         .loadingOverlay(isPresented: $isSaving, message: "Saving...")
+        .loadingOverlay(isPresented: $isDeleting, message: "Deleting…")
+    }
+
+    // MARK: - Delete Section (edit mode)
+
+    /// The TaskType currently being edited, if the sheet is in edit mode.
+    private var editTaskType: TaskType? {
+        if case .edit(let t, _) = mode { return t }
+        return nil
+    }
+
+    private func deleteTypeSection(for taskType: TaskType) -> some View {
+        VStack(spacing: 10) {
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                requestDelete(taskType)
+            }) {
+                HStack(spacing: 10) {
+                    Image(systemName: "trash")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                    Text("DELETE TYPE")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .tracking(1.2)
+                }
+                .foregroundColor(OPSStyle.Colors.errorStatus)
+                .frame(maxWidth: .infinity)
+                .frame(height: OPSStyle.Layout.touchTargetStandard)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.errorStatus, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+            }
+
+            // Helper copy — reinforces what delete actually does so a distracted
+            // user doesn't realize mid-undo that every task got removed.
+            let activeCount = taskType.tasks.filter { $0.deletedAt == nil }.count
+            if activeCount > 0 {
+                Text("\(activeCount) task\(activeCount == 1 ? "" : "s") use this type — delete is blocked. Merge into another type first.")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("No tasks are using this type. Delete is permanent.")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    private func requestDelete(_ type: TaskType) {
+        // Refresh existingTaskTypesForMerge in case the user added more types
+        // between sheet open and this tap.
+        loadExistingTaskTypes()
+        let activeCount = type.tasks.filter { $0.deletedAt == nil }.count
+        if activeCount > 0 {
+            showBlockedDeleteAlert = true
+        } else {
+            showDeleteConfirmation = true
+        }
+    }
+
+    private func performDelete(_ type: TaskType) async {
+        guard !isDeleting else { return }
+        isDeleting = true
+        defer { isDeleting = false }
+
+        do {
+            try await dataController.deleteTaskType(taskTypeId: type.id)
+            dataController.triggerBackgroundSync()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            if case .edit(_, let onSave) = mode {
+                onSave()
+            }
+            dismiss()
+        } catch {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            deleteErrorMessage = error.localizedDescription
+        }
     }
 
     // MARK: - Preview Card (Blown-Up Task Type Badge)
@@ -776,6 +927,8 @@ struct TaskTypeSheet: View {
 
         do {
             existingTaskTypes = try modelContext.fetch(descriptor)
+            // Same fetch doubles as the pool the merge sheet picks from.
+            existingTaskTypesForMerge = existingTaskTypes
         } catch {
             print("[TASK_TYPE_SHEET] Error fetching task types: \(error)")
         }

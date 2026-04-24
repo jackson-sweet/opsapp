@@ -18,6 +18,15 @@ struct TaskSettingsView: View {
     @State private var selectedTaskType: TaskType?
     @State private var showingEditSheet = false
     @State private var showingAddSheet = false
+
+    // Bug 6aa8182e: delete / rename / merge actions for task types.
+    @State private var taskTypeToDelete: TaskType? = nil
+    @State private var taskTypeToMerge: TaskType? = nil
+    /// Populated when delete is attempted on a type that still owns tasks —
+    /// delete is blocked in that case and the alert redirects to merge.
+    @State private var blockedDeleteType: TaskType? = nil
+    @State private var isDeleting: Bool = false
+    @State private var deleteErrorMessage: String? = nil
     
     var body: some View {
         ZStack {
@@ -69,10 +78,23 @@ struct TaskSettingsView: View {
                     ScrollView {
                         VStack(spacing: 12) {
                             ForEach(sortedTaskTypes) { taskType in
-                                TaskTypeRow(taskType: taskType) {
-                                    selectedTaskType = taskType
-                                    showingEditSheet = true
-                                }
+                                TaskTypeRow(
+                                    taskType: taskType,
+                                    onTap: {
+                                        selectedTaskType = taskType
+                                        showingEditSheet = true
+                                    },
+                                    onRename: {
+                                        selectedTaskType = taskType
+                                        showingEditSheet = true
+                                    },
+                                    onMerge: {
+                                        taskTypeToMerge = taskType
+                                    },
+                                    onDelete: {
+                                        requestDelete(taskType)
+                                    }
+                                )
                             }
                         }
                         .padding(.horizontal, 20)
@@ -123,6 +145,103 @@ struct TaskSettingsView: View {
                 fetchTaskTypes()
             })
             .environmentObject(dataController)
+        }
+        // Merge picker — reassigns tasks to a target type then deletes source.
+        .sheet(item: $taskTypeToMerge) { source in
+            TaskTypeMergeSheet(
+                source: source,
+                allCompanyTypes: taskTypes,
+                onComplete: {
+                    fetchTaskTypes()
+                    // Close the edit sheet too if it was showing for this type.
+                    if selectedTaskType?.id == source.id {
+                        showingEditSheet = false
+                        selectedTaskType = nil
+                    }
+                }
+            )
+            .environmentObject(dataController)
+        }
+        // Delete confirmation — only fires for types with zero active tasks.
+        .alert(
+            "Delete \(taskTypeToDelete?.display ?? "type")?",
+            isPresented: Binding(
+                get: { taskTypeToDelete != nil },
+                set: { if !$0 { taskTypeToDelete = nil } }
+            ),
+            presenting: taskTypeToDelete
+        ) { item in
+            Button("Cancel", role: .cancel) { taskTypeToDelete = nil }
+            Button("Delete", role: .destructive) {
+                Task { await performDelete(item) }
+            }
+        } message: { item in
+            Text("\(item.display) has no tasks using it. Delete it for good?")
+        }
+        // Block-when-in-use alert. Redirects the user to merge.
+        .alert(
+            "Can't delete \(blockedDeleteType?.display ?? "type")",
+            isPresented: Binding(
+                get: { blockedDeleteType != nil },
+                set: { if !$0 { blockedDeleteType = nil } }
+            ),
+            presenting: blockedDeleteType
+        ) { item in
+            Button("Cancel", role: .cancel) { blockedDeleteType = nil }
+            Button("Merge Into Another Type") {
+                taskTypeToMerge = item
+                blockedDeleteType = nil
+            }
+        } message: { item in
+            let count = item.tasks.filter { $0.deletedAt == nil }.count
+            Text("\(count) task\(count == 1 ? "" : "s") still use \(item.display). Merge it into another type to move the tasks before deleting.")
+        }
+        .alert(
+            "Delete failed",
+            isPresented: Binding(
+                get: { deleteErrorMessage != nil },
+                set: { if !$0 { deleteErrorMessage = nil } }
+            ),
+            presenting: deleteErrorMessage
+        ) { _ in
+            Button("OK", role: .cancel) { deleteErrorMessage = nil }
+        } message: { message in
+            Text(message)
+        }
+        .loadingOverlay(isPresented: $isDeleting, message: "Deleting…")
+    }
+
+    // MARK: - Delete / Merge Actions
+
+    private func requestDelete(_ type: TaskType) {
+        let activeCount = type.tasks.filter { $0.deletedAt == nil }.count
+        if activeCount > 0 {
+            blockedDeleteType = type
+        } else {
+            taskTypeToDelete = type
+        }
+    }
+
+    private func performDelete(_ type: TaskType) async {
+        guard !isDeleting else { return }
+        isDeleting = true
+        defer {
+            isDeleting = false
+            taskTypeToDelete = nil
+        }
+
+        do {
+            try await dataController.deleteTaskType(taskTypeId: type.id)
+            dataController.triggerBackgroundSync()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            fetchTaskTypes()
+            if selectedTaskType?.id == type.id {
+                showingEditSheet = false
+                selectedTaskType = nil
+            }
+        } catch {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            deleteErrorMessage = error.localizedDescription
         }
     }
     
@@ -209,6 +328,17 @@ struct TaskSettingsView: View {
 struct TaskTypeRow: View {
     let taskType: TaskType
     let onTap: () -> Void
+    /// Long-press action: open edit sheet focused on the name field. Currently
+    /// behaves the same as onTap — the edit sheet is where rename lives.
+    let onRename: () -> Void
+    /// Long-press action: open the merge-target picker.
+    let onMerge: () -> Void
+    /// Long-press action: delete (parent gates on in-use check).
+    let onDelete: () -> Void
+
+    private var activeTaskCount: Int {
+        taskType.tasks.filter { $0.deletedAt == nil }.count
+    }
 
     var body: some View {
         Button(action: onTap) {
@@ -229,7 +359,7 @@ struct TaskTypeRow: View {
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
 
-                    Text("\(taskType.tasks.count) tasks")
+                    Text("\(activeTaskCount) task\(activeTaskCount == 1 ? "" : "s")")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
@@ -263,6 +393,36 @@ struct TaskTypeRow: View {
             )
         }
         .buttonStyle(PlainButtonStyle())
+        // Defaults have no edit path — tap is disabled, but context menu stays
+        // available so users can still merge / delete custom types via long
+        // press on their card. Default types also support context menu but
+        // individual actions self-gate below.
         .disabled(taskType.isDefault)
+        .contextMenu {
+            // Rename — opens the edit sheet for custom types only.
+            Button {
+                onRename()
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            .disabled(taskType.isDefault)
+
+            // Merge into another type — always available; the picker will
+            // refuse the merge if no other types exist in the company.
+            Button {
+                onMerge()
+            } label: {
+                Label("Merge Into…", systemImage: "arrow.triangle.merge")
+            }
+            .disabled(taskType.isDefault)
+
+            // Delete — custom types only. Defaults are protected.
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .disabled(taskType.isDefault)
+        }
     }
 }

@@ -601,9 +601,11 @@ struct DeckCanvasView: View {
 
         // Edge direction (unit vectors)
         let edgeNx = dx / edgeLen, edgeNy = dy / edgeLen
-        // Perpendicular direction (outward from deck — consistent side)
-        let perpNx = -edgeNy / edgeLen * edgeLen, perpNy = edgeNx / edgeLen * edgeLen
-        let perpUnitX = -edgeNy / edgeLen, perpUnitY = edgeNx / edgeLen
+        // Perpendicular unit vector (90° CCW from edge — outward from deck).
+        // The previous form divided by edgeLen twice (the components are already
+        // unit-vector terms), which scaled the perpendicular by 1/edgeLen and
+        // made stair depth shrink as edges got longer.
+        let perpUnitX = -edgeNy, perpUnitY = edgeNx
 
         // Stair width in canvas points
         let scale = viewModel.drawingData.scaleFactor ?? 1.0

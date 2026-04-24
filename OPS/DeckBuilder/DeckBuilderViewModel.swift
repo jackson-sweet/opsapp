@@ -231,17 +231,26 @@ class DeckBuilderViewModel: ObservableObject {
     var totalArea: Double? {
         guard let scale = drawingData.scaleFactor, scale > 0 else { return nil }
         if isMultiLevel {
-            let closedLevels = drawingData.levels.filter { $0.isClosed }
-            guard !closedLevels.isEmpty else { return nil }
-            return closedLevels.reduce(0) { total, level in
+            // Skip self-intersecting levels — their shoelace value is the signed
+            // sum of cancelling regions, not a usable area. Returning nil for the
+            // whole drawing forces the user to fix the geometry before they can
+            // chase a number that wasn't real.
+            let validLevels = drawingData.levels.filter { level in
+                level.isClosed &&
+                !PolygonMath.isSelfIntersecting(vertices: level.orderedPositions)
+            }
+            guard !validLevels.isEmpty else { return nil }
+            // If at least one level is invalid we still return nil — partial sums
+            // would mislead the user into thinking the deck is priceable.
+            guard validLevels.count == drawingData.levels.filter({ $0.isClosed }).count else { return nil }
+            return validLevels.reduce(0) { total, level in
                 total + PolygonMath.realWorldArea(vertices: level.orderedPositions, scaleFactor: scale)
             }
         }
         guard isClosed else { return nil }
-        return PolygonMath.realWorldArea(
-            vertices: drawingData.orderedPositions,
-            scaleFactor: scale
-        )
+        let positions = drawingData.orderedPositions
+        guard !PolygonMath.isSelfIntersecting(vertices: positions) else { return nil }
+        return PolygonMath.realWorldArea(vertices: positions, scaleFactor: scale)
     }
 
     var totalPerimeter: Double? {
@@ -730,16 +739,41 @@ class DeckBuilderViewModel: ObservableObject {
                    excludeVertexIds: [vertexId]
                ) {
                 // Merge: reroute all edges from dragged vertex to the target
-                for i in activeEdges.indices {
-                    if activeEdges[i].startVertexId == vertexId {
-                        activeEdges[i].startVertexId = mergeTargetId
+                var rerouted = activeEdges
+                for i in rerouted.indices {
+                    if rerouted[i].startVertexId == vertexId {
+                        rerouted[i].startVertexId = mergeTargetId
                     }
-                    if activeEdges[i].endVertexId == vertexId {
-                        activeEdges[i].endVertexId = mergeTargetId
+                    if rerouted[i].endVertexId == vertexId {
+                        rerouted[i].endVertexId = mergeTargetId
                     }
                 }
+
+                // Drop self-loops the merge created (an edge from the dragged
+                // vertex back to its own neighbour now points target→target).
+                // Without this the polygon's adjacency goes 3 — `isClosed`
+                // silently flips false and the deck "breaks" as the user closes it.
+                rerouted.removeAll { $0.startVertexId == $0.endVertexId }
+
+                // Dedupe edges by unordered (start, end) pair. Keep the FIRST
+                // occurrence so a user's manual dimension / railing config on
+                // the older edge survives the merge.
+                var seen: Set<String> = []
+                var deduped: [DeckEdge] = []
+                for edge in rerouted {
+                    let pair = [edge.startVertexId, edge.endVertexId].sorted().joined(separator: "|")
+                    if seen.insert(pair).inserted {
+                        deduped.append(edge)
+                    }
+                }
+                activeEdges = deduped
+
                 // Remove the dragged vertex (it's now merged into the target)
                 activeVertices.removeAll { $0.id == vertexId }
+
+                // Any LevelConnection that referenced an edge we just dropped
+                // would otherwise point at a phantom — clean those up.
+                pruneOrphanedLevelConnections()
 
                 // Recalculate dimensions on edges now connected to the merge target
                 recalculateEdgeDimensions(connectedTo: mergeTargetId)
@@ -788,13 +822,20 @@ class DeckBuilderViewModel: ObservableObject {
         }
         activeUpdateEdge(edge)
 
-        // If this is the first manual dimension on a closed shape, offer scale auto-fill
+        // If this is the first manual dimension on a closed shape, derive scale
+        // from this edge AND back-fill every other `.scale`-source edge whose
+        // stored "dimension" was actually a canvas-point length. Without the
+        // back-fill those edges keep displaying canvas points labelled as inches
+        // — confidently wrong on every other side of the polygon.
         if activeIsClosed && drawingData.scaleFactor == nil {
             if let start = activeVertex(byId: edge.startVertexId),
                let end = activeVertex(byId: edge.endVertexId) {
                 let canvasLength = SnapEngine.distance(start.position, end.position)
                 if let scale = DimensionEngine.calculateScaleFactor(canvasLength: canvasLength, realWorldInches: inches) {
-                    drawingData.scaleFactor = scale
+                    drawingData = DimensionEngine.autoFillDimensions(
+                        drawingData: drawingData,
+                        scaleFactor: scale
+                    )
                 }
             }
         }
@@ -939,6 +980,7 @@ class DeckBuilderViewModel: ObservableObject {
         var fp = activeFootprint
         fp.isClosed = activeIsClosed
         activeFootprint = fp
+        pruneOrphanedLevelConnections()
         selection.clear()
         hapticMedium()
         save()
@@ -958,6 +1000,7 @@ class DeckBuilderViewModel: ObservableObject {
         var fp = activeFootprint
         fp.isClosed = activeIsClosed
         activeFootprint = fp
+        pruneOrphanedLevelConnections()
         selection.clear()
         hapticMedium()
         save()
@@ -998,11 +1041,29 @@ class DeckBuilderViewModel: ObservableObject {
         fp.isClosed = activeIsClosed
         activeFootprint = fp
 
+        pruneOrphanedLevelConnections()
         selection.clear()
         editingEdgeId = nil
         editingVertexId = nil
         hapticMedium()
         save()
+    }
+
+    /// Drop any LevelConnection whose referenced upper or lower edge no longer
+    /// exists. Without this, deleting an edge that participated in a stair
+    /// connection leaves a phantom row in `levelConnections` that ships into
+    /// estimates and survives reload — invisible because the renderer guard
+    /// silently early-returns when the lookup fails.
+    private func pruneOrphanedLevelConnections() {
+        drawingData.levelConnections.removeAll { conn in
+            guard let upper = drawingData.level(byId: conn.upperLevelId),
+                  upper.edge(byId: conn.upperEdgeId) != nil else { return true }
+            if let lowerEdgeId = conn.lowerEdgeId {
+                guard let lower = drawingData.level(byId: conn.lowerLevelId),
+                      lower.edge(byId: lowerEdgeId) != nil else { return true }
+            }
+            return false
+        }
     }
 
     /// Exit multi-select cleanly: drop selection, restore the primary drawing tool.

@@ -39,6 +39,8 @@ struct EstimateGeneratorService {
             footprint: drawingData.footprint,
             edges: drawingData.edges,
             vertices: drawingData.vertices,
+            orderedPositions: drawingData.orderedPositions,
+            isPolygonClosed: drawingData.isClosed,
             drawingData: drawingData,
             levelPrefix: nil,
             startingSortOrder: 0
@@ -56,6 +58,10 @@ struct EstimateGeneratorService {
                 footprint: level.footprint,
                 edges: level.edges,
                 vertices: level.vertices,
+                // Walk the edge graph for area — raw vertex insertion order
+                // produces a meaningless shoelace value for any non-trivial shape.
+                orderedPositions: level.orderedPositions,
+                isPolygonClosed: level.isClosed,
                 drawingData: drawingData,
                 levelPrefix: level.name,
                 startingSortOrder: sortOrder
@@ -124,11 +130,17 @@ struct EstimateGeneratorService {
         return allItems
     }
 
-    /// Generate line items for a single level (or the single-level mode)
+    /// Generate line items for a single level (or the single-level mode).
+    /// `orderedPositions` and `isPolygonClosed` are computed by the caller from
+    /// the right source (DeckLevel for multi-level, DeckDrawingData for single)
+    /// — pass-through avoids the previous bug where the multi-level path used
+    /// raw vertex order and produced a meaningless shoelace area.
     private static func generateSingleLevelLineItems(
         footprint: DeckFootprint,
         edges: [DeckEdge],
         vertices: [DeckVertex],
+        orderedPositions: [CGPoint],
+        isPolygonClosed: Bool,
         drawingData: DeckDrawingData,
         levelPrefix: String?,
         startingSortOrder: Int
@@ -140,12 +152,18 @@ struct EstimateGeneratorService {
         // 1. Surface items (from footprint)
         for item in footprint.assignedItems {
             let areaSqFt: Double
-            if let _ = levelPrefix {
-                // Multi-level: calculate area from this level's vertices
-                guard let scale = drawingData.scaleFactor, scale > 0 else { continue }
-                let positions = vertices.map { $0.position }
-                areaSqFt = PolygonMath.realWorldArea(vertices: positions, scaleFactor: scale) / 144.0
+            if levelPrefix != nil {
+                // Multi-level: walk the edge graph for area, gate on closure +
+                // self-intersection. Without these guards a half-drawn or bowtied
+                // level would still ship into the estimate with a phantom number.
+                guard let scale = drawingData.scaleFactor, scale > 0,
+                      isPolygonClosed,
+                      orderedPositions.count >= 3,
+                      !PolygonMath.isSelfIntersecting(vertices: orderedPositions) else { continue }
+                areaSqFt = PolygonMath.realWorldArea(vertices: orderedPositions, scaleFactor: scale) / 144.0
             } else {
+                // Single-level uses the validated helper that already gates the
+                // same way — keeps this branch in lockstep with totalArea / UI.
                 areaSqFt = calculateAreaSqFt(drawingData: drawingData)
             }
             items.append(GeneratedLineItem(
@@ -464,12 +482,18 @@ struct EstimateGeneratorService {
         if drawingData.isMultiLevel {
             return drawingData.levels.reduce(0) { total, level in
                 let positions = level.orderedPositions
-                guard level.isClosed, positions.count >= 3 else { return total }
+                // Skip unclosed and self-intersecting levels — both produce
+                // shoelace values that are mathematically meaningless for area.
+                guard level.isClosed,
+                      positions.count >= 3,
+                      !PolygonMath.isSelfIntersecting(vertices: positions) else { return total }
                 return total + PolygonMath.realWorldArea(vertices: positions, scaleFactor: scale) / 144.0
             }
         }
         guard drawingData.isClosed else { return 0 }
-        return PolygonMath.realWorldArea(vertices: drawingData.orderedPositions, scaleFactor: scale) / 144.0
+        let positions = drawingData.orderedPositions
+        guard !PolygonMath.isSelfIntersecting(vertices: positions) else { return 0 }
+        return PolygonMath.realWorldArea(vertices: positions, scaleFactor: scale) / 144.0
     }
 
     static func calculatePerimeterFt(drawingData: DeckDrawingData) -> Double {

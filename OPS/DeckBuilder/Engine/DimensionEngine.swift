@@ -76,7 +76,11 @@ struct DimensionEngine {
         return canvasLength / realWorldInches
     }
 
-    /// Auto-fill dimensions for all edges using a scale factor
+    /// Auto-fill dimensions for all edges using a scale factor.
+    /// Critical for the "first manual dimension establishes scale" flow: every
+    /// other edge that was storing a canvas-point length as if it were inches
+    /// must be converted now or the UI will show confidently-wrong dimensions.
+    /// Manual / laser / AR sources are preserved (they are user-authoritative).
     /// - Parameters:
     ///   - drawingData: The current drawing data (mutated in place)
     ///   - scaleFactor: Canvas points per real-world inch
@@ -88,16 +92,29 @@ struct DimensionEngine {
         var updated = drawingData
         updated.scaleFactor = scaleFactor
 
+        // Single-level edges
         for i in 0..<updated.edges.count {
             let edge = updated.edges[i]
-            // Skip edges that already have manual or laser dimensions
             guard edge.dimensionSource == .scale || edge.dimension == nil else { continue }
-
             if let start = updated.vertex(byId: edge.startVertexId),
                let end = updated.vertex(byId: edge.endVertexId) {
                 let canvasLength = SnapEngine.distance(start.position, end.position)
                 updated.edges[i].dimension = canvasLength / scaleFactor
                 updated.edges[i].dimensionSource = .scale
+            }
+        }
+
+        // Multi-level edges — same rule, just nested.
+        for li in 0..<updated.levels.count {
+            for ei in 0..<updated.levels[li].edges.count {
+                let edge = updated.levels[li].edges[ei]
+                guard edge.dimensionSource == .scale || edge.dimension == nil else { continue }
+                if let start = updated.levels[li].vertex(byId: edge.startVertexId),
+                   let end = updated.levels[li].vertex(byId: edge.endVertexId) {
+                    let canvasLength = SnapEngine.distance(start.position, end.position)
+                    updated.levels[li].edges[ei].dimension = canvasLength / scaleFactor
+                    updated.levels[li].edges[ei].dimensionSource = .scale
+                }
             }
         }
         return updated

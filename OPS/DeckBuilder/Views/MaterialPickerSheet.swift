@@ -6,6 +6,7 @@ import SwiftData
 struct MaterialPickerSheet: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var showingHint: Bool = false
     @Query(filter: #Predicate<Product> { $0.isActive }, sort: \Product.name)
     private var products: [Product]
     @Query(sort: \TaskType.displayOrder) private var taskTypes: [TaskType]
@@ -17,6 +18,13 @@ struct MaterialPickerSheet: View {
 
     private var sheetTitle: String {
         isLinearMode ? "Linear Materials" : "Surface Materials"
+    }
+
+    /// Explanation surfaced both in the empty state and behind the (?) button.
+    /// Kept short — field crews don't read paragraphs.
+    private var sourceHintBody: String {
+        let unitNeeded = isLinearMode ? "linear ft" : "sq ft"
+        return "Pulled from your Company Products. The picker filters by unit — only products in \(unitNeeded) show up here. Add or edit products in Settings → Products."
     }
 
     // MARK: - Unit Type Mapping
@@ -66,12 +74,14 @@ struct MaterialPickerSheet: View {
                             Image(systemName: "shippingbox")
                                 .font(.system(size: 32))
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            Text("No products found")
+                            Text(isLinearMode ? "No linear materials" : "No surface materials")
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                            Text("Add products in Settings to use them here.")
+                            Text(sourceHintBody)
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, OPSStyle.Layout.spacing4)
@@ -91,6 +101,22 @@ struct MaterialPickerSheet: View {
                     Button("Cancel") { dismiss() }
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
+                if !filteredProducts.isEmpty {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button {
+                            showingHint = true
+                        } label: {
+                            Image(systemName: "questionmark.circle")
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                        .accessibilityLabel("Where do these materials come from?")
+                    }
+                }
+            }
+            .alert("Where do these come from?", isPresented: $showingHint) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(sourceHintBody)
             }
         }
         .presentationDetents([.medium, .large])

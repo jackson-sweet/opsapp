@@ -146,6 +146,8 @@ struct DeckToolbar: View {
 
                 toolDivider
 
+                selectOnlyMenuIfUseful(includeKindSection: true)
+
                 if canAssignMaterial {
                     actionButton(icon: "square.grid.3x3", label: "Material") {
                         viewModel.showingMaterialPicker = true
@@ -305,6 +307,8 @@ struct DeckToolbar: View {
 
                 toolDivider
 
+                selectOnlyMenuIfUseful(includeKindSection: false)
+
                 actionButton(icon: "ruler", label: "Dimension") {
                     viewModel.showingDimensionInput = true
                 }
@@ -405,8 +409,11 @@ struct DeckToolbar: View {
                 Text(label)
                     .font(OPSStyle.Typography.miniLabel)
                     .foregroundColor(isActive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
-            .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
+            .padding(.horizontal, OPSStyle.Layout.spacing1)
+            .frame(minWidth: OPSStyle.Layout.touchTargetStandard, minHeight: OPSStyle.Layout.touchTargetStandard)
             .background(isActive ? OPSStyle.Colors.primaryAccent.opacity(0.12) : Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
@@ -430,8 +437,11 @@ struct DeckToolbar: View {
                 Text(label)
                     .font(OPSStyle.Typography.miniLabel)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
-            .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
+            .padding(.horizontal, OPSStyle.Layout.spacing1)
+            .frame(minWidth: OPSStyle.Layout.touchTargetStandard, minHeight: OPSStyle.Layout.touchTargetStandard)
         }
     }
 
@@ -450,8 +460,11 @@ struct DeckToolbar: View {
                 Text(label)
                     .font(OPSStyle.Typography.miniLabel)
                     .foregroundColor(tint == Color.white ? OPSStyle.Colors.secondaryText : tint)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
-            .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
+            .padding(.horizontal, OPSStyle.Layout.spacing1)
+            .frame(minWidth: OPSStyle.Layout.touchTargetStandard, minHeight: OPSStyle.Layout.touchTargetStandard)
         }
         .disabled(!enabled)
     }
@@ -462,5 +475,187 @@ struct DeckToolbar: View {
         Rectangle()
             .fill(OPSStyle.Colors.separator)
             .frame(width: 1, height: 32)
+    }
+
+    // MARK: - Select Only Filter Menu
+    //
+    // Lets the user narrow a multi-element selection to a subset (kind or
+    // edge attribute). Only renders when there's actually something to
+    // narrow — no point showing "Filter" against a single edge.
+
+    @ViewBuilder
+    private func selectOnlyMenuIfUseful(includeKindSection: Bool) -> some View {
+        let edgeIds = viewModel.selection.selectedEdgeIds
+        let vertexCount = viewModel.selection.selectedVertexIds.count
+        let surfaceSelected = viewModel.selection.selectedFootprint
+        let allEdges = viewModel.drawingData.allEdges
+        let selectedEdges = allEdges.filter { edgeIds.contains($0.id) }
+
+        let kindCount = (edgeIds.isEmpty ? 0 : 1) + (vertexCount == 0 ? 0 : 1) + (surfaceSelected ? 1 : 0)
+        let hasMultipleKinds = kindCount > 1
+        let edgeFilterUseful = selectedEdges.count >= 2 && edgesHaveFilterableVariation(selectedEdges)
+
+        let showMenu = (includeKindSection && hasMultipleKinds) || edgeFilterUseful
+
+        if showMenu {
+            Menu {
+                if includeKindSection && hasMultipleKinds {
+                    Section("Geometry") {
+                        if !edgeIds.isEmpty {
+                            Button {
+                                viewModel.selectOnlyEdges()
+                            } label: {
+                                Label("Edges (\(edgeIds.count))", systemImage: "rectangle")
+                            }
+                        }
+                        if vertexCount > 0 {
+                            Button {
+                                viewModel.selectOnlyVertices()
+                            } label: {
+                                Label("Vertices (\(vertexCount))", systemImage: "circle")
+                            }
+                        }
+                        if surfaceSelected {
+                            Button {
+                                viewModel.selectOnlySurface()
+                            } label: {
+                                Label("Surface", systemImage: "square.dashed")
+                            }
+                        }
+                    }
+                }
+
+                if edgeFilterUseful {
+                    edgeFilterSections(for: selectedEdges)
+                }
+            } label: {
+                VStack(spacing: 3) {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
+                        .foregroundColor(.white)
+                    Text("Filter")
+                        .font(OPSStyle.Typography.miniLabel)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing1)
+                .frame(minWidth: OPSStyle.Layout.touchTargetStandard, minHeight: OPSStyle.Layout.touchTargetStandard)
+            }
+        }
+    }
+
+    /// True when the selected edges have at least two variants along ANY of
+    /// the supported filter axes (edge type, railing, stairs, material).
+    /// Without variation there's nothing to narrow to and the menu would be
+    /// degenerate.
+    private func edgesHaveFilterableVariation(_ edges: [DeckEdge]) -> Bool {
+        guard edges.count >= 2 else { return false }
+        let edgeTypes = Set(edges.map { $0.edgeType })
+        if edgeTypes.count > 1 { return true }
+        let railings = Set(edges.map { $0.railingConfig?.railingType })  // nil counts as "no railing"
+        if railings.count > 1 { return true }
+        let stairs = edges.contains { $0.stairConfig != nil } && edges.contains { $0.stairConfig == nil }
+        if stairs { return true }
+        let materials = edges.contains { !$0.assignedItems.isEmpty } && edges.contains { $0.assignedItems.isEmpty }
+        if materials { return true }
+        return false
+    }
+
+    @ViewBuilder
+    private func edgeFilterSections(for selectedEdges: [DeckEdge]) -> some View {
+        // Edge type — only show if both types exist in the current selection.
+        let houseCount = selectedEdges.filter { $0.edgeType == .houseEdge }.count
+        let deckCount = selectedEdges.filter { $0.edgeType == .deckEdge }.count
+        if houseCount > 0 && deckCount > 0 {
+            Section("Edge Type") {
+                Button {
+                    viewModel.filterSelectedEdges { $0.edgeType == .houseEdge }
+                } label: {
+                    Label("House Edges (\(houseCount))", systemImage: "house")
+                }
+                Button {
+                    viewModel.filterSelectedEdges { $0.edgeType == .deckEdge }
+                } label: {
+                    Label("Deck Edges (\(deckCount))", systemImage: "rectangle")
+                }
+            }
+        }
+
+        // Railings — emit one button per railing type that's present in the
+        // selection, plus a "No Railing" button if at least one un-railed
+        // edge is present alongside a railed one.
+        let railedCount = selectedEdges.filter { $0.railingConfig != nil }.count
+        let unrailedCount = selectedEdges.count - railedCount
+        let hasRailingVariation = railedCount > 0 && (unrailedCount > 0 || railingTypeCount(selectedEdges) > 1)
+        if hasRailingVariation {
+            Section("Railing") {
+                ForEach(RailingType.allCases, id: \.self) { type in
+                    let count = selectedEdges.filter { $0.railingConfig?.railingType == type }.count
+                    if count > 0 {
+                        Button {
+                            viewModel.filterSelectedEdges { $0.railingConfig?.railingType == type }
+                        } label: {
+                            Label("\(type.displayName) (\(count))", systemImage: railingIcon(for: type))
+                        }
+                    }
+                }
+                if unrailedCount > 0 && railedCount > 0 {
+                    Button {
+                        viewModel.filterSelectedEdges { $0.railingConfig == nil }
+                    } label: {
+                        Label("No Railing (\(unrailedCount))", systemImage: "xmark")
+                    }
+                }
+            }
+        }
+
+        // Stairs — only useful when some edges have stairs and others don't.
+        let stairsCount = selectedEdges.filter { $0.stairConfig != nil }.count
+        if stairsCount > 0 && stairsCount < selectedEdges.count {
+            Section("Stairs") {
+                Button {
+                    viewModel.filterSelectedEdges { $0.stairConfig != nil }
+                } label: {
+                    Label("With Stairs (\(stairsCount))", systemImage: "stairs")
+                }
+            }
+        }
+
+        // Material — only useful when the selection mixes assigned and
+        // unassigned edges. Single-state selections have nothing to narrow.
+        let withMaterial = selectedEdges.filter { !$0.assignedItems.isEmpty }.count
+        let withoutMaterial = selectedEdges.count - withMaterial
+        if withMaterial > 0 && withoutMaterial > 0 {
+            Section("Material") {
+                Button {
+                    viewModel.filterSelectedEdges { !$0.assignedItems.isEmpty }
+                } label: {
+                    Label("With Material (\(withMaterial))", systemImage: "shippingbox.fill")
+                }
+                Button {
+                    viewModel.filterSelectedEdges { $0.assignedItems.isEmpty }
+                } label: {
+                    Label("No Material (\(withoutMaterial))", systemImage: "shippingbox")
+                }
+            }
+        }
+    }
+
+    /// Number of distinct railing types in the selection (excluding nil).
+    private func railingTypeCount(_ edges: [DeckEdge]) -> Int {
+        Set(edges.compactMap { $0.railingConfig?.railingType }).count
+    }
+
+    /// SF Symbol roughly matching each railing type — kept loose since SF
+    /// doesn't ship deck-specific icons.
+    private func railingIcon(for type: RailingType) -> String {
+        switch type {
+        case .glass:      return "rectangle.split.3x1"
+        case .picket:     return "line.3.horizontal"
+        case .cable:      return "cable.connector.horizontal"
+        case .horizontal: return "minus"
+        case .wood:       return "rectangle.fill"
+        }
     }
 }

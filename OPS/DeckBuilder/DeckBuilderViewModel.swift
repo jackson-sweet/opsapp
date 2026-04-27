@@ -489,9 +489,12 @@ class DeckBuilderViewModel: ObservableObject {
         }
     }
 
-    func updateLine(to rawEnd: CGPoint) {
-        guard case .drawing(let fromId, let startPos, _) = drawingMode else { return }
-
+    /// Resolve the displayed endpoint for the active draw at `rawEnd`. Returns
+    /// the snapped point AND the alignment guides used so the caller can both
+    /// preview the cursor (updateLine) and commit the same exact position
+    /// (endLine) without recomputing the chain differently between the two.
+    /// Bug a7437d68 — drag and commit MUST resolve to the same canvas point.
+    private func resolveActiveEnd(from startPos: CGPoint, rawEnd: CGPoint, fromVertexId: String?) -> (point: CGPoint, guides: [AlignmentGuide], hasAxisAlignment: Bool) {
         // First apply angle/length snapping
         var snapped = SnapEngine.snapEndpoint(
             from: startPos,
@@ -504,7 +507,7 @@ class DeckBuilderViewModel: ObservableObject {
         // Then detect alignment guides (axis-aligned, parallel, perpendicular).
         // Exclude the start vertex's edges only when it actually exists in the
         // store — a pending start has nothing to filter against yet.
-        let exclude: Set<String> = fromId.map { [$0] } ?? []
+        let exclude: Set<String> = fromVertexId.map { [$0] } ?? []
         let alignment = SnapEngine.detectAlignmentGuides(
             from: startPos,
             currentEnd: snapped,
@@ -515,29 +518,47 @@ class DeckBuilderViewModel: ObservableObject {
             excludeVertexIds: exclude
         )
 
+        let hasAxisAlignment = alignment.guides.contains(where: { $0.type == .vertical || $0.type == .horizontal })
+
         // Apply axis alignment snap (overrides angle/length snap for X or Y)
-        if alignment.guides.contains(where: { $0.type == .vertical || $0.type == .horizontal }) {
+        if hasAxisAlignment {
             snapped = alignment.snappedPoint
         }
 
-        alignmentGuides = alignment.guides
-        drawingMode = .drawing(fromVertexId: fromId, startPosition: startPos, currentEnd: snapped)
+        // Force the cursor onto the visible grid so the live preview matches
+        // the committed position exactly. Skip the regrid when an axis-alignment
+        // guide is active (preserve the axis-locked feel) or when snapping is
+        // disabled. Bug 4c30cd77 — snap = gridpoint, always.
+        if drawingData.config.snappingEnabled && !hasAxisAlignment {
+            snapped = SnapEngine.snapToGrid(snapped, gridSpacing: lengthSnapInCanvasPoints())
+        }
+
+        return (snapped, alignment.guides, hasAxisAlignment)
+    }
+
+    func updateLine(to rawEnd: CGPoint) {
+        guard case .drawing(let fromId, let startPos, _) = drawingMode else { return }
+
+        let resolved = resolveActiveEnd(from: startPos, rawEnd: rawEnd, fromVertexId: fromId)
+        alignmentGuides = resolved.guides
+        drawingMode = .drawing(fromVertexId: fromId, startPosition: startPos, currentEnd: resolved.point)
     }
 
     func endLine(at rawEnd: CGPoint) {
         guard case .drawing(let fromId, let startPos, _) = drawingMode else { return }
 
-        let snapped = SnapEngine.snapEndpoint(
-            from: startPos,
-            rawEnd: rawEnd,
-            angleIncrement: drawingData.config.angleSnapIncrement,
-            lengthIncrement: lengthSnapInCanvasPoints(),
-            snappingEnabled: drawingData.config.snappingEnabled
-        )
+        // Resolve via the SAME chain updateLine uses so the committed position
+        // is identical to the live preview the user just released on. Previously
+        // endLine ran snapEndpoint + an unconditional snapToGrid, ignoring the
+        // axis-alignment guides updateLine consumed — which produced different
+        // canvas points (and therefore different displayed dimensions) between
+        // drag and commit. Bug a7437d68.
+        let resolved = resolveActiveEnd(from: startPos, rawEnd: rawEnd, fromVertexId: fromId)
+        let snapped = resolved.point
 
         // Resolve the end position FIRST without mutating state. Either we
         // snap to an existing vertex (preferred — closes the polygon when the
-        // user finishes near the first vertex) or we use a grid-snapped point.
+        // user finishes near the first vertex) or we use the resolved point.
         let exclude: Set<String> = fromId.map { [$0] } ?? []
         let snapEndId = SnapEngine.findSnapTarget(
             point: snapped,
@@ -549,7 +570,7 @@ class DeckBuilderViewModel: ObservableObject {
         if let snapId = snapEndId, let v = activeVertex(byId: snapId) {
             endPosition = v.position
         } else {
-            endPosition = SnapEngine.snapToGrid(snapped, gridSpacing: lengthSnapInCanvasPoints())
+            endPosition = snapped
         }
 
         // H7: discard near-zero-length lines. A drag that barely moved is
@@ -607,9 +628,14 @@ class DeckBuilderViewModel: ObservableObject {
         if let scale = drawingData.scaleFactor, scale > 0 {
             edge.dimension = canvasDistance / scale  // inches
         } else {
-            // No scale factor — store canvas-point length so dimension label renders;
-            // recalculated when scale is set via autoFillDimensions().
-            edge.dimension = canvasDistance
+            // No scale factor — store inches against the prescale fallback so the
+            // committed label matches the live drag readout (which divides by the
+            // same fallback). Bug a7437d68 — previously we stored raw canvas points
+            // here, so a 200pt line drew as "~8'4"" mid-drag and committed as
+            // "16'8"" (raw points labelled as inches). autoFillDimensions
+            // back-fills from canvas geometry once the user calibrates scale, so
+            // overwriting this value later is fine.
+            edge.dimension = canvasDistance / DeckBuilderViewModel.prescaleFallbackScale
         }
         edge.dimensionSource = .scale
 
@@ -929,7 +955,15 @@ class DeckBuilderViewModel: ObservableObject {
                 if let scale = drawingData.scaleFactor, scale > 0 {
                     activeEdges[i].dimension = canvasDistance / scale
                 } else {
-                    activeEdges[i].dimension = canvasDistance
+                    // Bug a7437d68 follow-up — vertex drags routed through this
+                    // recompute were storing raw canvas-points labelled as
+                    // inches, the same pre-fix behaviour endLine had. So a
+                    // freshly-drawn 5' line (correctly stored by endLine via
+                    // prescaleFallbackScale) became 10' the moment a vertex
+                    // was nudged. Apply the same prescale divisor here so all
+                    // pre-scale dimension writes stay consistent and match
+                    // what the live drag readout shows.
+                    activeEdges[i].dimension = canvasDistance / DeckBuilderViewModel.prescaleFallbackScale
                 }
                 activeEdges[i].dimensionStale = false
             } else {
@@ -1222,11 +1256,61 @@ class DeckBuilderViewModel: ObservableObject {
         hapticLight()
     }
 
+    // MARK: - Selection Narrowing ("Select Only" filter)
+    //
+    // Narrows the *current* selection to a subset by kind or by edge property.
+    // This is distinct from `tapSelectFilter`, which gates which element types
+    // can be added to a future selection — these methods operate on what's
+    // already selected. Used by the toolbar Filter menu so a multi-type
+    // selection can be reduced in one tap (e.g. "Select Only > Picket Rails").
+
+    /// Drop everything except edges from the selection.
+    func selectOnlyEdges() {
+        selection.selectedVertexIds.removeAll()
+        selection.selectedFootprint = false
+        hapticLight()
+    }
+
+    /// Drop everything except vertices from the selection.
+    func selectOnlyVertices() {
+        selection.selectedEdgeIds.removeAll()
+        selection.selectedFootprint = false
+        hapticLight()
+    }
+
+    /// Drop everything except the surface from the selection.
+    func selectOnlySurface() {
+        selection.selectedEdgeIds.removeAll()
+        selection.selectedVertexIds.removeAll()
+        hapticLight()
+    }
+
+    /// Narrow `selectedEdgeIds` to those matching the predicate. Vertices and
+    /// surface selection are dropped — caller is asking for a specific edge
+    /// subset, not a mixed selection.
+    func filterSelectedEdges(_ predicate: (DeckEdge) -> Bool) {
+        let edges = drawingData.allEdges
+        selection.selectedEdgeIds = selection.selectedEdgeIds.filter { id in
+            guard let edge = edges.first(where: { $0.id == id }) else { return false }
+            return predicate(edge)
+        }
+        selection.selectedVertexIds.removeAll()
+        selection.selectedFootprint = false
+        hapticLight()
+    }
+
     // MARK: - Persistence
 
     func save() {
         isLocallySaved = false
         deckDesign.drawingData = drawingData  // triggers needsSync via setter
+        // Insert on first save if the design was created via the blank-canvas
+        // path (which defers insertion until there's real geometry to persist).
+        // SwiftData rejects insert on an already-inserted model, so check first.
+        // Bug 7c2bd6be.
+        if deckDesign.modelContext == nil {
+            modelContext?.insert(deckDesign)
+        }
         do {
             try modelContext?.save()
             isLocallySaved = true

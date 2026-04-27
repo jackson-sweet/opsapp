@@ -36,9 +36,24 @@ struct DeckBuilderView: View {
     var body: some View {
         VStack(spacing: 0) {
             if viewModel.is3DMode {
-                // 3D mode: title bar is solid (not floating)
+                // 3D mode: title bar is a contained pill, matching the 2D
+                // floating-header aesthetic. Previously rendered as a
+                // full-width bar bleeding to the screen edges. Bug 0a5f3fe1
+                // follow-up.
                 titleBar
-                    .background(OPSStyle.Colors.cardBackground)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .fill(OPSStyle.Colors.cardBackground.opacity(0.96))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
+                            )
+                            .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
+                    )
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
+                    .padding(.top, OPSStyle.Layout.spacing2)
 
                 DeckScene3DView(drawingData: viewModel.drawingData, controller: scene3DController)
                     .transition(.opacity)
@@ -50,15 +65,23 @@ struct DeckBuilderView: View {
             } else {
                 // 2D mode: canvas fills screen, title bar floats on top
                 ZStack(alignment: .top) {
-                    // Full-bleed canvas
+                    // Full-bleed canvas — extends under the status bar / dynamic
+                    // island and to the screen edges. The bottom DeckToolbar is
+                    // a sibling of this ZStack so the bottom safe-area inset is
+                    // preserved for the home indicator. Bug 0a5f3fe1.
                     ZStack(alignment: .bottomTrailing) {
                         DeckCanvasView(viewModel: viewModel)
+                            .ignoresSafeArea(edges: [.top, .horizontal])
 
-                    // Assignment wheel — visible when any element is selected
+                    // Assignment wheel — visible when any element is selected.
+                    // Padding bumped from 20 → spacing4 (24pt) so the 56pt circle
+                    // doesn't kiss the rounded screen corner on modern iPhones —
+                    // canvas behind it ignores horizontal safe area, so the wheel
+                    // is the only thing keeping itself off the bezel.
                     if !viewModel.selection.isEmpty {
                         AssignmentWheelView(viewModel: viewModel)
-                            .padding(.trailing, 20)
-                            .padding(.bottom, 20)
+                            .padding(.trailing, OPSStyle.Layout.spacing4)
+                            .padding(.bottom, OPSStyle.Layout.spacing4)
                             .transition(.scale.combined(with: .opacity))
                     }
 
@@ -138,20 +161,44 @@ struct DeckBuilderView: View {
                         // AR accuracy banner — spans full width under title bar
                         arAccuracyBanner
 
-                        // Level tab bar
-                        if viewModel.isMultiLevel || viewModel.drawingData.vertices.count >= 3 {
+                        // Level tab bar — only when the design actually has
+                        // levels. The previous fallback to vertices.count >= 3
+                        // showed the bar in single-level mode the moment a
+                        // second line was drawn, but the bar's body had nothing
+                        // to render (no levels in the ForEach, canConnectLevels
+                        // requires 2+ levels), leaving a 44pt cardBackground
+                        // rectangle floating below the title — bug 59c76731.
+                        if viewModel.isMultiLevel {
                             LevelTabBar(viewModel: viewModel)
                         }
 
                         Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .padding(.top, OPSStyle.Layout.spacing2)
+                    // Floating header sits inside the safe area while the canvas
+                    // extends under it. Use spacing4 horizontal so the title pill
+                    // has breathing room from the screen edge (previously
+                    // spacing3, which read as flush once the canvas went full
+                    // bleed) and spacing3 top so it clears the dynamic island /
+                    // status bar without being smashed against it. Bug 0a5f3fe1.
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
+                    .padding(.top, OPSStyle.Layout.spacing3)
                     .allowsHitTesting(true)
                 } // end ZStack (top-aligned, floating title over canvas)
 
-                // Toolbar — below the canvas
+                // Toolbar — below the canvas. Wrapped in horizontal padding +
+                // bottom gap + clipped corners so its cardBackground reads as a
+                // contained pill instead of a full-width bar bleeding to the
+                // screen edges. Matches the floating header pill aesthetic.
+                // Bug 0a5f3fe1 follow-up.
                 DeckToolbar(viewModel: viewModel)
+                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                    .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
             }
         }
         .background(OPSStyle.Colors.background)

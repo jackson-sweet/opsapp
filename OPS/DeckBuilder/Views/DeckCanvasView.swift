@@ -81,11 +81,15 @@ struct DeckCanvasView: View {
             ZStack {
                 OPSStyle.Colors.background.ignoresSafeArea()
 
-                // Canvas content — large fixed workspace, transformed by scale + offset
+                // Canvas content — sized to the viewport so Canvas always renders
+                // at native pixel density. Pan + zoom are applied via context
+                // transforms inside the Canvas closure (see canvasContent), so
+                // strokes/text/dots stay crisp at any zoom level. Bug e289b094 —
+                // previously the canvas was sized at canvasSize × canvasSize and
+                // the outer .scaleEffect / .offset bitmap-scaled the rendered
+                // output, causing visible blur at high zoom.
                 canvasContent
-                    .frame(width: canvasSize, height: canvasSize)
-                    .scaleEffect(canvasScale, anchor: .topLeading)
-                    .offset(canvasOffset)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
 
                 // Selection overlays (screen space)
                 selectionOverlay
@@ -170,7 +174,19 @@ struct DeckCanvasView: View {
 
     private var canvasContent: some View {
         Canvas { context, size in
-            drawGrid(context: context, size: size)
+            // Apply pan + zoom inside the Canvas so it redraws at the viewport's
+            // native pixel density at any scale. The outer scaleEffect/offset
+            // were removed — see makeBody comment for the bug context (e289b094).
+            // All draw* helpers below operate in world (canvas) coordinates;
+            // this transform maps world → screen.
+            var context = context
+            context.translateBy(x: canvasOffset.width, y: canvasOffset.height)
+            context.scaleBy(x: canvasScale, y: canvasScale)
+
+            // drawGrid intentionally receives the world-space canvas extents so
+            // its visible-rect culling math (lines ~260-263) operates on world
+            // coordinates the same way it always did.
+            drawGrid(context: context, size: CGSize(width: canvasSize, height: canvasSize))
 
             if viewModel.isMultiLevel {
                 for (index, level) in viewModel.drawingData.levels.enumerated() {
@@ -194,7 +210,7 @@ struct DeckCanvasView: View {
                         drawVertex(context: context, vertex: vertex)
                     }
                     for edge in activeLevel.edges {
-                        drawDimensionLabel(context: context, edge: edge, vertexLookup: activeLevel.vertex(byId:))
+                        drawDimensionLabel(context: context, edge: edge, vertexLookup: activeLevel.vertex(byId:), canvasSize: size)
                     }
                 }
             } else {
@@ -214,7 +230,7 @@ struct DeckCanvasView: View {
                     drawVertex(context: context, vertex: vertex)
                 }
                 for edge in viewModel.drawingData.edges {
-                    drawDimensionLabel(context: context, edge: edge, vertexLookup: viewModel.drawingData.vertex(byId:))
+                    drawDimensionLabel(context: context, edge: edge, vertexLookup: viewModel.drawingData.vertex(byId:), canvasSize: size)
                 }
             }
 
@@ -707,14 +723,20 @@ struct DeckCanvasView: View {
         let distance = SnapEngine.distance(startPosition, currentEnd)
         guard distance > 1 else { return }
 
-        // Dimension — show real-world length if calibrated, canvas distance if not
+        // Dimension — show real-world length if calibrated, otherwise read against the
+        // same prescale fallback the snap engine uses so the live drag readout matches
+        // the snapped commit. Bug 4c30cd77 — previously the display used 20 pt/foot
+        // while the snap used 2 pt/inch (24 pt/foot), and the format was whole-feet
+        // only ("~%.0f'"), so a drag that snapped to 3'6" displayed as "~4'" mid-drag
+        // and jumped on release. Use DimensionEngine.format with the prescale fallback
+        // so the readout shows the snapped value at full precision (6" by default).
         let dimText: String
         if let scale = viewModel.drawingData.scaleFactor, scale > 0.001 {
             let inches = distance / scale
             dimText = DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
         } else {
-            let rawFeet = distance / 20.0
-            dimText = String(format: "~%.0f'", rawFeet)
+            let inches = distance / DeckBuilderViewModel.prescaleFallbackScale
+            dimText = "~" + DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
         }
 
         // Angle — relative if extending from an existing vertex, else absolute.
@@ -858,7 +880,7 @@ struct DeckCanvasView: View {
 
     // MARK: - Dimension Labels (offset from line with dark pill)
 
-    private func drawDimensionLabel(context: GraphicsContext, edge: DeckEdge, vertexLookup: (String) -> DeckVertex?) {
+    private func drawDimensionLabel(context: GraphicsContext, edge: DeckEdge, vertexLookup: (String) -> DeckVertex?, canvasSize: CGSize) {
         guard let dim = edge.dimension,
               let start = vertexLookup(edge.startVertexId),
               let end = vertexLookup(edge.endVertexId) else { return }
@@ -881,7 +903,7 @@ struct DeckCanvasView: View {
         let offsetDist = scaledSize(18, min: 12, max: 30)
         let perpX = len > 0 ? (-dy / len) * offsetDist : 0
         let perpY = len > 0 ? (dx / len) * offsetDist : -offsetDist
-        let labelX = midX + perpX
+        let rawLabelX = midX + perpX
         let labelY = midY + perpY
 
         // Dark pill background
@@ -889,6 +911,17 @@ struct DeckCanvasView: View {
         let pillW = CGFloat(label.count) * charW + scaledSize(16, min: 10, max: 24)
         let pillH = scaledSize(20, min: 14, max: 28)
         let cr = scaledSize(4, min: 2, max: 6)
+
+        // Clamp horizontally so labels at edge-of-canvas vertices don't bleed
+        // into the rounded screen corners — canvas runs full-bleed (top +
+        // horizontal safe area ignored), so without this any vertex placed
+        // near the screen edge produces a label that sits half off-screen.
+        let edgeBuffer: CGFloat = 16
+        let halfPill = pillW / 2
+        let minX = halfPill + edgeBuffer
+        let maxX = max(minX, canvasSize.width - halfPill - edgeBuffer)
+        let labelX = min(max(rawLabelX, minX), maxX)
+
         let pillRect = CGRect(x: labelX - pillW / 2, y: labelY - pillH / 2, width: pillW, height: pillH)
         let pillColor: Color = (isStale || hasAccuracy)
             ? OPSStyle.Colors.warningStatus.opacity(0.15)

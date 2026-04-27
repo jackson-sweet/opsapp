@@ -13,7 +13,7 @@ struct DeckTab2DView: View {
 
     @State private var canvasScale: CGFloat = 1.0
     @State private var canvasOffset: CGSize = .zero
-    @State private var hasInitializedOffset = false
+    @State private var lastCenteredSize: CGSize = .zero
 
     private let canvasSize: CGFloat = 4800
 
@@ -44,16 +44,29 @@ struct DeckTab2DView: View {
                 )
             }
             .onAppear {
-                guard !hasInitializedOffset else { return }
                 if geometry.size.width > 0 && geometry.size.height > 0 {
-                    hasInitializedOffset = true
                     centerViewport(viewportSize: geometry.size)
+                    lastCenteredSize = geometry.size
                 }
             }
             .onChange(of: geometry.size) { _, newSize in
-                guard !hasInitializedOffset, newSize.width > 0, newSize.height > 0 else { return }
-                hasInitializedOffset = true
+                // Bug 9327599a — previously we only ran centerViewport on the
+                // very first non-zero geometry. When DeckTabView is inside
+                // ProjectDetailsView''s ScrollView, onAppear fires with a
+                // collapsed (~0pt) size, so the first centerViewport saw a
+                // tiny viewport, scaled the drawing to that tiny size, and
+                // then refused to re-run when the aspect-ratio frame
+                // resolved. Now we re-center whenever the geometry changes
+                // meaningfully. The deck tab is read-only — users do not
+                // expect their pan/zoom to survive a layout shift, and
+                // re-centering on every meaningful resize is the right
+                // default for a read-only viewer.
+                guard newSize.width > 0, newSize.height > 0 else { return }
+                let widthChange = abs(newSize.width - lastCenteredSize.width)
+                let heightChange = abs(newSize.height - lastCenteredSize.height)
+                guard widthChange > 1 || heightChange > 1 else { return }
                 centerViewport(viewportSize: newSize)
+                lastCenteredSize = newSize
             }
         }
     }
@@ -126,9 +139,21 @@ struct DeckTab2DView: View {
         let centerX = (xs.min()! + xs.max()!) / 2
         let centerY = (ys.min()! + ys.max()!) / 2
 
-        let spanX = xs.max()! - xs.min()! + 200
-        let spanY = ys.max()! - ys.min()! + 200
-        let fitScale = min(viewportSize.width / spanX, viewportSize.height / spanY, 2.0)
+        // Bug 1959e011 — small decks rendered at near-1x because fitScale was
+        // capped at 2.0 AND a fixed 200pt margin was added to span (which
+        // dominated small drawings, dragging fitScale below 1). Use proportional
+        // margin (15% padding via 0.85 multiplier) and a much higher cap so a
+        // 200pt-wide deck can actually fill an iPhone viewport.
+        let rawSpanX = xs.max()! - xs.min()!
+        let rawSpanY = ys.max()! - ys.min()!
+        // Guard against degenerate spans (single vertex / colinear points) — fall
+        // back to a sensible reference span so we don't divide by ~zero.
+        let spanX = max(rawSpanX, 1)
+        let spanY = max(rawSpanY, 1)
+        let rawFit = min(viewportSize.width / spanX, viewportSize.height / spanY)
+        // 0.85 leaves ~7.5% margin on each side; 8.0 cap keeps very tiny
+        // drawings from rendering at ridiculous zoom (just enough to read).
+        let fitScale = min(rawFit * 0.85, 8.0)
 
         canvasScale = fitScale
         canvasOffset = CGSize(

@@ -47,6 +47,18 @@ struct DeckTabView: View {
         VStack(spacing: 0) {
             controlBar(design: design)
 
+            // Bug 9327599a — rendering area sits inside ProjectDetailsView's
+            // ScrollView/LazyVStack, where maxHeight: .infinity collapses to
+            // the children's intrinsic size (GeometryReader and SCNView both
+            // expose ~0 intrinsic height). Result: the 2D/3D viewport got a
+            // few-point-tall sliver and the drawing rendered "tiny" even
+            // after the centerViewport math zoomed it correctly.
+            //
+            // Fix: lock the rendering area to a 1:1 aspect ratio against the
+            // available width — produces a substantial square viewport that
+            // scales to fill the screen width and gives both 2D blueprint and
+            // 3D scene enough room to read clearly. Horizontal padding gives
+            // the requested breathing room from the screen edges.
             Group {
                 switch viewMode {
                 case .threeD:
@@ -59,11 +71,97 @@ struct DeckTabView: View {
                     DeckTab2DView(drawingData: design.drawingData)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
+            .aspectRatio(1, contentMode: .fit)
+            // Floating overlay — title pinned top-left of the rendering
+            // viewport with material/geometry counts as compact badges in a
+            // line below it. Replaces the previous bottom infoBar so the
+            // viewport itself owns its identifying chrome.
+            .overlay(alignment: .topLeading) {
+                floatingDesignInfo(design: design)
+                    .padding(.leading, 12)
+                    .padding(.top, 12)
+                    .allowsHitTesting(false)
+            }
+            .padding(.horizontal, 16)
             .animation(OPSStyle.Animation.fast, value: viewMode)
-
-            infoBar(design: design)
         }
+    }
+
+    // MARK: - Floating Design Info (overlay top-left of viewport)
+
+    /// Title chip + horizontal row of count badges. Anchored to the
+    /// top-leading corner of the rendering viewport so the user sees
+    /// "what is this and what's in it" at a glance without losing canvas
+    /// real estate to a bottom info bar.
+    private func floatingDesignInfo(design: DeckDesign) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Title pill — single line, ellipsis on overflow so very long
+            // names don't push the badges off the viewport.
+            Text(design.title)
+                .font(OPSStyle.Typography.cardBody)
+                .fontWeight(.semibold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(OPSStyle.Colors.cardBackground.opacity(0.9))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: 0.5)
+                        )
+                )
+
+            // Count badges — area, edges, posts, elevation. Each is a
+            // self-contained mini-pill so the row reads as discrete chips
+            // rather than a sentence.
+            HStack(spacing: 4) {
+                if let area = computeArea(design: design) {
+                    countBadge(icon: "square.dashed", value: area)
+                }
+
+                let edgeCount = design.drawingData.isMultiLevel
+                    ? (design.drawingData.levels.first?.edges.count ?? 0)
+                    : design.drawingData.edges.count
+                if edgeCount > 0 {
+                    countBadge(icon: "lineweight", value: "\(edgeCount) edges")
+                }
+
+                let postCount = design.drawingData.isMultiLevel
+                    ? (design.drawingData.levels.first?.vertices.count ?? 0)
+                    : design.drawingData.vertices.count
+                if postCount > 0 {
+                    countBadge(icon: "circle.fill", value: "\(postCount) posts")
+                }
+
+                if let elevation = design.drawingData.overallElevation {
+                    countBadge(icon: "arrow.up.and.down", value: String(format: "%.1f ft", elevation))
+                }
+            }
+        }
+    }
+
+    private func countBadge(icon: String, value: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .semibold))
+            Text(value)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+        }
+        .foregroundColor(OPSStyle.Colors.secondaryText)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(OPSStyle.Colors.cardBackground.opacity(0.85))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: 0.5)
+                )
+        )
     }
 
     // MARK: - Control Bar
@@ -96,50 +194,6 @@ struct DeckTabView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-    }
-
-    // MARK: - Info Bar
-
-    private func infoBar(design: DeckDesign) -> some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(OPSStyle.Colors.cardBorderSubtle)
-                .frame(height: 1)
-
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(design.title)
-                        .font(OPSStyle.Typography.cardTitle)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                    HStack(spacing: 12) {
-                        if let area = computeArea(design: design) {
-                            Text(area)
-                                .font(OPSStyle.Typography.cardBody)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-
-                        let edgeCount = design.drawingData.isMultiLevel
-                            ? (design.drawingData.levels.first?.edges.count ?? 0)
-                            : design.drawingData.edges.count
-                        Text("\(edgeCount) edges")
-                            .font(OPSStyle.Typography.cardBody)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                        if let elevation = design.drawingData.overallElevation {
-                            Text(String(format: "%.1f ft", elevation))
-                                .font(OPSStyle.Typography.cardBody)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-                    }
-                }
-
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-        }
     }
 
     // MARK: - Empty State
@@ -240,7 +294,7 @@ struct DeckTabView: View {
         if let d = deckDesign {
             let dd = d.drawingData
             print("[DECK_TAB] Found design '\(d.title)' for project \(projectId)")
-            print("[DECK_TAB] scaleFactor: \(dd.scaleFactor ?? -1)")
+            print("[DECK_TAB] scaleFactor: \(dd.scaleFactor.map { "\($0)" } ?? "nil")")
             print("[DECK_TAB] vertices: \(dd.vertices.count), edges: \(dd.edges.count)")
             print("[DECK_TAB] isClosed: \(dd.isClosed), isMultiLevel: \(dd.isMultiLevel)")
             if dd.isMultiLevel {

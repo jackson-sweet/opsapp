@@ -11,10 +11,17 @@ import GoogleSignIn
 import FirebaseCore
 import FirebaseAnalytics
 import OneSignalFramework
+import BackgroundTasks
 
 class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListener, OSNotificationClickListener {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+
+        // Register BGTaskScheduler handlers BEFORE anything else can defer them.
+        // iOS asserts and terminates the app if any task is registered after
+        // application(_:didFinishLaunching) returns. The singleton lets us
+        // register identifiers now and have SyncEngine attach handlers later.
+        BackgroundSyncScheduler.shared.registerTasks()
 
         // Configure Firebase (must be first)
         FirebaseApp.configure()

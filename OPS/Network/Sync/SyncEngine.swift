@@ -97,8 +97,11 @@ final class SyncEngine {
             self.realtimeProcessor?.setDataActor(actor)
         }
 
-        // Initialize background scheduler
-        let scheduler = BackgroundSyncScheduler()
+        // Attach background-task handlers to the shared scheduler. Registration
+        // already happened in AppDelegate.didFinishLaunching (BGTaskScheduler
+        // requires it before launch returns). Here we just wire what should run
+        // when those tasks fire.
+        let scheduler = BackgroundSyncScheduler.shared
         scheduler.onRefreshTask = { [weak self] in
             await self?.pushPending()
         }
@@ -230,9 +233,12 @@ final class SyncEngine {
         print("[SYNC_ENGINE] stopForLogoutAsync complete — realtime stopped")
     }
 
-    /// Registers BGTaskScheduler tasks. Call from AppDelegate.
+    /// No-op kept for backwards compatibility. BGTaskScheduler registration now
+    /// happens in AppDelegate.didFinishLaunching against the shared singleton —
+    /// see BackgroundSyncScheduler.shared.registerTasks(). Calling this method
+    /// after launch is a noop because attempting to re-register would crash.
     func registerBackgroundTasks() {
-        backgroundScheduler?.registerTasks()
+        // Intentional no-op. Do not call BGTaskScheduler.register here.
     }
 
     /// Schedules background sync tasks. Call when app enters background.

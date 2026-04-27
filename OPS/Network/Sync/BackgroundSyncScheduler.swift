@@ -9,6 +9,12 @@ import Foundation
 import BackgroundTasks
 
 final class BackgroundSyncScheduler {
+    /// Singleton — registration must complete before the app finishes launching, but
+    /// the SyncEngine that actually services the tasks is created later (after auth).
+    /// The singleton lets AppDelegate register task identifiers eagerly and SyncEngine
+    /// attach handlers when it spins up. Bug — fix for BGTaskScheduler assertion crash.
+    static let shared = BackgroundSyncScheduler()
+
     static let refreshTaskId = "com.ops.sync.refresh"
     static let processingTaskId = "com.ops.sync.processing"
 
@@ -18,7 +24,11 @@ final class BackgroundSyncScheduler {
     /// Called when a processing task fires — should do full sync + photo upload + cleanup
     var onProcessingTask: (() async -> Void)?
 
+    private init() {}
+
     /// Register both task types with BGTaskScheduler. Call from AppDelegate.didFinishLaunching.
+    /// Must complete before application(_:didFinishLaunchingWithOptions:) returns or
+    /// iOS asserts: "All launch handlers must be registered before application finishes launching".
     func registerTasks() {
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: Self.refreshTaskId,

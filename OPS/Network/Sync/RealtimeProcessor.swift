@@ -645,23 +645,29 @@ final class RealtimeProcessor: ObservableObject {
         print("[DUPE_TRACE] RT.upsertProject id=\(id) existing_count=\(existingCount) ctx=\(ObjectIdentifier(context))")
 
         if let existing = try context.fetch(descriptor).first {
-            if !pendingFields.contains("title")                 { existing.title = model.title }
-            if !pendingFields.contains("status")                { existing.status = model.status }
-            if !pendingFields.contains("companyId")             { existing.companyId = model.companyId }
-            if !pendingFields.contains("clientId")              { existing.clientId = model.clientId }
-            if !pendingFields.contains("opportunityId")         { existing.opportunityId = model.opportunityId }
-            if !pendingFields.contains("address")               { existing.address = model.address }
-            if !pendingFields.contains("latitude")              { existing.latitude = model.latitude }
-            if !pendingFields.contains("longitude")             { existing.longitude = model.longitude }
-            if !pendingFields.contains("startDate")             { existing.startDate = model.startDate }
-            if !pendingFields.contains("endDate")               { existing.endDate = model.endDate }
-            if !pendingFields.contains("duration")              { existing.duration = model.duration }
-            if !pendingFields.contains("notes")                 { existing.notes = model.notes }
-            if !pendingFields.contains("projectDescription")    { existing.projectDescription = model.projectDescription }
-            if !pendingFields.contains("allDay")                { existing.allDay = model.allDay }
-            if !pendingFields.contains("teamMemberIdsString")   { existing.teamMemberIdsString = model.teamMemberIdsString }
-            if !pendingFields.contains("projectImagesString")   { existing.projectImagesString = model.projectImagesString }
-            if !pendingFields.contains("deletedAt")             { existing.deletedAt = model.deletedAt }
+            // Bug 209281ba — pendingFields is built from SyncOperation.changedFields
+            // which uses server-side wire names ("project_images",
+            // "team_member_ids", "company_id", etc.). Compare against those, not
+            // Swift property names, otherwise the protection silently fails and
+            // realtime overwrites local optimistic writes (e.g., comment-photo
+            // URLs appended to projectImagesString disappear).
+            if !pendingFields.contains("title")             { existing.title = model.title }
+            if !pendingFields.contains("status")            { existing.status = model.status }
+            if !pendingFields.contains("company_id")        { existing.companyId = model.companyId }
+            if !pendingFields.contains("client_id")         { existing.clientId = model.clientId }
+            if !pendingFields.contains("opportunity_id")    { existing.opportunityId = model.opportunityId }
+            if !pendingFields.contains("address")           { existing.address = model.address }
+            if !pendingFields.contains("latitude")          { existing.latitude = model.latitude }
+            if !pendingFields.contains("longitude")         { existing.longitude = model.longitude }
+            if !pendingFields.contains("start_date")        { existing.startDate = model.startDate }
+            if !pendingFields.contains("end_date")          { existing.endDate = model.endDate }
+            if !pendingFields.contains("duration")          { existing.duration = model.duration }
+            if !pendingFields.contains("notes")             { existing.notes = model.notes }
+            if !pendingFields.contains("description")       { existing.projectDescription = model.projectDescription }
+            if !pendingFields.contains("all_day")           { existing.allDay = model.allDay }
+            if !pendingFields.contains("team_member_ids")   { existing.teamMemberIdsString = model.teamMemberIdsString }
+            if !pendingFields.contains("project_images")    { existing.projectImagesString = model.projectImagesString }
+            if !pendingFields.contains("deleted_at")        { existing.deletedAt = model.deletedAt }
             existing.lastSyncedAt = Date()
             let pendingFieldsForSync = pendingFieldsForEntity(entityType: .project, entityId: existing.id, context: context)
             if pendingFieldsForSync.isEmpty {

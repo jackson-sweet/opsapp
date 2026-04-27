@@ -627,40 +627,51 @@ final class InboundProcessor {
         print("[DUPE_TRACE] INBOUND.mergeProject id=\(id) existing_count=\(existingCount) ctx=\(ObjectIdentifier(context))")
 
         if let existing = try context.fetch(descriptor).first {
+            // Bug 209281ba — acceptableFields compares against the changedFields
+            // stored on pending SyncOperations, which callers populate with
+            // server-side wire names ("project_images", "team_member_ids",
+            // "company_id", etc.). The previous version mixed Swift property
+            // names ("projectImagesString", "teamMemberIdsString") into this
+            // check, so the protection silently failed: pending operations
+            // matched no fields here and the inbound DTO overwrote local
+            // optimistic writes (e.g., photos appended to projectImagesString
+            // by ProjectNotesViewModel.addAttachmentsToProjectGallery
+            // disappeared when the next inbound project sync ran). Standardize
+            // on the server-side names to match the queue.
             let accept = acceptableFields(
                 entityType: .project,
                 entityId: id,
                 fields: [
-                    "title", "status", "companyId", "clientId", "opportunityId",
+                    "title", "status", "company_id", "client_id", "opportunity_id",
                     "address", "latitude", "longitude",
-                    "startDate", "endDate", "duration",
-                    "notes", "projectDescription", "allDay",
-                    "teamMemberIdsString", "projectImagesString", "deletedAt"
+                    "start_date", "end_date", "duration",
+                    "notes", "description", "all_day",
+                    "team_member_ids", "project_images", "deleted_at"
                 ],
                 context: context
             )
 
             if accept.contains("title") { existing.title = dto.title }
             if accept.contains("status") { existing.status = Status(rawValue: dto.status) ?? .rfq }
-            if accept.contains("companyId") { existing.companyId = dto.companyId }
-            if accept.contains("clientId") { existing.clientId = dto.clientId }
-            if accept.contains("opportunityId") { existing.opportunityId = dto.opportunityId }
+            if accept.contains("company_id") { existing.companyId = dto.companyId }
+            if accept.contains("client_id") { existing.clientId = dto.clientId }
+            if accept.contains("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept.contains("address") { existing.address = dto.address }
             if accept.contains("latitude") { existing.latitude = dto.latitude }
             if accept.contains("longitude") { existing.longitude = dto.longitude }
-            if accept.contains("startDate") { existing.startDate = dto.startDate.flatMap { SupabaseDate.parse($0) } }
-            if accept.contains("endDate") { existing.endDate = dto.endDate.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("start_date") { existing.startDate = dto.startDate.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("end_date") { existing.endDate = dto.endDate.flatMap { SupabaseDate.parse($0) } }
             if accept.contains("duration") { existing.duration = dto.duration }
             if accept.contains("notes") { existing.notes = dto.notes }
-            if accept.contains("projectDescription") { existing.projectDescription = dto.description }
-            if accept.contains("allDay") { existing.allDay = dto.allDay ?? false }
-            if accept.contains("teamMemberIdsString") {
+            if accept.contains("description") { existing.projectDescription = dto.description }
+            if accept.contains("all_day") { existing.allDay = dto.allDay ?? false }
+            if accept.contains("team_member_ids") {
                 existing.teamMemberIdsString = (dto.teamMemberIds ?? []).joined(separator: ",")
             }
-            if accept.contains("projectImagesString") {
+            if accept.contains("project_images") {
                 existing.projectImagesString = (dto.projectImages ?? []).joined(separator: ",")
             }
-            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("deleted_at") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
 
             existing.lastSyncedAt = Date()
             // Only clear needsSync if there are no pending SyncOperations for this entity

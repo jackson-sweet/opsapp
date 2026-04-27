@@ -6,6 +6,15 @@
 	<string>1.0.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<!-- Encryption export compliance (avoids the App Store Connect prompt on every upload).
+	     OPS only uses Apple-supplied / standard-exempt encryption:
+	       - HTTPS/TLS (Apple-supplied transport encryption) for Supabase / Firebase / OneSignal / Mapbox / S3
+	       - HMAC-SHA256 for AWS Signature V4 request signing (authentication, not data encryption)
+	       - SHA hashing for cache keys and Sign in with Apple nonces (hashing, not encryption)
+	       - Apple Keychain APIs (Apple-supplied)
+	     None of this requires export compliance documentation per Apple's encryption FAQ. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

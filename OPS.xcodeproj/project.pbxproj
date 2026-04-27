@@ -373,6 +373,7 @@
 			inputPaths = (
 				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${TARGET_NAME}",
 				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+				"$(SRCROOT)/OPS/GoogleService-Info.plist",
 			);
 			name = "Upload Symbols to Crashlytics";
 			outputFileListPaths = (
@@ -381,7 +382,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Only upload dSYMs during archive builds — Debug builds don't generate dSYMs.\nif [ \"$ACTION\" = \"install\" ]; then\n  \"${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\"\nfi\n";
+			shellScript = "# Only upload dSYMs during archive builds — Debug builds don't generate dSYMs.\n# -gsp passes the plist path explicitly so the Firebase run binary doesn't have\n# to discover GOOGLE_APP_ID via the build environment (which Xcode 16's\n# PBXFileSystemSynchronizedRootGroup doesn't expose to ScriptBuildPhases the\n# way the legacy file references did). Belt-and-suspenders with the inputPaths\n# entry above so Xcode also declares the plist as a build dependency.\nif [ \"$ACTION\" = \"install\" ]; then\n  \"${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\" -gsp \"${SRCROOT}/OPS/GoogleService-Info.plist\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -556,7 +557,7 @@
 				CODE_SIGN_ENTITLEMENTS = OPS/OPS.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.0.2;
+				CURRENT_PROJECT_VERSION = 3.0.3;
 				DEVELOPMENT_ASSET_PATHS = "\"OPS/Preview Content\"";
 				DEVELOPMENT_TEAM = X47H96M34K;
 				ENABLE_PREVIEWS = YES;
@@ -581,7 +582,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.0.2;
+				MARKETING_VERSION = 3.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.OPS;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -606,7 +607,7 @@
 				CODE_SIGN_ENTITLEMENTS = OPS/OPS.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.0.2;
+				CURRENT_PROJECT_VERSION = 3.0.3;
 				DEVELOPMENT_ASSET_PATHS = "\"OPS/Preview Content\"";
 				DEVELOPMENT_TEAM = X47H96M34K;
 				ENABLE_PREVIEWS = YES;
@@ -631,7 +632,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.0.2;
+				MARKETING_VERSION = 3.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.OPS;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

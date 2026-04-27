@@ -19,9 +19,28 @@ import UIKit
 private let opsWebBaseURL = "https://app.opsapp.co"
 
 enum ProjectShareLinkBuilder {
+    /// Character set used to encode the project ID into the URL path.
+    /// We start from `.urlPathAllowed` and SUBTRACT `/` so that any future
+    /// ID containing a slash is percent-encoded rather than silently
+    /// splitting into extra path segments (which would cause the receiving
+    /// `handleUniversalLink` to read only the first slash-fragment as the
+    /// entity ID and drop the rest).
+    private static let idAllowedCharacters: CharacterSet = {
+        var set = CharacterSet.urlPathAllowed
+        set.remove(charactersIn: "/")
+        return set
+    }()
+
     /// Builds the canonical shareable web URL for a project.
+    ///
+    /// Bubble IDs today are alphanumeric so this is belt-and-suspenders,
+    /// but it means any future ID-format change can't silently corrupt
+    /// the link.
     static func url(for project: Project) -> URL? {
-        URL(string: "\(opsWebBaseURL)/projects/\(project.id)")
+        let encodedId = project.id.addingPercentEncoding(
+            withAllowedCharacters: idAllowedCharacters
+        ) ?? project.id
+        return URL(string: "\(opsWebBaseURL)/projects/\(encodedId)")
     }
 }
 

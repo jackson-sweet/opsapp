@@ -352,7 +352,17 @@ struct ProjectDetailsView: View {
                     // Initial spacer — positions content in lower portion of map.
                     // Pulled down 40pt so the gradient starts later, revealing
                     // more map above the title (Bug a2f7e6fa).
-                    Color.clear.frame(height: ProjectMapHeader.mapHeight - 130)
+                    //
+                    // This spacer sits on top of the ProjectMapHeader in the
+                    // outer ZStack, so taps over the visible map area land here
+                    // first and never reach ProjectMapHeader.onTapGesture. Wire
+                    // the same openDirections() the map tap calls so tapping
+                    // anywhere over the visible map (whether technically on the
+                    // map view or this spacer) opens native maps. Bug 6904755e.
+                    Color.clear
+                        .frame(height: ProjectMapHeader.mapHeight - 130)
+                        .contentShape(Rectangle())
+                        .onTapGesture { viewModel.openDirections() }
 
                     // Gradient scrolls with content (not pinned — avoids content peeking through)
                     mapScrollGradient

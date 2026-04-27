@@ -172,7 +172,11 @@ class ProjectNotesViewModel: ObservableObject {
             await addAttachmentsToProjectGallery(attachmentURLs)
         }
 
-        let noteContent = text.isEmpty ? (hasImages ? "Photo" : "") : text
+        // Bug d77b49a2 — when the user uploads photos with no caption, leave
+        // the content empty rather than substituting the literal "Photo".
+        // The image attachments speak for themselves; the placeholder added
+        // visual noise to every photo-only comment.
+        let noteContent = text
 
         let dto = CreateProjectNoteDTO(
             projectId: projectId,

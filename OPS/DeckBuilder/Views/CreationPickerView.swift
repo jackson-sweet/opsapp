@@ -26,7 +26,11 @@ struct CreationPickerView: View {
             Text("New Deck Design")
                 .font(OPSStyle.Typography.heading)
                 .foregroundColor(OPSStyle.Colors.primaryText)
-                .padding(.top, OPSStyle.Layout.spacing4)
+                // Bug fc95b426 — spacing4 (24pt) isn't enough clearance under
+                // the sheet's drag indicator zone in iOS 26, so the heading's
+                // top edge gets clipped. spacing5 (32pt) is the largest spacing
+                // token and gives reliable clearance from the grabber.
+                .padding(.top, OPSStyle.Layout.spacing5)
 
             VStack(spacing: OPSStyle.Layout.spacing2) {
                 // Blank Canvas
@@ -195,14 +199,15 @@ struct CreationPickerView: View {
             title = "Untitled Deck"
         }
 
-        let design = DeckDesign(
+        // Do NOT insert into modelContext yet. The design is handed to the
+        // DeckBuilderViewModel which will insert + save on the first real edit.
+        // Persisting blank designs immediately leaves orphan empty stubs when
+        // users dismiss the builder without drawing anything. Bug 7c2bd6be.
+        return DeckDesign(
             companyId: companyId,
             projectId: projectId,
             title: title,
             createdBy: userId
         )
-        modelContext.insert(design)
-        try? modelContext.save()
-        return design
     }
 }

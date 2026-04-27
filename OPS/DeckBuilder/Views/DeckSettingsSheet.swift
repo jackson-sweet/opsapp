@@ -52,7 +52,9 @@ struct DeckSettingsSheet: View {
                                                     : OPSStyle.Colors.cardBackground
                                             )
                                             .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                            .contentShape(Rectangle())
                                     }
+                                    .buttonStyle(.borderless)
                                 }
                             }
                         }
@@ -84,7 +86,9 @@ struct DeckSettingsSheet: View {
                                                     : OPSStyle.Colors.cardBackground
                                             )
                                             .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                            .contentShape(Rectangle())
                                     }
+                                    .buttonStyle(.borderless)
                                 }
                             }
                         }

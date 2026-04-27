@@ -413,6 +413,14 @@ struct SketchCaptureView: View {
     @State private var scannerError: String?
     @State private var isProcessingLibraryImage = false
     @State private var hasUserConfirmedCapture = false   // gate: pipeline runs only after explicit "Use this"
+    // Bug 3ecfdbd4 / b03444db (a) — two adjustment steps inserted between
+    // PhotosPicker and the existing reviewScreen so the user can manually
+    // refine corners and dial brightness/contrast before scan extraction
+    // runs. The library path goes through both; the camera path runs
+    // VisionKit's built-in scanner (which already handles perspective) and
+    // skips straight to tone adjustment.
+    @State private var pendingPerspectiveImage: UIImage?
+    @State private var pendingAdjustmentImage: UIImage?
     @Environment(\.dismiss) private var dismiss
 
     // MARK: - Haptic Generators
@@ -428,7 +436,36 @@ struct SketchCaptureView: View {
             OPSStyle.Colors.background
                 .ignoresSafeArea()
 
-            if capturedImage == nil && !isProcessingLibraryImage {
+            if let perspectiveImage = pendingPerspectiveImage {
+                // Bug 3ecfdbd4 — manual perspective adjustment step
+                PerspectiveCorrectionView(
+                    image: perspectiveImage,
+                    onApply: { corrected in
+                        pendingPerspectiveImage = nil
+                        pendingAdjustmentImage = corrected
+                    },
+                    onCancel: {
+                        // Back out to the choice screen — drop the pending
+                        // image so the body returns to choiceScreen.
+                        pendingPerspectiveImage = nil
+                    }
+                )
+            } else if let adjustImage = pendingAdjustmentImage {
+                // Bug b03444db (a) — brightness/contrast adjustment step
+                ImageAdjustmentView(
+                    image: adjustImage,
+                    onApply: { adjusted in
+                        pendingAdjustmentImage = nil
+                        capturedImage = adjusted
+                    },
+                    onCancel: {
+                        // Back to perspective adjust — preserve the image so
+                        // the user can re-tweak corners without re-picking.
+                        pendingPerspectiveImage = adjustImage
+                        pendingAdjustmentImage = nil
+                    }
+                )
+            } else if capturedImage == nil && !isProcessingLibraryImage {
                 choiceScreen
             } else if isProcessingLibraryImage {
                 processingLibraryLayer
@@ -456,7 +493,10 @@ struct SketchCaptureView: View {
             SketchDocumentScannerView(
                 onCapture: { image in
                     showingDocumentScanner = false
-                    capturedImage = image
+                    // VisionKit's document scanner already perspective-corrects,
+                    // so route the camera path straight to tone adjustment.
+                    // Bug 3ecfdbd4 / b03444db.
+                    pendingAdjustmentImage = image
                 },
                 onCancel: {
                     showingDocumentScanner = false
@@ -474,21 +514,39 @@ struct SketchCaptureView: View {
             PhotoLibraryPicker(
                 onPick: { image in
                     showingPhotoPicker = false
-                    isProcessingLibraryImage = true
-                    Task {
-                        let corrected = await SketchPerspectiveCorrector.perspectiveCorrect(image: image)
-                        await MainActor.run {
-                            isProcessingLibraryImage = false
-                            capturedImage = corrected
-                        }
-                    }
+                    // Library path: route the raw image into the manual
+                    // perspective-correction step. PerspectiveCorrectionView
+                    // pre-fills its handles with the Vision auto-detect quad
+                    // (so the typical case is one tap to confirm) but lets
+                    // the user drag corners to refine — replaces the previous
+                    // silent SketchPerspectiveCorrector call. Bug 3ecfdbd4.
+                    pendingPerspectiveImage = image
                 },
                 onCancel: {
                     showingPhotoPicker = false
                 }
             )
         }
-        .fullScreenCover(isPresented: $showingCleanup) {
+        .fullScreenCover(isPresented: $showingCleanup, onDismiss: {
+            // Bug bbd5dceb — if the user dismissed cleanup without going through
+            // onComplete (X button, system swipe in a future variant), the scan
+            // result is still in pipeline.result so the body's else-if chain
+            // falls through to Color.clear over the dark background. That's the
+            // "black screen" the user reports. Reset to the initial state so the
+            // body returns to choiceScreen and the user has a path forward.
+            // Harmless on the success path — onComplete already torn the view
+            // down, so resetting @State on a dying view is a no-op.
+            capturedImage = nil
+            scannerError = nil
+            pipeline.stage = .idle
+            pipeline.progress = 0.0
+            pipeline.result = nil
+            pipeline.error = nil
+            hasUserConfirmedCapture = false
+            isProcessingLibraryImage = false
+            pendingPerspectiveImage = nil
+            pendingAdjustmentImage = nil
+        }) {
             if let scanResult = pipeline.result {
                 SketchCleanupView(
                     scanResult: scanResult,
@@ -849,5 +907,7 @@ struct SketchCaptureView: View {
         showingCleanup = false
         isProcessingLibraryImage = false
         hasUserConfirmedCapture = false
+        pendingPerspectiveImage = nil
+        pendingAdjustmentImage = nil
     }
 }

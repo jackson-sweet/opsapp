@@ -172,16 +172,22 @@ final class OPSMapCoordinator: ObservableObject {
             MapStyleApplicator.apply(self.mapStyle, to: mv, show3DBuildings: self.show3DBuildings)
         }
 
-        // If we already have a user location, jump to it
+        // Defer the initial camera fly-to so flyTo's @Published mutations
+        // (cameraCenter/Zoom/Heading/Pitch) don't fire while SwiftUI is still
+        // evaluating the body that just called makeUIView. Bug 93d1da27.
         if let loc = locationManager.currentLocation {
-            flyTo(
-                center: loc.coordinate,
-                zoom: BrowseDefaults.zoom,
-                heading: 0,
-                pitch: BrowseDefaults.pitch,
-                duration: 0 // instant on first load
-            )
-            hasInitializedCamera = true
+            let initialCoord = loc.coordinate
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.flyTo(
+                    center: initialCoord,
+                    zoom: BrowseDefaults.zoom,
+                    heading: 0,
+                    pitch: BrowseDefaults.pitch,
+                    duration: 0 // instant on first load
+                )
+                self.hasInitializedCamera = true
+            }
         }
     }
 

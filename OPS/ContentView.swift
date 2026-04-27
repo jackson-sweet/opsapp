@@ -562,6 +562,25 @@ struct PINGatedView: View {
                 await checkForAppMessage()
             }
         }
+        // Deep-link resume trigger: when the user unlocks their PIN, any
+        // link that arrived while the PIN overlay was up is re-drained so
+        // MainTabView's observer can route it now that the screen is safe
+        // to reveal project data on.
+        .onChange(of: pinManager.isAuthenticated) { _, authenticated in
+            if authenticated {
+                DeepLinkCoordinator.shared.drain(context: "pin_unlocked")
+            }
+        }
+        // MentionAccessIndex freshness on user switch. The index is
+        // rebuilt on every full sync (SyncEngine.swift:569), but a
+        // same-session account swap would leave user A's mention grants
+        // visible to user B until the next sync — a window where a deep
+        // link could misroute. Rebuild immediately on user-id change.
+        .onChange(of: dataController.currentUser?.id) { _, newUserId in
+            guard let userId = newUserId,
+                  let context = dataController.modelContext else { return }
+            MentionAccessIndex.shared.rebuild(context: context, userId: userId)
+        }
         // MARK: - Global Project Completion Checklist Sheet
         .sheet(isPresented: $appState.showingGlobalCompletionChecklist) {
             if let project = appState.projectPendingCompletion {

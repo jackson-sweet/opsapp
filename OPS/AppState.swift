@@ -284,6 +284,13 @@ class AppState: ObservableObject {
         self.showingNotifications = false
         self.showingBugReport = false
         self.bugReportScreenshot = nil
+        // Purge any pending deep link so the next signed-in user cannot
+        // inherit a link that was sent to the previous account. The
+        // coordinator is MainActor-isolated; resetForLogout is called
+        // from DataController on the main actor, so the hop is free.
+        Task { @MainActor in
+            DeepLinkCoordinator.shared.clear()
+        }
     }
     
     // Helper method to dismiss project details without exiting project mode

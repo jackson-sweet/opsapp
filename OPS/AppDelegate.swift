@@ -223,41 +223,43 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         print("[DEEP_LINK] Routing \(entity)/\(id)")
 
         switch entity {
-        case "projects":
-            NotificationCenter.default.post(
-                name: Notification.Name("OpenProjectDetails"),
-                object: nil,
-                userInfo: ["projectId": id]
-            )
-            return true
-        case "clients":
-            NotificationCenter.default.post(
-                name: Notification.Name("OpenClientDetails"),
-                object: nil,
-                userInfo: ["clientId": id]
-            )
-            return true
-        case "invoices":
-            NotificationCenter.default.post(
-                name: Notification.Name("OpenInvoiceDetails"),
-                object: nil,
-                userInfo: ["invoiceId": id]
-            )
-            return true
-        case "estimates":
-            NotificationCenter.default.post(
-                name: Notification.Name("OpenEstimateDetails"),
-                object: nil,
-                userInfo: ["estimateId": id]
-            )
+        case "projects", "clients", "invoices", "estimates":
+            // Hand to the coordinator — stash + post + analytics happen there.
+            Task { @MainActor in
+                DeepLinkCoordinator.shared.receive(entity: entity, id: id, scheme: "ops")
+            }
             return true
         case "tasks":
             // Task deep-links require a projectId — caller should use "ops://projects/<projectId>/tasks/<taskId>"
-            // For the simple two-segment form we cannot route — log and bail.
+            // For the simple two-segment form we cannot route — emit malformed so drops are visible.
             print("[DEEP_LINK] Task deep links require projectId context; unsupported in two-segment form")
+            Task { @MainActor in
+                AnalyticsService.shared.track(
+                    eventType: .action,
+                    eventName: "deep_link_malformed",
+                    properties: [
+                        "entity": entity,
+                        "id": id,
+                        "scheme": "ops",
+                        "reason": "task_requires_project_context"
+                    ]
+                )
+            }
             return false
         default:
             print("[DEEP_LINK] Unknown entity: \(entity)")
+            Task { @MainActor in
+                AnalyticsService.shared.track(
+                    eventType: .action,
+                    eventName: "deep_link_malformed",
+                    properties: [
+                        "entity": entity,
+                        "id": id,
+                        "scheme": "ops",
+                        "reason": "unknown_entity"
+                    ]
+                )
+            }
             return false
         }
     }

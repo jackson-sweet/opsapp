@@ -241,12 +241,13 @@ struct OPSApp: App {
                     _ = SpotlightTapRouter.handle(activity)
                 }
                 // HTTPS universal links that weren't intercepted by AppDelegate.
-                // Skip ops:// scheme URLs — AppDelegate.application(_:open:) handles
-                // those and posts the deep-link notification directly. Without this
-                // guard, every ops:// tap would double-route and attempt to present
-                // the destination sheet twice.
+                // We only route https:// here — ops:// flows through AppDelegate's
+                // application(_:open:options:) and any third-party schemes
+                // (Google OAuth callback, etc.) must be left alone. Matching on
+                // scheme is the correct outer guard; the inner host check in
+                // handleUniversalLink is a second layer of defense.
                 .onOpenURL { url in
-                    guard url.scheme != "ops" else { return }
+                    guard url.scheme == "https" else { return }
                     handleUniversalLink(url)
                 }
         }
@@ -295,51 +296,49 @@ struct OPSApp: App {
         // /{entity}/{id}
         guard segments.count >= 2 else {
             print("[DEEP_LINK] No route matched for: \(url.absoluteString)")
+            AnalyticsService.shared.track(
+                eventType: .action,
+                eventName: "deep_link_malformed",
+                properties: [
+                    "scheme": url.scheme ?? "",
+                    "path": url.path,
+                    "reason": "insufficient_path_segments"
+                ]
+            )
             return
         }
 
         let entity = segments[0]
         let id = segments[1]
-        guard !id.isEmpty else { return }
+        guard !id.isEmpty else {
+            AnalyticsService.shared.track(
+                eventType: .action,
+                eventName: "deep_link_malformed",
+                properties: [
+                    "entity": entity,
+                    "scheme": url.scheme ?? "",
+                    "reason": "empty_id"
+                ]
+            )
+            return
+        }
 
         switch entity {
-        case "projects":
-            print("[DEEP_LINK] Routing to project: \(id)")
-            NotificationCenter.default.post(
-                name: Notification.Name("OpenProjectDetails"),
-                object: nil,
-                userInfo: ["projectId": id]
-            )
-        case "clients":
-            print("[DEEP_LINK] Routing to client: \(id)")
-            NotificationCenter.default.post(
-                name: Notification.Name("OpenClientDetails"),
-                object: nil,
-                userInfo: ["clientId": id]
-            )
-        case "invoices":
-            print("[DEEP_LINK] Routing to invoice: \(id)")
-            NotificationCenter.default.post(
-                name: Notification.Name("OpenInvoiceDetails"),
-                object: nil,
-                userInfo: ["invoiceId": id]
-            )
-        case "estimates":
-            print("[DEEP_LINK] Routing to estimate: \(id)")
-            NotificationCenter.default.post(
-                name: Notification.Name("OpenEstimateDetails"),
-                object: nil,
-                userInfo: ["estimateId": id]
-            )
-        case "tasks":
-            print("[DEEP_LINK] Routing to task: \(id)")
-            NotificationCenter.default.post(
-                name: Notification.Name("OpenTaskDetails"),
-                object: nil,
-                userInfo: ["taskId": id]
-            )
+        case "projects", "clients", "invoices", "estimates", "tasks":
+            print("[DEEP_LINK] Routing to \(entity): \(id)")
+            DeepLinkCoordinator.shared.receive(entity: entity, id: id, scheme: url.scheme ?? "")
         default:
             print("[DEEP_LINK] Unknown entity '\(entity)' in: \(url.absoluteString)")
+            AnalyticsService.shared.track(
+                eventType: .action,
+                eventName: "deep_link_malformed",
+                properties: [
+                    "entity": entity,
+                    "id": id,
+                    "scheme": url.scheme ?? "",
+                    "reason": "unknown_entity"
+                ]
+            )
         }
     }
 
@@ -491,10 +490,16 @@ private func clearAllAuthenticationData() {
     for key in authKeys {
         UserDefaults.standard.removeObject(forKey: key)
     }
-    
+
     // Force synchronize to ensure changes are saved
     UserDefaults.standard.synchronize()
-    
+
+    // Purge any in-memory deep link that might have been captured before
+    // the fresh-install wipe runs, so a resumed user doesn't inherit a
+    // link that was tapped under a prior identity.
+    Task { @MainActor in
+        DeepLinkCoordinator.shared.clear()
+    }
 }
 
 extension String: @retroactive Identifiable {

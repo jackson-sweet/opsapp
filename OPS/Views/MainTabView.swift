@@ -26,6 +26,15 @@ struct MainTabView: View {
     @State private var previousTab = 0
     @State private var keyboardIsShowing = false
     @State private var sheetIsPresented = false
+
+    /// Transient loading banner shown while a deep-linked project is being
+    /// fetched from the server (cold-cache case). Dismissed when resolution
+    /// completes (success, denial, or offline bail).
+    @State private var showDeepLinkLoading = false
+
+    /// In-flight project deep-link resolution Task. Cancelled when a newer
+    /// link arrives so concurrent taps can't double-present.
+    @State private var inFlightDeepLinkTask: Task<Void, Never>?
     // PermissionChangeOverlay moved to PINGatedView (ContentView.swift) so it sits above all sheets
     @StateObject private var imageSyncProgressManager = ImageSyncProgressManager()
     @ObservedObject private var inProgressManager = InProgressManager.shared
@@ -274,6 +283,20 @@ struct MainTabView: View {
             ProjectSheetContainer()
 
             // Permission contraction overlay — moved to PINGatedView (ContentView.swift)
+
+            // Deep-link loading banner — shown only while a tapped project
+            // link is awaiting a server fetch (cold-cache case). Local-cache
+            // hits skip this entirely. autoDismissAfter=0 means "manual
+            // dismiss only" — the `showDeepLinkLoading` flag is flipped off
+            // by openProjectWithSync's `defer` block when resolution lands.
+            PushInMessage(
+                isPresented: $showDeepLinkLoading,
+                title: "LOADING PROJECT",
+                subtitle: "Fetching the latest data...",
+                type: .info,
+                autoDismissAfter: 0
+            )
+            .zIndex(2)
         }
         .sheet(isPresented: $appState.showingUniversalSearch) {
             UniversalSearchSheet()
@@ -380,13 +403,18 @@ struct MainTabView: View {
 
         // MARK: - Push Notification Deep Linking Handlers
 
-        // Handle opening project details from push notification
+        // Handle opening project details from push notification, universal
+        // link, or custom-scheme tap. Cancels any in-flight resolution so
+        // two rapid taps resolve the newest one only — prevents double-
+        // present races at the AppState sheet layer.
         .onReceive(openProjectDetailsObserver) { notification in
-            if let projectId = notification.userInfo?["projectId"] as? String {
-                print("[PUSH_NAVIGATION] Opening project details for: \(projectId)")
-                Task {
-                    await openProjectWithSync(projectId: projectId)
-                }
+            guard let projectId = notification.userInfo?["projectId"] as? String else { return }
+            let deepLinkId = notification.userInfo?[DeepLinkCoordinator.deepLinkIdUserInfoKey] as? String
+            print("[PUSH_NAVIGATION] Opening project details for: \(projectId) (deepLinkId=\(deepLinkId ?? "nil"))")
+
+            inFlightDeepLinkTask?.cancel()
+            inFlightDeepLinkTask = Task { [projectId, deepLinkId] in
+                await openProjectWithSync(projectId: projectId, deepLinkId: deepLinkId)
             }
         }
 
@@ -704,6 +732,15 @@ struct MainTabView: View {
                     evaluateWizardTriggers()
                 }
             }
+
+            // Deep-link resume: if a link arrived while MainTabView wasn't
+            // mounted (splash, logged-out, lockout, blocking app message),
+            // re-post it now that our `.onReceive` observers are attached.
+            // Idempotent — safe to call on every onAppear; drain is a no-op
+            // when nothing is pending.
+            DispatchQueue.main.async {
+                DeepLinkCoordinator.shared.drain(context: "main_tab_appear")
+            }
         }
         .onChange(of: selectedTab) { _, newTab in
             // Broadcast current tab name for wizard context tracking
@@ -894,20 +931,161 @@ struct MainTabView: View {
 
     // MARK: - Push Notification Sync Helpers
 
-    /// Open project details, syncing first if the project isn't in the local database
-    private func openProjectWithSync(projectId: String) async {
-        // Check if project exists locally
-        if dataController.getProject(id: projectId) != nil {
-            print("[PUSH_NAVIGATION] Project found locally, opening immediately")
-            await MainActor.run {
-                appState.viewProjectDetailsById(projectId)
-            }
+    /// Open project details for a deep link (shareable URL, push, or Spotlight),
+    /// applying the full access-control chain before presenting.
+    ///
+    /// Layered checks — each emits a distinct `deep_link_denied` event and
+    /// shows an AccessDeniedSheet with a reason-specific message:
+    ///
+    ///   0. **PIN gate** — if the screen is PIN-protected and not yet
+    ///      unlocked, return without clearing so the link resolves after
+    ///      the user enters their PIN. Critical for preventing project
+    ///      data from rendering behind the PIN overlay (sheets are root-VC
+    ///      modals above the SwiftUI ZStack).
+    ///   1. **Feature flag** — `projects.view` blocked by a disabled flag.
+    ///   2. **Permission exists** — user's role has no `projects.view` at
+    ///      any scope.
+    ///   3. **Offline + not cached** — no connectivity and the project
+    ///      isn't locally available; distinct reason so the user knows to
+    ///      reconnect rather than thinking the project is gone.
+    ///   4. **Project resolvable** — local cache first, then `getProjectDetails`
+    ///      awaits a sync (no more `triggerFullSync + 0.5s sleep` race). If
+    ///      Bubble doesn't return the project (RLS / 404 / wrong company),
+    ///      the generic "not found" reason fires — we can't distinguish
+    ///      server-denied from genuinely missing without leaking information.
+    ///   5. **Not deleted** — `deletedAt == nil`. Tombstones fail here.
+    ///   6. **Scope + mention** — `PermissionStore.canViewProject` enforces
+    ///      `all` vs `assigned` scope and Bug G9 mention-grant access.
+    ///
+    /// `deepLinkId` is the correlation UUID threaded from the coordinator
+    /// so every analytics event in the funnel can be joined on a single ID.
+    ///
+    /// The cross-company check that used to sit between (4) and (6) was
+    /// removed: Bubble RLS prevents cross-company reads, so a mismatched
+    /// local cache would only occur with a stale tombstone — in which case
+    /// "not found" is the more honest message.
+    @MainActor
+    private func openProjectWithSync(projectId: String, deepLinkId: String?) async {
+        // Layer 0 — PIN gate. Return without clearing so the link is
+        // re-drained after PIN unlock (see PINGatedView.onChange).
+        if dataController.simplePINManager.requiresPIN &&
+           !dataController.simplePINManager.isAuthenticated {
+            print("[DEEP_LINK] Deferring project \(projectId) — PIN required")
             return
         }
 
-        // Project not found locally - sync first
-        print("[PUSH_NAVIGATION] Project not found locally, triggering sync...")
-        await syncAndOpenProject(projectId: projectId)
+        // Layer 1 — feature flag (overrides RBAC)
+        if permissionStore.isBlockedByFlag("projects.view") {
+            denyProject(projectId: projectId, deepLinkId: deepLinkId,
+                        reason: "feature_flag",
+                        message: "Project access is not available on your account.")
+            return
+        }
+
+        // Layer 2 — permission granted at any scope
+        guard permissionStore.scope(for: "projects.view") != nil else {
+            denyProject(projectId: projectId, deepLinkId: deepLinkId,
+                        reason: "no_permission",
+                        message: "You don't have permission to view projects.")
+            return
+        }
+
+        // Layer 3 — resolve project (local cache → awaited sync, with
+        // explicit offline handling so the user sees a useful message).
+        let project: Project?
+        if let local = dataController.getProject(id: projectId) {
+            project = local
+        } else if !dataController.isConnected {
+            denyProject(projectId: projectId, deepLinkId: deepLinkId,
+                        reason: "offline",
+                        message: "You're offline. Connect to internet to open this project.")
+            return
+        } else {
+            print("[DEEP_LINK] Project \(projectId) not cached — awaiting sync")
+            showDeepLinkLoading = true
+            defer { showDeepLinkLoading = false }
+
+            do {
+                project = try await dataController.getProjectDetails(projectId: projectId)
+            } catch is CancellationError {
+                // A newer deep-link tap cancelled us — silent exit, no
+                // denial, no clear. The newer tap owns the stash now.
+                print("[DEEP_LINK] Resolution cancelled for \(projectId)")
+                return
+            } catch {
+                print("[DEEP_LINK] getProjectDetails failed: \(error.localizedDescription)")
+                project = nil
+            }
+
+            // Honor cancellation that landed between await points.
+            if Task.isCancelled { return }
+        }
+
+        guard let project = project else {
+            denyProject(projectId: projectId, deepLinkId: deepLinkId,
+                        reason: "not_found",
+                        message: "This project is no longer available or you don't have access.")
+            return
+        }
+
+        // Layer 5 — deleted check
+        if project.deletedAt != nil {
+            denyProject(projectId: projectId, deepLinkId: deepLinkId,
+                        reason: "deleted",
+                        message: "This project has been deleted.")
+            return
+        }
+
+        // Layer 6 — scope-aware viewing (assigned / all / mention grant).
+        // canViewProject already handles the feature-flag short-circuit
+        // (redundant with Layer 1) plus own-scope denial.
+        guard let userId = dataController.currentUser?.id else {
+            denyProject(projectId: projectId, deepLinkId: deepLinkId,
+                        reason: "no_user",
+                        message: "You don't have permission to view this project.")
+            return
+        }
+        guard permissionStore.canViewProject(project, userId: userId) else {
+            denyProject(projectId: projectId, deepLinkId: deepLinkId,
+                        reason: "scope",
+                        message: "You don't have permission to view this project.")
+            return
+        }
+
+        // All gates passed — open the sheet and clear the stash.
+        AnalyticsService.shared.track(
+            eventType: .action,
+            eventName: "deep_link_resolved",
+            properties: [
+                "entity": "projects",
+                "project_id": projectId,
+                DeepLinkCoordinator.deepLinkIdUserInfoKey: deepLinkId ?? ""
+            ]
+        )
+        DeepLinkCoordinator.shared.clear()
+        appState.viewProjectDetailsById(projectId)
+    }
+
+    /// Centralized access-denied path for the project deep-link flow.
+    /// Presents AccessDeniedSheet, clears the stash (the link has been
+    /// "handled" from the user's perspective — they got feedback), and
+    /// emits `deep_link_denied` with a machine-readable `reason` code so
+    /// drop patterns are queryable.
+    @MainActor
+    private func denyProject(projectId: String, deepLinkId: String?, reason: String, message: String) {
+        print("[DEEP_LINK] Project \(projectId) denied — \(reason)")
+        appState.presentAccessDenied(message: message)
+        AnalyticsService.shared.track(
+            eventType: .action,
+            eventName: "deep_link_denied",
+            properties: [
+                "entity": "projects",
+                "project_id": projectId,
+                "reason": reason,
+                DeepLinkCoordinator.deepLinkIdUserInfoKey: deepLinkId ?? ""
+            ]
+        )
+        DeepLinkCoordinator.shared.clear()
     }
 
     /// Resolve a task's parent project ID from SwiftData. Used when a Spotlight
@@ -1004,27 +1182,6 @@ struct MainTabView: View {
         // Task/project not found locally - sync first
         print("[PUSH_NAVIGATION] Task not found locally, triggering sync...")
         await syncAndOpenTask(taskId: taskId, projectId: projectId)
-    }
-
-    /// Sync data and then open project details
-    private func syncAndOpenProject(projectId: String) async {
-        print("[PUSH_NAVIGATION] Starting sync for project: \(projectId)")
-
-        // Perform a full sync via DataController
-        await dataController.triggerFullSync()
-
-        // Small delay for SwiftData to process
-        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-
-        // Try to open the project again
-        await MainActor.run {
-            if dataController.getProject(id: projectId) != nil {
-                print("[PUSH_NAVIGATION] Project found after sync, opening")
-                appState.viewProjectDetailsById(projectId)
-            } else {
-                print("[PUSH_NAVIGATION] Project still not found after sync")
-            }
-        }
     }
 
     /// Sync data and then open task details

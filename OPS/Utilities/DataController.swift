@@ -5168,51 +5168,23 @@ class DataController: ObservableObject {
 
     // MARK: - Create Operations (SyncEngine Migration)
 
-    /// Create a new project - SINGLE SOURCE OF TRUTH
-    /// This replaces syncManager.createProject(dto:) calls.
-    /// Returns the new project ID.
+    /// Enqueue a project create operation for server-side sync.
+    ///
+    /// **Contract:** The caller MUST have already inserted the Project into the
+    /// modelContext locally before invoking this method. This function does NOT
+    /// insert from the DTO — it only builds the changedFields payload and hands
+    /// it to SyncEngine for the eventual server push. The local Project must
+    /// exist for SyncEngine to read its fields when pushing.
+    ///
+    /// Returns the project ID. Bug 86896bb5 — previously this method also
+    /// performed a defensive local insert from the DTO, but the only caller
+    /// (ProjectFormSheet) always inserts before calling, so the defensive path
+    /// always logged "Project already exists locally, skipping insert" and
+    /// performed a wasted FetchDescriptor query on every project creation.
     @MainActor
     func createProject(dto: SupabaseProjectDTO) async throws -> String {
-        guard let context = modelContext else {
+        guard modelContext != nil else {
             throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
-        }
-
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-        // Check if project already exists in context (prevents duplicate inserts)
-        let projectId = dto.id
-        let existingDescriptor = FetchDescriptor<Project>(
-            predicate: #Predicate<Project> { $0.id == projectId }
-        )
-        let existing = try? context.fetch(existingDescriptor)
-
-        if existing?.isEmpty != false {
-            // Create local model from DTO
-            let project = Project(id: dto.id, title: dto.title, status: Status(rawValue: dto.status) ?? .rfq)
-            project.companyId = dto.companyId
-            project.clientId = dto.clientId
-            project.opportunityId = dto.opportunityId
-            project.address = dto.address
-            project.latitude = dto.latitude
-            project.longitude = dto.longitude
-            project.notes = dto.notes
-            project.projectDescription = dto.description
-            project.allDay = dto.allDay ?? true
-            project.duration = dto.duration ?? 1
-            if let startStr = dto.startDate { project.startDate = formatter.date(from: startStr) }
-            if let endStr = dto.endDate { project.endDate = formatter.date(from: endStr) }
-            if let memberIds = dto.teamMemberIds { project.setTeamMemberIds(memberIds) }
-            if let images = dto.projectImages { project.projectImagesString = images.joined(separator: ",") }
-            project.needsSync = true
-
-            // Insert locally
-            context.insert(project)
-            try context.save()
-
-            print("[DataController] ✅ Project created locally: \(dto.id)")
-        } else {
-            print("[DataController] ⚠️ Project already exists locally, skipping insert: \(dto.id)")
         }
 
         // Build the full payload for SyncEngine create

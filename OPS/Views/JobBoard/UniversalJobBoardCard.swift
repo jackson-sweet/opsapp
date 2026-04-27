@@ -941,12 +941,11 @@ struct UniversalJobBoardCard: View {
     private func terminalStatusBadge(for status: Status) -> AnyView? {
         switch status {
         case .completed:
-            return AnyView(
-                inlineBadge(
-                    text: "DONE",
-                    color: OPSStyle.Colors.successStatus
-                )
-            )
+            // Bug 206ffff1 — the corner status chip already reads "COMPLETED",
+            // so an inline "DONE" pill is redundant noise. CLOSED and ARCHIVED
+            // are distinct enough from the chip to keep their badges (they
+            // signal post-completion state the chip alone doesn't convey).
+            return nil
         case .closed:
             return AnyView(
                 inlineBadge(

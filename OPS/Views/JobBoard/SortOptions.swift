@@ -17,6 +17,10 @@ enum ProjectSortOption: String, CaseIterable, Hashable {
 }
 
 enum TaskSortOption: String, CaseIterable, Hashable {
+    // Default — bug ec9f5856. Recently touched tasks float to the top so the
+    // user's "what did I just edit" answer matches scrolling muscle memory.
+    case latestEdited = "Latest Edited"
+    case earliestEdited = "Earliest Edited"
     case scheduledDateDescending = "Latest Scheduled"
     case scheduledDateAscending = "Earliest Scheduled"
     case statusAscending = "Status (A-Z)"

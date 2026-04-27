@@ -42,7 +42,11 @@ struct JobBoardKanbanView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: OPSStyle.Layout.spacing2) {
+            // Bug 9a9c211a — spacing2 (8pt) between status bars read as
+            // visually flush against the dark background in the screenshot.
+            // Bump to spacing3 (16pt) so each status bar reads as its own
+            // standalone card.
+            VStack(spacing: OPSStyle.Layout.spacing3) {
                 ForEach(displayStatuses, id: \.self) { status in
                     KanbanStatusBar(
                         status: status,
@@ -60,7 +64,12 @@ struct JobBoardKanbanView: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.top, OPSStyle.Layout.spacing2)
-            .padding(.bottom, 120)
+            // Bug d335d3ae — bumped from 120pt → 160pt so the last status bar
+            // (or the trailing project card inside an expanded bar) clears
+            // the floating tab bar with visible breathing room. The standard
+            // tabBarPadding helper uses 90pt; the additional 70pt gives the
+            // kanban a generous bottom gutter matching the inter-bar rhythm.
+            .padding(.bottom, 160)
         }
         .trackScreen("JobBoard.Kanban")
     }
@@ -129,7 +138,10 @@ private struct KanbanStatusBar: View {
     }
 
     private var expandedContent: some View {
-        VStack(spacing: OPSStyle.Layout.spacing2) {
+        // Bug 9a9c211a — bumped inter-card spacing from spacing2 (8pt) to
+        // spacing3 (16pt) so the project cards inside an expanded status bar
+        // read as discrete cards instead of a flush stack.
+        VStack(spacing: OPSStyle.Layout.spacing3) {
             if projects.isEmpty {
                 Text("No projects")
                     .font(OPSStyle.Typography.body)
@@ -144,7 +156,7 @@ private struct KanbanStatusBar: View {
                 }
             }
         }
-        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .padding(.vertical, OPSStyle.Layout.spacing3)
         .padding(.horizontal, OPSStyle.Layout.spacing2)
     }
 }

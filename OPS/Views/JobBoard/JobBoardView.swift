@@ -686,7 +686,18 @@ struct JobBoardTasksView: View {
     @State private var selectedStatuses: Set<TaskStatus> = []
     @State private var selectedTaskTypeIds: Set<String> = []
     @State private var selectedTeamMemberIds: Set<String> = []
-    @State private var sortOption: TaskSortOption = .scheduledDateDescending
+    // Persisted task sort preference, defaulting to .latestEdited (bug ec9f5856)
+    // so freshly touched tasks float to the top — mirrors the project list
+    // default and matches user mental model. Survives relaunches via
+    // @AppStorage. Falls back to .latestEdited if the stored raw is unknown
+    // (handles future enum renames).
+    @AppStorage("taskListSortOrder") private var sortOptionRaw: String = TaskSortOption.latestEdited.rawValue
+    private var sortOption: Binding<TaskSortOption> {
+        Binding<TaskSortOption>(
+            get: { TaskSortOption(rawValue: sortOptionRaw) ?? .latestEdited },
+            set: { sortOptionRaw = $0.rawValue }
+        )
+    }
     @State private var selectedTaskType: TaskType?
     @State private var showingTaskTypeDetails = false
     @State private var showingCompletedSheet = false
@@ -779,7 +790,22 @@ struct JobBoardTasksView: View {
         }
 
         // Sort
-        switch sortOption {
+        switch sortOption.wrappedValue {
+        case .latestEdited:
+            // Mirror the project-list "latestEdited" rule: most recent of
+            // lastSyncedAt or scheduledDate. lastSyncedAt is updated on every
+            // outbound sync, so it tracks "user just touched this".
+            return filtered.sorted(by: { t1, t2 in
+                let s1 = t1.lastSyncedAt ?? t1.scheduledDate ?? Date.distantPast
+                let s2 = t2.lastSyncedAt ?? t2.scheduledDate ?? Date.distantPast
+                return s1 > s2
+            })
+        case .earliestEdited:
+            return filtered.sorted(by: { t1, t2 in
+                let s1 = t1.lastSyncedAt ?? t1.scheduledDate ?? Date.distantFuture
+                let s2 = t2.lastSyncedAt ?? t2.scheduledDate ?? Date.distantFuture
+                return s1 < s2
+            })
         case .scheduledDateDescending:
             return filtered.sorted(by: { ($0.scheduledDate ?? Date.distantPast) > ($1.scheduledDate ?? Date.distantPast) })
         case .scheduledDateAscending:
@@ -868,7 +894,7 @@ struct JobBoardTasksView: View {
                 selectedStatuses: $selectedStatuses,
                 selectedTaskTypeIds: $selectedTaskTypeIds,
                 selectedTeamMemberIds: $selectedTeamMemberIds,
-                sortOption: $sortOption,
+                sortOption: sortOption,
                 availableTaskTypes: availableTaskTypes,
                 availableTeamMembers: availableTeamMembers
             )
@@ -951,7 +977,7 @@ struct JobBoardTasksView: View {
                 selectedStatuses: $selectedStatuses,
                 selectedTaskTypeIds: $selectedTaskTypeIds,
                 selectedTeamMemberIds: $selectedTeamMemberIds,
-                sortOption: $sortOption,
+                sortOption: sortOption,
                 availableTaskTypes: availableTaskTypes,
                 availableTeamMembers: availableTeamMembers
             )

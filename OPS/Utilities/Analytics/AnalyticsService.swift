@@ -108,9 +108,19 @@ final class AnalyticsService {
             guard !batch.isEmpty else { break }
 
             do {
+                // Bug 08d1f969 — use upsert with ignoreDuplicates so a network
+                // drop after a successful server insert (response lost on the
+                // wire) doesn't poison the queue with permanent duplicate-key
+                // violations on retry. Each event already has a client-side
+                // UUID `id`, which is the analytics_events primary key, so
+                // upsert-with-ignore is idempotent: rows that already landed
+                // on the server are silently skipped, rows that didn't land
+                // get inserted. Previously the retry path returned 23505
+                // (duplicate_key) and we requeued forever, blocking every
+                // event behind the stuck batch.
                 try await SupabaseService.shared.client
                     .from("analytics_events")
-                    .insert(batch)
+                    .upsert(batch, onConflict: "id", ignoreDuplicates: true)
                     .execute()
 
                 print("[ANALYTICS] ✅ Flushed \(batch.count) events")

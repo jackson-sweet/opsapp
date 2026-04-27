@@ -255,7 +255,11 @@ private struct MiniMapboxView: UIViewRepresentable {
             cameraOptions: camera,
             styleURI: style.baseStyleURI
         )
-        let mapView = MapView(frame: CGRect(x: 0, y: 0, width: 64, height: 64), mapInitOptions: options)
+        // Use the screen bounds at init so Metal layer's contentsScale resolves
+        // to the device pixel ratio. A degenerate 64x64 frame triggers Mapbox's
+        // "Invalid size" fallback and a nan content-scale on the MetalView. Bug 003434d9.
+        let mapView = MapView(frame: UIScreen.main.bounds, mapInitOptions: options)
+        mapView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         mapView.backgroundColor = style.backgroundColor
 
         // Disable all interactions — parent Button handles tap

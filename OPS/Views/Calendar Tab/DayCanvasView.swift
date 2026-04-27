@@ -250,9 +250,11 @@ struct DayPageView: View {
                             // Empty slots get invisible spacers to preserve alignment.
                             ForEach(Array(unifiedTasks.enumerated()), id: \.element.id) { index, entry in
                                 if entry.isSpacer {
-                                    // Invisible spacer matching card height (64) + vertical padding (8)
+                                    // Invisible spacer matching card height (64) + vertical padding (16 = 8+8).
+                                    // Bumped from 72 → 80 alongside CalendarEventCard's vertical padding
+                                    // change (4 → 8) for bug a6517f42. Slot math below also at 80.
                                     Color.clear
-                                        .frame(height: 72)
+                                        .frame(height: 80)
                                         .id(entry.id)
                                 } else if let task = entry.task {
                                     taskRow(task: task, isOngoing: entry.isOngoing, isFirst: index == 0)
@@ -284,7 +286,7 @@ struct DayPageView: View {
                     // Active page: convert pixel offset to slot ID, push to viewModel
                     .onPreferenceChange(DayScrollOffsetKey.self) { offset in
                         if isActivePage {
-                            let slot = max(0, Int(-offset / 72))
+                            let slot = max(0, Int(-offset / 80))
                             let slotId = "slot-\(slot)"
                             if viewModel.dayScrollAnchor != slotId {
                                 viewModel.dayScrollAnchor = slotId

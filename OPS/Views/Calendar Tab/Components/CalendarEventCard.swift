@@ -218,7 +218,12 @@ struct CalendarEventCard: View {
 
             Button("Cancel", role: .cancel) {}
         }
-        .padding(.vertical, 4)
+        // Bug a6517f42 — schedule cards previously sat at 4pt vertical padding
+        // (8pt total gap between cards), which read as cramped. Bumped to 8pt
+        // (16pt total gap) for breathing room. The DayCanvas spacer height
+        // (72pt) already accounts for 64pt card + 8pt vertical padding, so the
+        // unified-task-list cross-day alignment stays correct.
+        .padding(.vertical, 8)
         .padding(.leading, bleedsLeft ? 0 : 20)
         .padding(.trailing, bleedsRight ? 0 : 20)
         // Task type badge — top-right, shown on ALL days of the task

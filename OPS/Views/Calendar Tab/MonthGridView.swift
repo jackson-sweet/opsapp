@@ -182,6 +182,17 @@ struct MonthGridView: View {
     @State private var scrollDirection: ScrollDirection = .down
     @State private var showMonthPicker = false
 
+    // Long-press / context-menu reschedule state (Bug 70591eb5)
+    @State private var rescheduleTarget: RescheduleTarget?
+
+    /// Identifiable wrapper so SwiftUI can drive the reschedule sheet from a
+    /// `@State` of the task. ProjectTask isn't Identifiable in its model
+    /// definition.
+    fileprivate struct RescheduleTarget: Identifiable {
+        let id: String
+        let task: ProjectTask
+    }
+
     private enum ScrollDirection {
         case up, down
     }
@@ -271,6 +282,39 @@ struct MonthGridView: View {
 
     private func eventRowSpacing(for cellHeight: CGFloat) -> CGFloat {
         return 2
+    }
+
+    // MARK: - Long-press / context-menu helpers (Bug 70591eb5)
+
+    /// Returns the first visible day of `span` within the supplied `dates`
+    /// array. Used to anchor the day sheet when a badge is tapped — matches
+    /// the behaviour of tapping the first day cell that the badge covers.
+    private func dayDateForSpan(_ span: WeekEventSpan, dates: [Date?]) -> Date? {
+        guard span.startDayIndex >= 0, span.startDayIndex < dates.count else { return nil }
+        return dates[span.startDayIndex]
+    }
+
+    /// Push (or pull) a task by N days using the existing scheduling engine
+    /// and the single-source-of-truth update path on DataController. Triggers
+    /// medium haptic on intent, success haptic when the update commits.
+    private func pushTaskByDays(eventId: String, days: Int) {
+        guard let task = dataController.getTask(id: eventId) else { return }
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        let result = SchedulingEngine.pushByDays(task: task, days: days)
+        Task { @MainActor in
+            do {
+                try await dataController.updateTaskSchedule(
+                    task: task,
+                    startDate: result.newStart,
+                    endDate: result.newEnd
+                )
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } catch {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+        }
     }
 
     private func eventRowHeight(for cellHeight: CGFloat) -> CGFloat {
@@ -541,9 +585,42 @@ struct MonthGridView: View {
                                                 }
 
                                                 ForEach(weekSpans) { span in
-                                                    EventBar(span: span, cellHeight: cellHeight, dayWidth: dayWidth)
-                                                        .offset(x: dayWidth * CGFloat(span.startDayIndex), y: 26 + (CGFloat(span.row) * eventRowHeight(for: cellHeight)))
-                                                        .allowsHitTesting(false)
+                                                    EventBar(
+                                                        span: span,
+                                                        cellHeight: cellHeight,
+                                                        dayWidth: dayWidth,
+                                                        onTap: {
+                                                            // Forward to the day cell so the day sheet
+                                                            // still opens when users tap a badge —
+                                                            // preserves the previous "badge is non-
+                                                            // interactive" behavior.
+                                                            if let tapDate = dayDateForSpan(span, dates: dates) {
+                                                                sheetDate = IdentifiableDate(date: tapDate)
+                                                                NotificationCenter.default.post(
+                                                                    name: Notification.Name("WizardCalendarMonthDayTapped"),
+                                                                    object: nil
+                                                                )
+                                                            }
+                                                        },
+                                                        onPushDays: { days in
+                                                            pushTaskByDays(eventId: span.eventId, days: days)
+                                                        },
+                                                        onOpenReschedule: {
+                                                            if let task = dataController.getTask(id: span.eventId) {
+                                                                rescheduleTarget = RescheduleTarget(id: task.id, task: task)
+                                                            }
+                                                        },
+                                                        onOpenDayDetails: {
+                                                            // Open the day sheet anchored at the
+                                                            // event's first day in the visible week
+                                                            // so the user lands on the same place
+                                                            // as a normal day-cell tap.
+                                                            if let firstDate = dates[span.startDayIndex] {
+                                                                sheetDate = IdentifiableDate(date: firstDate)
+                                                            }
+                                                        }
+                                                    )
+                                                    .offset(x: dayWidth * CGFloat(span.startDayIndex), y: 26 + (CGFloat(span.row) * eventRowHeight(for: cellHeight)))
                                                 }
 
                                                 ForEach(moreIndicators) { indicator in
@@ -684,6 +761,28 @@ struct MonthGridView: View {
             .sheet(isPresented: $showMonthPicker) {
                 MonthJumpPicker(viewModel: viewModel)
                     .opsSheet(detents: [.medium])
+            }
+            // Long-press → "Pick new date…" opens the same scheduler used
+            // elsewhere in the app for full control over start/end (Bug
+            // 70591eb5).
+            .sheet(item: $rescheduleTarget) { target in
+                MonthGridReschedulePresenter(task: target.task) { newStart, newEnd in
+                    Task { @MainActor in
+                        do {
+                            try await dataController.updateTaskSchedule(
+                                task: target.task,
+                                startDate: newStart,
+                                endDate: newEnd
+                            )
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        } catch {
+                            UINotificationFeedbackGenerator().notificationOccurred(.error)
+                        }
+                    }
+                } onDismiss: {
+                    rescheduleTarget = nil
+                }
+                .environmentObject(dataController)
             }
         }
     }
@@ -1037,6 +1136,14 @@ struct EventBar: View {
     let cellHeight: CGFloat
     let dayWidth: CGFloat
 
+    // Optional handlers added for Bug 70591eb5 (push / quick reschedule from
+    // long-press). Defaults keep backwards-compatible callers (e.g. previews
+    // or tutorial mode) working without behaviour change.
+    var onTap: (() -> Void)? = nil
+    var onPushDays: ((Int) -> Void)? = nil
+    var onOpenReschedule: (() -> Void)? = nil
+    var onOpenDayDetails: (() -> Void)? = nil
+
     private enum DisplayLevel {
         case level1  // < 120: compact dots
         case level2  // 120-180: short bars with title
@@ -1096,6 +1203,54 @@ struct EventBar: View {
         .clipped()
         .background(eventBackground)
         .padding(.horizontal, 2)
+        // Bug 70591eb5: tap forwards to the day sheet (preserving the
+        // previous "badge is non-interactive" behaviour) and long-press
+        // exposes quick reschedule actions via the system context menu.
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTap?()
+        }
+        .contextMenu {
+            if onPushDays != nil || onOpenReschedule != nil || onOpenDayDetails != nil {
+                if let push = onPushDays {
+                    Button {
+                        push(1)
+                    } label: {
+                        Label("Push 1 day", systemImage: "arrow.right")
+                    }
+                    Button {
+                        push(3)
+                    } label: {
+                        Label("Push 3 days", systemImage: "arrow.right.to.line")
+                    }
+                    Button {
+                        push(7)
+                    } label: {
+                        Label("Push 1 week", systemImage: "calendar.badge.plus")
+                    }
+                    Button {
+                        push(-1)
+                    } label: {
+                        Label("Pull back 1 day", systemImage: "arrow.left")
+                    }
+                    Divider()
+                }
+                if let openReschedule = onOpenReschedule {
+                    Button {
+                        openReschedule()
+                    } label: {
+                        Label("Pick new date…", systemImage: "calendar")
+                    }
+                }
+                if let openDayDetails = onOpenDayDetails {
+                    Button {
+                        openDayDetails()
+                    } label: {
+                        Label("View details", systemImage: "info.circle")
+                    }
+                }
+            }
+        }
     }
 
     // Short event: single line title (Level 1, 2, and multi-day at Level 3)
@@ -1183,6 +1338,37 @@ struct MoreEventsIndicatorView: View {
         .background(OPSStyle.Colors.secondaryText.opacity(0.1))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .padding(.horizontal, 2)
+    }
+}
+
+// MARK: - Reschedule Presenter (Bug 70591eb5)
+
+/// Hosts the existing `CalendarSchedulerSheet` for a single task triggered
+/// from the month-grid long-press menu. Wraps the sheet so it can be
+/// presented from `.sheet(item:)` while still satisfying the scheduler's
+/// `Binding<Bool>` API.
+private struct MonthGridReschedulePresenter: View {
+    let task: ProjectTask
+    let onScheduleUpdate: (Date, Date) -> Void
+    let onDismiss: () -> Void
+
+    @State private var isPresented: Bool = true
+
+    var body: some View {
+        CalendarSchedulerSheet(
+            isPresented: $isPresented,
+            itemType: .task(task),
+            currentStartDate: task.startDate,
+            currentEndDate: task.endDate,
+            onScheduleUpdate: { newStart, newEnd in
+                onScheduleUpdate(newStart, newEnd)
+            }
+        )
+        .onChange(of: isPresented) { _, newValue in
+            if !newValue {
+                onDismiss()
+            }
+        }
     }
 }
 

@@ -34,6 +34,16 @@ struct PhotoCommentViewer: View {
     @State private var annotationIsSaving = false
     @State private var annotationError: String?
 
+    /// Bug 7b43be32 — cached project handle so the visibility toggle
+    /// doesn't re-fetch from SwiftData on every body render. Loaded
+    /// once in onAppear and refreshed only when the projectId changes
+    /// (which it never does for a single viewer instance).
+    @State private var cachedProject: Project?
+    /// Local mirror of the current photo's visibility state. Updated
+    /// from `cachedProject` on photo change and on toggle so the UI
+    /// can re-render without re-fetching.
+    @State private var currentVisibilityState: Bool = false
+
     // Remote annotation overlays keyed by photo URL
     @State private var loadedAnnotations: [String: PhotoAnnotationDTO] = [:]
     // Incremented after compositing to force ZoomablePhotoView to reload from cache
@@ -104,6 +114,9 @@ struct PhotoCommentViewer: View {
                         showOverlay = true
                     }
                     scheduleAutoHide()
+                    // Bug 7b43be32 — refresh the visibility mirror so
+                    // the eye toggle reflects the new photo.
+                    refreshVisibilityState()
                 }
             }
 
@@ -145,6 +158,10 @@ struct PhotoCommentViewer: View {
         .preferredColorScheme(.dark)
         .onAppear {
             setupViewModel()
+            // Bug 7b43be32 — load + cache the project handle so the
+            // visibility toggle reads from a single fetch rather than
+            // hitting SwiftData on every body render.
+            loadCachedProject()
             Task { await viewModel.loadComments() }
             Task {
                 guard let modelContext = dataController.modelContext else { return }
@@ -692,7 +709,30 @@ struct PhotoCommentViewer: View {
         )
     }
 
-    // MARK: - Bottom Action Bar (Share + Annotate)
+    // MARK: - Bottom Action Bar (Share + Visibility + Annotate)
+
+    /// Bug 7b43be32 — fetch the Project once and cache it. SwiftData
+    /// fetches are cheap but @State assignment is cheaper, and the
+    /// project pointer doesn't change for the lifetime of this viewer.
+    private func loadCachedProject() {
+        guard let context = dataController.modelContext else { return }
+        let id = projectId
+        let descriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { $0.id == id }
+        )
+        cachedProject = try? context.fetch(descriptor).first
+        refreshVisibilityState()
+    }
+
+    /// Sync the local visibility mirror from the cached Project. Called
+    /// on photo change and after a successful toggle.
+    private func refreshVisibilityState() {
+        guard currentIndex < photos.count, let project = cachedProject else {
+            currentVisibilityState = false
+            return
+        }
+        currentVisibilityState = project.isImageClientVisible(photos[currentIndex])
+    }
 
     private var bottomActionBar: some View {
         OPSActionBar(showBackground: false) {
@@ -707,6 +747,26 @@ struct PhotoCommentViewer: View {
 
                 Spacer()
 
+                // Bug 7b43be32 — per-photo client portal visibility. When
+                // ON the photo appears in the customer's portal; when OFF
+                // the photo is internal-only. Default is OFF so nothing
+                // accidentally goes public until the crew opts each photo
+                // in. The icon (eye / eye.slash) and accent colour both
+                // change to make the state legible at a glance in sun.
+                OPSActionBarButton(
+                    icon: currentVisibilityState ? "eye.fill" : "eye.slash",
+                    label: currentVisibilityState ? "VISIBLE" : "HIDDEN",
+                    iconColor: currentVisibilityState
+                        ? OPSStyle.Colors.successStatus
+                        : OPSStyle.Colors.tertiaryText,
+                    labelColor: currentVisibilityState
+                        ? OPSStyle.Colors.successStatus
+                        : OPSStyle.Colors.secondaryText,
+                    action: toggleClientVisibility
+                )
+
+                Spacer()
+
                 OPSActionBarButton(
                     icon: "pencil.tip",
                     label: "ANNOTATE",
@@ -716,6 +776,56 @@ struct PhotoCommentViewer: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.bottom, OPSStyle.Layout.spacing2)
+    }
+
+    // MARK: - Client Visibility Toggle (Bug 7b43be32)
+
+    /// Toggle the current photo's `is_client_visible` flag. We update the
+    /// local Project model first so the UI flips instantly, then push the
+    /// change to Supabase. If the network write fails we revert the local
+    /// flag and surface a haptic — a stale local value is worse than a
+    /// stale optimistic one because the user's next sync would silently
+    /// re-flip it.
+    private func toggleClientVisibility() {
+        guard currentIndex < photos.count,
+              let project = cachedProject,
+              let imageSyncManager = dataController.imageSyncManager else {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+
+        let url = photos[currentIndex]
+        let newValue = !project.isImageClientVisible(url)
+
+        // Optimistic local flip — UI updates immediately so the user
+        // never feels the toggle lag behind their tap.
+        project.setImageClientVisible(url, visible: newValue)
+        try? dataController.modelContext?.save()
+        currentVisibilityState = newValue
+
+        // Medium impact on commit — confirms the toggle landed without
+        // being noisy in the field.
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        Task {
+            do {
+                try await imageSyncManager.setPhotoClientVisibility(
+                    url: url,
+                    isVisible: newValue,
+                    projectId: project.id
+                )
+            } catch {
+                // Revert local state on server failure — better to flip
+                // back than to lie about portal status.
+                await MainActor.run {
+                    project.setImageClientVisible(url, visible: !newValue)
+                    try? dataController.modelContext?.save()
+                    currentVisibilityState = !newValue
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
+                print("[PHOTO_VIS] Failed to update visibility for \(url): \(error)")
+            }
+        }
     }
 
     // MARK: - Share

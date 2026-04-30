@@ -28,6 +28,12 @@ class ImageSyncManager: ObservableObject {
     @Published var syncProgress: Double = 0
     @Published var syncingProjectId: String? = nil
 
+    /// Bug e5310f3d — published map of in-flight uploads keyed by project
+    /// id. The carousel observes this so each newly added photo appears
+    /// immediately as a placeholder card with a spinner that resolves
+    /// once S3 returns the public URL.
+    @Published var inFlightUploads: [String: [InFlightUpload]] = [:]
+
     /// Initialize the ImageSyncManager with required dependencies
     init(modelContext: ModelContext?, connectivity: ConnectivityManager) {
         self.modelContext = modelContext
@@ -77,6 +83,13 @@ class ImageSyncManager: ObservableObject {
             return []
         }
 
+        // Bug e5310f3d — surface in-flight uploads to the UI immediately
+        // so the carousel can show placeholder cards with loaders. Each
+        // pending upload carries a UIImage we can render right away while
+        // the bytes climb to S3.
+        let placeholders = beginInFlightUploads(images, for: project)
+        defer { endInFlightUploads(placeholders.map { $0.id }, for: project.id) }
+
         var savedURLs: [String] = []
 
         if connectivity.isConnected {
@@ -98,6 +111,19 @@ class ImageSyncManager: ObservableObject {
                     .update(["project_images": currentImages])
                     .eq("id", value: project.id)
                     .execute()
+
+                // Bug 7b43be32 — also insert one project_photos row per URL
+                // so the web client portal can see them. Without this row
+                // the photo appears in the iOS app but never reaches the
+                // portal because the portal only reads project_photos.
+                let uploaderId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+                await insertProjectPhotoRows(
+                    urls: savedURLs,
+                    projectId: project.id,
+                    companyId: companyId,
+                    uploadedBy: uploaderId,
+                    source: "in_progress"
+                )
 
                 // Images uploaded to S3 and Supabase updated — no further sync needed
                 project.needsSync = false
@@ -125,6 +151,105 @@ class ImageSyncManager: ObservableObject {
         }
 
         return savedURLs
+    }
+
+    /// Bug 7b43be32 — insert a project_photos row for each newly uploaded
+    /// URL so the web client portal can render the photo. Best-effort: a
+    /// failure here doesn't block the upload (the file is already in S3
+    /// and on the project row), it just means the photo won't appear in
+    /// the portal until the next reconciliation pass. We default
+    /// `is_client_visible` to false to match the column default; the crew
+    /// opts each photo in via the per-photo toggle.
+    private func insertProjectPhotoRows(
+        urls: [String],
+        projectId: String,
+        companyId: String,
+        uploadedBy: String,
+        source: String
+    ) async {
+        guard !urls.isEmpty else { return }
+
+        struct ProjectPhotoInsert: Codable {
+            let project_id: String
+            let company_id: String
+            let url: String
+            let source: String
+            let uploaded_by: String
+            let is_client_visible: Bool
+            let taken_at: String
+        }
+
+        // Single ISO8601 timestamp for the whole batch keeps the rows
+        // grouped chronologically without needing to invent per-photo EXIF.
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+
+        let rows = urls.map { url in
+            ProjectPhotoInsert(
+                project_id: projectId,
+                company_id: companyId,
+                url: url,
+                source: source,
+                uploaded_by: uploadedBy,
+                is_client_visible: false,
+                taken_at: timestamp
+            )
+        }
+
+        do {
+            try await SupabaseService.shared.client
+                .from("project_photos")
+                .insert(rows)
+                .execute()
+        } catch {
+            print("[IMAGE_SYNC] Failed to insert project_photos rows for \(projectId): \(error)")
+        }
+    }
+
+    /// Bug 7b43be32 — flip a single photo's portal visibility on the
+    /// server. The local model write is the caller's responsibility (they
+    /// already have a project handle and want the UI to update on tap).
+    /// Best-effort write: an error logs but does not surface to the user
+    /// because the local UI has already moved.
+    func setPhotoClientVisibility(url: String, isVisible: Bool, projectId: String) async throws {
+        struct ProjectPhotoVisibilityUpdate: Codable {
+            let is_client_visible: Bool
+        }
+
+        try await SupabaseService.shared.client
+            .from("project_photos")
+            .update(ProjectPhotoVisibilityUpdate(is_client_visible: isVisible))
+            .eq("project_id", value: projectId)
+            .eq("url", value: url)
+            .execute()
+    }
+
+    /// Bug 7b43be32 — pull the live client-visibility set for a project
+    /// from Supabase and hydrate `Project.clientVisibleImagesString` so
+    /// the per-photo toggle reflects what the customer actually sees in
+    /// the portal. Runs on project detail open. Best-effort: a network
+    /// failure leaves the existing local values in place rather than
+    /// emptying them.
+    func refreshClientVisibility(for project: Project) async {
+        struct VisibilityRow: Decodable {
+            let url: String
+            let is_client_visible: Bool
+        }
+
+        do {
+            let rows: [VisibilityRow] = try await SupabaseService.shared.client
+                .from("project_photos")
+                .select("url, is_client_visible")
+                .eq("project_id", value: project.id)
+                .is("deleted_at", value: nil)
+                .execute()
+                .value
+
+            let visibleURLs = rows.filter { $0.is_client_visible }.map { $0.url }
+            project.setClientVisibleImages(visibleURLs)
+            try? modelContext?.save()
+        } catch {
+            print("[IMAGE_SYNC] Failed to refresh client visibility for \(project.id): \(error)")
+        }
     }
     
     /// Save a single image locally for offline use
@@ -280,6 +405,18 @@ class ImageSyncManager: ObservableObject {
                 .eq("id", value: project.id)
                 .execute()
 
+            // Bug 7b43be32 — also write project_photos rows for each newly
+            // synced URL so the web client portal sees them. Mirrors the
+            // online-path insert in saveImages.
+            let uploaderId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+            await insertProjectPhotoRows(
+                urls: s3Results.map { $0.url },
+                projectId: project.id,
+                companyId: companyId,
+                uploadedBy: uploaderId,
+                source: "in_progress"
+            )
+
             // Images uploaded to S3 and Supabase updated — no further sync needed
             project.needsSync = false
             project.lastSyncedAt = Date()
@@ -388,6 +525,39 @@ class ImageSyncManager: ObservableObject {
         return pendingUploads.count
     }
     
+    // MARK: - In-Flight Upload Tracking (Bug e5310f3d)
+
+    /// Register a batch of UIImages as in-flight uploads for a project.
+    /// Returns the placeholders (id + UIImage) so the caller can clear
+    /// them when the upload settles. Always called on the main actor.
+    private func beginInFlightUploads(_ images: [UIImage], for project: Project) -> [InFlightUpload] {
+        let projectId = project.id
+        let placeholders = images.map { InFlightUpload(id: UUID().uuidString, image: $0) }
+        var current = inFlightUploads[projectId] ?? []
+        current.append(contentsOf: placeholders)
+        inFlightUploads[projectId] = current
+        return placeholders
+    }
+
+    /// Remove placeholders for a finished upload batch. The carousel will
+    /// re-render with only the resolved S3 URLs left in the project's
+    /// project_images list.
+    private func endInFlightUploads(_ ids: [String], for projectId: String) {
+        guard var current = inFlightUploads[projectId] else { return }
+        let idSet = Set(ids)
+        current.removeAll { idSet.contains($0.id) }
+        if current.isEmpty {
+            inFlightUploads.removeValue(forKey: projectId)
+        } else {
+            inFlightUploads[projectId] = current
+        }
+    }
+
+    /// Public accessor — used by the carousel to render upload spinners.
+    func currentInFlightUploads(for projectId: String) -> [InFlightUpload] {
+        return inFlightUploads[projectId] ?? []
+    }
+
     // MARK: - Image Processing Helpers
     
     /// Resize image if it exceeds maximum dimensions
@@ -430,6 +600,15 @@ class ImageSyncManager: ObservableObject {
             return 0.8
         }
     }
+}
+
+/// Bug e5310f3d — represents a single image actively being uploaded
+/// to S3 and Supabase. The carousel renders one placeholder per item
+/// in this list while the upload finishes; the placeholder dissolves
+/// into the real photo once `inFlightUploads` no longer contains it.
+public struct InFlightUpload: Identifiable {
+    public let id: String
+    public let image: UIImage
 }
 
 /// Model for a pending image upload

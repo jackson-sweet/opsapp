@@ -18,6 +18,7 @@ struct ActivityTabView: View {
     @Binding var noteFieldFocused: Bool
 
     @Environment(\.tutorialMode) private var tutorialMode
+    @EnvironmentObject private var dataController: DataController
     @FocusState private var isTextFieldFocused: Bool
 
     var body: some View {
@@ -318,9 +319,34 @@ struct ActivityTabView: View {
 
     // MARK: - Project Photos
 
+    /// Bug e5310f3d — pull live in-flight uploads off the shared
+    /// ImageSyncManager so the carousel can render placeholder cards
+    /// while bytes are still climbing to S3. Each placeholder shows the
+    /// photo we already have (the UIImage the user picked) plus a
+    /// spinner; it dissolves into a real PhotoThumbnail once the upload
+    /// settles and the URL lands on the project row.
+    @ViewBuilder
     private var projectPhotosSection: some View {
-        let photos = project.getProjectImages()
+        if let imageSyncManager = dataController.imageSyncManager {
+            ProjectPhotosCarousel(
+                project: project,
+                imageSyncManager: imageSyncManager,
+                onPhotoTap: { index in onProjectPhotoTap?(index) }
+            )
+            .padding(.top, 16)
+        } else {
+            // No sync manager available yet — fall back to the static
+            // carousel (no upload spinners possible without it).
+            staticPhotosCarousel
+                .padding(.top, 16)
+        }
+    }
 
+    /// Plain carousel without in-flight upload tracking. Used as a
+    /// fallback when DataController hasn't booted ImageSyncManager yet
+    /// (rare, but possible during cold-start race).
+    private var staticPhotosCarousel: some View {
+        let photos = project.getProjectImages()
         return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Text(photos.isEmpty
@@ -355,6 +381,121 @@ struct ActivityTabView: View {
                 }
             }
         }
-        .padding(.top, 16)
+    }
+}
+
+// MARK: - ProjectPhotosCarousel (Bug e5310f3d)
+
+/// Carousel that observes `ImageSyncManager` so it can render
+/// placeholder upload cards alongside completed photos. The
+/// placeholders crossfade in when an upload starts, show a spinner
+/// over a dimmed thumbnail of the picked image, and dissolve out when
+/// the URL lands on the project row.
+private struct ProjectPhotosCarousel: View {
+    let project: Project
+    @ObservedObject var imageSyncManager: ImageSyncManager
+    let onPhotoTap: (Int) -> Void
+
+    var body: some View {
+        let photos = project.getProjectImages()
+        let pending = imageSyncManager.currentInFlightUploads(for: project.id)
+        let totalCount = photos.count + pending.count
+
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack {
+                Text(totalCount == 0
+                     ? "NO PHOTOS"
+                     : "\(totalCount) PHOTO\(totalCount == 1 ? "" : "S")")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Spacer()
+                if !pending.isEmpty {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                            .scaleEffect(0.7)
+                        Text("UPLOADING \(pending.count)")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                    .transition(.opacity)
+                }
+            }
+            .padding(.horizontal, 16)
+            // 0.2s crossfade so the UPLOADING badge feels confident, not
+            // jumpy. Matches OPSStyle.Animation.fast.
+            .animation(OPSStyle.Animation.fast, value: pending.count)
+
+            if totalCount == 0 {
+                Text("Tap the camera to add project photos")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(photos.enumerated()), id: \.element) { index, url in
+                            Button(action: { onPhotoTap(index) }) {
+                                PhotoThumbnail(url: url, project: project)
+                                    .frame(width: 72, height: 72)
+                                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .wizardTarget(index == 0 ? "view_photo" : "")
+                            .transition(.opacity)
+                        }
+
+                        // In-flight placeholders ride after the saved
+                        // photos so the user sees their pick land on
+                        // the right side of the carousel and slide left
+                        // into the row once the upload finishes.
+                        ForEach(pending) { upload in
+                            UploadingPhotoTile(image: upload.image)
+                                .transition(.opacity)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .animation(OPSStyle.Animation.fast, value: pending.map { $0.id })
+                    .animation(OPSStyle.Animation.fast, value: photos.count)
+                }
+            }
+        }
+    }
+}
+
+/// Small tile showing the user's just-picked image dimmed under a
+/// circular spinner. Replaces a `PhotoThumbnail` only while the upload
+/// is in flight. Pulses gently so the user knows the upload is alive.
+private struct UploadingPhotoTile: View {
+    let image: UIImage
+    @State private var pulse = false
+
+    var body: some View {
+        ZStack {
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 72, height: 72)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .fill(OPSStyle.Colors.imageOverlay)
+                )
+                .opacity(pulse ? 0.85 : 1.0)
+
+            ProgressView()
+                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
+        }
+        .frame(width: 72, height: 72)
+        .accessibilityLabel("Uploading photo")
+        .onAppear {
+            // Subtle 1.2s breathing pulse — not a strobe — so a slow
+            // network feels alive without being distracting in the field.
+            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        }
     }
 }

@@ -1108,6 +1108,14 @@ struct ProjectDetailsView: View {
         // cached lat/lng (legacy Bubble rows, prior failed geocode).
         viewModel.geocodeAddressIfNeeded()
 
+        // Bug 7b43be32 — refresh per-photo client visibility from
+        // Supabase so the eye toggle in the photo viewer reflects what
+        // the customer actually sees in the portal, even after another
+        // crew member changed it on a different device.
+        if let imageSyncManager = dataController.imageSyncManager {
+            Task { await imageSyncManager.refreshClientVisibility(for: project) }
+        }
+
         // Wizard system: notify project opened (completes Job Board wizard step)
         NotificationCenter.default.post(
             name: Notification.Name("WizardJobBoardProjectTapped"),

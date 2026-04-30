@@ -17,18 +17,21 @@ struct InventoryFormSheet: View {
     let item: InventoryItem?
 
     // Form state
-    @State private var name: String = ""
-    @State private var itemDescription: String = ""
-    @State private var quantity: String = ""
-    @State private var selectedUnitId: String? = nil
-    @State private var tagsText: String = ""
+    @State private var name: String
+    @State private var itemDescription: String
+    @State private var quantity: String
+    @State private var selectedUnitId: String?
+    @State private var tagsText: String
     @State private var newTagInput: String = ""
-    @State private var sku: String = ""
-    @State private var notes: String = ""
+    @State private var sku: String
+    @State private var notes: String
 
-    // Threshold state
-    @State private var warningThresholdText: String = ""
-    @State private var criticalThresholdText: String = ""
+    // Threshold state — seeded from the model in init so the values are
+    // present on the very first render (no .onAppear race). Bug 73841319
+    // was caused by relying on .onAppear to populate these strings; by then
+    // the user had already seen empty fields.
+    @State private var warningThresholdText: String
+    @State private var criticalThresholdText: String
 
     // UI state
     @State private var isSaving = false
@@ -39,9 +42,57 @@ struct InventoryFormSheet: View {
     // mean the user wants to bulk-import others.
     @State private var showingImportFromForm: Bool = false
 
-    // Section expansion
+    // Section expansion — auto-expanded when the item already has data in
+    // an "additional details" field so the user can see what's saved.
     @State private var isItemDetailsExpanded = true
-    @State private var isAdditionalDetailsExpanded = false
+    @State private var isAdditionalDetailsExpanded: Bool
+
+    init(item: InventoryItem?) {
+        self.item = item
+
+        // Seed all form fields from the model up front. Doing this in init
+        // (rather than .onAppear) guarantees the very first render shows
+        // current values — no flicker, no empty-then-populated transition.
+        let initialName = item?.name ?? ""
+        let initialDescription = item?.itemDescription ?? ""
+        let initialQuantity: String = {
+            guard let qty = item?.quantity, qty > 0 else { return "" }
+            return Self.formatQuantity(qty)
+        }()
+        let initialUnitId = item?.unitId
+        let initialTagsText = item?.tagNames.joined(separator: ", ") ?? ""
+        let initialSku = item?.sku ?? ""
+        let initialNotes = item?.notes ?? ""
+
+        let initialWarning: String = {
+            guard let warning = item?.warningThreshold else { return "" }
+            return Self.formatQuantity(warning)
+        }()
+        let initialCritical: String = {
+            guard let critical = item?.criticalThreshold else { return "" }
+            return Self.formatQuantity(critical)
+        }()
+
+        // Open Additional Details automatically if the item already has any
+        // data inside it — otherwise the user would never see what's saved.
+        let hasAdditionalData =
+            !initialDescription.isEmpty
+            || !initialSku.isEmpty
+            || !initialNotes.isEmpty
+            || item?.warningThreshold != nil
+            || item?.criticalThreshold != nil
+
+        _name = State(initialValue: initialName)
+        _itemDescription = State(initialValue: initialDescription)
+        _quantity = State(initialValue: initialQuantity)
+        _selectedUnitId = State(initialValue: initialUnitId)
+        _tagsText = State(initialValue: initialTagsText)
+        _sku = State(initialValue: initialSku)
+        _notes = State(initialValue: initialNotes)
+        _warningThresholdText = State(initialValue: initialWarning)
+        _criticalThresholdText = State(initialValue: initialCritical)
+        _isAdditionalDetailsExpanded = State(initialValue: hasAdditionalData)
+    }
 
     // Focus
     @FocusState private var focusedField: FormField?
@@ -186,7 +237,9 @@ struct InventoryFormSheet: View {
             } message: {
                 Text("Are you sure you want to delete \"\(name)\"?")
             }
-            .onAppear { loadItemData() }
+            // No .onAppear hook needed — init() seeds every form field
+            // from the item up front, so values are present in the very
+            // first render. Bug 73841319 fix.
         }
     }
 
@@ -526,30 +579,8 @@ struct InventoryFormSheet: View {
 
     // MARK: - Functions
 
-    private func loadItemData() {
-        guard let item = item else { return }
-
-        name = item.name
-        itemDescription = item.itemDescription ?? ""
-        quantity = item.quantity > 0 ? formatQuantity(item.quantity) : ""
-        selectedUnitId = item.unitId
-        tagsText = item.tagNames.joined(separator: ", ")
-        sku = item.sku ?? ""
-        notes = item.notes ?? ""
-
-        // Load threshold values
-        if let warning = item.warningThreshold {
-            warningThresholdText = formatQuantity(warning)
-        }
-        if let critical = item.criticalThreshold {
-            criticalThresholdText = formatQuantity(critical)
-        }
-
-        if !itemDescription.isEmpty || !sku.isEmpty || !notes.isEmpty ||
-           item.warningThreshold != nil || item.criticalThreshold != nil {
-            isAdditionalDetailsExpanded = true
-        }
-    }
+    // Note: form fields are seeded from the model in init(), not in
+    // .onAppear, so values are present on the first render. See Bug 73841319.
 
     private func addTag(_ tag: String) {
         guard !currentTags.contains(tag) else { return }
@@ -579,7 +610,10 @@ struct InventoryFormSheet: View {
         tagsText = tags.joined(separator: ", ")
     }
 
-    private func formatQuantity(_ value: Double) -> String {
+    /// Format a quantity value for display in a text field. Whole numbers
+    /// drop the decimal point (`5` not `5.00`); fractions keep two places.
+    /// Static so it can be called from init() before `self` is available.
+    private static func formatQuantity(_ value: Double) -> String {
         value.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(value)) : String(format: "%.2f", value)
     }
 

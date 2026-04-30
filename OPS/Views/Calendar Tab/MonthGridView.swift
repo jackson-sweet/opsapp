@@ -110,10 +110,18 @@ class MonthGridCache: ObservableObject {
 
                     let displayColor = task.effectiveColor
 
+                    // Bug 087bfaf8 — Show project title as the primary label on
+                    // month-grid badges so users can identify the job at a glance.
+                    // Falls back to the task's own display title when there's no
+                    // associated project (rare, but possible in tutorial demo data).
+                    let primaryLabel = task.project?.title.isEmpty == false
+                        ? task.project!.title
+                        : task.displayTitle
+
                     let preview = ScheduledTaskPreview(
                         id: "\(task.id)_\(dayOffset)",
                         eventId: task.id,
-                        title: task.displayTitle,
+                        title: primaryLabel,
                         color: displayColor,
                         startDate: taskStart,
                         endDate: taskEnd,

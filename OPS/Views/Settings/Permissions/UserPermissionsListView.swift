@@ -104,12 +104,20 @@ struct UserPermissionsListView: View {
             HStack(spacing: 12) {
                 UserAvatar(user: member, size: 44)
 
+                // Bug be2b9e23: a long full name + role badge + override badge
+                // used to push past the device width and force a horizontal
+                // scroll. The fix lets the name truncate so it never grows
+                // past the available row width, and drops the badges onto
+                // their own line below the name. Badges still wrap if the
+                // role string itself is unusually long.
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Text(member.fullName)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    Text(member.fullName)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
+                    HStack(spacing: 6) {
                         // Role badge
                         Text(member.roleDisplay.uppercased())
                             .font(OPSStyle.Typography.smallCaption)
@@ -118,6 +126,8 @@ struct UserPermissionsListView: View {
                             .padding(.vertical, 2)
                             .background(colorForRole(member.role).opacity(0.2))
                             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
 
                         // Override count badge
                         if let count = overrideCounts[member.id], count > 0 {
@@ -128,7 +138,11 @@ struct UserPermissionsListView: View {
                                 .padding(.vertical, 2)
                                 .background(OPSStyle.Colors.warningStatus.opacity(0.2))
                                 .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                         }
+
+                        Spacer(minLength: 0)
                     }
 
                     if let email = member.email, !email.isEmpty {
@@ -136,10 +150,10 @@ struct UserPermissionsListView: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                             .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                 }
-
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Image(systemName: OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))

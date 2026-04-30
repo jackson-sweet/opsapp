@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import ContactsUI
 
 struct ClientSheet: View {
@@ -554,8 +555,10 @@ struct ClientSheet: View {
         Task {
             do {
                 if case .create = mode {
-                    // Create new client
-                    let newClient = try await createNewClient()
+                    // Create new client (and the matching pipeline lead, best-effort)
+                    let result = try await createNewClient()
+                    let newClient = result.client
+                    let leadCreated = result.leadCreated
                     await MainActor.run {
                         // Success haptic feedback
                         let generator = UINotificationFeedbackGenerator()
@@ -575,15 +578,29 @@ struct ClientSheet: View {
                                 "has_email": !email.isEmpty,
                                 "has_phone": !phone.isEmpty,
                                 "has_address": !address.isEmpty,
-                                "import_method": ClientImportMethod.manual.rawValue
+                                "import_method": ClientImportMethod.manual.rawValue,
+                                "lead_created": leadCreated
                             ]
                         )
+
+                        // Bug 321e65c8 — surface the auto-created pipeline lead
+                        // in the success banner so the user knows new clients
+                        // are now trackable in the sales pipeline. The toast in
+                        // ContentView decides the wording based on this flag.
+                        var userInfo: [AnyHashable: Any] = [
+                            "clientName": name,
+                            "clientId": newClient.id,
+                            "leadCreated": leadCreated
+                        ]
+                        if let oppId = result.opportunityId {
+                            userInfo["opportunityId"] = oppId
+                        }
 
                         // Post notification for success message overlay
                         NotificationCenter.default.post(
                             name: Notification.Name("ClientCreatedSuccess"),
                             object: nil,
-                            userInfo: ["clientName": name, "clientId": newClient.id]
+                            userInfo: userInfo
                         )
 
                         // Wizard system: notify client saved
@@ -632,15 +649,31 @@ struct ClientSheet: View {
         }
     }
     
-    private func createNewClient() async throws -> Client {
+    /// Result of the create-client flow. The lead may not be created if the
+    /// client itself fell back to a pure-local insert (no SyncEngine) or if
+    /// the opportunity insert failed for any reason — the client save is
+    /// still considered successful and the user is told the lead is pending.
+    private struct CreateClientResult {
+        let client: Client
+        let leadCreated: Bool
+        let opportunityId: String?
+    }
+
+    private func createNewClient() async throws -> CreateClientResult {
         guard let companyId = dataController.currentUser?.companyId else {
             throw ClientError.noCompanyId
         }
 
         print("[CLIENT_CREATE] Creating client...")
 
-        // Create local client with temporary UUID
-        let tempId = UUID().uuidString
+        // Create local client with temporary UUID.
+        // Bug b873deb7 — canonicalize to lowercase so the local id matches
+        // Postgres (uuid columns are lowercase). Uppercase UUIDs from
+        // Swift's UUID().uuidString caused fetch-by-id in InboundProcessor /
+        // RealtimeProcessor to miss the realtime echo, inserting a second
+        // row. Mirrors the project-create canonicalization in
+        // ProjectFormSheet.swift (bug f86cf554).
+        let tempId = UUID().uuidString.lowercased()
         var profileImageURL: String? = nil
 
         // Upload avatar image if provided
@@ -682,9 +715,18 @@ struct ClientSheet: View {
             deletedAt: nil
         )
 
+        let savedClient: Client
+
         do {
             let _ = try await dataController.createClient(dto: dto)
             print("[CLIENT_CREATE] ✅ Client created via DataController: \(tempClient.id)")
+
+            // Return the context-managed client inserted by createClient
+            if let created = dataController.getAllClients(for: companyId).first(where: { $0.id == tempClient.id }) {
+                savedClient = created
+            } else {
+                savedClient = tempClient
+            }
         } catch {
             print("[CLIENT_CREATE] ⚠️ DataController create failed, inserting locally: \(error)")
             // Fallback: insert directly so client is at least available locally
@@ -694,14 +736,83 @@ struct ClientSheet: View {
                 dataController.saveClient(tempClient)
             }
             dataController.triggerBackgroundSync()
-            return tempClient
+            // Skip lead creation when the client itself didn't reach Supabase —
+            // the foreign key would 404 and create a noisy failure. The
+            // background sync will pick the client up; if Jackson wants the
+            // lead created retroactively we can wire a follow-up sync later.
+            return CreateClientResult(client: tempClient, leadCreated: false, opportunityId: nil)
         }
 
-        // Return the context-managed client inserted by createClient
-        if let created = dataController.getAllClients(for: companyId).first(where: { $0.id == tempClient.id }) {
-            return created
+        // Bug 321e65c8 — every new client is automatically tracked in the
+        // pipeline as a "New Lead" so the user can move it through quoting,
+        // follow-up, and won/lost without a separate lead-creation step.
+        // Failure here is non-fatal: the client is still saved, and the user
+        // is told the pipeline link is pending.
+        let opportunityId = await createMatchingLead(for: savedClient, companyId: companyId)
+        return CreateClientResult(
+            client: savedClient,
+            leadCreated: opportunityId != nil,
+            opportunityId: opportunityId
+        )
+    }
+
+    /// Creates a Pipeline Opportunity tied to a freshly-saved client.
+    /// Returns the new opportunity id on success, or nil if creation failed
+    /// (offline, network error, RLS denial). The caller treats nil as a
+    /// "lead pending" state — the client is still considered saved.
+    ///
+    /// We create the opportunity via Supabase directly (mirrors
+    /// LogActivityViewModel.save()). Opportunities are NOT registered as a
+    /// SyncEntityType, so there's no SyncEngine route — direct API is the
+    /// canonical pattern. Local SwiftData is updated in the same step so the
+    /// pipeline view reflects the new lead immediately.
+    private func createMatchingLead(for client: Client, companyId: String) async -> String? {
+        let trimmedName = client.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            print("[LEAD_AUTOCREATE] Skipping — client has empty name")
+            return nil
         }
-        return tempClient
+
+        let dto = CreateOpportunityDTO(
+            companyId: companyId,
+            contactName: trimmedName,
+            contactEmail: client.email,
+            contactPhone: client.phoneNumber,
+            description: nil,
+            estimatedValue: nil,
+            source: "client_created",
+            quoteDeliveryMethod: nil,
+            clientId: client.id
+        )
+
+        let repository = OpportunityRepository(companyId: companyId)
+        do {
+            let created = try await repository.create(dto)
+            print("[LEAD_AUTOCREATE] ✅ Lead created for client \(client.id): opportunity \(created.id)")
+
+            // Insert into local SwiftData so pipeline UI reflects the lead immediately.
+            // Mirrors the pattern used in LogActivityViewModel.save().
+            await MainActor.run {
+                let model = created.toModel()
+                if let context = dataController.modelContext {
+                    // Avoid duplicate insert if a realtime echo beat us here.
+                    let oppId = created.id
+                    let descriptor = FetchDescriptor<Opportunity>(
+                        predicate: #Predicate<Opportunity> { $0.id == oppId }
+                    )
+                    let existing = (try? context.fetch(descriptor)) ?? []
+                    if existing.isEmpty {
+                        context.insert(model)
+                        try? context.save()
+                    }
+                }
+            }
+
+            return created.id
+        } catch {
+            print("[LEAD_AUTOCREATE] ⚠️ Failed to create lead for client \(client.id): \(error)")
+            return nil
+        }
     }
     
     private func updateExistingClient(_ client: Client) async throws {

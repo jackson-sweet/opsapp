@@ -492,6 +492,8 @@ final class InboundProcessor {
         let descriptor = FetchDescriptor<Client>(
             predicate: #Predicate { $0.id == id }
         )
+        let existingCount = (try? context.fetchCount(descriptor)) ?? 0
+        print("[DUPE_TRACE] INBOUND.mergeClient id=\(id) existing_count=\(existingCount) ctx=\(ObjectIdentifier(context))")
 
         if let existing = try context.fetch(descriptor).first {
             let accept = acceptableFields(
@@ -517,7 +519,11 @@ final class InboundProcessor {
             if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
 
             existing.lastSyncedAt = Date()
-            existing.needsSync = false
+            // Only clear needsSync if there are no pending SyncOperations for this entity
+            let hasPending = hasPendingOperations(entityType: .client, entityId: existing.id, context: context)
+            if !hasPending {
+                existing.needsSync = false
+            }
 
             // Mark for targeted Spotlight update — deletion wins over upsert
             if existing.deletedAt != nil {
@@ -526,6 +532,19 @@ final class InboundProcessor {
                 spotlightTracker.markDirty(domain: SpotlightDomain.client, id: id)
             }
         } else {
+            // Origin suppression: if we wrote this entityId locally within the
+            // last 60s — regardless of SyncOperation status (pending, inProgress,
+            // completed, failed) — the inbound DTO is our own write coming back
+            // via pull. Inserting would produce a duplicate because Client.id
+            // lacks @Attribute(.unique). Mirrors mergeProject suppression
+            // (bug f86cf554) and fixes bug b873deb7 (duplicate client created
+            // from the project form sheet when uppercase local UUIDs failed to
+            // match the lowercase pull payload).
+            if hasRecentLocalWrite(entityType: .client, entityId: id, withinSeconds: 60, context: context) {
+                print("[DUPE_TRACE] INBOUND.mergeClient SUPPRESSED id=\(id) — recent local write within 60s")
+                return
+            }
+
             let model = dto.toModel()
             model.lastSyncedAt = Date()
             model.needsSync = false

@@ -834,6 +834,9 @@ final class RealtimeProcessor: ObservableObject {
 
     private func upsertClient(context: ModelContext, id: String, model: Client, pendingFields: Set<String>) throws {
         let descriptor = FetchDescriptor<Client>(predicate: #Predicate { $0.id == id })
+        let existingCount = (try? context.fetchCount(descriptor)) ?? 0
+        print("[DUPE_TRACE] RT.upsertClient id=\(id) existing_count=\(existingCount) ctx=\(ObjectIdentifier(context))")
+
         if let existing = try context.fetch(descriptor).first {
             if !pendingFields.contains("name")              { existing.name = model.name }
             if !pendingFields.contains("email")             { existing.email = model.email }
@@ -848,6 +851,21 @@ final class RealtimeProcessor: ObservableObject {
             existing.lastSyncedAt = Date()
             existing.needsSync = false
         } else {
+            // Origin suppression: if we wrote this entityId locally within the
+            // last 60s — regardless of SyncOperation status (pending, inProgress,
+            // completed) — the realtime payload is our own write echoing back.
+            // Inserting here would produce a duplicate because Client.id
+            // lacks @Attribute(.unique). Mirrors upsertProject suppression
+            // (bug f86cf554) and fixes bug b873deb7 (duplicate client created
+            // when the form sheet creates the row with an uppercase UUID and
+            // the realtime echo arrives with a lowercase id).
+            if hasRecentLocalWrite(entityType: .client, entityId: id, withinSeconds: 60, context: context) {
+                print("[DUPE_TRACE] RT.upsertClient SUPPRESSED id=\(id) — recent local write within 60s")
+                try context.save()
+                return
+            }
+
+            print("[DUPE_TRACE] RT.upsertClient INSERT id=\(id) — no recent local write, treating as remote create")
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)

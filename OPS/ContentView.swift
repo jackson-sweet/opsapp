@@ -283,6 +283,11 @@ struct PINGatedView: View {
     @State private var showClientCreatedMessage = false
     @State private var createdClientName: String = ""
     @State private var createdClientId: String? = nil
+    // Bug 321e65c8 — every new client also creates a pipeline lead. Track
+    // whether the lead made it through so the toast can tell the user
+    // either "added to pipeline" (success) or "pipeline sync pending"
+    // (offline / network error).
+    @State private var createdClientLeadCreated: Bool = false
 
     // Permission change overlay — sits above all navigation stacks, sheets, and modals
     @State private var showPermissionChangeOverlay = false
@@ -304,6 +309,21 @@ struct PINGatedView: View {
         self.pinManager = dataController.simplePINManager
         self._appState = ObservedObject(wrappedValue: appState)
         self.locationManager = locationManager
+    }
+
+    /// Subtitle shown under "CLIENT CREATED" in the success banner.
+    /// Bug 321e65c8 — every new client also creates a pipeline lead. This
+    /// surfaces that fact to the user (or warns when the pipeline link
+    /// is still pending due to network failure).
+    private var clientCreatedSubtitle: String? {
+        let trimmedName = createdClientName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedName.isEmpty {
+            return createdClientLeadCreated ? "LEAD ADDED TO PIPELINE" : "PIPELINE SYNC PENDING"
+        }
+        if createdClientLeadCreated {
+            return "\(trimmedName) · LEAD ADDED"
+        }
+        return "\(trimmedName) · PIPELINE SYNC PENDING"
     }
 
     var body: some View {
@@ -380,6 +400,10 @@ struct PINGatedView: View {
                             createdClientName = ""
                         }
                         createdClientId = notification.userInfo?["clientId"] as? String
+                        // Bug 321e65c8 — read the auto-create-lead flag so the
+                        // toast subtitle can confirm "lead added" or warn the
+                        // user the pipeline link is still pending.
+                        createdClientLeadCreated = (notification.userInfo?["leadCreated"] as? Bool) ?? false
                         showClientCreatedMessage = true
                     }
                     .onAppear {
@@ -494,11 +518,16 @@ struct PINGatedView: View {
                 )
                 .zIndex(2)
 
-                // Client created success notification
+                // Client created success notification.
+                // Bug 321e65c8 — when the client also produces a pipeline
+                // lead, the subtitle reads "<name> · LEAD ADDED" so the user
+                // knows new clients are now trackable in the pipeline. If
+                // the lead failed to create (offline / network error) we
+                // tell them sync is pending instead.
                 PushInMessage(
                     isPresented: $showClientCreatedMessage,
                     title: "CLIENT CREATED",
-                    subtitle: createdClientName.isEmpty ? nil : createdClientName,
+                    subtitle: clientCreatedSubtitle,
                     type: .success,
                     autoDismissAfter: 5.0,
                     actionLabel: "VIEW",

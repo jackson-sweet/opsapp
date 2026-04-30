@@ -27,6 +27,12 @@ struct MainTabView: View {
     @State private var keyboardIsShowing = false
     @State private var sheetIsPresented = false
 
+    // Bug 706a4d32 — shared namespace for persistent header buttons. The
+    // outgoing and incoming tab views both render an AppHeader; matching by
+    // stable button IDs in this namespace lets SwiftUI keep those elements
+    // visually still while the rest of the tab content slides.
+    @Namespace private var persistentHeaderNamespace
+
     /// Transient loading banner shown while a deep-linked project is being
     /// fetched from the server (cold-cache case). Dismissed when resolution
     /// completes (success, denial, or offline bail).
@@ -229,6 +235,11 @@ struct MainTabView: View {
             .id(selectedTab)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea(.all, edges: .bottom)
+            // Bug 706a4d32 — inject the shared header namespace so each tab's
+            // AppHeader can match-geometry its persistent buttons (search,
+            // filter, scope, review) and keep them visually still while the
+            // rest of the content slides during a tab swap.
+            .environment(\.persistentHeaderNamespace, persistentHeaderNamespace)
             .transition(slideTransition)
             .animation(.spring(response: 0.3, dampingFraction: 0.85), value: selectedTab)
             

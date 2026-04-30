@@ -766,7 +766,11 @@ struct ProjectDetailsView: View {
     @ViewBuilder
     private func deckBuilderContent(design: DeckDesign) -> some View {
         if let modelContext = dataController.modelContext {
-            DeckBuilderView(deckDesign: design, modelContext: modelContext)
+            DeckBuilderView(
+                deckDesign: design,
+                modelContext: modelContext,
+                syncEngine: dataController.syncEngine
+            )
         }
     }
 

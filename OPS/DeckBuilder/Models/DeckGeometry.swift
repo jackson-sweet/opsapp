@@ -64,6 +64,15 @@ struct DeckEdge: Identifiable, Codable, Equatable {
     /// so the user knows the typed value and the drawn length disagree. Cleared
     /// when the user retypes / re-measures the dimension.
     var dimensionStale: Bool = false
+    /// Optional user-supplied label that floats over this edge on the canvas
+    /// (e.g. "Hot tub side", "BBQ wall"). Trimmed to nil when blank so absent
+    /// labels never render an empty pill. Bug 4a03f507.
+    var label: String?
+    /// Optional house-edge cladding material (stucco, hardie, wood vertical, etc.)
+    /// — separate from the `assignedItems` list because a house edge isn't billed
+    /// as deck framing/decking, but its visible cladding still informs renders.
+    /// Bug 3d72ce0b.
+    var houseEdgeMaterial: HouseEdgeMaterial?
 
     init(
         id: String = UUID().uuidString,
@@ -79,6 +88,36 @@ struct DeckEdge: Identifiable, Codable, Equatable {
 enum EdgeType: String, Codable, CaseIterable {
     case houseEdge = "house_edge"
     case deckEdge = "deck_edge"
+}
+
+/// Cladding material for a `houseEdge`. Drives the rendered house-side wall
+/// texture and shows up in materials/estimates output. Bug 3d72ce0b — house
+/// edges should rise visibly above the deck surface in the 3D scene; the
+/// material picks the right hatch/tone in the 2D renderers and the right
+/// fill/normal in the 3D scene.
+enum HouseEdgeMaterial: String, Codable, CaseIterable {
+    case stucco
+    case hardie         // Hardie board / fiber cement plank
+    case woodVertical   // Vertical board-and-batten / shiplap
+
+    var displayName: String {
+        switch self {
+        case .stucco:       return "Stucco"
+        case .hardie:       return "Hardie Plank"
+        case .woodVertical: return "Wood Vertical"
+        }
+    }
+
+    /// Hex color used for the wall surface tint in 2D and the diffuse fill
+    /// in 3D. Picked from OPSStyle's tan/olive/secondary palette so house
+    /// edges read as muted backdrop, not a competing focal point.
+    var fillHex: String {
+        switch self {
+        case .stucco:       return "#D6CFC2"   // warm off-white
+        case .hardie:       return "#A6A8A3"   // light gray-green
+        case .woodVertical: return "#8B6F4F"   // walnut brown
+        }
+    }
 }
 
 enum DimensionSource: String, Codable {
@@ -149,6 +188,17 @@ struct StairConfig: Codable, Equatable {
     var offset: Double = 0          // inches from alignment side
     var railingConfig: RailingConfig?
     var assignedItems: [AssignedItem] = []
+    /// Stair elevation in feet — captured in StairConfigView when no per-vertex
+    /// or overall elevation is set. Once stored, the user can edit this on
+    /// subsequent passes through the stair editor (instead of being trapped by
+    /// the read-only "Total Rise" card). Bug bfbc4068.
+    var totalRiseInches: Double?
+    /// When true, render stairs on the OPPOSITE perpendicular from the deck
+    /// fill. Default `false` means stairs run AWAY from the deck surface, which
+    /// is the natural case (bug a7429390). The toggle in StairConfigView
+    /// flips this for edges where the user wants the stairs to land on the
+    /// other side (e.g. against a fence the renderer can't infer).
+    var flipDirection: Bool = false
 
     /// Calculate tread count from total rise (elevation difference at edge endpoints)
     static func calculateTreadCount(totalRise: Double, risePerStep: Double = 7.5) -> Int {
@@ -213,6 +263,10 @@ enum UnitType: String, Codable, CaseIterable {
 struct DeckFootprint: Codable, Equatable {
     var assignedItems: [AssignedItem] = []   // area-based items (surfacing, etc.)
     var isClosed: Bool = false
+    /// Optional user-supplied label that floats over the deck surface
+    /// (e.g. "BBQ Area", "Hot Tub Pad"). Trimmed to nil when blank.
+    /// Bug 4a03f507.
+    var label: String?
 }
 
 // MARK: - Complete Drawing Data

@@ -57,8 +57,12 @@ struct TemplatePickerView: View {
         .onAppear { loadRecentDesigns() }
         .sheet(isPresented: $showingDimensionInput) {
             if let template = selectedTemplate {
-                TemplateDimensionInputView(templateType: template) { dimensions in
-                    createFromTemplate(template: template, dimensions: dimensions)
+                // Bug e7965781 — receive the user's active unit mode and pass
+                // it into the engine so the resulting deck design's
+                // DrawingConfig.measurementSystem is set correctly. Otherwise
+                // metric input renders in imperial in the deck builder.
+                TemplateDimensionInputView(templateType: template) { dimensions, system in
+                    createFromTemplate(template: template, dimensions: dimensions, system: system)
                 }
             }
         }
@@ -257,10 +261,21 @@ struct TemplatePickerView: View {
 
     // MARK: - Actions
 
-    private func createFromTemplate(template: DeckTemplateType, dimensions: [Double]) {
+    private func createFromTemplate(
+        template: DeckTemplateType,
+        dimensions: [Double],
+        system: MeasurementSystem
+    ) {
+        // Bug e7965781 — pass the user's chosen unit mode through so the
+        // generated drawing's `config.measurementSystem` matches what the
+        // user typed. Affects every dimension format in the builder afterward.
+        var config = DrawingConfig()
+        config.measurementSystem = system
+
         guard let drawingData = DeckTemplateEngine.generate(
             template: template,
-            dimensions: dimensions
+            dimensions: dimensions,
+            config: config
         ) else { return }
 
         let design = DeckDesign(

@@ -14,6 +14,17 @@ class DeckBuilderViewModel: ObservableObject {
 
     let deckDesign: DeckDesign
     private var modelContext: ModelContext?
+    /// Weak ref to the offline sync queue. When set, every `save()` records a
+    /// pending sync operation so the OutboundProcessor pushes the change to
+    /// Supabase on the next push cycle. Optional so previews / tests can run
+    /// without wiring the network stack — those paths simply behave like the
+    /// pre-fix offline-only build (local saves succeed, nothing pushes).
+    /// Bug ab554b5f.
+    private weak var syncEngine: SyncEngine?
+    /// True after we've enqueued at least one create op for `deckDesign.id`.
+    /// Subsequent edits enqueue updates instead. Persists across app launches
+    /// implicitly via `lastSyncedAt` on the model — see `enqueueDeckDesignSync`.
+    private var hasEnqueuedCreate: Bool = false
 
     // MARK: - Drawing State
 
@@ -119,6 +130,22 @@ class DeckBuilderViewModel: ObservableObject {
 
     @Published var activeLevelIndex: Int = 0
     @Published var showingLevelConnectionSheet: Bool = false
+
+    // MARK: - Autosave (bug 2b1f1a9e)
+
+    /// New drawings autosave silently every 2 minutes. Existing drawings
+    /// prompt the user the FIRST time they edit anything, asking whether
+    /// to enable the same 2-minute autosave for their changes.
+    @Published var showingAutosavePrompt: Bool = false
+    @Published var autosaveEnabled: Bool = false
+    /// Detected at init: a drawing with no vertices/edges in either single
+    /// or multi-level form. New drawings auto-enable the autosave loop;
+    /// existing drawings opt in via the prompt.
+    private let isNewDrawing: Bool
+    private var autosaveTimer: Timer?
+    private var hasPromptedForAutosave: Bool = false
+    /// 2 minutes — matches the field-test request.
+    private static let autosaveInterval: TimeInterval = 120.0
 
     // MARK: - Multi-Level Computed
 
@@ -292,11 +319,40 @@ class DeckBuilderViewModel: ObservableObject {
 
     // MARK: - Init
 
-    init(deckDesign: DeckDesign, modelContext: ModelContext? = nil) {
+    init(deckDesign: DeckDesign, modelContext: ModelContext? = nil, syncEngine: SyncEngine? = nil) {
         self.deckDesign = deckDesign
         self.modelContext = modelContext
+        self.syncEngine = syncEngine
         self.drawingData = deckDesign.drawingData
+        // If the model has already been pushed to Supabase at least once,
+        // future saves enqueue updates rather than creates. Bug ab554b5f.
+        self.hasEnqueuedCreate = deckDesign.lastSyncedAt != nil
+        // A drawing is "new" if it has no committed geometry yet — both
+        // single-level and multi-level forms must be empty.
+        let hasSingleGeometry = !deckDesign.drawingData.vertices.isEmpty
+            || !deckDesign.drawingData.edges.isEmpty
+        let hasMultiGeometry = deckDesign.drawingData.levels.contains { level in
+            !level.vertices.isEmpty || !level.edges.isEmpty
+        }
+        self.isNewDrawing = !(hasSingleGeometry || hasMultiGeometry)
         setupLaserSubscription()
+        // New drawings auto-enable autosave silently; existing drawings wait
+        // for the first edit to surface the prompt (handled in `save()`).
+        if self.isNewDrawing {
+            self.autosaveEnabled = true
+            startAutosaveTimer()
+        }
+
+        // Bug ab554b5f — designs that arrive in the builder with geometry but
+        // have NEVER been synced (template / sketch / AR creation paths)
+        // need an immediate enqueue so the upload happens even if the user
+        // dismisses the builder without editing further. The autosave timer
+        // would catch this eventually for new drawings, but a user who opens
+        // a freshly-created template-design and immediately backs out would
+        // otherwise leave the design only on-device.
+        if !self.hasEnqueuedCreate && !self.isNewDrawing {
+            self.enqueueDeckDesignSync()
+        }
     }
 
     deinit {
@@ -309,7 +365,41 @@ class DeckBuilderViewModel: ObservableObject {
         bufferTimer?.invalidate()
         errorTimer?.invalidate()
         disconnectTimer?.invalidate()
+        autosaveTimer?.invalidate()
         // Set<AnyCancellable> auto-cancels its members on deinit.
+    }
+
+    // MARK: - Autosave (bug 2b1f1a9e)
+
+    /// Start the 2-minute autosave loop. Each tick runs `save()` so the
+    /// user can recover their work from a crash without having to manually
+    /// commit. No-op if a timer is already running.
+    private func startAutosaveTimer() {
+        guard autosaveTimer == nil else { return }
+        autosaveTimer = Timer.scheduledTimer(withTimeInterval: Self.autosaveInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self, self.autosaveEnabled else { return }
+                self.save()
+            }
+        }
+    }
+
+    private func stopAutosaveTimer() {
+        autosaveTimer?.invalidate()
+        autosaveTimer = nil
+    }
+
+    /// Called by the prompt's accept path. Existing drawings opt in here.
+    func enableAutosave() {
+        autosaveEnabled = true
+        showingAutosavePrompt = false
+        startAutosaveTimer()
+    }
+
+    /// Called by the prompt's decline path.
+    func declineAutosave() {
+        autosaveEnabled = false
+        showingAutosavePrompt = false
     }
 
     // MARK: - Undo/Redo
@@ -1099,11 +1189,20 @@ class DeckBuilderViewModel: ObservableObject {
 
     // MARK: - Batch Assignment (from wheel on selection)
 
+    /// Bug 5e681032 — snapshot the selected ids BEFORE iterating so any
+    /// downstream mutation can't shrink the working set mid-loop. Previously
+    /// callers reported only the first selected edge receiving the material;
+    /// taking a deterministic snapshot here makes the batch atomic.
     func assignItemToSelectedEdges(_ item: AssignedItem) {
-        let count = selection.selectedEdgeIds.count
+        let edgeIds = Array(selection.selectedEdgeIds)
+        let count = edgeIds.count
+        guard count > 0 else { return }
         pushUndo("batch assign")
-        for edgeId in selection.selectedEdgeIds {
-            guard var edge = activeEdge(byId: edgeId) else { continue }
+        for edgeId in edgeIds {
+            guard var edge = activeEdge(byId: edgeId) else {
+                print("[DeckBuilder] assignItemToSelectedEdges: edge \(edgeId) not found, skipping")
+                continue
+            }
             // Replace existing items of same unit type
             edge.assignedItems.removeAll { $0.unitType == item.unitType }
             edge.assignedItems.append(item)
@@ -1322,7 +1421,108 @@ class DeckBuilderViewModel: ObservableObject {
             print("[DeckBuilder] Save failed: \(error)")
             saveError = "Save failed — check storage"
         }
+
+        // Bug ab554b5f — enqueue the change for the offline sync queue so
+        // OutboundProcessor pushes it to Supabase on the next push cycle.
+        // Without this, the local row's `needsSync` flag flipped on but the
+        // server never learned about the deck design. Idempotent — re-queueing
+        // the same id is fine (OutboundProcessor coalesces).
+        enqueueDeckDesignSync()
+
+        // Bug 2b1f1a9e — first edit on an EXISTING drawing surfaces the
+        // autosave prompt (new drawings already auto-enabled it in init).
+        // Suppress when called from the autosave timer itself (autosaveEnabled
+        // is already true by then, and the guard prevents recursion).
+        if !isNewDrawing && !hasPromptedForAutosave && !autosaveEnabled {
+            hasPromptedForAutosave = true
+            showingAutosavePrompt = true
+        }
     }
+
+    /// Records a SyncOperation so the OutboundProcessor pushes the deck
+    /// design to Supabase on the next push cycle.
+    ///
+    /// First call for a never-synced model emits a "create" op carrying the
+    /// full DTO shape (every required Supabase column). Subsequent calls emit
+    /// "update" ops carrying only the fields that change between edits —
+    /// title, drawing_data, thumbnail_url, version, updated_at. The hand-off
+    /// to OutboundProcessor's existing `handleDeckDesign` reuses the same
+    /// payload-sanitizer + repository routing every other entity uses.
+    ///
+    /// Safe to call when `syncEngine` is nil (preview / test). The local
+    /// SwiftData save still happens — only the network push is skipped.
+    /// Bug ab554b5f.
+    private func enqueueDeckDesignSync() {
+        guard let syncEngine else { return }
+
+        let nowIso = ISO8601DateFormatter().string(from: Date())
+        let createdIso = ISO8601DateFormatter().string(from: deckDesign.createdAt)
+
+        // The Supabase `drawing_data` column is jsonb. Encode the struct to a
+        // dictionary so JSONSerialization can re-serialize the whole payload
+        // and the OutboundProcessor's JSONDecoder.decode(SupabaseDeckDesignDTO)
+        // round-trip succeeds. Encoding to JSON-string then re-parsing keeps
+        // the conversion isolated to this site (no AnyCodable plumbing
+        // anywhere else).
+        let drawingJSONString = drawingData.toJSON()
+        let drawingObject: Any = (try? JSONSerialization.jsonObject(
+            with: Data(drawingJSONString.utf8),
+            options: []
+        )) ?? [String: Any]()
+
+        if !hasEnqueuedCreate {
+            // First push for this id — wire up the full DTO payload so
+            // `handleDeckDesign` can decode `SupabaseDeckDesignDTO` and call
+            // `repo.create(dto)` directly.
+            var payload: [String: Any] = [
+                "id": deckDesign.id,
+                "company_id": deckDesign.companyId,
+                "title": deckDesign.title,
+                "drawing_data": drawingObject,
+                "version": deckDesign.version,
+                "created_at": createdIso,
+                "updated_at": nowIso
+            ]
+            if let projectId = deckDesign.projectId, !projectId.isEmpty {
+                payload["project_id"] = projectId
+            }
+            if let thumbnail = deckDesign.thumbnailURL, !thumbnail.isEmpty {
+                payload["thumbnail_url"] = thumbnail
+            }
+            if let createdBy = deckDesign.createdBy, !createdBy.isEmpty {
+                payload["created_by"] = createdBy
+            }
+            syncEngine.recordOperation(
+                entityType: .deckDesign,
+                entityId: deckDesign.id,
+                operationType: "create",
+                changedFields: payload,
+                priority: 1
+            )
+            hasEnqueuedCreate = true
+        } else {
+            // Update path — only push the fields the user actually edits in
+            // this session. drawing_data covers every geometry / config / level
+            // change because it's stored as a single jsonb blob.
+            var payload: [String: Any] = [
+                "title": deckDesign.title,
+                "drawing_data": drawingObject,
+                "version": deckDesign.version,
+                "updated_at": nowIso
+            ]
+            if let thumbnail = deckDesign.thumbnailURL, !thumbnail.isEmpty {
+                payload["thumbnail_url"] = thumbnail
+            }
+            syncEngine.recordOperation(
+                entityType: .deckDesign,
+                entityId: deckDesign.id,
+                operationType: "update",
+                changedFields: payload,
+                priority: 1
+            )
+        }
+    }
+
 
     func renameDesign(to newTitle: String) {
         let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)

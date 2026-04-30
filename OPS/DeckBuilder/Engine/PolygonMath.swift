@@ -209,4 +209,49 @@ struct PolygonMath {
         }
         return closestId
     }
+
+    /// Outward perpendicular unit vector for an edge inside a closed polygon.
+    /// "Outward" means away from the polygon interior — i.e. away from the
+    /// filled deck surface. Used by the stair renderer (bug a7429390) so
+    /// stairs render on the empty side of the deck edge by default.
+    ///
+    /// Returns the unit perpendicular as `(x, y)`. If the polygon is open or
+    /// degenerate, falls back to the CCW-90° perpendicular (the historical
+    /// behaviour) so existing single-edge sketches still render reasonably.
+    static func outwardPerpendicular(
+        edgeStart: CGPoint,
+        edgeEnd: CGPoint,
+        polygonVertices: [CGPoint]
+    ) -> (x: Double, y: Double) {
+        let dx = Double(edgeEnd.x - edgeStart.x)
+        let dy = Double(edgeEnd.y - edgeStart.y)
+        let length = sqrt(dx * dx + dy * dy)
+        guard length > 0 else { return (0, 0) }
+
+        // Two perpendicular candidates — 90° CCW and 90° CW.
+        let perpA = (x: -dy / length, y: dx / length)   // 90° CCW
+        let perpB = (x: dy / length, y: -dx / length)   // 90° CW
+
+        // Pick a probe point a small distance along each perpendicular from
+        // the edge midpoint. Whichever probe lies OUTSIDE the polygon is the
+        // outward normal. If both pass (open polygon) or neither (point on
+        // boundary), fall back to the CCW perpendicular.
+        guard polygonVertices.count >= 3 else { return perpA }
+
+        let midX = Double(edgeStart.x + edgeEnd.x) / 2
+        let midY = Double(edgeStart.y + edgeEnd.y) / 2
+        // Probe distance: small in canvas units but large enough to get
+        // clear of any boundary epsilon issues.
+        let probeDist: Double = 1.0
+        let probeA = CGPoint(x: midX + perpA.x * probeDist, y: midY + perpA.y * probeDist)
+        let probeB = CGPoint(x: midX + perpB.x * probeDist, y: midY + perpB.y * probeDist)
+
+        let aInside = pointInPolygon(probeA, vertices: polygonVertices)
+        let bInside = pointInPolygon(probeB, vertices: polygonVertices)
+
+        if aInside && !bInside { return perpB }
+        if bInside && !aInside { return perpA }
+        // Ambiguous — keep historical behaviour
+        return perpA
+    }
 }

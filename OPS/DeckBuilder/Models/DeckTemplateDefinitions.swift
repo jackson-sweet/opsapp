@@ -38,45 +38,49 @@ enum DeckTemplateType: String, CaseIterable, Identifiable {
     }
 
     var dimensionLabels: [DimensionLabel] {
+        // Bug e7965781 — palette migration: SwiftUI primitives (.green / .orange /
+        // .blue / .red) replaced with OPSStyle tokens so badges and edge labels
+        // read in the brand's military-tactical-minimalist tones (olive, tan,
+        // steel-blue, rose) instead of saturated system colors.
         switch self {
         case .rectangle, .frontPorch, .freestanding:
             return [
-                DimensionLabel(letter: "A", name: "Length", color: .green),
-                DimensionLabel(letter: "B", name: "Depth", color: .orange),
+                DimensionLabel(letter: "A", name: "Length", color: OPSStyle.Colors.olive),
+                DimensionLabel(letter: "B", name: "Depth", color: OPSStyle.Colors.tan),
             ]
         case .lShape:
             return [
-                DimensionLabel(letter: "A", name: "Long Side", color: .green),
-                DimensionLabel(letter: "B", name: "Full Depth", color: .orange),
-                DimensionLabel(letter: "C", name: "Extension Width", color: .blue),
-                DimensionLabel(letter: "D", name: "Extension Depth", color: .red),
+                DimensionLabel(letter: "A", name: "Long Side", color: OPSStyle.Colors.olive),
+                DimensionLabel(letter: "B", name: "Full Depth", color: OPSStyle.Colors.tan),
+                DimensionLabel(letter: "C", name: "Extension Width", color: OPSStyle.Colors.opsAccent),
+                DimensionLabel(letter: "D", name: "Extension Depth", color: OPSStyle.Colors.rose),
             ]
         case .wraparound:
             return [
-                DimensionLabel(letter: "A", name: "Long Side", color: .green),
-                DimensionLabel(letter: "B", name: "Full Depth", color: .orange),
-                DimensionLabel(letter: "C", name: "Return Width", color: .blue),
-                DimensionLabel(letter: "D", name: "Return Depth", color: .red),
+                DimensionLabel(letter: "A", name: "Long Side", color: OPSStyle.Colors.olive),
+                DimensionLabel(letter: "B", name: "Full Depth", color: OPSStyle.Colors.tan),
+                DimensionLabel(letter: "C", name: "Return Width", color: OPSStyle.Colors.opsAccent),
+                DimensionLabel(letter: "D", name: "Return Depth", color: OPSStyle.Colors.rose),
             ]
         case .tShape:
             return [
-                DimensionLabel(letter: "A", name: "Top Width", color: .green),
-                DimensionLabel(letter: "B", name: "Stem Depth", color: .orange),
-                DimensionLabel(letter: "C", name: "Stem Width", color: .blue),
-                DimensionLabel(letter: "D", name: "Top Depth", color: .red),
+                DimensionLabel(letter: "A", name: "Top Width", color: OPSStyle.Colors.olive),
+                DimensionLabel(letter: "B", name: "Stem Depth", color: OPSStyle.Colors.tan),
+                DimensionLabel(letter: "C", name: "Stem Width", color: OPSStyle.Colors.opsAccent),
+                DimensionLabel(letter: "D", name: "Top Depth", color: OPSStyle.Colors.rose),
             ]
         case .multiLevel:
             return [
-                DimensionLabel(letter: "A", name: "Upper Length", color: .green),
-                DimensionLabel(letter: "B", name: "Upper Depth", color: .orange),
-                DimensionLabel(letter: "C", name: "Lower Length", color: .blue),
-                DimensionLabel(letter: "D", name: "Lower Depth", color: .red),
+                DimensionLabel(letter: "A", name: "Upper Length", color: OPSStyle.Colors.olive),
+                DimensionLabel(letter: "B", name: "Upper Depth", color: OPSStyle.Colors.tan),
+                DimensionLabel(letter: "C", name: "Lower Length", color: OPSStyle.Colors.opsAccent),
+                DimensionLabel(letter: "D", name: "Lower Depth", color: OPSStyle.Colors.rose),
             ]
         case .poolDeck:
             return [
-                DimensionLabel(letter: "A", name: "Length", color: .green),
-                DimensionLabel(letter: "B", name: "Depth", color: .orange),
-                DimensionLabel(letter: "C", name: "Pool Diameter", color: .blue),
+                DimensionLabel(letter: "A", name: "Length", color: OPSStyle.Colors.olive),
+                DimensionLabel(letter: "B", name: "Depth", color: OPSStyle.Colors.tan),
+                DimensionLabel(letter: "C", name: "Pool Diameter", color: OPSStyle.Colors.opsAccent),
             ]
         }
     }

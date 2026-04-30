@@ -24,10 +24,14 @@ struct DeckBuilderView: View {
     let projectId: String?
     let companyId: String
 
-    init(deckDesign: DeckDesign, modelContext: ModelContext) {
+    init(deckDesign: DeckDesign, modelContext: ModelContext, syncEngine: SyncEngine? = nil) {
+        // Bug ab554b5f — pass the SyncEngine to the view model so saves
+        // enqueue Supabase pushes. Optional so test/preview call sites that
+        // don't have a configured engine still compile and run.
         self._viewModel = StateObject(wrappedValue: DeckBuilderViewModel(
             deckDesign: deckDesign,
-            modelContext: modelContext
+            modelContext: modelContext,
+            syncEngine: syncEngine
         ))
         self.projectId = deckDesign.projectId
         self.companyId = deckDesign.companyId
@@ -456,6 +460,20 @@ struct DeckBuilderView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This cannot be undone.")
+        }
+        // Bug 2b1f1a9e — autosave prompt for EXISTING drawings on first edit.
+        // New drawings autosave silently; existing drawings opt in here so the
+        // user knows their working copy will be saved every couple of minutes
+        // without a manual commit.
+        .alert("Save your edits automatically?", isPresented: $viewModel.showingAutosavePrompt) {
+            Button("Yes, every 2 minutes") {
+                viewModel.enableAutosave()
+            }
+            Button("Not now", role: .cancel) {
+                viewModel.declineAutosave()
+            }
+        } message: {
+            Text("OPS can save your changes to this drawing every 2 minutes so you don't lose work.")
         }
         .statusBarHidden(true)
         .onAppear {

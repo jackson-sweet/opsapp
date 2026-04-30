@@ -176,11 +176,33 @@ struct MaterialPickerSheet: View {
 
     // MARK: - Apply
 
+    /// Bug 5e681032 — when multiple edges are selected, the material must apply
+    /// to ALL of them (not just the first). The previous if/else-if split also
+    /// silently dropped the edge update when both footprint AND edges were
+    /// selected (multi-select mode), which read as "only the first one took"
+    /// in the field. Now both branches run when both kinds of target are
+    /// selected, and the linear branch always uses `assignItemToSelectedEdges`
+    /// which iterates the full set.
     private func applyMaterial(_ item: AssignedItem) {
-        if viewModel.selection.selectedFootprint {
+        var didApply = false
+        if viewModel.selection.selectedFootprint && !isLinearMode {
             viewModel.assignItemToFootprint(item)
-        } else if viewModel.selection.hasEdges {
+            didApply = true
+        }
+        if viewModel.selection.hasEdges && isLinearMode {
             viewModel.assignItemToSelectedEdges(item)
+            didApply = true
+        }
+        // Edge fallback: in case unit mapping disagrees with the toolbar
+        // routing (mixed selection where `isLinearMode` resolved to surface
+        // mode), still ensure the edges receive the item if any are selected
+        // and the picked product is linear.
+        if !didApply {
+            if viewModel.selection.hasEdges {
+                viewModel.assignItemToSelectedEdges(item)
+            } else if viewModel.selection.selectedFootprint {
+                viewModel.assignItemToFootprint(item)
+            }
         }
     }
 }

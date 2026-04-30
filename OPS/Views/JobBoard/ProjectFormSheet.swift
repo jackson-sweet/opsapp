@@ -527,7 +527,13 @@ struct ProjectFormSheet: View {
         // their creation method so they can start drawing immediately.
         .fullScreenCover(item: $showingDeckBuilderForCapture) { design in
             if let mc = dataController.modelContext {
-                DeckBuilderView(deckDesign: design, modelContext: mc)
+                // Bug ab554b5f — pass the syncEngine so the freshly-created
+                // design pushes to Supabase as soon as the user draws.
+                DeckBuilderView(
+                    deckDesign: design,
+                    modelContext: mc,
+                    syncEngine: dataController.syncEngine
+                )
             }
         }
     }

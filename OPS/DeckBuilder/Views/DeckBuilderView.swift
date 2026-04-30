@@ -24,10 +24,14 @@ struct DeckBuilderView: View {
     let projectId: String?
     let companyId: String
 
-    init(deckDesign: DeckDesign, modelContext: ModelContext) {
+    init(deckDesign: DeckDesign, modelContext: ModelContext, syncEngine: SyncEngine? = nil) {
+        // Bug ab554b5f — pass the SyncEngine to the view model so saves
+        // enqueue Supabase pushes. Optional so test/preview call sites that
+        // don't have a configured engine still compile and run.
         self._viewModel = StateObject(wrappedValue: DeckBuilderViewModel(
             deckDesign: deckDesign,
-            modelContext: modelContext
+            modelContext: modelContext,
+            syncEngine: syncEngine
         ))
         self.projectId = deckDesign.projectId
         self.companyId = deckDesign.companyId

@@ -87,6 +87,29 @@ struct PermissionsManagementView: View {
                 )
             }
         }
+        // Bug e33aa336 — settings search deep-link. When a result targets
+        // "team" (e.g. "Team Permissions"), flip to the Team tab on arrival.
+        // "roles" / "add_role" results stay on the Roles tab. Any unknown
+        // section ID is a no-op so the view behaves exactly as before.
+        .onReceive(NotificationCenter.default.publisher(for: SettingsDeepLink.permissions)) { notification in
+            guard let section = notification.userInfo?[SettingsDeepLink.userInfoSectionKey] as? String else { return }
+            switch section {
+            case "team":
+                if selectedTab != .team {
+                    withAnimation(OPSStyle.Animation.spring) {
+                        selectedTab = .team
+                    }
+                }
+            case "roles", "add_role":
+                if selectedTab != .roles {
+                    withAnimation(OPSStyle.Animation.spring) {
+                        selectedTab = .roles
+                    }
+                }
+            default:
+                break
+            }
+        }
         // Wizard: re-fire step 1 notification when wizard navigates here while the view is already visible.
         // Handles the race where .onAppear notifications fired before the wizard's step observer was listening.
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardNavigateToTarget"))) { notification in

@@ -23,6 +23,14 @@ struct SecuritySettingsView: View {
         dataController.simplePINManager
     }
 
+    // Bug e33aa336 — settings search deep-link anchors and spotlight.
+    private enum AnchorID {
+        static let appAccess = "app_access"
+        static let accountSecurity = "account_security"
+    }
+
+    @State private var highlightedSection: String? = nil
+
     var body: some View {
         ZStack {
             // Background
@@ -37,6 +45,7 @@ struct SecuritySettingsView: View {
                     }
                 )
 
+                ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 24) {
                         // App Access section
@@ -94,6 +103,8 @@ struct SecuritySettingsView: View {
                             )
                         }
                         .padding(.horizontal, 20)
+                        .id(AnchorID.appAccess)
+                        .deepLinkSpotlight(highlightedSection == AnchorID.appAccess)
 
                         // Account Security section
                         VStack(alignment: .leading, spacing: 8) {
@@ -119,9 +130,38 @@ struct SecuritySettingsView: View {
                             )
                         }
                         .padding(.horizontal, 20)
+                        .id(AnchorID.accountSecurity)
+                        .deepLinkSpotlight(highlightedSection == AnchorID.accountSecurity)
                     }
                     .padding(.vertical, 24)
                     .padding(.top, 12)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: SettingsDeepLink.security)) { notification in
+                    guard let section = notification.userInfo?[SettingsDeepLink.userInfoSectionKey] as? String else { return }
+                    let anchor: String?
+                    switch section {
+                    case "app_access":       anchor = AnchorID.appAccess
+                    case "account_security": anchor = AnchorID.accountSecurity
+                    default: anchor = nil
+                    }
+                    guard let anchor else { return }
+
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                        proxy.scrollTo(anchor, anchor: .top)
+                    }
+                    withAnimation(.easeIn(duration: 0.2).delay(0.15)) {
+                        highlightedSection = anchor
+                    }
+                    Task {
+                        try? await Task.sleep(nanoseconds: 1_600_000_000)
+                        await MainActor.run {
+                            withAnimation(.easeOut(duration: 0.4)) {
+                                highlightedSection = nil
+                            }
+                        }
+                    }
+                }
                 }
             }
         }

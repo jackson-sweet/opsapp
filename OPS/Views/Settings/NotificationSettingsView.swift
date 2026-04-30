@@ -96,6 +96,21 @@ struct NotificationSettingsView: View {
         .dailyDigest
     ]
 
+    // Bug e33aa336 — anchor IDs for ScrollViewReader. One per section in
+    // the UI; a settings-search deep-link with a matching `section` value
+    // scrolls to and pulses the corresponding section.
+    private enum AnchorID {
+        static let projectNotifications = "project_notifications"
+        static let financialNotifications = "financial_notifications"
+        static let otherNotifications = "other_notifications"
+        static let quietHours = "quiet_hours"
+        static let advanceReminders = "advance_reminders"
+        static let testNotifications = "test_notifications"
+        static let temporaryMute = "temporary_mute"
+    }
+
+    @State private var highlightedSection: String? = nil
+
     var body: some View {
         ZStack {
             OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
@@ -107,6 +122,7 @@ struct NotificationSettingsView: View {
                 )
                 .padding(.bottom, 24)
 
+                ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 24) {
                         // Permission Status Card
@@ -121,42 +137,63 @@ struct NotificationSettingsView: View {
                             settingsSection(title: "PROJECT NOTIFICATIONS") {
                                 channelPreferencesSection(eventTypes: projectEventTypes)
                             }
+                            .id(AnchorID.projectNotifications)
+                            .deepLinkSpotlight(highlightedSection == AnchorID.projectNotifications)
 
                             // Channel Preferences — Financial
                             settingsSection(title: "FINANCIAL NOTIFICATIONS") {
                                 channelPreferencesSection(eventTypes: financialEventTypes)
                             }
+                            .id(AnchorID.financialNotifications)
+                            .deepLinkSpotlight(highlightedSection == AnchorID.financialNotifications)
 
                             // Channel Preferences — Other
                             settingsSection(title: "OTHER") {
                                 channelPreferencesSection(eventTypes: otherEventTypes)
                             }
+                            .id(AnchorID.otherNotifications)
+                            .deepLinkSpotlight(highlightedSection == AnchorID.otherNotifications)
 
                             // Quiet Hours (Supabase-backed)
                             settingsSection(title: "QUIET HOURS") {
                                 quietHoursSettings
                             }
+                            .id(AnchorID.quietHours)
+                            .deepLinkSpotlight(highlightedSection == AnchorID.quietHours)
                         }
 
                         // Advance Notice Section (local-only)
                         settingsSection(title: "ADVANCE REMINDERS") {
                             advanceNoticeSettings
                         }
+                        .id(AnchorID.advanceReminders)
+                        .deepLinkSpotlight(highlightedSection == AnchorID.advanceReminders)
 
                         // Test Notification Section
                         settingsSection(title: "TEST NOTIFICATIONS") {
                             testNotificationCard
                         }
+                        .id(AnchorID.testNotifications)
+                        .deepLinkSpotlight(highlightedSection == AnchorID.testNotifications)
 
                         // Temporary Mute Section (local-only)
                         settingsSection(title: "TEMPORARY MUTE") {
                             temporaryMuteSettings
                         }
+                        .id(AnchorID.temporaryMute)
+                        .deepLinkSpotlight(highlightedSection == AnchorID.temporaryMute)
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 40)
                 }
                 .wizardTarget("configure_notifications")
+                // Bug e33aa336 — settings search deep-link target. Scroll
+                // to and pulse the matching section once the cover lands.
+                .onReceive(NotificationCenter.default.publisher(for: SettingsDeepLink.notifications)) { notification in
+                    guard let section = notification.userInfo?[SettingsDeepLink.userInfoSectionKey] as? String else { return }
+                    handleDeepLink(section: section, proxy: proxy)
+                }
+                }
             }
         }
         .trackScreen("Settings.Notifications")
@@ -173,6 +210,41 @@ struct NotificationSettingsView: View {
             checkMuteExpiration()
             NotificationCenter.default.post(name: Notification.Name("WizardNotificationsConfigured"), object: nil)
             loadPreferences()
+        }
+    }
+
+    /// Resolve a search-result section identifier to a scroll anchor and
+    /// run the spotlight animation. Unknown sections are no-ops, so a
+    /// future search entry pointing at a section that doesn't exist yet
+    /// simply lands the user at the top of the page (graceful degradation).
+    private func handleDeepLink(section: String, proxy: ScrollViewProxy) {
+        let anchor: String?
+        switch section {
+        case "project_notifications":   anchor = AnchorID.projectNotifications
+        case "financial_notifications": anchor = AnchorID.financialNotifications
+        case "other_notifications":    anchor = AnchorID.otherNotifications
+        case "quiet_hours":             anchor = AnchorID.quietHours
+        case "advance_reminders":       anchor = AnchorID.advanceReminders
+        case "test_notifications":      anchor = AnchorID.testNotifications
+        case "temporary_mute":          anchor = AnchorID.temporaryMute
+        default: anchor = nil
+        }
+        guard let anchor else { return }
+
+        UISelectionFeedbackGenerator().selectionChanged()
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+            proxy.scrollTo(anchor, anchor: .top)
+        }
+        withAnimation(.easeIn(duration: 0.2).delay(0.15)) {
+            highlightedSection = anchor
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            await MainActor.run {
+                withAnimation(.easeOut(duration: 0.4)) {
+                    highlightedSection = nil
+                }
+            }
         }
     }
 

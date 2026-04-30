@@ -45,6 +45,16 @@ struct MapSettingsView: View {
     // ── Navigation ──
     @AppStorage("mapSpeedZoom") private var mapSpeedZoom = true
 
+    // Bug e33aa336 — settings search deep-link anchors and spotlight.
+    private enum AnchorID {
+        static let mapAppearance = "map_appearance"
+        static let defaultView = "default_view"
+        static let camera = "camera"
+        static let navigation = "navigation"
+    }
+
+    @State private var highlightedSection: String? = nil
+
     var body: some View {
         ZStack {
             OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
@@ -56,6 +66,7 @@ struct MapSettingsView: View {
                 )
                 .padding(.bottom, 8)
 
+                ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 24) {
 
@@ -75,6 +86,8 @@ struct MapSettingsView: View {
                                 isOn: $map3DBuildings
                             )
                         }
+                        .id(AnchorID.mapAppearance)
+                        .deepLinkSpotlight(highlightedSection == AnchorID.mapAppearance)
 
                         // ── DEFAULT VIEW ──
                         settingsSection(title: "DEFAULT VIEW") {
@@ -93,6 +106,8 @@ struct MapSettingsView: View {
                                 )
                             }
                         }
+                        .id(AnchorID.defaultView)
+                        .deepLinkSpotlight(highlightedSection == AnchorID.defaultView)
 
                         // ── CAMERA BEHAVIOR ──
                         settingsSection(title: "CAMERA") {
@@ -165,6 +180,8 @@ struct MapSettingsView: View {
                                 .opacity(mapAutoZoom ? 1.0 : 0.5)
                             }
                         }
+                        .id(AnchorID.camera)
+                        .deepLinkSpotlight(highlightedSection == AnchorID.camera)
 
                         // ── NAVIGATION ──
                         settingsSection(title: "NAVIGATION") {
@@ -179,6 +196,8 @@ struct MapSettingsView: View {
 
                             voiceGuidanceRow
                         }
+                        .id(AnchorID.navigation)
+                        .deepLinkSpotlight(highlightedSection == AnchorID.navigation)
 
                         // ── RESET ──
                         SettingsButton(
@@ -192,6 +211,37 @@ struct MapSettingsView: View {
                         .padding(.top, 8)
                     }
                     .padding(.vertical, 24)
+                }
+                // Bug e33aa336 — scroll to + spotlight the section the
+                // search result targeted, then clear the highlight.
+                .onReceive(NotificationCenter.default.publisher(for: SettingsDeepLink.map)) { notification in
+                    guard let section = notification.userInfo?[SettingsDeepLink.userInfoSectionKey] as? String else { return }
+                    let anchor: String?
+                    switch section {
+                    case "map_appearance": anchor = AnchorID.mapAppearance
+                    case "default_view":   anchor = AnchorID.defaultView
+                    case "camera":         anchor = AnchorID.camera
+                    case "navigation":     anchor = AnchorID.navigation
+                    default: anchor = nil
+                    }
+                    guard let anchor else { return }
+
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                        proxy.scrollTo(anchor, anchor: .top)
+                    }
+                    withAnimation(.easeIn(duration: 0.2).delay(0.15)) {
+                        highlightedSection = anchor
+                    }
+                    Task {
+                        try? await Task.sleep(nanoseconds: 1_600_000_000)
+                        await MainActor.run {
+                            withAnimation(.easeOut(duration: 0.4)) {
+                                highlightedSection = nil
+                            }
+                        }
+                    }
+                }
                 }
             }
         }

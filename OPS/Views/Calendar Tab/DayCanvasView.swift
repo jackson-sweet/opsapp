@@ -83,6 +83,22 @@ struct DayPageView: View {
     @EnvironmentObject var dataController: DataController
     let isActivePage: Bool
 
+    /// Drives the recurring-event scope sheet. Identifiable so it can be
+    /// fed straight into a `.sheet(item:)`.
+    fileprivate struct UserEventScopePrompt: Identifiable {
+        let id = UUID()
+        let event: CalendarUserEvent
+        let mode: RecurringEventScopeMode
+    }
+
+    /// Drives the editor sheet. The scope was either chosen via the scope
+    /// sheet (recurring rows) or defaulted to .thisOnly (standalone rows).
+    fileprivate struct EditingUserEventTarget: Identifiable {
+        let id = UUID()
+        let event: CalendarUserEvent
+        let scope: RecurringEventScope
+    }
+
     /// Lightweight wrapper for unified task iteration (nil task = spacer for alignment).
     /// Multi-day entries use "slot-N" IDs so all pages share the same ID space
     /// for cross-page scroll sync.
@@ -203,6 +219,13 @@ struct DayPageView: View {
     @State private var isSelectMode = false
     @State private var selectedTaskIds: Set<String> = []
 
+    // User-event edit / delete flow state.
+    // - `userEventScopePrompt` drives the RecurringEventEditScopeSheet.
+    // - `editingUserEvent` opens UserEventSheet in edit mode after a scope
+    //   is chosen (or directly for non-recurring rows).
+    @State private var userEventScopePrompt: UserEventScopePrompt? = nil
+    @State private var editingUserEvent: EditingUserEventTarget? = nil
+
     // Push / cascade state
     @State private var showingCascadePreview = false
     @State private var pendingCascade: SchedulingEngine.CascadeResult?
@@ -266,8 +289,9 @@ struct DayPageView: View {
                             ForEach(userEventsForDate) { event in
                                 CalendarUserEventCard(
                                     event: event,
-                                    onTap: { /* future: open event detail */ },
-                                    onDelete: { deleteUserEvent(event) }
+                                    onTap: { handleUserEventEdit(event) },
+                                    onDelete: { handleUserEventDelete(event) },
+                                    onEdit: { handleUserEventEdit(event) }
                                 )
                             }
                         }
@@ -359,6 +383,35 @@ struct DayPageView: View {
                 onClearDates: {
                     clearTaskDates(task: task)
                 }
+            )
+            .environmentObject(dataController)
+        }
+        // Recurring-event scope picker. Presented as a small sheet that
+        // sits over the day canvas — half-height detent keeps the day's
+        // events visible behind it.
+        .sheet(item: $userEventScopePrompt) { prompt in
+            RecurringEventEditScopeSheet(
+                mode: prompt.mode,
+                onSelect: { scope in
+                    handleScopeChoice(prompt: prompt, scope: scope)
+                },
+                onCancel: { /* dismiss handled inside the sheet */ }
+            )
+            .presentationDetents([.fraction(0.5), .medium])
+            .presentationDragIndicator(.hidden)
+        }
+        // Editor sheet — opens after a scope is chosen (or immediately for
+        // non-recurring rows). On save, UserEventSheet routes through
+        // DataController.updateRecurringEvent with the carried scope.
+        .sheet(item: $editingUserEvent) { target in
+            UserEventSheet(
+                isPresented: Binding(
+                    get: { editingUserEvent != nil },
+                    set: { if !$0 { editingUserEvent = nil } }
+                ),
+                viewModel: viewModel,
+                editing: target.event,
+                scope: target.scope
             )
             .environmentObject(dataController)
         }
@@ -995,17 +1048,43 @@ struct DayPageView: View {
         }
     }
 
-    private func deleteUserEvent(_ event: CalendarUserEvent) {
-        guard let context = dataController.modelContext,
-              let companyId = dataController.currentUser?.companyId else { return }
+    // MARK: - User event edit / delete dispatch
 
-        event.deletedAt = Date()
-        try? context.save()
-        viewModel.loadUserEvents()
-        let eventId = event.id
-        Task {
-            let repo = CalendarUserEventRepository(companyId: companyId)
-            try? await repo.softDelete(eventId)
+    /// Edit entry — recurring rows go through the scope picker first;
+    /// standalone rows open the editor with `.thisOnly` as the scope.
+    private func handleUserEventEdit(_ event: CalendarUserEvent) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if event.isRecurringInstance {
+            userEventScopePrompt = UserEventScopePrompt(event: event, mode: .edit)
+        } else {
+            editingUserEvent = EditingUserEventTarget(event: event, scope: .thisOnly)
+        }
+    }
+
+    /// Delete entry — recurring rows go through the scope picker first;
+    /// standalone rows soft-delete immediately via the same helper (which
+    /// degrades to a single-row delete when seriesId is nil).
+    private func handleUserEventDelete(_ event: CalendarUserEvent) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if event.isRecurringInstance {
+            userEventScopePrompt = UserEventScopePrompt(event: event, mode: .delete)
+        } else {
+            dataController.deleteRecurringEvent(event, scope: .thisOnly)
+            viewModel.loadUserEvents()
+        }
+    }
+
+    /// Apply the scope chosen in the picker. The picker fires its own
+    /// haptic on selection; we don't double-tap with another one here.
+    private func handleScopeChoice(prompt: UserEventScopePrompt, scope: RecurringEventScope) {
+        switch prompt.mode {
+        case .edit:
+            // Open the editor sheet with the chosen scope. SwiftUI dismisses
+            // the scope sheet first; the editor fades in immediately after.
+            editingUserEvent = EditingUserEventTarget(event: prompt.event, scope: scope)
+        case .delete:
+            dataController.deleteRecurringEvent(prompt.event, scope: scope)
+            viewModel.loadUserEvents()
         }
     }
 }

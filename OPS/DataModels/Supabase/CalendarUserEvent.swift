@@ -40,6 +40,11 @@ class CalendarUserEvent: Identifiable {
     var updatedAt: Date?
     var deletedAt: Date?
 
+    /// Recurring-series identifier. Every row produced from the same recurrence
+    /// expansion shares this UUID; standalone events (or events that were
+    /// detached via the "edit this only" scope) leave it nil.
+    var seriesId: String?
+
     // Sync tracking
     var lastSyncedAt: Date?
     var needsSync: Bool = false
@@ -55,7 +60,8 @@ class CalendarUserEvent: Identifiable {
         allDay: Bool = true,
         notes: String? = nil,
         address: String? = nil,
-        teamMemberIds: [String]? = nil
+        teamMemberIds: [String]? = nil,
+        seriesId: String? = nil
     ) {
         self.id = id
         self.userId = userId
@@ -68,9 +74,13 @@ class CalendarUserEvent: Identifiable {
         self.notes = notes
         self.address = address
         self.teamMemberIds = teamMemberIds
+        self.seriesId = seriesId
         self.status = CalendarUserEventStatus.none.rawValue
         self.createdAt = Date()
     }
+
+    /// True when this row belongs to a recurring series (has siblings).
+    var isRecurringInstance: Bool { seriesId != nil }
 
     // MARK: - Computed Accessors
 

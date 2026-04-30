@@ -76,6 +76,34 @@ struct CreateOpportunityDTO: Codable {
     let estimatedValue: Double?
     let source: String?
     let quoteDeliveryMethod: String?
+    /// Optional link to an existing Client row. Set this when the
+    /// opportunity is being created alongside (or from) a known client —
+    /// e.g. the auto-create-lead path triggered by ClientSheet (bug
+    /// 321e65c8). When omitted, the opportunity is unlinked and can be
+    /// associated later via UpdateOpportunityDTO.clientId.
+    let clientId: String?
+
+    init(
+        companyId: String,
+        contactName: String,
+        contactEmail: String? = nil,
+        contactPhone: String? = nil,
+        description: String? = nil,
+        estimatedValue: Double? = nil,
+        source: String? = nil,
+        quoteDeliveryMethod: String? = nil,
+        clientId: String? = nil
+    ) {
+        self.companyId = companyId
+        self.contactName = contactName
+        self.contactEmail = contactEmail
+        self.contactPhone = contactPhone
+        self.description = description
+        self.estimatedValue = estimatedValue
+        self.source = source
+        self.quoteDeliveryMethod = quoteDeliveryMethod
+        self.clientId = clientId
+    }
 
     enum CodingKeys: String, CodingKey {
         case companyId            = "company_id"
@@ -86,6 +114,7 @@ struct CreateOpportunityDTO: Codable {
         case estimatedValue       = "estimated_value"
         case source
         case quoteDeliveryMethod  = "quote_delivery_method"
+        case clientId             = "client_id"
     }
 }
 

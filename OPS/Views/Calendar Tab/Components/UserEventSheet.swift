@@ -17,6 +17,46 @@ enum UserEventMode: String, CaseIterable {
     case timeOff = "TIME OFF"
 }
 
+// MARK: - Recurrence
+
+/// Bug a5001a70 — recurrence frequency for personal events. Implementation
+/// strategy: expand into N standalone CalendarUserEvent rows on save (no DB
+/// schema change required). Hard cap of 100 occurrences and 1 year forward
+/// (whichever is earlier) to avoid runaway data growth.
+enum RecurrenceFrequency: String, CaseIterable, Identifiable {
+    case never
+    case daily
+    case weekly
+    case biweekly
+    case monthly
+    case yearly
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .never:    return "Never"
+        case .daily:    return "Daily"
+        case .weekly:   return "Weekly"
+        case .biweekly: return "Every 2 Weeks"
+        case .monthly:  return "Monthly"
+        case .yearly:   return "Yearly"
+        }
+    }
+
+    /// Calendar component + value used to advance one occurrence.
+    var step: (component: Calendar.Component, value: Int)? {
+        switch self {
+        case .never:    return nil
+        case .daily:    return (.day, 1)
+        case .weekly:   return (.weekOfYear, 1)
+        case .biweekly: return (.weekOfYear, 2)
+        case .monthly:  return (.month, 1)
+        case .yearly:   return (.year, 1)
+        }
+    }
+}
+
 // MARK: - UserEventSheet
 
 struct UserEventSheet: View {
@@ -44,6 +84,19 @@ struct UserEventSheet: View {
     @State private var currentMonth: Date = Date()
     @State private var scheduledTasks: [ProjectTask] = []
     @State private var userEvents: [CalendarUserEvent] = []
+
+    // Bug a5001a70 — Team invites
+    @State private var selectedTeamMemberIds: Set<String> = []
+    @State private var showingTeamPicker: Bool = false
+
+    // Bug a5001a70 — Time of day (active when allDay == false)
+    @State private var startTime: Date = UserEventSheet.defaultStartTime()
+    @State private var endTime: Date = UserEventSheet.defaultEndTime()
+
+    // Bug a5001a70 — Recurrence
+    @State private var recurrence: RecurrenceFrequency = .never
+    @State private var recurrenceEnd: Date? = nil
+    @State private var recurrenceUseEndDate: Bool = false
 
     // Grid config
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
@@ -95,6 +148,18 @@ struct UserEventSheet: View {
 
     private var sheetTitle: String {
         mode == .personalEvent ? "NEW EVENT" : "REQUEST TIME OFF"
+    }
+
+    /// Default workday start (8:00 AM) used when "All Day" is toggled off.
+    private static func defaultStartTime() -> Date {
+        let calendar = Calendar.current
+        return calendar.date(bySettingHour: 8, minute: 0, second: 0, of: Date()) ?? Date()
+    }
+
+    /// Default workday end (5:00 PM) used when "All Day" is toggled off.
+    private static func defaultEndTime() -> Date {
+        let calendar = Calendar.current
+        return calendar.date(bySettingHour: 17, minute: 0, second: 0, of: Date()) ?? Date()
     }
 
     // MARK: - Body
@@ -157,6 +222,19 @@ struct UserEventSheet: View {
             loadExistingEvents()
         }
         .animation(OPSStyle.Animation.standard, value: mode)
+        // Bug a5001a70 — team picker sheet. Reuses the existing
+        // TeamMemberPickerSheet so visuals stay identical to TaskFormSheet
+        // and PersonalEventSheet.
+        .sheet(isPresented: $showingTeamPicker) {
+            if let companyId = dataController.currentUser?.companyId {
+                let members = dataController.getTeamMembers(companyId: companyId)
+                    .sorted { $0.fullName < $1.fullName }
+                TeamMemberPickerSheet(
+                    selectedTeamMemberIds: $selectedTeamMemberIds,
+                    allTeamMembers: members
+                )
+            }
+        }
     }
 
     // MARK: - Mode Toggle
@@ -261,6 +339,19 @@ struct UserEventSheet: View {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
+
+                // Bug a5001a70 — start/end time pickers (only when not all-day)
+                if !allDay {
+                    timePickerRow(label: "STARTS", time: $startTime)
+                    timePickerRow(label: "ENDS", time: $endTime)
+                }
+            }
+
+            // Bug a5001a70 — team invite picker (personal event only).
+            // Time-off requests don't invite the crew — they belong to the
+            // requester only.
+            if mode == .personalEvent {
+                teamInviteRow
             }
 
             // Notes (personal event only)
@@ -286,12 +377,229 @@ struct UserEventSheet: View {
         }
     }
 
+    // MARK: - Time Picker Row (Bug a5001a70)
+
+    /// One styled row containing a label and a compact `DatePicker` showing
+    /// only hour and minute. Matches the visual rhythm of the All-Day row
+    /// above it.
+    private func timePickerRow(label: String, time: Binding<Date>) -> some View {
+        HStack {
+            Text(label)
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+
+            Spacer()
+
+            DatePicker(
+                "",
+                selection: time,
+                displayedComponents: .hourAndMinute
+            )
+            .datePickerStyle(.compact)
+            .labelsHidden()
+            .colorScheme(.dark)
+            .tint(OPSStyle.Colors.primaryAccent)
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
+    // MARK: - Team Invite Row (Bug a5001a70)
+
+    private var teamInviteRow: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("INVITE TEAM")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            Button {
+                showingTeamPicker = true
+            } label: {
+                HStack {
+                    if selectedTeamMemberIds.isEmpty {
+                        Text("ADD CREW")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    } else {
+                        Text("\(selectedTeamMemberIds.count) ASSIGNED")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+
+    // MARK: - Recurrence Row (Bug a5001a70)
+
+    /// Repeat picker + optional end-date picker. Hidden in time-off mode —
+    /// recurring time-off requests would all need approval and admins would
+    /// reject the model outright. Stays simple: standalone-event expansion
+    /// on save, no DB schema change.
+    @ViewBuilder
+    private var recurrenceRow: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("REPEAT")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            Menu {
+                ForEach(RecurrenceFrequency.allCases) { option in
+                    Button {
+                        recurrence = option
+                        if option == .never {
+                            recurrenceUseEndDate = false
+                            recurrenceEnd = nil
+                        }
+                    } label: {
+                        if recurrence == option {
+                            Label(option.label, systemImage: "checkmark")
+                        } else {
+                            Text(option.label)
+                        }
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(recurrence.label.uppercased())
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(recurrence == .never ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+
+                    Spacer()
+
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+            }
+
+            // End condition — only meaningful when recurrence != .never
+            if recurrence != .never {
+                HStack(spacing: 0) {
+                    recurrenceEndPill(
+                        title: "FOREVER",
+                        subtitle: "Locks 1 year of dates",
+                        isSelected: !recurrenceUseEndDate,
+                        action: {
+                            recurrenceUseEndDate = false
+                            recurrenceEnd = nil
+                        }
+                    )
+
+                    recurrenceEndPill(
+                        title: "UNTIL DATE",
+                        subtitle: nil,
+                        isSelected: recurrenceUseEndDate,
+                        action: {
+                            recurrenceUseEndDate = true
+                            if recurrenceEnd == nil {
+                                // Default end: 1 month from selected start
+                                recurrenceEnd = Calendar.current.date(byAdding: .month, value: 1, to: selectedStartDate)
+                            }
+                        }
+                    )
+                }
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .padding(.top, 4)
+
+                if recurrenceUseEndDate {
+                    HStack {
+                        Text("ENDS ON")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+
+                        Spacer()
+
+                        DatePicker(
+                            "",
+                            selection: Binding(
+                                get: { recurrenceEnd ?? Calendar.current.date(byAdding: .month, value: 1, to: selectedStartDate) ?? Date() },
+                                set: { recurrenceEnd = $0 }
+                            ),
+                            in: selectedStartDate...,
+                            displayedComponents: .date
+                        )
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                        .colorScheme(.dark)
+                        .tint(OPSStyle.Colors.primaryAccent)
+                    }
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 16)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                    .padding(.top, 4)
+                }
+            }
+        }
+    }
+
+    private func recurrenceEndPill(title: String, subtitle: String?, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Text(title)
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(isSelected ? OPSStyle.Colors.invertedText : OPSStyle.Colors.primaryText)
+                if let subtitle = subtitle {
+                    Text(subtitle)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(isSelected ? OPSStyle.Colors.invertedText.opacity(0.7) : OPSStyle.Colors.tertiaryText)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(isSelected ? OPSStyle.Colors.primaryText : Color.clear)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
     // MARK: - Schedule Content (inside ExpandableSection)
 
     private var scheduleContent: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             // Date range display
             dateRangeHeader
+
+            // Bug a5001a70 — recurrence picker (personal events only).
+            // Sits below the date range so users see the range first, then
+            // choose how it repeats.
+            if mode == .personalEvent {
+                recurrenceRow
+            }
 
             // Month navigation
             HStack {
@@ -581,59 +889,163 @@ struct UserEventSheet: View {
 
         let isAllDay = mode == .timeOff ? true : allDay
 
-        let event = CalendarUserEvent(
-            userId: userId,
-            companyId: companyId,
-            type: eventType,
-            title: eventTitle,
-            startDate: selectedStartDate,
-            endDate: selectedEndDate,
-            allDay: isAllDay,
-            notes: eventNotes,
-            address: nil,
-            teamMemberIds: nil
-        )
-        event.status = eventStatus
-        event.needsSync = true
+        // Bug a5001a70 — merge time-of-day into the date components when the
+        // user disabled All Day. Time pickers are personal-event only, so
+        // time-off requests always keep midnight boundaries.
+        let baseStart: Date
+        let baseEnd: Date
+        if mode == .personalEvent && !isAllDay {
+            baseStart = mergeDateAndTime(date: selectedStartDate, time: startTime)
+            baseEnd = mergeDateAndTime(date: selectedEndDate, time: endTime)
+        } else {
+            baseStart = selectedStartDate
+            baseEnd = selectedEndDate
+        }
+
+        // Bug a5001a70 — team member IDs (personal events only).
+        let teamIds: [String]?
+        if mode == .personalEvent && !selectedTeamMemberIds.isEmpty {
+            teamIds = Array(selectedTeamMemberIds)
+        } else {
+            teamIds = nil
+        }
+
+        // Bug a5001a70 — expand recurrence into N standalone occurrences.
+        // Time-off mode never recurs; personal events use the user's choice.
+        let occurrences: [(start: Date, end: Date)]
+        if mode == .personalEvent && recurrence != .never {
+            occurrences = expandRecurrence(
+                start: baseStart,
+                end: baseEnd,
+                frequency: recurrence,
+                customEnd: recurrenceUseEndDate ? recurrenceEnd : nil
+            )
+        } else {
+            occurrences = [(baseStart, baseEnd)]
+        }
 
         guard let context = dataController.modelContext else {
             isSaving = false
             return
         }
-        context.insert(event)
+
+        // Insert all occurrences locally up front so the calendar reflects
+        // them immediately even if Supabase sync fails.
+        var localEvents: [CalendarUserEvent] = []
+        for occurrence in occurrences {
+            let event = CalendarUserEvent(
+                userId: userId,
+                companyId: companyId,
+                type: eventType,
+                title: eventTitle,
+                startDate: occurrence.start,
+                endDate: occurrence.end,
+                allDay: isAllDay,
+                notes: eventNotes,
+                address: nil,
+                teamMemberIds: teamIds
+            )
+            event.status = eventStatus
+            event.needsSync = true
+            context.insert(event)
+            localEvents.append(event)
+        }
         try? context.save()
 
-        // Sync to Supabase
+        // Sync to Supabase — one row per occurrence. Each is a standalone
+        // event (no series_id), so editing one won't edit the others. This
+        // is the documented limitation of the no-migration strategy.
         Task {
             let repo = CalendarUserEventRepository(companyId: companyId)
             let iso = ISO8601DateFormatter()
-            let dto = CreateCalendarUserEventDTO(
-                userId: userId,
-                companyId: companyId,
-                type: eventType.rawValue,
-                title: eventTitle,
-                startDate: iso.string(from: selectedStartDate),
-                endDate: iso.string(from: selectedEndDate),
-                allDay: isAllDay,
-                notes: eventNotes,
-                status: eventStatus,
-                address: nil,
-                teamMemberIds: nil
-            )
-            if let saved = try? await repo.create(dto) {
-                await MainActor.run {
-                    event.id = saved.id
-                    event.needsSync = false
-                    event.lastSyncedAt = Date()
-                    try? context.save()
+
+            for (index, occurrence) in occurrences.enumerated() {
+                let dto = CreateCalendarUserEventDTO(
+                    userId: userId,
+                    companyId: companyId,
+                    type: eventType.rawValue,
+                    title: eventTitle,
+                    startDate: iso.string(from: occurrence.start),
+                    endDate: iso.string(from: occurrence.end),
+                    allDay: isAllDay,
+                    notes: eventNotes,
+                    status: eventStatus,
+                    address: nil,
+                    teamMemberIds: teamIds
+                )
+                if let saved = try? await repo.create(dto) {
+                    let savedId = saved.id
+                    await MainActor.run {
+                        guard index < localEvents.count else { return }
+                        localEvents[index].id = savedId
+                        localEvents[index].needsSync = false
+                        localEvents[index].lastSyncedAt = Date()
+                        try? context.save()
+                    }
                 }
             }
+
             await MainActor.run {
                 isSaving = false
                 viewModel.loadUserEvents()
                 isPresented = false
             }
         }
+    }
+
+    // MARK: - Recurrence Helpers (Bug a5001a70)
+
+    /// Combines the day from `date` with the hour/minute/second from `time`.
+    private func mergeDateAndTime(date: Date, time: Date) -> Date {
+        let calendar = Calendar.current
+        let timeComponents = calendar.dateComponents([.hour, .minute, .second], from: time)
+        return calendar.date(
+            bySettingHour: timeComponents.hour ?? 0,
+            minute: timeComponents.minute ?? 0,
+            second: timeComponents.second ?? 0,
+            of: date
+        ) ?? date
+    }
+
+    /// Expands a base start/end date into a list of occurrences capped by:
+    /// - 100 occurrences (hard ceiling)
+    /// - 1 year forward from the base start (when no custom end is set)
+    /// - the user-chosen `customEnd` date (when supplied)
+    /// Whichever limit is reached first stops generation.
+    private func expandRecurrence(
+        start: Date,
+        end: Date,
+        frequency: RecurrenceFrequency,
+        customEnd: Date?
+    ) -> [(start: Date, end: Date)] {
+        guard let step = frequency.step else { return [(start, end)] }
+
+        let calendar = Calendar.current
+        let oneYearForward = calendar.date(byAdding: .year, value: 1, to: start) ?? start
+        let cap = customEnd.map { min($0, oneYearForward) } ?? oneYearForward
+
+        var occurrences: [(start: Date, end: Date)] = [(start, end)]
+        var currentStart = start
+        var currentEnd = end
+
+        // Hard ceiling at 100 occurrences regardless of date math, so a
+        // misconfigured `customEnd` can't run away with us.
+        let hardLimit = 100
+
+        while occurrences.count < hardLimit {
+            guard
+                let nextStart = calendar.date(byAdding: step.component, value: step.value, to: currentStart),
+                let nextEnd = calendar.date(byAdding: step.component, value: step.value, to: currentEnd)
+            else { break }
+
+            if nextStart > cap { break }
+
+            occurrences.append((nextStart, nextEnd))
+            currentStart = nextStart
+            currentEnd = nextEnd
+        }
+
+        return occurrences
     }
 }
 

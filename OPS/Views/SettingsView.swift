@@ -36,12 +36,28 @@ struct SettingsView: View {
         case wizardManagement
         case laserMeter
         case trash
+        // Bug e33aa336 — granular search routes also target sub-pages that
+        // weren't previously reachable from the top-level Settings list.
+        // Each one maps onto an existing sub-view; the new cases just give
+        // search a typed lane into them.
+        case organizationDetails
+        case manageTeam
+        case taskTypes
+        case schedulingType
+        case inventorySettings
 
         var id: String { rawValue }
     }
 
     @State private var activeDestination: SettingsDestination?
     @State private var showFeatureGateAlert = false
+
+    // Bug e33aa336 — when a search result targets a specific section inside
+    // a sub-page, this value holds the section identifier until the sub-page
+    // mounts. The destination view sees it via SettingsDeepLinkHost (below)
+    // and broadcasts the matching `SettingsDeepLink.<destination>` notification,
+    // which the sub-view observes to scroll/highlight the section.
+    @State private var pendingDeepLinkSection: String? = nil
 
     // Role checks
     private var isAdmin: Bool {
@@ -69,283 +85,10 @@ struct SettingsView: View {
         #endif
     }
 
-    // All searchable settings
-    private var allSearchableSettings: [SearchableSettingItem] {
-        var items: [SearchableSettingItem] = []
-
-        // Account items
-        items.append(contentsOf: [
-            SearchableSettingItem(
-                title: "Profile Information",
-                categoryTitle: "Account",
-                categoryIcon: OPSStyle.Icons.person,
-                keywords: [
-                    "name", "first name", "last name", "contact", "personal", "information",
-                    "profile", "phone", "email", "address", "home address", "avatar",
-                    "photo", "picture", "edit profile", "my info", "my profile",
-                    "password", "reset password", "change password", "delete account"
-                ],
-                destination: AnyView(ProfileSettingsView().environmentObject(dataController))
-            ),
-            SearchableSettingItem(
-                title: "Organization",
-                categoryTitle: "Account",
-                categoryIcon: "building.2",
-                keywords: [
-                    "company", "business", "organization", "org", "company details",
-                    "company name", "company logo", "logo", "company code",
-                    "company phone", "company email", "company address", "website"
-                ],
-                destination: AnyView(OrganizationSettingsView().environmentObject(dataController))
-            )
-        ])
-
-        // Manage Team — separate entry for discoverability
-        if isAdmin {
-            items.append(
-                SearchableSettingItem(
-                    title: "Manage Team",
-                    categoryTitle: "Account",
-                    categoryIcon: "person.3.fill",
-                    keywords: [
-                        "team", "members", "employees", "crew", "staff", "people",
-                        "add team", "invite team", "invite member", "invite employee",
-                        "add member", "add employee", "add crew", "add people",
-                        "remove member", "remove employee", "fire", "delete member",
-                        "edit role", "change role", "assign role", "team management",
-                        "hire", "onboard", "seats", "seat management"
-                    ],
-                    destination: AnyView(ManageTeamView().environmentObject(dataController).environmentObject(SubscriptionManager.shared).environmentObject(permissionStore))
-                )
-            )
-
-            items.append(
-                SearchableSettingItem(
-                    title: "Subscription",
-                    categoryTitle: "Account",
-                    categoryIcon: "creditcard",
-                    keywords: [
-                        "subscription", "plan", "billing", "seats", "payment",
-                        "upgrade", "downgrade", "cancel", "pricing", "cost",
-                        "renewal", "trial", "free", "pro", "premium"
-                    ],
-                    destination: AnyView(ManageSubscriptionView().environmentObject(dataController).environmentObject(SubscriptionManager.shared))
-                )
-            )
-        }
-
-        // App items
-        items.append(contentsOf: [
-            SearchableSettingItem(
-                title: "Notifications",
-                categoryTitle: "App",
-                categoryIcon: OPSStyle.Icons.bellFill,
-                keywords: [
-                    "notifications", "alerts", "reminders", "quiet", "mute",
-                    "push notifications", "do not disturb", "quiet hours",
-                    "notification settings", "advance notice", "priority",
-                    "sounds", "badges", "banner"
-                ],
-                destination: AnyView(NotificationSettingsView().environmentObject(dataController).environmentObject(NotificationManager.shared))
-            ),
-            SearchableSettingItem(
-                title: "Map Settings",
-                categoryTitle: "App",
-                categoryIcon: OPSStyle.Icons.map,
-                keywords: [
-                    "map", "navigation", "display", "zoom", "location",
-                    "gps", "directions", "map style", "satellite", "traffic",
-                    "geofence", "map type"
-                ],
-                destination: AnyView(MapSettingsView().environmentObject(dataController))
-            ),
-            SearchableSettingItem(
-                title: "Data & Storage",
-                categoryTitle: "App",
-                categoryIcon: "externaldrive",
-                keywords: [
-                    "data", "sync", "storage", "cache", "clear cache",
-                    "offline", "download", "upload", "refresh", "reset",
-                    "clear data", "free space", "disk", "memory"
-                ],
-                destination: AnyView(DataStorageSettingsView().environmentObject(dataController))
-            ),
-            SearchableSettingItem(
-                title: "Security & Privacy",
-                categoryTitle: "App",
-                categoryIcon: "lock",
-                keywords: [
-                    "security", "privacy", "pin", "biometric", "protection",
-                    "face id", "touch id", "lock", "unlock", "passcode",
-                    "app lock", "authentication", "secure"
-                ],
-                destination: AnyView(SecuritySettingsView().environmentObject(dataController))
-            ),
-            SearchableSettingItem(
-                title: "Laser Meter",
-                categoryTitle: "App",
-                categoryIcon: "antenna.radiowaves.left.and.right",
-                keywords: [
-                    "laser", "meter", "bluetooth", "ble", "bosch", "leica",
-                    "disto", "glm", "distance", "measure", "pair", "connect",
-                    "laser meter", "tape measure", "rangefinder"
-                ],
-                destination: AnyView(LaserMeterSettingsView())
-            )
-        ])
-
-        // Data items
-        items.append(
-            SearchableSettingItem(
-                title: "Photos",
-                categoryTitle: "Data",
-                categoryIcon: "photo.on.rectangle.angled",
-                keywords: [
-                    "photos", "images", "pictures", "gallery", "project photos",
-                    "camera", "media", "attachments", "all photos", "photo gallery",
-                    "browse photos", "view photos"
-                ],
-                destination: AnyView(AllPhotosGalleryView().environmentObject(dataController).environmentObject(appState))
-            )
-        )
-
-        if permissionStore.can("expenses.view", requiredScope: "own") {
-            items.append(
-                SearchableSettingItem(
-                    title: "My Expenses",
-                    categoryTitle: "Data",
-                    categoryIcon: "dollarsign.circle",
-                    keywords: [
-                        "expenses", "receipts", "spending", "money",
-                        "my expenses", "expense report", "submit expense",
-                        "reimbursement", "mileage", "cost"
-                    ],
-                    destination: AnyView(MyExpensesView().environmentObject(dataController))
-                )
-            )
-        }
-
-        if permissionStore.can("expenses.approve") {
-            items.append(
-                SearchableSettingItem(
-                    title: "Review Expenses",
-                    categoryTitle: "Data",
-                    categoryIcon: "doc.text.magnifyingglass",
-                    keywords: [
-                        "review expenses", "approve expenses", "expense approval",
-                        "pending expenses", "expense review", "reject expense",
-                        "expense management", "submitted expenses"
-                    ],
-                    destination: AnyView(ExpensesListView().environmentObject(dataController))
-                )
-            )
-        }
-
-        // Business items (pipeline permission-gated)
-        if hasPipelineAccess {
-            items.append(contentsOf: [
-                SearchableSettingItem(
-                    title: "Products & Services",
-                    categoryTitle: "Business",
-                    categoryIcon: OPSStyle.Icons.productTag,
-                    keywords: [
-                        "products", "services", "catalog", "pricing", "labor", "material",
-                        "line items", "price list", "service list", "add product",
-                        "create product", "manage products"
-                    ],
-                    destination: AnyView(ProductsListView())
-                ),
-                SearchableSettingItem(
-                    title: "Integrations",
-                    categoryTitle: "Business",
-                    categoryIcon: OPSStyle.Icons.accountingChart,
-                    keywords: [
-                        "integrations", "quickbooks", "sage", "accounting", "sync",
-                        "connect", "xero", "bookkeeping", "export", "import",
-                        "third party", "api"
-                    ],
-                    destination: AnyView(IntegrationsSettingsView())
-                )
-            ])
-        }
-
-        if isAdminOrOffice {
-            items.append(
-                SearchableSettingItem(
-                    title: "Project Settings",
-                    categoryTitle: "Business",
-                    categoryIcon: "hammer.circle",
-                    keywords: [
-                        "task", "types", "project", "defaults", "scheduling",
-                        "task types", "project defaults", "overdue", "threshold",
-                        "reminder", "project configuration", "status", "workflow"
-                    ],
-                    destination: AnyView(ProjectSettingsView().environmentObject(dataController).environmentObject(permissionStore))
-                )
-            )
-        }
-
-        // Inventory settings
-        if permissionStore.can("inventory.view") {
-            items.append(
-                SearchableSettingItem(
-                    title: "Inventory Settings",
-                    categoryTitle: "Business",
-                    categoryIcon: "shippingbox.fill",
-                    keywords: [
-                        "inventory", "stock", "units", "tags", "snapshots",
-                        "inventory units", "inventory tags", "warehouse",
-                        "materials", "supplies", "quantity", "threshold",
-                        "inventory management", "adjustment"
-                    ],
-                    destination: AnyView(InventorySettingsView().environmentObject(dataController))
-                )
-            )
-        }
-
-        if isAdmin {
-            items.append(
-                SearchableSettingItem(
-                    title: "Permissions",
-                    categoryTitle: "Business",
-                    categoryIcon: "person.badge.key.fill",
-                    keywords: [
-                        "permissions", "roles", "access", "rbac", "admin", "override",
-                        "role management", "user permissions", "access control",
-                        "who can", "restrict", "allow", "deny", "grant"
-                    ],
-                    destination: AnyView(PermissionsManagementView().environmentObject(dataController).environmentObject(permissionStore))
-                )
-            )
-        }
-
-        // Support items
-        items.append(contentsOf: [
-            SearchableSettingItem(
-                title: "What's New",
-                categoryTitle: "Support",
-                categoryIcon: "sparkles",
-                keywords: [
-                    "new", "updates", "features", "changelog", "release",
-                    "version", "what changed", "latest", "recent", "news"
-                ],
-                destination: AnyView(WhatsNewView())
-            ),
-            SearchableSettingItem(
-                title: "Report Issue",
-                categoryTitle: "Support",
-                categoryIcon: OPSStyle.Icons.alert,
-                keywords: [
-                    "report", "issue", "bug", "problem", "help",
-                    "feedback", "support", "contact", "broken", "error",
-                    "not working", "crash", "fix"
-                ],
-                destination: AnyView(ReportIssueView())
-            )
-        ])
-
-        return items
-    }
+    // Bug e33aa336 — the legacy `allSearchableSettings` property and its
+    // SearchableSettingItem entries were replaced by `SettingsSearchIndex`,
+    // which carries breadcrumb paths and typed routes. Search results are
+    // now built inline from the index (see `settingsSearchResults` below).
 
     // MARK: - Body
 
@@ -658,12 +401,24 @@ struct SettingsView: View {
             Text("This feature is currently in testing. Reach out if you'd like to be added to the testing group.")
         }
         // MARK: - Navigation Cover (consolidated enum-based)
+        // Bug e33aa336 — when a search result targets a sub-section inside a
+        // page (e.g. "Set Color" deep inside Task Types), the destination is
+        // wrapped in a `SettingsDeepLinkHost` that broadcasts the pending
+        // section ID once the view has had time to mount. Sub-views that opt
+        // in observe `SettingsDeepLink.<destination>` and scroll to the
+        // matching anchor. When `pendingDeepLinkSection` is nil, the host is
+        // a no-op and the destination behaves exactly as before.
         .fullScreenCover(item: $activeDestination) { destination in
-            settingsDestinationView(for: destination)
-                .wizardBannerIfAvailable(stateManager: wizardStateManager)
-                .wizardOverlayIfAvailable(stateManager: wizardStateManager)
+            SettingsDeepLinkHost(
+                destination: destination,
+                section: pendingDeepLinkSection
+            ) {
+                settingsDestinationView(for: destination)
+                    .wizardBannerIfAvailable(stateManager: wizardStateManager)
+                    .wizardOverlayIfAvailable(stateManager: wizardStateManager)
+            }
         }
-        .onChange(of: activeDestination) { oldValue, _ in
+        .onChange(of: activeDestination) { oldValue, newValue in
             if oldValue == .developerDashboard {
                 developerModeEnabled = UserDefaults.standard.bool(forKey: "developerModeEnabled")
                 #if DEBUG
@@ -671,6 +426,12 @@ struct SettingsView: View {
                     developerModeExplicitlyDisabled = true
                 }
                 #endif
+            }
+            // Once the cover is dismissed, the pending section has done its
+            // job (the sub-view either consumed it or didn't recognize it).
+            // Clear so the next cover doesn't inherit a stale ID.
+            if newValue == nil {
+                pendingDeepLinkSection = nil
             }
         }
         // MARK: - Wizard Deep Navigation Receivers
@@ -807,23 +568,59 @@ struct SettingsView: View {
             NavigationStack {
                 LaserMeterSettingsView()
             }
+        // Bug e33aa336 — direct routes to sub-pages so search can land the
+        // user one tap closer to where they were trying to go. Each one is
+        // the same view a regular drill-in would mount; only the entry point
+        // changed.
+        case .organizationDetails:
+            NavigationStack {
+                OrganizationDetailsView()
+                    .environmentObject(dataController)
+            }
+        case .manageTeam:
+            NavigationStack {
+                ManageTeamView()
+                    .environmentObject(dataController)
+                    .environmentObject(SubscriptionManager.shared)
+                    .environmentObject(permissionStore)
+            }
+        case .taskTypes:
+            NavigationStack {
+                TaskSettingsView()
+                    .environmentObject(dataController)
+            }
+        case .schedulingType:
+            NavigationStack {
+                SchedulingTypeExplanationView()
+                    .environmentObject(dataController)
+            }
+        case .inventorySettings:
+            NavigationStack {
+                InventorySettingsView()
+                    .environmentObject(dataController)
+            }
         }
     }
 
-    // MARK: - Settings Search Results (Bug G5)
+    // MARK: - Settings Search Results (Bug G5 + Bug e33aa336)
 
     /// Live results list that replaces the settings content while the header
-    /// search is focused. Same index as the deprecated SettingsSearchSheet,
-    /// same row layout — only the container changed. Tapping a row sets
-    /// `activeDestination`, which fires the existing fullScreenCover logic
-    /// so navigation parity is preserved.
+    /// search is focused.
+    ///
+    /// Bug e33aa336 — results are now drawn from `SettingsSearchIndex`, which
+    /// includes deep entries like "Project Settings › Task Types › Set Color".
+    /// Each row shows a breadcrumb path so it's obvious where the tap will
+    /// land, and the route carries a `section` identifier so the sub-page can
+    /// scroll directly to the matching control instead of dumping the user
+    /// at the top of the page.
     private var settingsSearchResults: some View {
         ScrollView {
             VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 let query = appState.settingsSearchQuery.trimmingCharacters(in: .whitespaces)
+                let entries = SettingsSearchIndex.build(permissionStore: permissionStore)
                 let results = query.isEmpty
                     ? []
-                    : allSearchableSettings.filter { $0.matches(query: query) }
+                    : entries.filter { $0.matches(query: query) }
 
                 if query.isEmpty {
                     searchEmptyState
@@ -842,10 +639,10 @@ struct SettingsView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
 
-                    ForEach(results) { item in
-                        settingsSearchResultRow(for: item)
+                    ForEach(results) { entry in
+                        settingsSearchResultRow(for: entry)
+                            .padding(.horizontal, 20)
                     }
-                    .padding(.horizontal, 20)
                 }
             }
             .padding(.bottom, 90) // Tab bar padding
@@ -892,7 +689,14 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func settingsSearchResultRow(for item: SearchableSettingItem) -> some View {
+    /// Single row for a `SettingsSearchEntry`. Layout:
+    ///   icon  |  TITLE                           |  >
+    ///         |  CRUMB › CRUMB › CRUMB           |
+    /// The breadcrumb sits below the title in `secondaryText` so the user can
+    /// tell at a glance how deep the result lives — "Set Color" alone could
+    /// belong to anything; "Project Settings › Task Types" makes the parent
+    /// hierarchy visible without consuming the title slot.
+    private func settingsSearchResultRow(for entry: SettingsSearchEntry) -> some View {
         Button(action: {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             // Close the search on commit so returning from the destination
@@ -901,39 +705,42 @@ struct SettingsView: View {
                 appState.isSettingsSearchActive = false
                 appState.settingsSearchQuery = ""
             }
-            // Route the tap to the matching SettingsDestination case. The
-            // SearchableSettingItem already carries its destination AnyView,
-            // but we prefer going through the enum path so fullScreenCover +
-            // wizard overlays fire consistently.
-            routeToDestination(for: item)
+            // Stash the section identifier first so the destination view can
+            // pick it up the moment fullScreenCover mounts. Then flip the
+            // destination — the order matters because `activeDestination`
+            // changing is what triggers the cover, and the cover's content
+            // closure is evaluated immediately.
+            pendingDeepLinkSection = entry.route.section
+            applyRoute(entry.route)
         }) {
-            HStack(spacing: 16) {
-                Image(systemName: item.categoryIcon)
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: entry.icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .frame(width: 28, alignment: .center)
+                    .frame(width: 28, height: 28, alignment: .center)
+                    .padding(.top, 2) // Optical alignment with first text line
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(item.title)
+                    Text(entry.title)
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
 
-                    Text(item.categoryTitle.uppercased())
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .tracking(0.5)
+                    breadcrumbPath(entry.breadcrumb)
                 }
 
-                Spacer()
+                Spacer(minLength: 8)
 
                 Image(systemName: OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .padding(.top, 4) // Match icon alignment
             }
             .padding(.vertical, 14)
             .padding(.horizontal, 16)
             .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.panelRadius)
             .overlay(
@@ -944,34 +751,57 @@ struct SettingsView: View {
         .buttonStyle(PlainButtonStyle())
     }
 
-    /// Map a search result back to the enum-based destination system so
-    /// fullScreenCover and wizard overlays behave the same as list taps.
-    private func routeToDestination(for item: SearchableSettingItem) {
-        switch item.title {
-        case "Profile Information": activeDestination = .profile
-        case "Organization":        activeDestination = .organization
-        case "Manage Team":         activeDestination = .organization  // Manage Team sheet presents from Organization
-        case "Subscription":        activeDestination = .subscription
-        case "Notifications":       activeDestination = .notifications
-        case "Map Settings":        activeDestination = .map
-        case "Data & Storage":      activeDestination = .dataStorage
-        case "Security & Privacy":  activeDestination = .security
-        case "Laser Meter":         activeDestination = .laserMeter
-        case "Photos":              activeDestination = .allPhotos
-        case "Trash":               activeDestination = .trash
-        case "Products & Services": activeDestination = .productsServices
-        case "Integrations":        activeDestination = .integrations
-        case "Project Settings":    activeDestination = .projectSettings
-        case "Permissions":         activeDestination = .permissions
-        case "What's New":          activeDestination = .whatsNew
-        case "Report Issue":        activeDestination = .reportIssue
-        default:
-            // Fallback for items whose title doesn't map 1:1 to an enum case
-            // (e.g. "Inventory Settings" — no enum case exists yet). Present
-            // the AnyView destination via a reusable fullScreenCover hook if
-            // one is needed in future; for now, no-op matches the pre-change
-            // behavior where those items didn't have search coverage either.
-            break
+    /// Breadcrumb path renderer: "PROJECT SETTINGS › TASK TYPES" with the
+    /// chevron rendered in `tertiaryText` so the path reads cleanly without
+    /// the separators competing with the crumbs themselves. Wraps to a
+    /// second line on long paths instead of truncating — long paths are
+    /// usually the most useful results.
+    @ViewBuilder
+    private func breadcrumbPath(_ crumbs: [String]) -> some View {
+        // Non-breaking space + chevron + non-breaking space, so SwiftUI
+        // breaks between crumbs (not between a crumb and its separator).
+        let separator = "\u{00A0}\u{203A}\u{00A0}"
+        let joined = crumbs.map { $0.uppercased() }.joined(separator: separator)
+        Text(joined)
+            .font(OPSStyle.Typography.smallCaption)
+            .foregroundColor(OPSStyle.Colors.secondaryText)
+            .tracking(0.5)
+            .lineLimit(2)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Translate a `SettingsRoute` into the existing fullScreenCover system.
+    /// Most cases set `activeDestination` directly. A handful (Manage Team,
+    /// Org Details, Task Types, Scheduling Type, Inventory Settings) used to
+    /// be reachable only by drilling through their parent page; we now have
+    /// dedicated enum cases so search lands the user one tap closer.
+    private func applyRoute(_ route: SettingsRoute) {
+        switch route.destination {
+        case .profile:               activeDestination = .profile
+        case .organization:          activeDestination = .organization
+        case .organizationDetails:   activeDestination = .organizationDetails
+        case .manageTeam:            activeDestination = .manageTeam
+        case .subscription:          activeDestination = .subscription
+        case .notifications:         activeDestination = .notifications
+        case .map:                   activeDestination = .map
+        case .dataStorage:           activeDestination = .dataStorage
+        case .security:              activeDestination = .security
+        case .productsServices:      activeDestination = .productsServices
+        case .integrations:          activeDestination = .integrations
+        case .projectSettings:       activeDestination = .projectSettings
+        case .taskTypes:             activeDestination = .taskTypes
+        case .schedulingType:        activeDestination = .schedulingType
+        case .allPhotos:             activeDestination = .allPhotos
+        case .myExpenses:            activeDestination = .myExpenses
+        case .reviewExpenses:        activeDestination = .reviewExpenses
+        case .permissions:           activeDestination = .permissions
+        case .laserMeter:            activeDestination = .laserMeter
+        case .inventorySettings:    activeDestination = .inventorySettings
+        case .whatsNew:              activeDestination = .whatsNew
+        case .reportIssue:           activeDestination = .reportIssue
+        case .wizardManagement:      activeDestination = .wizardManagement
+        case .trash:                 activeDestination = .trash
         }
     }
 

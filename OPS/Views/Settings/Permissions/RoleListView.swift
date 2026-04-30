@@ -211,11 +211,18 @@ struct RoleListView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .frame(width: 28, alignment: .center)
 
+                // Bug be2b9e23: long custom role names + the PRESET badge used
+                // to push the row past device width. The role name now
+                // truncates instead of forcing horizontal overflow, and the
+                // VStack claims the full available width so Spacer has room
+                // to compress instead of pushing the chevron off-screen.
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
                         Text(PermissionRegistry.displayName(for: role.name).uppercased())
                             .font(OPSStyle.Typography.bodyBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
 
                         if isPreset {
                             Text("PRESET")
@@ -227,6 +234,8 @@ struct RoleListView: View {
                                     RoundedRectangle(cornerRadius: 3)
                                         .fill(OPSStyle.Colors.subtleBackground)
                                 )
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                         }
                     }
 
@@ -235,17 +244,18 @@ struct RoleListView: View {
                         Text("\(permCount) permission\(permCount == 1 ? "" : "s")")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
 
                         let userCount = roleUserCounts[role.id] ?? 0
                         if userCount > 0 {
                             Text("·  \(userCount) user\(userCount == 1 ? "" : "s")")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .lineLimit(1)
                         }
                     }
                 }
-
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Image(systemName: OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))

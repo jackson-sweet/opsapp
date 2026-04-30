@@ -7,6 +7,53 @@
 
 import SwiftUI
 
+// MARK: - Persistent Header Namespace (Bug 706a4d32)
+//
+// When the user switches tabs, MainTabView swaps the entire tab content view —
+// including the inline AppHeader at the top of each tab. Without intervention
+// the whole view (header + body) participates in the slide transition, so the
+// magnifying glass / filter / scope buttons appear to "come along for the ride"
+// even though visually they live in the same screen position on every tab.
+//
+// To keep those persistent buttons visually stationary while the body slides,
+// each tab's header reads a Namespace from the environment (owned by MainTabView)
+// and applies `matchedGeometryEffect` with stable IDs to the persistent buttons.
+// Since both the outgoing and incoming tab views share the same namespace + IDs,
+// SwiftUI keeps the matched elements put while everything else slides.
+
+private struct PersistentHeaderNamespaceKey: EnvironmentKey {
+    static let defaultValue: Namespace.ID? = nil
+}
+
+extension EnvironmentValues {
+    /// Namespace owned by the root tab container so persistent header buttons
+    /// (search, filter, scope, review etc.) can keep their on-screen position
+    /// across tab swaps via `matchedGeometryEffect`.
+    var persistentHeaderNamespace: Namespace.ID? {
+        get { self[PersistentHeaderNamespaceKey.self] }
+        set { self[PersistentHeaderNamespaceKey.self] = newValue }
+    }
+}
+
+private extension View {
+    /// Anchors a persistent header element so it stays visually still while
+    /// the rest of the tab content slides during a tab switch. No-op when no
+    /// namespace is available (preview / tests / non-tabbed contexts).
+    @ViewBuilder
+    func persistentHeaderMatch(id: String, namespace: Namespace.ID?) -> some View {
+        if let namespace {
+            self.matchedGeometryEffect(
+                id: id,
+                in: namespace,
+                properties: [.position, .size],
+                isSource: true
+            )
+        } else {
+            self
+        }
+    }
+}
+
 struct AppHeader: View {
     enum HeaderType {
         case home
@@ -20,6 +67,10 @@ struct AppHeader: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @EnvironmentObject private var appState: AppState
+    // Bug 706a4d32 — namespace owned by MainTabView so persistent header
+    // buttons (search, filter, scope, review) match-geometry across tab
+    // swaps and remain visually still while the body slides.
+    @Environment(\.persistentHeaderNamespace) private var persistentHeaderNS
     @State private var showLockedMessage: String? = nil
     @State private var showLockedAlert: Bool = false
     // Bug 5d66ee80: avatar dimming during sync used to be wired via nested
@@ -282,6 +333,7 @@ struct AppHeader: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                         .wizardTarget("toggle_month", style: .circle)
+                        .persistentHeaderMatch(id: "header.month", namespace: persistentHeaderNS)
                     }
 
                     // Filter button (schedule only)
@@ -308,6 +360,7 @@ struct AppHeader: View {
                             }
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .persistentHeaderMatch(id: "header.filter", namespace: persistentHeaderNS)
                     }
 
                     // ALL/MINE scope toggle (schedule only)
@@ -331,6 +384,7 @@ struct AppHeader: View {
                             }
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .persistentHeaderMatch(id: "header.scope", namespace: persistentHeaderNS)
                     }
 
                     if headerType == .jobBoard {
@@ -365,6 +419,7 @@ struct AppHeader: View {
                                 }
                             }
                             .buttonStyle(PlainButtonStyle())
+                            .persistentHeaderMatch(id: "header.unscheduled", namespace: persistentHeaderNS)
                         }
 
                         // Task review button
@@ -400,6 +455,7 @@ struct AppHeader: View {
                             }
                             .buttonStyle(PlainButtonStyle())
                             .wizardTarget("open_task_review")
+                            .persistentHeaderMatch(id: "header.taskReview", namespace: persistentHeaderNS)
                         }
 
                         // Payment review button
@@ -435,6 +491,7 @@ struct AppHeader: View {
                             }
                             .buttonStyle(PlainButtonStyle())
                             .wizardTarget("open_payment_review")
+                            .persistentHeaderMatch(id: "header.paymentReview", namespace: persistentHeaderNS)
                         }
 
                     }
@@ -450,6 +507,7 @@ struct AppHeader: View {
                                 .clipShape(Circle())
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .persistentHeaderMatch(id: "header.insights", namespace: persistentHeaderNS)
                     }
 
                     // Universal search button (all pages except home).
@@ -480,6 +538,7 @@ struct AppHeader: View {
                             .clipShape(Circle())
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .persistentHeaderMatch(id: "header.search", namespace: persistentHeaderNS)
                 }
 
             }

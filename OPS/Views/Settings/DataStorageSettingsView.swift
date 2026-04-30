@@ -26,6 +26,16 @@ struct DataStorageSettingsView: View {
 
     @State private var showClearCacheConfirmation = false
 
+    // Bug e33aa336 — settings search deep-link anchors and spotlight.
+    private enum AnchorID {
+        static let synchronization = "synchronization"
+        static let photoStorage = "photo_storage"
+        static let autoDownload = "auto_download"
+        static let dataManagement = "data_management"
+    }
+
+    @State private var highlightedSection: String? = nil
+
     var body: some View {
         ZStack {
             OPSStyle.Colors.backgroundGradient.edgesIgnoringSafeArea(.all)
@@ -36,14 +46,55 @@ struct DataStorageSettingsView: View {
                     onBackTapped: { dismiss() }
                 )
 
+                ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 24) {
                         synchronizationSection
+                            .id(AnchorID.synchronization)
+                            .deepLinkSpotlight(highlightedSection == AnchorID.synchronization)
+
                         photoStorageBudgetSection
+                            .id(AnchorID.photoStorage)
+                            .deepLinkSpotlight(highlightedSection == AnchorID.photoStorage)
+
                         autoDownloadSection
+                            .id(AnchorID.autoDownload)
+                            .deepLinkSpotlight(highlightedSection == AnchorID.autoDownload)
+
                         dataManagementSection
+                            .id(AnchorID.dataManagement)
+                            .deepLinkSpotlight(highlightedSection == AnchorID.dataManagement)
                     }
                     .padding(.vertical, 24)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: SettingsDeepLink.dataStorage)) { notification in
+                    guard let section = notification.userInfo?[SettingsDeepLink.userInfoSectionKey] as? String else { return }
+                    let anchor: String?
+                    switch section {
+                    case "synchronization": anchor = AnchorID.synchronization
+                    case "photo_storage":   anchor = AnchorID.photoStorage
+                    case "auto_download":   anchor = AnchorID.autoDownload
+                    case "data_management": anchor = AnchorID.dataManagement
+                    default: anchor = nil
+                    }
+                    guard let anchor else { return }
+
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                        proxy.scrollTo(anchor, anchor: .top)
+                    }
+                    withAnimation(.easeIn(duration: 0.2).delay(0.15)) {
+                        highlightedSection = anchor
+                    }
+                    Task {
+                        try? await Task.sleep(nanoseconds: 1_600_000_000)
+                        await MainActor.run {
+                            withAnimation(.easeOut(duration: 0.4)) {
+                                highlightedSection = nil
+                            }
+                        }
+                    }
+                }
                 }
             }
         }

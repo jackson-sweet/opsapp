@@ -37,9 +37,17 @@ final class Project: Identifiable {
     
     // Store project images as comma-s eparated string
     var projectImagesString: String = ""
-    
+
     // Store unsynced images (those captured while offline) as comma-separated string
     var unsyncedImagesString: String = ""
+
+    // Bug 7b43be32 — comma-separated list of project image URLs that the
+    // crew has marked visible to the client portal. Mirrored to
+    // `project_photos.is_client_visible = true` in Supabase. Default empty
+    // means every photo starts hidden until someone explicitly opts it in,
+    // matching the table column default. Lightweight SwiftData migration —
+    // `String` with default value, no schema bump needed.
+    var clientVisibleImagesString: String = ""
     
     // Store relationships to team members with proper inverse
     @Relationship(deleteRule: .noAction)
@@ -70,6 +78,7 @@ final class Project: Identifiable {
         self.teamMemberIdsString = ""
         self.projectImagesString = ""
         self.unsyncedImagesString = ""
+        self.clientVisibleImagesString = ""
         self.teamMembers = []
         self.allDay = false
         self.client = nil
@@ -183,6 +192,43 @@ final class Project: Identifiable {
     // Clear all unsynced images
     func clearUnsyncedImages() {
         unsyncedImagesString = ""
+    }
+
+    // MARK: - Per-photo client visibility (Bug 7b43be32)
+
+    /// Read the URLs that have been marked visible to the client portal.
+    /// Mirrors `project_photos.is_client_visible = true` in Supabase.
+    func getClientVisibleImages() -> [String] {
+        return clientVisibleImagesString.isEmpty
+            ? []
+            : clientVisibleImagesString.components(separatedBy: ",")
+    }
+
+    /// True if `imageURL` is currently marked visible to the client portal.
+    func isImageClientVisible(_ imageURL: String) -> Bool {
+        return getClientVisibleImages().contains(imageURL)
+    }
+
+    /// Toggle a single photo's portal visibility, persisting locally. The
+    /// caller is responsible for the matching Supabase write so the web
+    /// portal sees the change.
+    func setImageClientVisible(_ imageURL: String, visible: Bool) {
+        var visibleSet = getClientVisibleImages()
+        if visible {
+            if !visibleSet.contains(imageURL) {
+                visibleSet.append(imageURL)
+            }
+        } else {
+            visibleSet.removeAll { $0 == imageURL }
+        }
+        clientVisibleImagesString = visibleSet.joined(separator: ",")
+    }
+
+    /// Replace the whole client-visible URL set in one shot. Used by the
+    /// inbound sync path so we can hydrate the local model from the server
+    /// snapshot without a per-URL diff.
+    func setClientVisibleImages(_ urls: [String]) {
+        clientVisibleImagesString = urls.joined(separator: ",")
     }
     
     // Debug method to show project state

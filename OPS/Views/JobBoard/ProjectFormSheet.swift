@@ -93,6 +93,11 @@ struct ProjectFormSheet: View {
     @State private var clientSearchText = ""
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var showingImagePicker = false
+    /// Bug 02222904 — choose between camera multi-capture and library
+    /// pick before opening the actual picker. Previously the project
+    /// creation form only offered the photo library.
+    @State private var showingPhotoSourceChooser = false
+    @State private var showingCameraBatch = false
     @State private var showingScheduler = false
     @State private var showingCopyFromProject = false
     @State private var showingTaskForm = false
@@ -1508,7 +1513,7 @@ struct ProjectFormSheet: View {
                                 }
                         }
 
-                        Button(action: { showingImagePicker = true }) {
+                        Button(action: { showingPhotoSourceChooser = true }) {
                             VStack {
                                 Image(systemName: "plus")
                                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
@@ -1526,7 +1531,7 @@ struct ProjectFormSheet: View {
                     }
                 }
             } else {
-                Button(action: { showingImagePicker = true }) {
+                Button(action: { showingPhotoSourceChooser = true }) {
                     HStack {
                         Image(systemName: "camera.fill")
                             .font(.system(size: OPSStyle.Layout.IconSize.md))
@@ -1546,6 +1551,30 @@ struct ProjectFormSheet: View {
                 }
             }
         }
+        // Bug 02222904 — confirmation dialog lets the user pick between
+        // the multi-capture camera and the photo library before any
+        // sheet opens. Cancel just dismisses; both paths feed into the
+        // same `projectImages` array so the form preview updates the
+        // moment images return.
+        .confirmationDialog(
+            "Add Photos",
+            isPresented: $showingPhotoSourceChooser,
+            titleVisibility: .visible
+        ) {
+            // Camera path — only offered when a real camera is present
+            // so the simulator doesn't show a button that does nothing.
+            if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                Button("Take Photos") {
+                    showingCameraBatch = true
+                }
+            }
+            Button("Choose from Library") {
+                showingImagePicker = true
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Capture photos with the camera or pick existing ones from your library.")
+        }
         .sheet(isPresented: $showingImagePicker) {
             ImagePicker(
                 images: $projectImages,
@@ -1555,6 +1584,14 @@ struct ProjectFormSheet: View {
                     showingImagePicker = false
                 }
             )
+        }
+        .fullScreenCover(isPresented: $showingCameraBatch) {
+            // Same multi-capture stack used inside ProjectDetailsView —
+            // reuse the component so the project creation flow gets the
+            // identical stack/review behaviour for free.
+            CameraBatchView { capturedImages in
+                projectImages.append(contentsOf: capturedImages)
+            }
         }
     }
 

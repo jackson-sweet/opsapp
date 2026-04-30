@@ -25,6 +25,14 @@ struct ProjectActionBar: View {
     @State private var showExpenseForm = false
     @State private var showProjectDetails = false
     @State private var showImagePicker = false
+    /// Bug 0a07ca47 — separate sheet for the multi-capture camera so
+    /// the user can take a stack of photos in one continuous session.
+    /// The library path keeps using ImagePicker so non-camera flows
+    /// stay simple.
+    @State private var showCameraBatch = false
+    /// Bug 0a07ca47 — confirmation dialog for picking between camera
+    /// multi-capture and library when the user taps the Photo action.
+    @State private var showPhotoSourceChooser = false
     @State private var selectedImages: [UIImage] = []
     @State private var processingImage = false
     @State private var isAddingPhotos = false // Prevent duplicate additions
@@ -90,16 +98,36 @@ struct ProjectActionBar: View {
             }
             .interactiveDismissDisabled(true)
         }
-        // Photo Picker for project photos - modified to use both camera and library
+        // Bug 0a07ca47 / 02222904 — choose between the multi-shot
+        // camera and the library picker before opening anything. The
+        // camera path opens CameraBatchView (live preview + stack),
+        // the library path opens the standard PHPicker.
+        .confirmationDialog(
+            "Add Photos",
+            isPresented: $showPhotoSourceChooser,
+            titleVisibility: .visible
+        ) {
+            if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                Button("Take Photos") {
+                    showCameraBatch = true
+                }
+            }
+            Button("Choose from Library") {
+                showImagePicker = true
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Capture photos with the camera or pick existing ones from your library.")
+        }
+        // Library-only picker. The camera path lives in showCameraBatch.
         .sheet(isPresented: $showImagePicker, onDismiss: {
-            // Reset the flag when sheet is dismissed
             isAddingPhotos = false
         }) {
             ImagePicker(
                 images: $selectedImages,
-                allowsEditing: true,
-                sourceType: .both, // Allow user to choose between camera and library
-                selectionLimit: 10, // Allow multiple photos
+                allowsEditing: false,
+                sourceType: .photoLibrary,
+                selectionLimit: 10,
                 onSelectionComplete: {
                     // Only process if not already processing
                     if !isAddingPhotos && !selectedImages.isEmpty {
@@ -113,6 +141,18 @@ struct ProjectActionBar: View {
                     }
                 }
             )
+        }
+        // Bug 0a07ca47 — multi-capture camera. Stays open between
+        // shots, accumulates a stack, and returns the whole batch on
+        // Done. Skip the addPhotosToProject scheduler dance — the
+        // user already explicitly committed inside the camera UI.
+        .fullScreenCover(isPresented: $showCameraBatch) {
+            CameraBatchView { capturedImages in
+                guard !capturedImages.isEmpty, !isAddingPhotos else { return }
+                isAddingPhotos = true
+                selectedImages = capturedImages
+                addPhotosToProject()
+            }
         }
         // Loading overlay when processing image
         .overlay(
@@ -213,8 +253,10 @@ struct ProjectActionBar: View {
                 showProjectDetails = true
             }
         case .photo:
-            // Take a photo for the project
-            showImagePicker = true
+            // Bug 0a07ca47 — show source chooser instead of going
+            // straight to the library. Lets the user pick between the
+            // multi-capture camera and gallery import.
+            showPhotoSourceChooser = true
         }
     }
     
@@ -244,48 +286,40 @@ struct ProjectActionBar: View {
     private func addPhotosToProject() {
         // Prevent duplicate calls
         guard !processingImage else { return }
-        
+
         // Start loading indicator
         processingImage = true
-        
-        // Debug log
-        
+
         Task {
             do {
                 // Use ImageSyncManager if available
                 if let imageSyncManager = dataController.imageSyncManager {
-                    
-                    // Process all images through the ImageSyncManager
+
+                    // Process all images through the ImageSyncManager.
+                    // Bug 35c400c2 — saveImages already appends the new
+                    // URLs onto project.projectImagesString and saves the
+                    // model context. Do NOT append a second time here;
+                    // doing so was the root cause of every Done click
+                    // duplicating photos in the carousel.
                     let urls = await imageSyncManager.saveImages(selectedImages, for: project)
-                    
-                    if !urls.isEmpty {
-                        // Add URLs to project
-                        await MainActor.run {
-                            var currentImages = project.getProjectImages()
-                            currentImages.append(contentsOf: urls)
-                            
-                            project.setProjectImageURLs(currentImages)
-                            project.needsSync = true
-                            project.syncPriority = 2 // Higher priority for image changes
-                            
-                            // Save changes
+
+                    await MainActor.run {
+                        if !urls.isEmpty {
+                            // Mark the project for sync priority bump so
+                            // the next outbound pass surfaces the new
+                            // photo set fast.
+                            project.syncPriority = 2
+
                             if let modelContext = dataController.modelContext {
-                                do {
-                                    try modelContext.save()
-                                } catch {
-                                }
+                                try? modelContext.save()
                             }
-                            
-                            // Reset state
-                            selectedImages.removeAll()
-                            processingImage = false
-                            isAddingPhotos = false
                         }
-                    } else {
-                        await MainActor.run {
-                            processingImage = false
-                            isAddingPhotos = false
-                        }
+                        // Always reset state — empty result means upload
+                        // failed, but the in-flight placeholders have
+                        // already been cleared by saveImages's defer.
+                        selectedImages.removeAll()
+                        processingImage = false
+                        isAddingPhotos = false
                     }
                 } else {
                     // Fallback to direct processing

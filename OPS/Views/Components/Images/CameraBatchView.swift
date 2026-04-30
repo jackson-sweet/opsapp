@@ -2,67 +2,78 @@
 //  CameraBatchView.swift
 //  OPS
 //
-//  Camera-first batch photo capture view.
-//  Opens camera directly, shows thumbnail strip of captures,
-//  allows adding from photo library, and uploads all at once.
+//  Multi-photo batch camera built on AVFoundation. The camera preview
+//  stays live between captures, the user accumulates a stack in the
+//  bottom-right corner, and a single Done press hands the entire batch
+//  back to the host. Bug 0a07ca47.
+//
+//  The previous implementation wrapped UIImagePickerController and
+//  re-presented it after every shot, which is slow, breaks the flow,
+//  and makes "five quick photos of the same wall" essentially impossible
+//  on a job site. This rewrite uses a custom AVCaptureSession-backed
+//  camera so the user never leaves capture mode until they confirm.
 //
 
 import SwiftUI
 import PhotosUI
+import AVFoundation
+import UIKit
 
+// MARK: - CameraBatchView (SwiftUI host)
+
+/// Full-screen multi-shot camera. Hand it a closure and it gives back the
+/// final batch when the user taps Done. Cancel returns nothing.
 struct CameraBatchView: View {
     let onUpload: ([UIImage]) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var capturedImages: [UIImage] = []
-    @State private var showingCamera = false
     @State private var showingGallery = false
     @State private var galleryImages: [UIImage] = []
+    @State private var showingReview = false
+    /// Bumped every time a photo lands so the stack can play its
+    /// "incoming" animation. We can't observe `capturedImages.count`
+    /// alone because adding two photos in quick succession could share
+    /// the same animation transaction.
+    @State private var captureBeat: Int = 0
 
     var body: some View {
         ZStack {
-            OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
+            // Live AVFoundation preview takes the full screen.
+            CameraPreviewLayer(
+                onCapture: handleCapture,
+                onCancel: { dismiss() }
+            )
+            .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Top bar
+            // Bottom HUD — stack thumbnail (left), shutter (centre),
+            // gallery (right), plus Done in the top-right.
+            VStack {
                 topBar
-
                 Spacer()
-
-                // Camera prompt when no photos
-                if capturedImages.isEmpty {
-                    emptyPrompt
-                }
-
-                Spacer()
-
-                // Thumbnail strip
-                if !capturedImages.isEmpty {
-                    thumbnailStrip
-                }
-
-                // Bottom controls
-                bottomControls
+                bottomHUD
             }
         }
-        .onAppear {
-            // Open camera immediately on first appearance
-            showingCamera = true
-        }
-        .fullScreenCover(isPresented: $showingCamera) {
-            CameraCapture { image in
-                if let image = image {
-                    capturedImages.append(image)
-                }
-                // Re-present camera for continuous capture
-                // User must explicitly close to stop
-            }
-        }
+        .statusBar(hidden: true)
+        .preferredColorScheme(.dark)
         .sheet(isPresented: $showingGallery) {
             GalleryPickerWrapper(images: $galleryImages) {
-                capturedImages.append(contentsOf: galleryImages)
-                galleryImages = []
+                if !galleryImages.isEmpty {
+                    capturedImages.append(contentsOf: galleryImages)
+                    galleryImages = []
+                    bumpCaptureBeat()
+                }
             }
+        }
+        .fullScreenCover(isPresented: $showingReview) {
+            CapturedStackReview(
+                images: $capturedImages,
+                onDone: { showingReview = false },
+                onClearAll: {
+                    capturedImages.removeAll()
+                    showingReview = false
+                }
+            )
         }
     }
 
@@ -70,166 +81,555 @@ struct CameraBatchView: View {
 
     private var topBar: some View {
         HStack {
-            Button(action: { dismiss() }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .frame(width: 44, height: 44)
-            }
-
-            Spacer()
-
-            if !capturedImages.isEmpty {
-                Text("\(capturedImages.count) PHOTO\(capturedImages.count == 1 ? "" : "S")")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .tracking(0.5)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-
-            Spacer()
-
-            // Spacer to balance layout
-            Color.clear.frame(width: 44, height: 44)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-    }
-
-    // MARK: - Empty Prompt
-
-    private var emptyPrompt: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "camera.fill")
-                .font(.system(size: 40))
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Text("TAP CAPTURE TO START")
-                .font(OPSStyle.Typography.smallCaption)
-                .tracking(1)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-        }
-    }
-
-    // MARK: - Thumbnail Strip
-
-    private var thumbnailStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(Array(capturedImages.enumerated()), id: \.offset) { index, image in
-                    ZStack(alignment: .topTrailing) {
-                        Image(uiImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 64, height: 64)
-                            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
-
-                        // Remove button
-                        Button(action: { capturedImages.remove(at: index) }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 16))
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .background(Circle().fill(Color.black.opacity(0.6)))
-                        }
-                        .offset(x: 4, y: -4)
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-        }
-        .background(OPSStyle.Colors.cardBackgroundDark)
-    }
-
-    // MARK: - Bottom Controls
-
-    private var bottomControls: some View {
-        HStack(spacing: 20) {
-            // Gallery button
-            Button(action: { showingGallery = true }) {
-                VStack(spacing: 4) {
-                    Image(systemName: "photo.on.rectangle")
-                        .font(.system(size: OPSStyle.Layout.IconSize.lg))
-                    Text("GALLERY")
-                        .font(OPSStyle.Typography.miniLabel)
-                }
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .frame(width: 56, height: 56)
-            }
-
-            // Capture button
-            Button(action: { showingCamera = true }) {
-                ZStack {
-                    Circle()
-                        .stroke(OPSStyle.Colors.primaryText, lineWidth: 3)
-                        .frame(width: 72, height: 72)
-                    Circle()
-                        .fill(OPSStyle.Colors.primaryText)
-                        .frame(width: 60, height: 60)
-                }
-            }
-
-            // Upload button
+            // Cancel — drops every captured image and dismisses the
+            // camera. Confirms with a haptic so the user feels the
+            // exit deliberate even on a glove tap.
             Button(action: {
-                onUpload(capturedImages)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 dismiss()
             }) {
-                VStack(spacing: 4) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: OPSStyle.Layout.IconSize.lg))
-                    Text(capturedImages.isEmpty ? "UPLOAD" : "UPLOAD (\(capturedImages.count))")
-                        .font(OPSStyle.Typography.miniLabel)
-                }
-                .foregroundColor(capturedImages.isEmpty ? OPSStyle.Colors.tertiaryText.opacity(0.3) : OPSStyle.Colors.primaryAccent)
-                .frame(width: 56, height: 56)
+                Text("CANCEL")
+                    .font(OPSStyle.Typography.captionBold)
+                    .tracking(0.8)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    .background(
+                        Capsule()
+                            .fill(Color.black.opacity(0.55))
+                    )
             }
+            .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+
+            Spacer()
+
+            // Live count badge — always visible so the user knows
+            // exactly how many photos are queued up.
+            if !capturedImages.isEmpty {
+                Text("\(capturedImages.count) PHOTO\(capturedImages.count == 1 ? "" : "S")")
+                    .font(OPSStyle.Typography.captionBold)
+                    .tracking(0.8)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    .background(
+                        Capsule()
+                            .fill(Color.black.opacity(0.55))
+                    )
+            }
+
+            Spacer()
+
+            // Done — commits the batch. Disabled until the user has
+            // captured at least one photo so the button can never
+            // close the camera empty-handed.
+            Button(action: commitBatch) {
+                Text("DONE")
+                    .font(OPSStyle.Typography.captionBold)
+                    .tracking(0.8)
+                    .foregroundColor(capturedImages.isEmpty
+                        ? OPSStyle.Colors.tertiaryText
+                        : OPSStyle.Colors.primaryAccent)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    .background(
+                        Capsule()
+                            .fill(Color.black.opacity(0.55))
+                    )
+            }
+            .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
             .disabled(capturedImages.isEmpty)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 20)
-        .padding(.bottom, 16)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.top, OPSStyle.Layout.spacing4)
+    }
+
+    // MARK: - Bottom HUD
+
+    private var bottomHUD: some View {
+        HStack(alignment: .center) {
+            // Gallery button — left side, mirrored against the stack
+            // so the layout stays balanced visually.
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showingGallery = true
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(Color.black.opacity(0.55))
+                        .frame(width: 56, height: 56)
+                    Image(systemName: "photo.on.rectangle")
+                        .font(.system(size: OPSStyle.Layout.IconSize.lg))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+            }
+            .frame(minWidth: OPSStyle.Layout.touchTargetStandard, minHeight: OPSStyle.Layout.touchTargetStandard)
+            .accessibilityLabel("Add photos from library")
+
+            Spacer()
+
+            // The shutter belongs on the bottom centre. We render an
+            // empty placeholder here so the stack and gallery icons
+            // sit at equal depth from the edges; the real shutter is
+            // the one inside CameraPreviewLayer (it's tied to the
+            // AVCaptureSession lifecycle and easier to keep there).
+            Color.clear
+                .frame(width: 72, height: 72)
+
+            Spacer()
+
+            // Captured-photo stack — bottom-right per the spec. Hidden
+            // when no photos have been captured yet so the empty state
+            // doesn't draw attention to nothing.
+            if let topImage = capturedImages.last {
+                CapturedStackThumbnail(
+                    topImage: topImage,
+                    count: capturedImages.count,
+                    captureBeat: captureBeat,
+                    onTap: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showingReview = true
+                    }
+                )
+            } else {
+                // Reserve the slot so layout doesn't jitter when the
+                // first photo lands.
+                Color.clear.frame(width: 56, height: 56)
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing4)
+        .padding(.bottom, OPSStyle.Layout.spacing4)
+    }
+
+    // MARK: - Capture Handling
+
+    private func handleCapture(_ image: UIImage) {
+        capturedImages.append(image)
+        bumpCaptureBeat()
+    }
+
+    private func bumpCaptureBeat() {
+        // Bumping a tracked counter makes the stack thumbnail's
+        // `.onChange` fire even when two photos are appended in quick
+        // succession (where the count may not be reflected yet).
+        captureBeat &+= 1
+    }
+
+    private func commitBatch() {
+        guard !capturedImages.isEmpty else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let batch = capturedImages
+        // Clear before dismiss so a quick reopen of the camera doesn't
+        // briefly show the previous session's stack.
+        capturedImages.removeAll()
+        onUpload(batch)
+        dismiss()
     }
 }
 
-// MARK: - Camera Capture (UIImagePickerController wrapper)
+// MARK: - CapturedStackThumbnail
 
-private struct CameraCapture: UIViewControllerRepresentable {
-    let onCapture: (UIImage?) -> Void
+/// The bottom-right pile of captured photos. Renders the most recent
+/// shot on top with a faint badge of the total count, and adopts a
+/// tactical "stack" look — three offset rounded tiles behind the photo
+/// when there's more than one item, so the user feels the pile growing.
+private struct CapturedStackThumbnail: View {
+    let topImage: UIImage
+    let count: Int
+    let captureBeat: Int
+    let onTap: () -> Void
 
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = .camera
-        picker.cameraCaptureMode = .photo
-        picker.delegate = context.coordinator
-        return picker
+    /// Scale pulse animation that fires every time a new photo lands
+    /// on the stack. 1.0 → 1.12 → 1.0 over 0.35s, so the user sees the
+    /// stack "absorb" each new photo.
+    @State private var landedScale: CGFloat = 1.0
+
+    var body: some View {
+        Button(action: onTap) {
+            ZStack {
+                // Stack visuals — only render the back tiles when
+                // there's actually more than one photo.
+                if count >= 3 {
+                    stackTile(offsetX: 6, offsetY: 6, opacity: 0.4)
+                }
+                if count >= 2 {
+                    stackTile(offsetX: 3, offsetY: 3, opacity: 0.65)
+                }
+
+                // Top photo — fully opaque, with a 1pt accent ring so it
+                // reads against busy outdoor backgrounds.
+                Image(uiImage: topImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 56, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.primaryText, lineWidth: 1.5)
+                    )
+
+                // Count badge — tucked into the top-right corner of the
+                // top tile. Always visible so the user can confirm how
+                // many photos they've actually got banked.
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(minWidth: 18, minHeight: 18)
+                        .padding(.horizontal, 4)
+                        .background(
+                            Capsule()
+                                .fill(OPSStyle.Colors.primaryAccent)
+                        )
+                        .offset(x: 22, y: -22)
+                }
+            }
+            .frame(width: 72, height: 72, alignment: .center)
+            .scaleEffect(landedScale)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .frame(minWidth: OPSStyle.Layout.touchTargetStandard, minHeight: OPSStyle.Layout.touchTargetStandard)
+        .accessibilityLabel("Review \(count) captured photo\(count == 1 ? "" : "s")")
+        .onChange(of: captureBeat) { _, _ in
+            // Two-stage spring so the pulse settles confidently rather
+            // than bouncing. Matches OPSStyle.Animation.springFast for
+            // the up-stroke and standard for the relaxation.
+            withAnimation(OPSStyle.Animation.springFast) {
+                landedScale = 1.12
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                withAnimation(OPSStyle.Animation.standard) {
+                    landedScale = 1.0
+                }
+            }
+        }
     }
 
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    private func stackTile(offsetX: CGFloat, offsetY: CGFloat, opacity: Double) -> some View {
+        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+            .fill(OPSStyle.Colors.cardBackgroundDark)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+            )
+            .frame(width: 56, height: 56)
+            .opacity(opacity)
+            .offset(x: offsetX, y: offsetY)
+    }
+}
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onCapture: onCapture)
+// MARK: - CapturedStackReview
+
+/// Full-screen review sheet for the in-progress batch. The user can
+/// remove individual photos or clear the lot. Done returns to the
+/// camera so they can keep shooting.
+private struct CapturedStackReview: View {
+    @Binding var images: [UIImage]
+    let onDone: () -> Void
+    let onClearAll: () -> Void
+
+    @State private var showingClearConfirmation = false
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 6),
+        GridItem(.flexible(), spacing: 6),
+        GridItem(.flexible(), spacing: 6)
+    ]
+
+    var body: some View {
+        ZStack {
+            OPSStyle.Colors.background.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Button(action: onDone) {
+                        Text("DONE")
+                            .font(OPSStyle.Typography.captionBold)
+                            .tracking(0.8)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                    .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+
+                    Spacer()
+
+                    Text("\(images.count) PHOTO\(images.count == 1 ? "" : "S")")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+
+                    Spacer()
+
+                    Button(action: { showingClearConfirmation = true }) {
+                        Text("CLEAR ALL")
+                            .font(OPSStyle.Typography.captionBold)
+                            .tracking(0.8)
+                            .foregroundColor(OPSStyle.Colors.errorStatus)
+                    }
+                    .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+                    .disabled(images.isEmpty)
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
+
+                Divider()
+                    .background(OPSStyle.Colors.cardBorder)
+
+                // Grid
+                ScrollView {
+                    LazyVGrid(columns: columns, spacing: 6) {
+                        ForEach(Array(images.enumerated()), id: \.offset) { index, image in
+                            ZStack(alignment: .topTrailing) {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .aspectRatio(1, contentMode: .fill)
+                                    .frame(maxWidth: .infinity)
+                                    .clipped()
+                                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+
+                                Button(action: {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    images.remove(at: index)
+                                }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 22))
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .background(
+                                            Circle()
+                                                .fill(Color.black.opacity(0.6))
+                                        )
+                                }
+                                .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+                                .offset(x: 4, y: -4)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 12)
+                }
+            }
+        }
+        .alert("Clear All Photos?", isPresented: $showingClearConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear All", role: .destructive) {
+                onClearAll()
+            }
+        } message: {
+            Text("Removes every photo you've captured in this session.")
+        }
+    }
+}
+
+// MARK: - CameraPreviewLayer (AVCaptureSession + shutter)
+
+/// Live AVCaptureSession preview with an embedded shutter button. Stays
+/// running across captures so the user never sees a flash-to-black
+/// transition between shots.
+private struct CameraPreviewLayer: UIViewControllerRepresentable {
+    let onCapture: (UIImage) -> Void
+    let onCancel: () -> Void
+
+    func makeUIViewController(context: Context) -> CameraPreviewViewController {
+        let vc = CameraPreviewViewController()
+        vc.onCapture = onCapture
+        vc.onCancel = onCancel
+        return vc
     }
 
-    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let onCapture: (UIImage?) -> Void
+    func updateUIViewController(_ uiViewController: CameraPreviewViewController, context: Context) {}
+}
 
-        init(onCapture: @escaping (UIImage?) -> Void) {
-            self.onCapture = onCapture
+private final class CameraPreviewViewController: UIViewController, AVCapturePhotoCaptureDelegate {
+    var onCapture: ((UIImage) -> Void)?
+    var onCancel: (() -> Void)?
+
+    private let session = AVCaptureSession()
+    private let photoOutput = AVCapturePhotoOutput()
+    private var previewLayer: AVCaptureVideoPreviewLayer?
+    private weak var shutterButton: UIButton?
+    private weak var shutterInnerCircle: UIView?
+    private weak var flashView: UIView?
+
+    /// Multi-shot debounce. Same defence as SketchCaptureView — refuse a
+    /// rapid double-tap while a capture is in flight, plus a short
+    /// minimum interval so the camera can't queue 10 shots from one
+    /// stuck-finger drag.
+    private var isCapturing = false
+    private var lastCaptureStartedAt: Date?
+    private static let minCaptureInterval: TimeInterval = 0.4
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        setupCamera()
+        setupShutter()
+        setupFlashView()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        startSession()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        stopSession()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewLayer?.frame = view.bounds
+        flashView?.frame = view.bounds
+    }
+
+    private func setupCamera() {
+        session.sessionPreset = .photo
+
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+              let input = try? AVCaptureDeviceInput(device: device) else {
+            return
         }
 
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            let image = info[.originalImage] as? UIImage
-            onCapture(image)
-            picker.dismiss(animated: true)
+        if session.canAddInput(input) { session.addInput(input) }
+        if session.canAddOutput(photoOutput) { session.addOutput(photoOutput) }
+
+        let preview = AVCaptureVideoPreviewLayer(session: session)
+        preview.videoGravity = .resizeAspectFill
+        preview.frame = view.bounds
+        view.layer.addSublayer(preview)
+        previewLayer = preview
+    }
+
+    private func setupShutter() {
+        let shutter = UIButton(type: .system)
+        shutter.translatesAutoresizingMaskIntoConstraints = false
+        let outerSize: CGFloat = 72
+        let innerSize: CGFloat = 58
+        shutter.backgroundColor = .clear
+        shutter.layer.cornerRadius = outerSize / 2
+        shutter.layer.borderWidth = 4
+        shutter.layer.borderColor = UIColor.white.cgColor
+
+        let innerCircle = UIView()
+        innerCircle.backgroundColor = .white
+        innerCircle.layer.cornerRadius = innerSize / 2
+        innerCircle.isUserInteractionEnabled = false
+        innerCircle.translatesAutoresizingMaskIntoConstraints = false
+        shutter.addSubview(innerCircle)
+
+        shutter.addTarget(self, action: #selector(shutterTapped), for: .touchUpInside)
+        view.addSubview(shutter)
+        shutterButton = shutter
+        shutterInnerCircle = innerCircle
+
+        NSLayoutConstraint.activate([
+            shutter.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            shutter.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -28),
+            shutter.widthAnchor.constraint(equalToConstant: outerSize),
+            shutter.heightAnchor.constraint(equalToConstant: outerSize),
+
+            innerCircle.centerXAnchor.constraint(equalTo: shutter.centerXAnchor),
+            innerCircle.centerYAnchor.constraint(equalTo: shutter.centerYAnchor),
+            innerCircle.widthAnchor.constraint(equalToConstant: innerSize),
+            innerCircle.heightAnchor.constraint(equalToConstant: innerSize),
+        ])
+    }
+
+    /// White flash overlay used to confirm capture. 60ms fade so the
+    /// user feels the shutter without drawing attention to a literal
+    /// flash artifact.
+    private func setupFlashView() {
+        let flash = UIView(frame: view.bounds)
+        flash.backgroundColor = .white
+        flash.alpha = 0
+        flash.isUserInteractionEnabled = false
+        flash.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(flash)
+        flashView = flash
+    }
+
+    private func startSession() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            if !self.session.isRunning {
+                self.session.startRunning()
+            }
+        }
+    }
+
+    private func stopSession() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            if self.session.isRunning {
+                self.session.stopRunning()
+            }
+        }
+    }
+
+    @objc private func shutterTapped() {
+        guard !isCapturing else { return }
+        if let last = lastCaptureStartedAt, Date().timeIntervalSince(last) < Self.minCaptureInterval {
+            return
+        }
+        isCapturing = true
+        lastCaptureStartedAt = Date()
+        shutterButton?.isEnabled = false
+        shutterInnerCircle?.backgroundColor = UIColor.white.withAlphaComponent(0.4)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        // Kick off the capture. Settings.flashMode auto so iPhones can
+        // decide whether the scene needs the LED.
+        let settings = AVCapturePhotoSettings()
+        if photoOutput.supportedFlashModes.contains(.auto) {
+            settings.flashMode = .auto
+        }
+        photoOutput.capturePhoto(with: settings, delegate: self)
+
+        // White-flash overlay — fades in/out over ~150ms total so the
+        // user sees a confident "shot fired" cue but the preview comes
+        // right back.
+        UIView.animate(withDuration: 0.05, animations: {
+            self.flashView?.alpha = 0.6
+        }, completion: { _ in
+            UIView.animate(withDuration: 0.10) {
+                self.flashView?.alpha = 0
+            }
+        })
+    }
+
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        defer {
+            // Always re-enable the shutter even on failure so the user
+            // isn't stranded with an unresponsive button mid-job.
+            DispatchQueue.main.async {
+                self.resetShutter()
+            }
         }
 
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            onCapture(nil)
-            picker.dismiss(animated: true)
+        if error != nil { return }
+
+        guard let data = photo.fileDataRepresentation(),
+              let image = UIImage(data: data) else {
+            return
         }
+
+        DispatchQueue.main.async {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            self.onCapture?(image)
+        }
+    }
+
+    private func resetShutter() {
+        isCapturing = false
+        shutterButton?.isEnabled = true
+        shutterInnerCircle?.backgroundColor = .white
     }
 }
 
 // MARK: - Gallery Picker Wrapper (PHPicker)
 
+/// Lifted from the original CameraBatchView. Used when the user wants
+/// to pull existing library photos into the same batch as the live
+/// captures.
 private struct GalleryPickerWrapper: UIViewControllerRepresentable {
     @Binding var images: [UIImage]
     let onComplete: () -> Void
@@ -252,31 +652,39 @@ private struct GalleryPickerWrapper: UIViewControllerRepresentable {
 
     class Coordinator: NSObject, PHPickerViewControllerDelegate {
         let parent: GalleryPickerWrapper
+        // Bug 35c400c2 mirror — same hasFinished guard as the main
+        // ImagePicker so a flaky double-fire from PHPicker can't double
+        // a library import either.
+        var hasFinished = false
 
         init(parent: GalleryPickerWrapper) {
             self.parent = parent
         }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            guard !hasFinished else { return }
+            hasFinished = true
+
             picker.dismiss(animated: true)
             guard !results.isEmpty else { return }
 
+            // Slot-indexed loading so order is preserved regardless of
+            // which loadDataRepresentation resolves first.
+            var loaded: [UIImage?] = Array(repeating: nil, count: results.count)
             let group = DispatchGroup()
-            var loaded: [UIImage] = []
 
-            for result in results {
-                guard result.itemProvider.canLoadObject(ofClass: UIImage.self) else { continue }
+            for (index, result) in results.enumerated() {
+                guard result.itemProvider.hasItemConformingToTypeIdentifier("public.image") else { continue }
                 group.enter()
-                result.itemProvider.loadObject(ofClass: UIImage.self) { image, _ in
+                result.itemProvider.loadDataRepresentation(forTypeIdentifier: "public.image") { data, _ in
                     defer { group.leave() }
-                    if let image = image as? UIImage {
-                        loaded.append(image)
-                    }
+                    guard let data = data, let image = UIImage(data: data) else { return }
+                    loaded[index] = image
                 }
             }
 
             group.notify(queue: .main) {
-                self.parent.images = loaded
+                self.parent.images = loaded.compactMap { $0 }
                 self.parent.onComplete()
             }
         }

@@ -5,16 +5,34 @@ import UIKit
 
 struct TemplateDimensionInputView: View {
     let templateType: DeckTemplateType
-    let onCreateDeck: ([Double]) -> Void
+    /// Now passes BOTH the parsed inches AND the unit mode the user typed in,
+    /// so downstream callers can stamp `DrawingConfig.measurementSystem`
+    /// correctly. Bug e7965781.
+    let onCreateDeck: ([Double], MeasurementSystem) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var voiceInput: VoiceDimensionInput
     @State private var dimensionStrings: [String]
     @State private var showingVoiceOverlay = false
+    /// Toggle between imperial (default) and metric input parsing. Persisted
+    /// to UserDefaults so the user's preference survives app launches —
+    /// imperial-only contractors see imperial each time, metric-only contractors
+    /// don't have to flip the switch every job. Bug e7965781.
+    @State private var measurementSystem: MeasurementSystem = TemplateDimensionInputView.loadStoredSystem()
 
     private let labels: [DimensionLabel]
 
-    init(templateType: DeckTemplateType, onCreateDeck: @escaping ([Double]) -> Void) {
+    private static let storageKey = "deckBuilder.template.measurementSystem"
+
+    private static func loadStoredSystem() -> MeasurementSystem {
+        if let raw = UserDefaults.standard.string(forKey: storageKey),
+           let stored = MeasurementSystem(rawValue: raw) {
+            return stored
+        }
+        return .imperial
+    }
+
+    init(templateType: DeckTemplateType, onCreateDeck: @escaping ([Double], MeasurementSystem) -> Void) {
         self.templateType = templateType
         self.onCreateDeck = onCreateDeck
         self.labels = templateType.dimensionLabels
@@ -24,10 +42,14 @@ struct TemplateDimensionInputView: View {
         ))
     }
 
+    /// Parsed inches for each input field. Always returns inches as the
+    /// canonical internal unit regardless of the user's selected display
+    /// system — `DimensionEngine.parseToInches(...)` converts cm/m/mm to
+    /// inches transparently. Bug e7965781.
     private var parsedInches: [Double?] {
         dimensionStrings.map { str in
             guard !str.isEmpty else { return nil }
-            return DimensionEngine.parseToInches(str, system: .imperial)
+            return DimensionEngine.parseToInches(str, system: measurementSystem)
         }
     }
 
@@ -45,6 +67,12 @@ struct TemplateDimensionInputView: View {
                     // Shape diagram
                     shapeDiagram
                         .padding(.top, OPSStyle.Layout.spacing3)
+
+                    // Imperial / metric toggle — sits above dimension fields
+                    // so the user picks units BEFORE typing values. Saves the
+                    // choice to UserDefaults so it persists across launches.
+                    // Bug e7965781.
+                    unitModeToggle
 
                     // Dimension fields
                     dimensionFields
@@ -68,10 +96,13 @@ struct TemplateDimensionInputView: View {
             voiceInput.requestAuthorization()
         }
         .onChange(of: voiceInput.parsedDimensions) { _, newDimensions in
-            // Voice → fields sync
+            // Voice → fields sync. Format in the user's active unit mode so
+            // the spoken value lands in the field as e.g. "2.5 m" rather than
+            // a forced imperial "8' 2"" when the user is working in metric.
+            // Bug e7965781.
             for (i, value) in newDimensions.enumerated() {
                 if let inches = value, i < dimensionStrings.count, dimensionStrings[i].isEmpty {
-                    dimensionStrings[i] = DimensionEngine.format(inches, system: .imperial)
+                    dimensionStrings[i] = DimensionEngine.format(inches, system: measurementSystem)
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
             }
@@ -315,8 +346,9 @@ struct TemplateDimensionInputView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .frame(width: 90, alignment: .leading)
 
-            // Input
-            TextField("0' 0\"", text: $dimensionStrings[index])
+            // Input — placeholder example matches the active unit mode so the
+            // user immediately understands what input is expected.
+            TextField(placeholderForActiveSystem, text: $dimensionStrings[index])
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .keyboardType(.numbersAndPunctuation)
@@ -325,7 +357,8 @@ struct TemplateDimensionInputView: View {
                 .textFieldStyle(.plain)
                 .onChange(of: dimensionStrings[index]) { _, newValue in
                     // Swap iOS smart-quotes back to ASCII `'` / `"` so the visible
-                    // text always matches what the parser expects.
+                    // text always matches what the parser expects. (Imperial-only
+                    // concern but cheap to run in metric too.)
                     let sanitized = DimensionEngine.sanitizeQuotesForLiveInput(newValue)
                     if sanitized != newValue { dimensionStrings[index] = sanitized }
                 }
@@ -338,8 +371,9 @@ struct TemplateDimensionInputView: View {
                         .stroke(fieldBorderColor(index: index), lineWidth: 1)
                 )
 
-            // Unit label
-            Text("ft/in")
+            // Unit label — switches between "ft/in" and "m/cm" so the field
+            // tells the user up-front which units the parser is expecting.
+            Text(unitSuffixForActiveSystem)
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .frame(width: 36)
@@ -347,13 +381,54 @@ struct TemplateDimensionInputView: View {
         .frame(minHeight: OPSStyle.Layout.touchTargetMin)
     }
 
+    /// Field-validity border. Live-parses through DimensionEngine using the
+    /// active unit mode so toggling imperial→metric instantly re-validates
+    /// existing typed values. Invalid inputs paint a rose stroke (OPSStyle's
+    /// negative tone) instead of the SwiftUI primitive `.red` we used to use.
+    /// Bug e7965781.
     private func fieldBorderColor(index: Int) -> Color {
         let str = dimensionStrings[index]
         if str.isEmpty { return OPSStyle.Colors.cardBorder }
-        if let inches = DimensionEngine.parseToInches(str, system: .imperial), inches > 0 {
+        if let inches = DimensionEngine.parseToInches(str, system: measurementSystem), inches > 0 {
             return labels[index].color.opacity(0.5)
         }
-        return Color.red.opacity(0.6)
+        return OPSStyle.Colors.rose.opacity(0.6)
+    }
+
+    /// Placeholder example for the input field that shows the user the
+    /// canonical short-form for the active unit mode.
+    private var placeholderForActiveSystem: String {
+        switch measurementSystem {
+        case .imperial: return "0' 0\""
+        case .metric:   return "0 m"
+        }
+    }
+
+    /// Tiny unit suffix shown to the right of every input field.
+    private var unitSuffixForActiveSystem: String {
+        switch measurementSystem {
+        case .imperial: return "ft/in"
+        case .metric:   return "m/cm"
+        }
+    }
+
+    // MARK: - Unit Toggle
+
+    /// Imperial / metric unit-mode toggle. Drives both the parser and the
+    /// `DrawingConfig.measurementSystem` stamped on the resulting deck design
+    /// (so the deck builder formats every dimension back in the user's chosen
+    /// units). Bug e7965781.
+    private var unitModeToggle: some View {
+        SegmentedControl(
+            selection: Binding(
+                get: { measurementSystem },
+                set: { newValue in
+                    measurementSystem = newValue
+                    UserDefaults.standard.set(newValue.rawValue, forKey: Self.storageKey)
+                }
+            ),
+            options: [(MeasurementSystem.imperial, "Imperial"), (MeasurementSystem.metric, "Metric")]
+        )
     }
 
     // MARK: - Voice Overlay
@@ -414,7 +489,11 @@ struct TemplateDimensionInputView: View {
             let inches = parsedInches.compactMap { $0 }
             guard inches.count == templateType.dimensionCount else { return }
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            onCreateDeck(inches)
+            // Bug e7965781 — hand BOTH the parsed inches AND the active unit
+            // mode back to the caller so the resulting deck design's
+            // DrawingConfig stamps the right `measurementSystem` and formats
+            // dimensions in the units the user typed.
+            onCreateDeck(inches, measurementSystem)
         } label: {
             Text("Create Deck")
                 .font(OPSStyle.Typography.button)

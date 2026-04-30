@@ -15,6 +15,12 @@ struct DeckTab2DView: View {
     @State private var canvasOffset: CGSize = .zero
     @State private var lastCenteredSize: CGSize = .zero
 
+    // Bug 033b5328 — measurement tool. User toggles ruler mode, taps two
+    // points on the drawing, and a measurement readout appears between them.
+    @State private var measurementMode: Bool = false
+    @State private var measurementStart: CGPoint?
+    @State private var measurementEnd: CGPoint?
+
     private let canvasSize: CGFloat = 4800
 
     private var gridSpacing: CGFloat {
@@ -33,6 +39,9 @@ struct DeckTab2DView: View {
                     .frame(width: canvasSize, height: canvasSize)
                     .scaleEffect(canvasScale, anchor: .topLeading)
                     .offset(canvasOffset)
+
+                // Bug 033b5328 — measurement tools UI overlay.
+                measurementToolOverlay(viewportSize: geometry.size)
             }
             .clipped()
             .contentShape(Rectangle())
@@ -43,6 +52,15 @@ struct DeckTab2DView: View {
                     isDrawing: false
                 )
             }
+            // Tap gesture for measurement. Only active when ruler mode is
+            // toggled on so it doesn't interfere with pan/zoom.
+            .simultaneousGesture(
+                measurementMode
+                    ? SpatialTapGesture().onEnded { value in
+                        recordMeasurementTap(at: value.location, in: geometry.size)
+                    }
+                    : nil
+            )
             .onAppear {
                 if geometry.size.width > 0 && geometry.size.height > 0 {
                     centerViewport(viewportSize: geometry.size)
@@ -76,6 +94,7 @@ struct DeckTab2DView: View {
     private var canvasContent: some View {
         Canvas { context, size in
             drawGrid(context: context, size: size)
+            drawMeasurement(context: context)
 
             if drawingData.isMultiLevel {
                 for (index, level) in drawingData.levels.enumerated() {
@@ -216,8 +235,15 @@ struct DeckTab2DView: View {
 
         switch edge.edgeType {
         case .houseEdge:
-            lineColor = Color.white.opacity(0.5)
-            lineWidth = 2.5
+            // Bug 3d72ce0b — house edges read as a raised wall. Use the
+            // selected cladding material's tone, falling back to a neutral
+            // wall white when unset.
+            if let mat = edge.houseEdgeMaterial, let c = Color(hex: mat.fillHex) {
+                lineColor = c
+            } else {
+                lineColor = Color.white.opacity(0.7)
+            }
+            lineWidth = 4.0   // chunkier stroke implies a wall, not just an edge
         case .deckEdge:
             lineColor = OPSStyle.Colors.primaryAccent
             lineWidth = 2.0
@@ -251,13 +277,121 @@ struct DeckTab2DView: View {
             }
         }
 
-        // Stair indicator
-        if edge.stairConfig != nil {
-            let midX = (start.position.x + end.position.x) / 2
-            let midY = (start.position.y + end.position.y) / 2
-            let stairIcon = Path(ellipseIn: CGRect(x: midX - 6, y: midY - 6, width: 12, height: 12))
-            context.fill(stairIcon, with: .color(OPSStyle.Colors.warningStatus.opacity(0.3)))
-            context.stroke(stairIcon, with: .color(OPSStyle.Colors.warningStatus), lineWidth: 1)
+        // Bug a046a041 / 3d72ce0b — render full stair geometry in the 2D
+        // project viewer (previously a tiny dot at midpoint, easy to miss).
+        // Mirror the builder canvas: outline rectangle + tread lines on the
+        // outward perpendicular.
+        if let config = edge.stairConfig, let tc = config.treadCount, tc > 0 {
+            drawStairsOnEdge(
+                context: context,
+                edge: edge,
+                config: config,
+                treadCount: tc,
+                start: start.position,
+                end: end.position
+            )
+        }
+    }
+
+    /// Render a stair rectangle + tread lines for a 2D viewer edge. Uses
+    /// PolygonMath.outwardPerpendicular when the surrounding polygon is
+    /// available so stairs land on the empty side of the deck.
+    private func drawStairsOnEdge(
+        context: GraphicsContext,
+        edge: DeckEdge,
+        config: StairConfig,
+        treadCount: Int,
+        start: CGPoint,
+        end: CGPoint
+    ) {
+        let dx = end.x - start.x, dy = end.y - start.y
+        let edgeLen = sqrt(dx * dx + dy * dy)
+        guard edgeLen > 0 else { return }
+        let edgeNx = dx / edgeLen, edgeNy = dy / edgeLen
+
+        // Polygon for outward-perpendicular lookup (use the level matching
+        // the edge's vertex ids, falling back to the single-level polygon).
+        let polygon: [CGPoint]
+        if drawingData.isMultiLevel {
+            // Find which level holds this edge
+            var found: [CGPoint] = []
+            for level in drawingData.levels where level.edge(byId: edge.id) != nil {
+                found = level.orderedPositions
+                break
+            }
+            polygon = found
+        } else {
+            polygon = drawingData.orderedPositions
+        }
+
+        let outward = PolygonMath.outwardPerpendicular(
+            edgeStart: start,
+            edgeEnd: end,
+            polygonVertices: polygon
+        )
+        let perpX = config.flipDirection ? -outward.x : outward.x
+        let perpY = config.flipDirection ? -outward.y : outward.y
+
+        // Width / depth canvas math — fall back to 1 pt/inch when no scale
+        // (project viewer doesn't auto-fall-back to prescaleFallbackScale).
+        let scale: Double = (drawingData.scaleFactor ?? 1.0) > 0 ? (drawingData.scaleFactor ?? 1.0) : 1.0
+        let stairWidthCanvas = min(CGFloat(config.width) * CGFloat(scale), edgeLen)
+        let totalRunInches = Double(treadCount) * config.runPerTread
+        let stairDepthCanvas = CGFloat(totalRunInches) * CGFloat(scale)
+
+        // Position along edge (alignment + offset)
+        let offsetCanvas = CGFloat(config.offset) * CGFloat(scale)
+        let gapTotal = edgeLen - stairWidthCanvas
+        let stairStartT: CGFloat
+        switch config.alignment {
+        case .left:   stairStartT = offsetCanvas / edgeLen
+        case .center: stairStartT = (gapTotal / 2 + offsetCanvas) / edgeLen
+        case .right:  stairStartT = (gapTotal - offsetCanvas) / edgeLen
+        }
+
+        let perpCGX = CGFloat(perpX), perpCGY = CGFloat(perpY)
+        let baseStart = CGPoint(
+            x: start.x + edgeNx * edgeLen * stairStartT,
+            y: start.y + edgeNy * edgeLen * stairStartT
+        )
+        let baseEnd = CGPoint(
+            x: baseStart.x + edgeNx * stairWidthCanvas,
+            y: baseStart.y + edgeNy * stairWidthCanvas
+        )
+        let farStart = CGPoint(
+            x: baseStart.x + perpCGX * stairDepthCanvas,
+            y: baseStart.y + perpCGY * stairDepthCanvas
+        )
+        let farEnd = CGPoint(
+            x: baseEnd.x + perpCGX * stairDepthCanvas,
+            y: baseEnd.y + perpCGY * stairDepthCanvas
+        )
+
+        var rectPath = Path()
+        rectPath.move(to: baseStart)
+        rectPath.addLine(to: baseEnd)
+        rectPath.addLine(to: farEnd)
+        rectPath.addLine(to: farStart)
+        rectPath.closeSubpath()
+
+        context.fill(rectPath, with: .color(OPSStyle.Colors.warningStatus.opacity(0.08)))
+        context.stroke(rectPath, with: .color(OPSStyle.Colors.warningStatus.opacity(0.5)), lineWidth: 1.2)
+
+        // Tread lines
+        for i in 1..<min(treadCount, 30) {
+            let t = CGFloat(i) / CGFloat(treadCount)
+            let tBase = CGPoint(
+                x: baseStart.x + perpCGX * stairDepthCanvas * t,
+                y: baseStart.y + perpCGY * stairDepthCanvas * t
+            )
+            let tEnd = CGPoint(
+                x: baseEnd.x + perpCGX * stairDepthCanvas * t,
+                y: baseEnd.y + perpCGY * stairDepthCanvas * t
+            )
+            var tp = Path()
+            tp.move(to: tBase)
+            tp.addLine(to: tEnd)
+            context.stroke(tp, with: .color(OPSStyle.Colors.warningStatus.opacity(0.3)), lineWidth: 0.8)
         }
     }
 
@@ -356,5 +490,157 @@ struct DeckTab2DView: View {
         context.fill(circle, with: .color(Color.blue.opacity(0.08)))
         context.stroke(circle, with: .color(Color.blue.opacity(0.2)),
                        style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+    }
+
+    // MARK: - Bug 033b5328 — Measurement Tool
+
+    /// Convert a viewport-space tap location to canvas-space coordinates.
+    /// Inverse of the `.scaleEffect(canvasScale, anchor: .topLeading).offset(canvasOffset)`
+    /// transform applied to `canvasContent`. Tap location comes in viewport
+    /// (GeometryReader-local) coords; the rendered canvas is `canvasOffset`
+    /// shifted then `canvasScale` scaled at top-leading anchor.
+    private func canvasPoint(from viewportPoint: CGPoint, viewportSize: CGSize) -> CGPoint {
+        let cx = (viewportPoint.x - canvasOffset.width) / canvasScale
+        let cy = (viewportPoint.y - canvasOffset.height) / canvasScale
+        return CGPoint(x: cx, y: cy)
+    }
+
+    /// Measurement-mode tap state machine: first tap sets start, second tap
+    /// closes the measurement, third tap resets and starts a new one.
+    private func recordMeasurementTap(at location: CGPoint, in viewportSize: CGSize) {
+        let canvasLoc = canvasPoint(from: location, viewportSize: viewportSize)
+        if measurementStart == nil {
+            measurementStart = canvasLoc
+            measurementEnd = nil
+        } else if measurementEnd == nil {
+            measurementEnd = canvasLoc
+        } else {
+            measurementStart = canvasLoc
+            measurementEnd = nil
+        }
+    }
+
+    /// Render the in-progress measurement (anchor dots, dashed line, midpoint
+    /// distance pill) inside the Canvas pass.
+    private func drawMeasurement(context: GraphicsContext) {
+        guard measurementMode else { return }
+        let dotR: CGFloat = 6
+        let dotStroke: CGFloat = 2
+        let lineColor = OPSStyle.Colors.warningStatus
+
+        if let start = measurementStart {
+            let circle = Path(ellipseIn: CGRect(
+                x: start.x - dotR, y: start.y - dotR,
+                width: dotR * 2, height: dotR * 2
+            ))
+            context.fill(circle, with: .color(lineColor.opacity(0.2)))
+            context.stroke(circle, with: .color(lineColor), lineWidth: dotStroke)
+        }
+
+        guard let start = measurementStart, let end = measurementEnd else { return }
+
+        var linePath = Path()
+        linePath.move(to: start)
+        linePath.addLine(to: end)
+        context.stroke(linePath, with: .color(lineColor),
+                       style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+
+        let endCircle = Path(ellipseIn: CGRect(
+            x: end.x - dotR, y: end.y - dotR,
+            width: dotR * 2, height: dotR * 2
+        ))
+        context.fill(endCircle, with: .color(lineColor.opacity(0.2)))
+        context.stroke(endCircle, with: .color(lineColor), lineWidth: dotStroke)
+
+        let midX = (start.x + end.x) / 2
+        let midY = (start.y + end.y) / 2
+        let canvasDistance = hypot(end.x - start.x, end.y - start.y)
+
+        let labelText: String
+        if let scale = drawingData.scaleFactor, scale > 0 {
+            let inches = canvasDistance / scale
+            let totalInches = Int(inches.rounded())
+            let feet = totalInches / 12
+            let remInches = totalInches % 12
+            labelText = feet > 0 ? "\(feet)' \(remInches)\"" : "\(remInches)\""
+        } else {
+            // No scale calibrated — show canvas units so user still gets
+            // a relative read; the warning HUD in measurementToolOverlay
+            // tells them why it isn't a real measurement.
+            labelText = "\(Int(canvasDistance.rounded())) pt"
+        }
+
+        let resolved = context.resolve(Text(labelText)
+            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            .foregroundColor(.black))
+        let textSize = resolved.measure(in: CGSize(width: 200, height: 50))
+        let padH: CGFloat = 8
+        let padV: CGFloat = 4
+        let bgRect = CGRect(
+            x: midX - textSize.width / 2 - padH,
+            y: midY - textSize.height / 2 - padV,
+            width: textSize.width + padH * 2,
+            height: textSize.height + padV * 2
+        )
+        context.fill(Path(roundedRect: bgRect, cornerRadius: 4), with: .color(lineColor))
+        context.draw(resolved, at: CGPoint(x: midX, y: midY), anchor: .center)
+    }
+
+    /// Floating ruler-mode toggle and instruction HUD pinned to the top-right
+    /// of the viewer. Disabled state shows a subtle dark pill; enabled state
+    /// switches to the warning accent so it reads as "active mode" at a glance.
+    @ViewBuilder
+    private func measurementToolOverlay(viewportSize: CGSize) -> some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            Button {
+                measurementMode.toggle()
+                if !measurementMode {
+                    measurementStart = nil
+                    measurementEnd = nil
+                }
+            } label: {
+                Image(systemName: "ruler")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(measurementMode ? .black : .white)
+                    .frame(width: 40, height: 40)
+                    .background(
+                        Circle().fill(
+                            measurementMode
+                                ? OPSStyle.Colors.warningStatus
+                                : Color.black.opacity(0.6)
+                        )
+                    )
+                    .overlay(
+                        Circle().stroke(
+                            measurementMode ? Color.clear : Color.white.opacity(0.2),
+                            lineWidth: 1
+                        )
+                    )
+            }
+
+            if let hint = measurementHintText {
+                Text(hint)
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.6))
+                    .cornerRadius(4)
+            }
+        }
+        .padding(.top, 16)
+        .padding(.trailing, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
+    /// Hint shown beside the ruler toggle when measurement mode is on.
+    /// Pulled out of the ViewBuilder body so the if/else cascade isn't
+    /// misread as a conditional view branch.
+    private var measurementHintText: String? {
+        guard measurementMode else { return nil }
+        if measurementStart == nil { return "TAP FIRST POINT" }
+        if measurementEnd == nil { return "TAP SECOND POINT" }
+        if drawingData.scaleFactor == nil { return "NO SCALE CALIBRATED" }
+        return "TAP TO RESET"
     }
 }

@@ -111,6 +111,10 @@ struct ProjectFormSheet: View {
     // is held locally and attached to the project after save.
     @State private var showingDeckCreationPicker = false
     @State private var capturedDeckDesign: DeckDesign?
+    /// Bug 55c9de66 — tapping "Blank Canvas" / similar should also OPEN the
+    /// deck builder so the user can immediately start drawing. Without this
+    /// the picker just dismissed and left a placeholder behind.
+    @State private var showingDeckBuilderForCapture: DeckDesign?
 
     // Section ordering - tracks which sections appear first
     @State private var sectionOrder: [OptionalSection] = [.description, .notes, .tasks, .photos]
@@ -519,12 +523,23 @@ struct ProjectFormSheet: View {
         .sheet(isPresented: $showingDeckCreationPicker) {
             deckCreationPickerSheet
         }
+        // Bug 55c9de66 — open the deck builder right after the user picks
+        // their creation method so they can start drawing immediately.
+        .fullScreenCover(item: $showingDeckBuilderForCapture) { design in
+            if let mc = dataController.modelContext {
+                DeckBuilderView(deckDesign: design, modelContext: mc)
+            }
+        }
     }
 
     /// Deck creation picker presented from the project form. The design is
     /// built with a placeholder projectId (empty string) since the real
     /// project id isn't known until after save — attachProjectIdToDeckDesign
     /// swaps the id in during the save cascade.
+    /// Bug 55c9de66 — once a design is created we ALSO open the deck builder
+    /// so the user can start drawing right away (the previous flow just
+    /// stashed the design and returned to the form, which read as nothing
+    /// happening).
     @ViewBuilder
     private var deckCreationPickerSheet: some View {
         let companyId = dataController.currentUser?.companyId ?? ""
@@ -536,6 +551,8 @@ struct ProjectFormSheet: View {
             onDesignCreated: { design in
                 capturedDeckDesign = design
                 showingDeckCreationPicker = false
+                // Open the builder so the user can draw immediately.
+                showingDeckBuilderForCapture = design
             }
         )
         .presentationDetents([.medium])

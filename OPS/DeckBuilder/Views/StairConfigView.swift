@@ -14,9 +14,27 @@ struct StairConfigView: View {
     @State private var inlineHeightText: String = ""
     @State private var alignment: StairAlignment = .center
     @State private var offsetText: String = "0"
+    /// Per-stair elevation in feet. Bug bfbc4068 — once filled in, the user
+    /// must be able to edit it on subsequent passes. Stored on the StairConfig
+    /// itself (totalRiseInches) so re-opening the editor pre-fills the value.
+    @State private var stairHeightText: String = ""
+    /// Bug a7429390 — whether to flip the rendered stair direction onto the
+    /// opposite perpendicular. Default off: stairs run away from the deck fill.
+    @State private var flipDirection: Bool = false
 
+    /// Total rise in inches.
+    /// Priority (bug bfbc4068):
+    /// 1. The stair's own stored elevation (StairConfig.totalRiseInches) — what
+    ///    the user typed last time, always editable.
+    /// 2. The user-edited stairHeightText (in feet) for THIS sheet session.
+    /// 3. Per-vertex elevations at the edge endpoints.
+    /// 4. Overall deck elevation.
     private var totalRise: Double {
-        // Get elevation from edge endpoints or overall elevation
+        // 1 + 2 — the per-stair value, either from store or live entry
+        if let typedFeet = Double(stairHeightText), typedFeet > 0 {
+            return typedFeet * 12
+        }
+
         guard let edgeId = viewModel.editingEdgeId,
               let edge = viewModel.drawingData.edge(byId: edgeId) else {
             return (viewModel.drawingData.overallElevation ?? 0) * 12 // feet → inches
@@ -75,12 +93,10 @@ struct StairConfigView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
-                    // Total rise display
-                    if totalRise > 0 {
-                        riseInfoCard
-                    } else {
-                        noElevationWarning
-                    }
+                    // Total rise — ALWAYS editable so a stair already
+                    // configured can be edited on subsequent passes through
+                    // this sheet. Bug bfbc4068.
+                    riseInfoCard
 
                     // Width input
                     widthInput
@@ -89,6 +105,11 @@ struct StairConfigView: View {
                     if needsAlignment {
                         alignmentSection
                     }
+
+                    // Direction toggle — flips the rendered stair onto the
+                    // opposite perpendicular when the auto-outward heuristic
+                    // is wrong. Bug a7429390.
+                    directionSection
 
                     // Code parameters
                     codeParameters
@@ -133,38 +154,100 @@ struct StairConfigView: View {
                 runPerTread = existing.runPerTread
                 alignment = existing.alignment
                 offsetText = String(format: "%.0f", existing.offset)
+                flipDirection = existing.flipDirection
                 if let railing = existing.railingConfig {
                     addRailing = true
                     railingType = railing.railingType
                 }
+                // Bug bfbc4068 — pre-fill stair height so the user can edit it.
+                if let storedRiseInches = existing.totalRiseInches, storedRiseInches > 0 {
+                    stairHeightText = String(format: "%.1f", storedRiseInches / 12.0)
+                } else {
+                    // Fall back to overall / per-vertex elevations when this is the
+                    // first time the user opens the editor for this stair.
+                    let inches = totalRise
+                    if inches > 0 {
+                        stairHeightText = String(format: "%.1f", inches / 12.0)
+                    }
+                }
             } else if let edgeLen = edgeLengthInches {
                 // Default width = edge length
                 widthText = String(format: "%.0f", edgeLen)
+                // Pre-fill height from any deck-level elevation if available
+                let inches = totalRise
+                if inches > 0 {
+                    stairHeightText = String(format: "%.1f", inches / 12.0)
+                }
             }
         }
     }
 
     // MARK: - Rise Info
 
+    /// Always-editable rise card. Bug bfbc4068 — once a stair has a height,
+    /// it must remain editable on subsequent passes. The card now ALWAYS
+    /// shows the editable text field (pre-filled with the current value).
+    /// The "Total Rise" readout reflects whatever's currently typed, falling
+    /// back to elevation sources beneath it.
     @ViewBuilder
     private var riseInfoCard: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                Text("Total Rise")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Text(DimensionEngine.formatImperial(totalRise))
-                    .font(OPSStyle.Typography.headlineMono)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    Text("Total Rise")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Text(DimensionEngine.formatImperial(totalRise))
+                        .font(OPSStyle.Typography.headlineMono)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                Spacer()
+                Text("IRC R311.7")
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
+                    .background(OPSStyle.Colors.primaryAccent.opacity(0.15))
+                    .cornerRadius(OPSStyle.Layout.smallCornerRadius)
             }
-            Spacer()
-            Text("IRC R311.7")
-                .font(OPSStyle.Typography.microLabel)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                .padding(.horizontal, OPSStyle.Layout.spacing2)
-                .padding(.vertical, OPSStyle.Layout.spacing1)
-                .background(OPSStyle.Colors.primaryAccent.opacity(0.15))
-                .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+
+            // Editable height entry — replaces the read-only display once a
+            // stair has been configured. User can change at any time.
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Text("Stair height")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Spacer()
+                TextField("e.g., 3", text: $stairHeightText)
+                    .font(OPSStyle.Typography.monoValue)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 80)
+                Text("feet")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+            .padding(OPSStyle.Layout.spacing2_5)
+            .background(OPSStyle.Colors.background)
+            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+
+            // Quick presets
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                ForEach(["1", "2", "2.5", "3", "4"], id: \.self) { preset in
+                    Button {
+                        stairHeightText = preset
+                    } label: {
+                        Text("\(preset)'")
+                            .font(OPSStyle.Typography.smallButton)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
+                            .background(OPSStyle.Colors.background)
+                            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+                    }
+                }
+            }
         }
         .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackground)
@@ -326,6 +409,29 @@ struct StairConfigView: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 
+    // MARK: - Direction Toggle (bug a7429390)
+
+    @ViewBuilder
+    private var directionSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Toggle(isOn: $flipDirection) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Flip Direction")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    Text("By default stairs run away from the deck. Toggle if they should run the other way.")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .lineLimit(2)
+                }
+            }
+            .tint(OPSStyle.Colors.primaryAccent)
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.cardBackground)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+    }
+
     // MARK: - Code Parameters
 
     @ViewBuilder
@@ -435,6 +541,13 @@ struct StairConfigView: View {
         config.treadCount = spec.treadCount
         config.alignment = alignment
         config.offset = Double(offsetText) ?? 0
+        config.flipDirection = flipDirection
+        // Persist stair height (bug bfbc4068) so the editor pre-fills next time.
+        if let typedFeet = Double(stairHeightText), typedFeet > 0 {
+            config.totalRiseInches = typedFeet * 12.0
+        } else {
+            config.totalRiseInches = totalRise > 0 ? totalRise : nil
+        }
 
         if addRailing {
             config.railingConfig = RailingConfig(

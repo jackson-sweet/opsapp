@@ -120,6 +120,22 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var activeLevelIndex: Int = 0
     @Published var showingLevelConnectionSheet: Bool = false
 
+    // MARK: - Autosave (bug 2b1f1a9e)
+
+    /// New drawings autosave silently every 2 minutes. Existing drawings
+    /// prompt the user the FIRST time they edit anything, asking whether
+    /// to enable the same 2-minute autosave for their changes.
+    @Published var showingAutosavePrompt: Bool = false
+    @Published var autosaveEnabled: Bool = false
+    /// Detected at init: a drawing with no vertices/edges in either single
+    /// or multi-level form. New drawings auto-enable the autosave loop;
+    /// existing drawings opt in via the prompt.
+    private let isNewDrawing: Bool
+    private var autosaveTimer: Timer?
+    private var hasPromptedForAutosave: Bool = false
+    /// 2 minutes — matches the field-test request.
+    private static let autosaveInterval: TimeInterval = 120.0
+
     // MARK: - Multi-Level Computed
 
     var activeLevel: DeckLevel? {
@@ -296,7 +312,21 @@ class DeckBuilderViewModel: ObservableObject {
         self.deckDesign = deckDesign
         self.modelContext = modelContext
         self.drawingData = deckDesign.drawingData
+        // A drawing is "new" if it has no committed geometry yet — both
+        // single-level and multi-level forms must be empty.
+        let hasSingleGeometry = !deckDesign.drawingData.vertices.isEmpty
+            || !deckDesign.drawingData.edges.isEmpty
+        let hasMultiGeometry = deckDesign.drawingData.levels.contains { level in
+            !level.vertices.isEmpty || !level.edges.isEmpty
+        }
+        self.isNewDrawing = !(hasSingleGeometry || hasMultiGeometry)
         setupLaserSubscription()
+        // New drawings auto-enable autosave silently; existing drawings wait
+        // for the first edit to surface the prompt (handled in `save()`).
+        if self.isNewDrawing {
+            self.autosaveEnabled = true
+            startAutosaveTimer()
+        }
     }
 
     deinit {
@@ -309,7 +339,41 @@ class DeckBuilderViewModel: ObservableObject {
         bufferTimer?.invalidate()
         errorTimer?.invalidate()
         disconnectTimer?.invalidate()
+        autosaveTimer?.invalidate()
         // Set<AnyCancellable> auto-cancels its members on deinit.
+    }
+
+    // MARK: - Autosave (bug 2b1f1a9e)
+
+    /// Start the 2-minute autosave loop. Each tick runs `save()` so the
+    /// user can recover their work from a crash without having to manually
+    /// commit. No-op if a timer is already running.
+    private func startAutosaveTimer() {
+        guard autosaveTimer == nil else { return }
+        autosaveTimer = Timer.scheduledTimer(withTimeInterval: Self.autosaveInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self, self.autosaveEnabled else { return }
+                self.save()
+            }
+        }
+    }
+
+    private func stopAutosaveTimer() {
+        autosaveTimer?.invalidate()
+        autosaveTimer = nil
+    }
+
+    /// Called by the prompt's accept path. Existing drawings opt in here.
+    func enableAutosave() {
+        autosaveEnabled = true
+        showingAutosavePrompt = false
+        startAutosaveTimer()
+    }
+
+    /// Called by the prompt's decline path.
+    func declineAutosave() {
+        autosaveEnabled = false
+        showingAutosavePrompt = false
     }
 
     // MARK: - Undo/Redo
@@ -1099,11 +1163,20 @@ class DeckBuilderViewModel: ObservableObject {
 
     // MARK: - Batch Assignment (from wheel on selection)
 
+    /// Bug 5e681032 — snapshot the selected ids BEFORE iterating so any
+    /// downstream mutation can't shrink the working set mid-loop. Previously
+    /// callers reported only the first selected edge receiving the material;
+    /// taking a deterministic snapshot here makes the batch atomic.
     func assignItemToSelectedEdges(_ item: AssignedItem) {
-        let count = selection.selectedEdgeIds.count
+        let edgeIds = Array(selection.selectedEdgeIds)
+        let count = edgeIds.count
+        guard count > 0 else { return }
         pushUndo("batch assign")
-        for edgeId in selection.selectedEdgeIds {
-            guard var edge = activeEdge(byId: edgeId) else { continue }
+        for edgeId in edgeIds {
+            guard var edge = activeEdge(byId: edgeId) else {
+                print("[DeckBuilder] assignItemToSelectedEdges: edge \(edgeId) not found, skipping")
+                continue
+            }
             // Replace existing items of same unit type
             edge.assignedItems.removeAll { $0.unitType == item.unitType }
             edge.assignedItems.append(item)
@@ -1321,6 +1394,15 @@ class DeckBuilderViewModel: ObservableObject {
         } catch {
             print("[DeckBuilder] Save failed: \(error)")
             saveError = "Save failed — check storage"
+        }
+
+        // Bug 2b1f1a9e — first edit on an EXISTING drawing surfaces the
+        // autosave prompt (new drawings already auto-enabled it in init).
+        // Suppress when called from the autosave timer itself (autosaveEnabled
+        // is already true by then, and the guard prevents recursion).
+        if !isNewDrawing && !hasPromptedForAutosave && !autosaveEnabled {
+            hasPromptedForAutosave = true
+            showingAutosavePrompt = true
         }
     }
 

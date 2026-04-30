@@ -98,6 +98,12 @@ struct DeckCanvasView: View {
                 if viewModel.isClosed, let area = viewModel.totalArea {
                     dimensionInfoBar(area: area)
                 }
+
+                // Live dimension HUD — top-right of canvas while drawing.
+                // Bug 9c2b8866 — finger blocks the mid-line label, so the
+                // user couldn't read the live measurement. This pins the
+                // pill to a screen-space corner where it's always visible.
+                liveDimensionHUD
             }
             .clipped()
             .contentShape(Rectangle())
@@ -335,9 +341,17 @@ struct DeckCanvasView: View {
             context.fill(path, with: .color(Color.white.opacity(isSelected ? 0.08 : 0.03)), style: fillStyle)
         }
 
-        // Surface material label at centroid — only when geometry is clean
-        if let firstItem = viewModel.drawingData.footprint.assignedItems.first {
-            drawSurfaceLabel(context: context, positions: positions, label: firstItem.name)
+        // User-supplied surface label takes priority — it's the field worker's
+        // own annotation ("BBQ pad", "Hot tub area") and dominates the auto
+        // material name. Falls back to material name. Bug 4a03f507.
+        let surfaceLabel: String? = {
+            if let user = viewModel.drawingData.footprint.label?.trimmingCharacters(in: .whitespacesAndNewlines), !user.isEmpty {
+                return user
+            }
+            return viewModel.drawingData.footprint.assignedItems.first?.name
+        }()
+        if let label = surfaceLabel {
+            drawSurfaceLabel(context: context, positions: positions, label: label)
         }
     }
 
@@ -609,6 +623,10 @@ struct DeckCanvasView: View {
 
     /// Draw stairs extending PERPENDICULAR from the edge, to scale.
     /// The stair rectangle extends outward from the deck edge with tread lines inside.
+    /// Bug a7429390 — stairs render on the side OPPOSITE the deck fill by default
+    /// (PolygonMath.outwardPerpendicular). The user can flip via StairConfig.flipDirection.
+    /// Bug d2a899e6 — stair width uses the same prescale fallback as the rest of the
+    /// canvas so width-on-screen matches the rest of the drawing before scale is set.
     private func drawStairIndicator(context: GraphicsContext, start: CGPoint, end: CGPoint, edge: DeckEdge) {
         guard let config = edge.stairConfig, let tc = config.treadCount, tc > 0 else { return }
         let dx = end.x - start.x, dy = end.y - start.y
@@ -617,22 +635,43 @@ struct DeckCanvasView: View {
 
         // Edge direction (unit vectors)
         let edgeNx = dx / edgeLen, edgeNy = dy / edgeLen
-        // Perpendicular unit vector (90° CCW from edge — outward from deck).
-        // The previous form divided by edgeLen twice (the components are already
-        // unit-vector terms), which scaled the perpendicular by 1/edgeLen and
-        // made stair depth shrink as edges got longer.
-        let perpUnitX = -edgeNy, perpUnitY = edgeNx
 
-        // Stair width in canvas points
-        let scale = viewModel.drawingData.scaleFactor ?? 1.0
-        let stairWidthCanvas = min(CGFloat(config.width) * CGFloat(scale), edgeLen)
+        // Outward perpendicular — points away from the deck surface so stairs
+        // land on the empty side of the edge. Falls back to CCW perpendicular
+        // for open polygons / sketches without a closed footprint.
+        let activePolygon: [CGPoint]
+        if viewModel.isMultiLevel, let level = viewModel.activeLevel {
+            activePolygon = level.orderedPositions
+        } else {
+            activePolygon = viewModel.drawingData.orderedPositions
+        }
+        let outward = PolygonMath.outwardPerpendicular(
+            edgeStart: start,
+            edgeEnd: end,
+            polygonVertices: activePolygon
+        )
+        // Apply flip toggle so the user can override on edges where the heuristic
+        // is wrong (e.g. against a fence the renderer can't infer).
+        let perpUnitX = config.flipDirection ? -outward.x : outward.x
+        let perpUnitY = config.flipDirection ? -outward.y : outward.y
+
+        // Stair width in canvas points — use the same prescale fallback as the
+        // canvas grid / dimension labels so stairs render at the same visual
+        // scale as the rest of the drawing before the user calibrates.
+        let renderScale: Double
+        if let s = viewModel.drawingData.scaleFactor, s > 0 {
+            renderScale = s
+        } else {
+            renderScale = DeckBuilderViewModel.prescaleFallbackScale
+        }
+        let stairWidthCanvas = min(CGFloat(config.width) * CGFloat(renderScale), edgeLen)
 
         // Stair run depth in canvas points (totalRun = treadCount * runPerTread)
         let totalRunInches = Double(tc) * config.runPerTread
-        let stairDepthCanvas = CGFloat(totalRunInches) * CGFloat(scale)
+        let stairDepthCanvas = CGFloat(totalRunInches) * CGFloat(renderScale)
 
         // Position along the edge based on alignment + offset
-        let offsetCanvas = CGFloat(config.offset) * CGFloat(scale)
+        let offsetCanvas = CGFloat(config.offset) * CGFloat(renderScale)
         let gapTotal = edgeLen - stairWidthCanvas
         let stairStartT: CGFloat  // fraction along edge where stair begins
         switch config.alignment {
@@ -644,7 +683,10 @@ struct DeckCanvasView: View {
             stairStartT = (gapTotal - offsetCanvas) / edgeLen
         }
 
-        // Four corners of the stair rectangle
+        // Four corners of the stair rectangle. perpUnitX/Y are Double (from
+        // PolygonMath.outwardPerpendicular) — bridge to CGFloat for canvas math.
+        let perpCGX = CGFloat(perpUnitX)
+        let perpCGY = CGFloat(perpUnitY)
         let baseStart = CGPoint(
             x: start.x + edgeNx * edgeLen * stairStartT,
             y: start.y + edgeNy * edgeLen * stairStartT
@@ -654,12 +696,12 @@ struct DeckCanvasView: View {
             y: baseStart.y + edgeNy * stairWidthCanvas
         )
         let farStart = CGPoint(
-            x: baseStart.x + perpUnitX * stairDepthCanvas,
-            y: baseStart.y + perpUnitY * stairDepthCanvas
+            x: baseStart.x + perpCGX * stairDepthCanvas,
+            y: baseStart.y + perpCGY * stairDepthCanvas
         )
         let farEnd = CGPoint(
-            x: baseEnd.x + perpUnitX * stairDepthCanvas,
-            y: baseEnd.y + perpUnitY * stairDepthCanvas
+            x: baseEnd.x + perpCGX * stairDepthCanvas,
+            y: baseEnd.y + perpCGY * stairDepthCanvas
         )
 
         // Stair outline rectangle
@@ -681,12 +723,12 @@ struct DeckCanvasView: View {
         for i in 1..<min(tc, 30) {
             let t = CGFloat(i) / CGFloat(tc)
             let treadBase = CGPoint(
-                x: baseStart.x + perpUnitX * stairDepthCanvas * t,
-                y: baseStart.y + perpUnitY * stairDepthCanvas * t
+                x: baseStart.x + perpCGX * stairDepthCanvas * t,
+                y: baseStart.y + perpCGY * stairDepthCanvas * t
             )
             let treadEnd = CGPoint(
-                x: baseEnd.x + perpUnitX * stairDepthCanvas * t,
-                y: baseEnd.y + perpUnitY * stairDepthCanvas * t
+                x: baseEnd.x + perpCGX * stairDepthCanvas * t,
+                y: baseEnd.y + perpCGY * stairDepthCanvas * t
             )
             var treadPath = Path()
             treadPath.move(to: treadBase)
@@ -713,76 +755,20 @@ struct DeckCanvasView: View {
     /// `startPosition` comes straight from the DrawingMode case and is the
     /// authoritative anchor — when the drag began in empty space the start
     /// vertex doesn't exist yet, so a vertex lookup would fail.
+    /// Bug 9c2b8866 — the live dimension/angle pill no longer renders at the
+    /// midpoint of the in-progress line (where the user's finger blocks it).
+    /// Instead it's drawn by `drawLiveDimensionOverlay(...)` as a screen-space
+    /// pill in the top-right of the canvas.
     private func drawActiveLine(context: GraphicsContext, startPosition: CGPoint, currentEnd: CGPoint) {
         var path = Path(); path.move(to: startPosition); path.addLine(to: currentEnd)
         let activeStroke = scaledSize(1.5, min: 1, max: 3)
         let activeDash = [scaledSize(8, min: 5, max: 14), scaledSize(4, min: 3, max: 8)]
         context.stroke(path, with: .color(Color.white.opacity(0.6)),
                         style: StrokeStyle(lineWidth: activeStroke, dash: activeDash))
-
-        let distance = SnapEngine.distance(startPosition, currentEnd)
-        guard distance > 1 else { return }
-
-        // Dimension — show real-world length if calibrated, otherwise read against the
-        // same prescale fallback the snap engine uses so the live drag readout matches
-        // the snapped commit. Bug 4c30cd77 — previously the display used 20 pt/foot
-        // while the snap used 2 pt/inch (24 pt/foot), and the format was whole-feet
-        // only ("~%.0f'"), so a drag that snapped to 3'6" displayed as "~4'" mid-drag
-        // and jumped on release. Use DimensionEngine.format with the prescale fallback
-        // so the readout shows the snapped value at full precision (6" by default).
-        let dimText: String
-        if let scale = viewModel.drawingData.scaleFactor, scale > 0.001 {
-            let inches = distance / scale
-            dimText = DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
-        } else {
-            let inches = distance / DeckBuilderViewModel.prescaleFallbackScale
-            dimText = "~" + DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
-        }
-
-        // Angle — relative if extending from an existing vertex, else absolute.
-        // We only attempt the relative-angle lookup when the start is anchored
-        // on a real vertex (fromVertexId != nil in DrawingMode).
-        let angleText: String
-        if case .drawing(let fromId, _, _) = viewModel.drawingMode,
-           let fromVertexId = fromId {
-            let edges = viewModel.isMultiLevel ? (viewModel.activeLevel?.edges ?? []) : viewModel.drawingData.edges
-            let connected = edges.filter { $0.startVertexId == fromVertexId || $0.endVertexId == fromVertexId }
-            if let prev = connected.last {
-                let otherId = prev.startVertexId == fromVertexId ? prev.endVertexId : prev.startVertexId
-                if let other = resolveVertex(byId: otherId) {
-                    let prevA = SnapEngine.lineAngle(from: startPosition, to: other.position)
-                    let newA = SnapEngine.lineAngle(from: startPosition, to: currentEnd)
-                    var rel = newA - prevA; if rel < 0 { rel += 360 }; if rel > 180 { rel = 360 - rel }
-                    angleText = String(format: "%.0f\u{00B0}", rel)
-                } else {
-                    angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
-                }
-            } else {
-                angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
-            }
-        } else {
-            angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
-        }
-
-        let label = "\(dimText)  \(angleText)"
-        let midX = (startPosition.x + currentEnd.x) / 2
-        let midY = (startPosition.y + currentEnd.y) / 2
-
-        // Dark pill background
-        let aCharW = scaledSize(7.5, min: 5, max: 12)
-        let aPillW = CGFloat(label.count) * aCharW + scaledSize(20, min: 12, max: 28)
-        let aPillH = scaledSize(22, min: 14, max: 30)
-        let aOffset = scaledSize(30, min: 20, max: 44)
-        let aCR = scaledSize(4, min: 2, max: 6)
-        let pillRect = CGRect(x: midX - aPillW / 2, y: midY - aOffset - aPillH / 2, width: aPillW, height: aPillH)
-        context.fill(Path(roundedRect: pillRect, cornerRadius: aCR),
-                     with: .color(OPSStyle.Colors.cardBackground.opacity(0.95)))
-        context.stroke(Path(roundedRect: pillRect, cornerRadius: aCR),
-                       with: .color(Color.white.opacity(0.1)), lineWidth: 0.5)
-        let aFontSize = scaledSize(11, min: 8, max: 18)
-        context.draw(Text(label).font(.system(size: aFontSize, weight: .semibold, design: .monospaced))
-            .foregroundColor(Color.white), at: CGPoint(x: midX, y: midY - aOffset))
     }
+
+    // (Live dimension label moved to a SwiftUI screen-space HUD —
+    // `liveDimensionHUD` + `computeLiveDimensionLabel()` below. Bug 9c2b8866.)
 
     // MARK: - Alignment Guides
 
@@ -935,9 +921,16 @@ struct DeckCanvasView: View {
         context.draw(Text(label).font(.system(size: fontSize, weight: .medium, design: .monospaced))
             .foregroundColor(labelColor), at: CGPoint(x: labelX, y: labelY))
 
-        // Secondary label below dimension: stale notice > accuracy > material/type.
+        // Secondary label below dimension. Priority: stale > accuracy > user
+        // label (bug 4a03f507) > railing > house > material > AR.
+        // The user-supplied label is the field worker's own annotation and
+        // wins over auto-generated labels (railing type / material name) once
+        // they bother to type one in.
         var secondaryLabel: String?
         var secondaryColor: Color = OPSStyle.Colors.secondaryText
+
+        let userLabel = edge.label?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let userLabelHasContent = (userLabel?.isEmpty == false)
 
         if isStale {
             secondaryLabel = "DRAWN LENGTH CHANGED"
@@ -946,10 +939,18 @@ struct DeckCanvasView: View {
             secondaryLabel = AccuracyModel.formatAccuracy(dimensionInches: dim, accuracyPercent: accuracy,
                                                            system: viewModel.drawingData.config.measurementSystem)
             secondaryColor = OPSStyle.Colors.warningStatus
+        } else if userLabelHasContent, let user = userLabel {
+            secondaryLabel = user.uppercased()
+            secondaryColor = OPSStyle.Colors.primaryAccent
         } else if let railing = edge.railingConfig {
             secondaryLabel = railing.railingType.displayName.uppercased()
         } else if edge.edgeType == .houseEdge {
-            secondaryLabel = "HOUSE"
+            // Show cladding material if set, else "HOUSE". Bug 3d72ce0b.
+            if let mat = edge.houseEdgeMaterial {
+                secondaryLabel = mat.displayName.uppercased()
+            } else {
+                secondaryLabel = "HOUSE"
+            }
         } else if let item = edge.assignedItems.first {
             secondaryLabel = item.name.uppercased()
         } else if edge.dimensionSource == .ar {
@@ -1051,6 +1052,88 @@ struct DeckCanvasView: View {
                 .padding(.vertical, 6)
                 .background(OPSStyle.Colors.cardBackground.opacity(0.85))
                 .cornerRadius(6)
+        }
+    }
+
+    // MARK: - Live Dimension HUD (screen-space, top-right corner)
+
+    /// Pure computation of the live dimension + angle label without touching
+    /// the GraphicsContext. Used by the screen-space HUD so we can show the
+    /// pill in the top-right corner of the canvas regardless of where the
+    /// user's finger is. Returns nil when no draw is in progress or the
+    /// distance is sub-pixel. Bug 9c2b8866.
+    private func computeLiveDimensionLabel() -> String? {
+        guard case .drawing(let fromId, let startPosition, let currentEnd) = viewModel.drawingMode else {
+            return nil
+        }
+        let distance = SnapEngine.distance(startPosition, currentEnd)
+        guard distance > 1 else { return nil }
+
+        let dimText: String
+        if let scale = viewModel.drawingData.scaleFactor, scale > 0.001 {
+            let inches = distance / scale
+            dimText = DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
+        } else {
+            let inches = distance / DeckBuilderViewModel.prescaleFallbackScale
+            dimText = "~" + DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
+        }
+
+        let angleText: String
+        if let fromVertexId = fromId {
+            let edges = viewModel.isMultiLevel ? (viewModel.activeLevel?.edges ?? []) : viewModel.drawingData.edges
+            let connected = edges.filter { $0.startVertexId == fromVertexId || $0.endVertexId == fromVertexId }
+            if let prev = connected.last {
+                let otherId = prev.startVertexId == fromVertexId ? prev.endVertexId : prev.startVertexId
+                if let other = resolveVertex(byId: otherId) {
+                    let prevA = SnapEngine.lineAngle(from: startPosition, to: other.position)
+                    let newA = SnapEngine.lineAngle(from: startPosition, to: currentEnd)
+                    var rel = newA - prevA; if rel < 0 { rel += 360 }; if rel > 180 { rel = 360 - rel }
+                    angleText = String(format: "%.0f\u{00B0}", rel)
+                } else {
+                    angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
+                }
+            } else {
+                angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
+            }
+        } else {
+            angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
+        }
+
+        return "\(dimText)  \(angleText)"
+    }
+
+    @ViewBuilder
+    private var liveDimensionHUD: some View {
+        if let label = computeLiveDimensionLabel() {
+            VStack {
+                HStack {
+                    Spacer()
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Image(systemName: "ruler")
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        Text(label)
+                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .fill(OPSStyle.Colors.cardBackground.opacity(0.96))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: 1)
+                            )
+                            .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+                    )
+                }
+                Spacer()
+            }
+            .padding(.top, 12)
+            .padding(.trailing, 12)
+            .allowsHitTesting(false)
+            .transition(.opacity)
         }
     }
 

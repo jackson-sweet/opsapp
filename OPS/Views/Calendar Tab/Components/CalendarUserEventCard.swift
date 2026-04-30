@@ -13,6 +13,8 @@ struct CalendarUserEventCard: View {
     let event: CalendarUserEvent
     let onTap: () -> Void
     let onDelete: () -> Void
+    /// Opens the editor. Optional so older callers (none today) keep working.
+    var onEdit: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 0) {
@@ -46,8 +48,17 @@ struct CalendarUserEventCard: View {
         .overlay(cardBorder)
         .padding(.vertical, 4)
         .padding(.horizontal)
-        .onTapGesture { onTap() }
+        .onTapGesture {
+            // Tap opens the editor when one's wired up (DayCanvasView), and
+            // falls back to onTap (currently a no-op) for any legacy caller.
+            if let onEdit { onEdit() } else { onTap() }
+        }
         .contextMenu {
+            if onEdit != nil {
+                Button { onEdit?() } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+            }
             Button(role: .destructive) { onDelete() } label: {
                 Label("Delete", systemImage: "trash")
             }

@@ -66,6 +66,15 @@ struct UserEventSheet: View {
 
     let initialMode: UserEventMode
 
+    /// When non-nil, the sheet runs in edit mode against this row instead of
+    /// creating new rows. The row's series_id determines whether the save
+    /// fans out to siblings — `editScope` decides which siblings.
+    let editingEvent: CalendarUserEvent?
+
+    /// Series scope for the save path. Ignored in create mode and in edit
+    /// mode for non-recurring events (those always use `.thisOnly`).
+    let editScope: RecurringEventScope
+
     // Form state
     @State private var mode: UserEventMode
     @State private var title: String = ""
@@ -90,8 +99,8 @@ struct UserEventSheet: View {
     @State private var showingTeamPicker: Bool = false
 
     // Bug a5001a70 — Time of day (active when allDay == false)
-    @State private var startTime: Date = UserEventSheet.defaultStartTime()
-    @State private var endTime: Date = UserEventSheet.defaultEndTime()
+    @State private var startTime: Date
+    @State private var endTime: Date
 
     // Bug a5001a70 — Recurrence
     @State private var recurrence: RecurrenceFrequency = .never
@@ -107,17 +116,74 @@ struct UserEventSheet: View {
         case selectingEnd
     }
 
+    /// True in edit mode — drives copy, hides the create-only mode toggle
+    /// and recurrence row, and routes save() through the recurring-event
+    /// helpers in DataController instead of creating new rows.
+    private var isEditing: Bool { editingEvent != nil }
+
     // MARK: - Init
 
+    /// Create-mode init — kept identical to the original signature so call
+    /// sites (calendar FAB, schedule wizard) don't change.
     init(isPresented: Binding<Bool>, viewModel: CalendarViewModel, mode: UserEventMode = .personalEvent) {
         _isPresented = isPresented
         self.viewModel = viewModel
         self.initialMode = mode
+        self.editingEvent = nil
+        self.editScope = .thisOnly
         _mode = State(initialValue: mode)
+
         let today = viewModel.selectedDate
         _selectedStartDate = State(initialValue: today)
         _selectedEndDate = State(initialValue: today)
+        _startTime = State(initialValue: UserEventSheet.defaultStartTime())
+        _endTime = State(initialValue: UserEventSheet.defaultEndTime())
         if let monthStart = Calendar.current.dateInterval(of: .month, for: today)?.start {
+            _currentMonth = State(initialValue: monthStart)
+        }
+    }
+
+    /// Edit-mode init — prepopulates every form field from `event` and
+    /// stamps the chosen scope so save() routes through the scoped helper.
+    /// `selectionPhase` is forced to `.selectingEnd` so the date range
+    /// reads as "already chosen" and SAVE is enabled immediately.
+    init(
+        isPresented: Binding<Bool>,
+        viewModel: CalendarViewModel,
+        editing event: CalendarUserEvent,
+        scope: RecurringEventScope
+    ) {
+        _isPresented = isPresented
+        self.viewModel = viewModel
+        let resolvedMode: UserEventMode = event.isTimeOff ? .timeOff : .personalEvent
+        self.initialMode = resolvedMode
+        self.editingEvent = event
+        self.editScope = scope
+        _mode = State(initialValue: resolvedMode)
+        _title = State(initialValue: event.title)
+        _notes = State(initialValue: event.notes ?? "")
+        _allDay = State(initialValue: event.allDay)
+        _selectedStartDate = State(initialValue: event.startDate)
+        _selectedEndDate = State(initialValue: event.endDate)
+        _selectionPhase = State(initialValue: .selectingEnd)
+        _selectedTeamMemberIds = State(initialValue: Set(event.teamMemberIds ?? []))
+
+        // Pre-fill the time pickers from the row's start/end so they don't
+        // jump if the user toggles All Day off mid-edit.
+        let calendar = Calendar.current
+        let startTimeSeed: Date
+        let endTimeSeed: Date
+        if event.allDay {
+            startTimeSeed = UserEventSheet.defaultStartTime()
+            endTimeSeed = UserEventSheet.defaultEndTime()
+        } else {
+            startTimeSeed = event.startDate
+            endTimeSeed = event.endDate
+        }
+        _startTime = State(initialValue: startTimeSeed)
+        _endTime = State(initialValue: endTimeSeed)
+
+        if let monthStart = calendar.dateInterval(of: .month, for: event.startDate)?.start {
             _currentMonth = State(initialValue: monthStart)
         }
     }
@@ -143,11 +209,19 @@ struct UserEventSheet: View {
     }
 
     private var actionButtonText: String {
-        mode == .personalEvent ? "SAVE" : "SUBMIT"
+        if isEditing { return "SAVE" }
+        return mode == .personalEvent ? "SAVE" : "SUBMIT"
     }
 
     private var sheetTitle: String {
-        mode == .personalEvent ? "NEW EVENT" : "REQUEST TIME OFF"
+        if isEditing {
+            switch editScope {
+            case .thisOnly:       return mode == .personalEvent ? "EDIT EVENT" : "EDIT TIME OFF"
+            case .thisAndFuture:  return "EDIT FUTURE EVENTS"
+            case .allEvents:      return "EDIT ALL EVENTS"
+            }
+        }
+        return mode == .personalEvent ? "NEW EVENT" : "REQUEST TIME OFF"
     }
 
     /// Default workday start (8:00 AM) used when "All Day" is toggled off.
@@ -171,12 +245,22 @@ struct UserEventSheet: View {
 
                 ScrollView {
                     VStack(spacing: OPSStyle.Layout.spacing4) {
-                        // Mode toggle
-                        modeToggle
-                            .padding(.top, OPSStyle.Layout.spacing2)
+                        // Mode toggle — hidden in edit mode; an existing row's
+                        // type is fixed once it's been saved.
+                        if !isEditing {
+                            modeToggle
+                                .padding(.top, OPSStyle.Layout.spacing2)
+                        }
+
+                        // Edit-scope banner — clarifies what "save" will affect
+                        // when the user picked future/all from the scope sheet.
+                        if isEditing && editScope != .thisOnly {
+                            editScopeBanner
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
 
                         // Time Off info banner
-                        if mode == .timeOff {
+                        if mode == .timeOff && !isEditing {
                             timeOffBanner
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                         }
@@ -262,6 +346,33 @@ struct UserEventSheet: View {
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
+    // MARK: - Edit Scope Banner
+
+    /// Reminds the user what their save is about to affect when they chose
+    /// "future" or "all" in the scope sheet — so SAVE is never a surprise.
+    private var editScopeBanner: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Image(systemName: "arrow.triangle.branch")
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+            Text(editScope == .thisAndFuture
+                 ? "CHANGES APPLY TO THIS EVENT AND EVERY LATER OCCURRENCE."
+                 : "CHANGES APPLY TO EVERY OCCURRENCE IN THE SERIES.")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OPSStyle.Colors.primaryAccent.opacity(0.10))
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.30),
+                        lineWidth: OPSStyle.Layout.Border.standard)
         )
     }
 
@@ -594,10 +705,11 @@ struct UserEventSheet: View {
             // Date range display
             dateRangeHeader
 
-            // Bug a5001a70 — recurrence picker (personal events only).
-            // Sits below the date range so users see the range first, then
-            // choose how it repeats.
-            if mode == .personalEvent {
+            // Bug a5001a70 — recurrence picker (create-mode personal events
+            // only). In edit mode we deliberately hide it: changing the
+            // recurrence rule on an existing series is a structural change
+            // that's better handled by deleting + recreating the series.
+            if mode == .personalEvent && !isEditing {
                 recurrenceRow
             }
 
@@ -870,6 +982,14 @@ struct UserEventSheet: View {
 
         isSaving = true
 
+        // Edit mode shortcuts the create path entirely — fields are routed
+        // through DataController.updateRecurringEvent which handles series
+        // fanout, detach-on-thisOnly, and remote sync.
+        if let editing = editingEvent {
+            saveEdit(target: editing)
+            return
+        }
+
         let eventType: CalendarUserEventType = mode == .personalEvent ? .personal : .timeOff
         let eventTitle: String
         let eventStatus: String
@@ -910,8 +1030,7 @@ struct UserEventSheet: View {
             teamIds = nil
         }
 
-        // Bug a5001a70 — expand recurrence into N standalone occurrences.
-        // Time-off mode never recurs; personal events use the user's choice.
+        // Expand recurrence into N occurrences. Time-off mode never recurs.
         let occurrences: [(start: Date, end: Date)]
         if mode == .personalEvent && recurrence != .never {
             occurrences = expandRecurrence(
@@ -923,6 +1042,11 @@ struct UserEventSheet: View {
         } else {
             occurrences = [(baseStart, baseEnd)]
         }
+
+        // Stamp every expanded row with the same series_id so we can later
+        // resolve siblings for "edit/delete this one / future / all" scopes.
+        // Single-occurrence events leave it nil — there's nothing to group.
+        let seriesId: String? = occurrences.count > 1 ? UUID().uuidString : nil
 
         guard let context = dataController.modelContext else {
             isSaving = false
@@ -943,7 +1067,8 @@ struct UserEventSheet: View {
                 allDay: isAllDay,
                 notes: eventNotes,
                 address: nil,
-                teamMemberIds: teamIds
+                teamMemberIds: teamIds,
+                seriesId: seriesId
             )
             event.status = eventStatus
             event.needsSync = true
@@ -952,9 +1077,10 @@ struct UserEventSheet: View {
         }
         try? context.save()
 
-        // Sync to Supabase — one row per occurrence. Each is a standalone
-        // event (no series_id), so editing one won't edit the others. This
-        // is the documented limitation of the no-migration strategy.
+        // Sync to Supabase — one row per occurrence, all sharing the same
+        // series_id. Editing a single occurrence will detach it (set
+        // series_id = nil); "edit future" / "edit all" will batch-update
+        // the rest.
         Task {
             let repo = CalendarUserEventRepository(companyId: companyId)
             let iso = ISO8601DateFormatter()
@@ -971,7 +1097,8 @@ struct UserEventSheet: View {
                     notes: eventNotes,
                     status: eventStatus,
                     address: nil,
-                    teamMemberIds: teamIds
+                    teamMemberIds: teamIds,
+                    seriesId: seriesId
                 )
                 if let saved = try? await repo.create(dto) {
                     let savedId = saved.id
@@ -1005,6 +1132,56 @@ struct UserEventSheet: View {
             second: timeComponents.second ?? 0,
             of: date
         ) ?? date
+    }
+
+    // MARK: - Edit save path
+
+    /// Apply the form fields to `target` via the recurring-event helper.
+    /// Dismiss runs immediately after the local mutation — remote sync is
+    /// fire-and-forget inside the helper so the user doesn't wait on the
+    /// network for the sheet to close.
+    private func saveEdit(target: CalendarUserEvent) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespaces)
+        let resolvedTitle: String = trimmedTitle.isEmpty
+            ? (mode == .timeOff ? "Time Off Request" : target.title)
+            : trimmedTitle
+        let resolvedNotes: String? = notes.isEmpty ? nil : notes
+        let resolvedAllDay = mode == .timeOff ? true : allDay
+
+        // Merge time-of-day into the chosen calendar dates when not all-day.
+        let resolvedStart: Date
+        let resolvedEnd: Date
+        if mode == .personalEvent && !resolvedAllDay {
+            resolvedStart = mergeDateAndTime(date: selectedStartDate, time: startTime)
+            resolvedEnd = mergeDateAndTime(date: selectedEndDate, time: endTime)
+        } else {
+            resolvedStart = selectedStartDate
+            resolvedEnd = selectedEndDate
+        }
+
+        let teamIds: [String]?
+        if mode == .personalEvent && !selectedTeamMemberIds.isEmpty {
+            teamIds = Array(selectedTeamMemberIds)
+        } else {
+            teamIds = nil
+        }
+
+        let payload = DataController.CalendarUserEventEditPayload(
+            title: resolvedTitle,
+            notes: resolvedNotes,
+            allDay: resolvedAllDay,
+            startDate: resolvedStart,
+            endDate: resolvedEnd,
+            teamMemberIds: teamIds
+        )
+
+        // Fire haptic: medium = commit beat for a series-affecting save.
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        dataController.updateRecurringEvent(target, payload: payload, scope: editScope)
+        viewModel.loadUserEvents()
+        isSaving = false
+        isPresented = false
     }
 
     /// Expands a base start/end date into a list of occurrences capped by:

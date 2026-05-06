@@ -172,6 +172,7 @@ struct TimeOffRequestSheet: View {
                 address: nil,
                 teamMemberIds: nil
             )
+            var savedId: String? = nil
             if let saved = try? await repo.create(dto) {
                 await MainActor.run {
                     event.id = saved.id
@@ -179,12 +180,126 @@ struct TimeOffRequestSheet: View {
                     event.lastSyncedAt = Date()
                     try? context.save()
                 }
+                savedId = saved.id
             }
+
+            // Bug 2 — Notify admin/owner/office users that a time-off
+            // request has been submitted. Best-effort: silently swallowed
+            // on auth/network failure so the submit itself always succeeds.
+            await notifyAdminsOfTimeOffRequest(
+                companyId: companyId,
+                requesterId: userId,
+                requesterName: dataController.currentUser?.fullName ?? "A team member",
+                eventTitle: event.title,
+                startDate: startDate,
+                endDate: endDate,
+                eventId: savedId ?? event.id
+            )
+
             await MainActor.run {
                 isSaving = false
                 viewModel.loadUserEvents()
                 isPresented = false
             }
         }
+    }
+
+    // MARK: - Push notification to admins
+
+    private func notifyAdminsOfTimeOffRequest(
+        companyId: String,
+        requesterId: String,
+        requesterName: String,
+        eventTitle: String,
+        startDate: Date,
+        endDate: Date,
+        eventId: String
+    ) async {
+        struct UserIdRow: Codable { let id: String }
+
+        // Bug 8ef185af: include `operator` in the schedulers list. Per the
+        // OPS role hierarchy (owner → admin → office → operator → crew),
+        // operators are foremen / crew leads who schedule team work and are
+        // the people most likely to need awareness of pending time-off
+        // requests. The previous filter only hit ["admin", "owner", "office"]
+        // so a company with no admin/office users (Canpro is one — owner +
+        // operators + crew) generated zero notifications even though there
+        // were operators who could action the request.
+        let schedulers = (try? await SupabaseService.shared.client
+            .from("users")
+            .select("id")
+            .eq("company_id", value: companyId)
+            .in("role", values: ["admin", "owner", "office", "operator"])
+            .execute()
+            .value as [UserIdRow]) ?? []
+
+        let recipientIds = schedulers.map(\.id).filter { $0 != requesterId }
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "MMM d"
+        let dateRange = Calendar.current.isDate(startDate, inSameDayAs: endDate)
+            ? dateFormatter.string(from: startDate)
+            : "\(dateFormatter.string(from: startDate)) – \(dateFormatter.string(from: endDate))"
+
+        let title = "Time Off Request"
+        let body  = "\(requesterName) requested time off: \(dateRange)"
+
+        let notifRepo = NotificationRepository()
+
+        // Bug 8ef185af: also drop a confirmation row for the requester so
+        // they always see something land in the rail when they submit. In
+        // a single-admin company where the requester IS the only scheduler
+        // (e.g. Canpro owner self-requesting), `recipientIds` is empty and
+        // without this self-notification the user gets zero feedback that
+        // the request was even recorded.
+        let selfNotif = NotificationRepository.CreateNotificationDTO(
+            userId: requesterId,
+            companyId: companyId,
+            type: "time_off_requested",
+            title: "Time Off Submitted",
+            body: "Your request for \(dateRange) is pending review.",
+            projectId: nil,
+            noteId: nil,
+            expenseId: nil,
+            batchId: nil,
+            deepLinkType: "schedule"
+        )
+        try? await notifRepo.createNotification(selfNotif)
+
+        guard !recipientIds.isEmpty else {
+            print("[TimeOffRequestSheet] No other schedulers to notify (requester is the only one)")
+            return
+        }
+
+        // In-app notification for every other scheduler
+        for recipientId in recipientIds {
+            let notifDTO = NotificationRepository.CreateNotificationDTO(
+                userId: recipientId,
+                companyId: companyId,
+                type: "time_off_requested",
+                title: title,
+                body: body,
+                projectId: nil,
+                noteId: nil,
+                expenseId: nil,
+                batchId: nil,
+                deepLinkType: "schedule"
+            )
+            try? await notifRepo.createNotification(notifDTO)
+        }
+
+        // Push via OneSignal
+        try? await OneSignalService.shared.sendToUsers(
+            userIds: recipientIds,
+            title: title,
+            body: body,
+            data: [
+                "type": "time_off_requested",
+                "eventId": eventId,
+                "screen": "schedule"
+            ]
+        )
+
+        print("[TimeOffRequestSheet] Time-off push sent to \(recipientIds.count) scheduler(s)")
     }
 }

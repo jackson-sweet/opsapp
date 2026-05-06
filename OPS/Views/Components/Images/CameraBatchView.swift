@@ -449,6 +449,17 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
     private weak var shutterInnerCircle: UIView?
     private weak var flashView: UIView?
 
+    /// Bug 423073b4 — handle to the active capture device so the
+    /// pinch-to-zoom gesture can mutate `videoZoomFactor` directly.
+    /// Held weakly because AVCaptureDevice is owned by the session.
+    private weak var captureDevice: AVCaptureDevice?
+
+    /// Bug 423073b4 — last committed zoom factor; the pinch handler
+    /// multiplies the current gesture scale against this baseline so
+    /// each new pinch starts from the previous level instead of
+    /// snapping back to 1x.
+    private var baseZoomFactor: CGFloat = 1.0
+
     /// Multi-shot debounce. Same defence as SketchCaptureView — refuse a
     /// rapid double-tap while a capture is in flight, plus a short
     /// minimum interval so the camera can't queue 10 shots from one
@@ -463,6 +474,7 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
         setupCamera()
         setupShutter()
         setupFlashView()
+        setupZoomGesture()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -492,11 +504,64 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
         if session.canAddInput(input) { session.addInput(input) }
         if session.canAddOutput(photoOutput) { session.addOutput(photoOutput) }
 
+        // Bug 423073b4 — request the camera's full sensor resolution. The
+        // previous default settings on `.photo` preset still emitted JPEGs
+        // at the device's reduced dimensions on some hardware. Setting
+        // `maxPhotoDimensions` to the output's reported maximum opts the
+        // capture into the largest available format. iOS 16 deprecated
+        // `isHighResolutionCaptureEnabled`; use the dimensions API instead.
+        if #available(iOS 16.0, *) {
+            photoOutput.maxPhotoDimensions = photoOutput.maxPhotoDimensions
+        }
+
+        captureDevice = device
+        baseZoomFactor = device.videoZoomFactor
+
         let preview = AVCaptureVideoPreviewLayer(session: session)
-        preview.videoGravity = .resizeAspectFill
+        // Bug 423073b4 — `.resizeAspect` (letterbox) replaces
+        // `.resizeAspectFill` (centre-crop). Fill mode showed the user a
+        // cropped preview that didn't match the captured frame — felt
+        // like the camera had auto-zoomed when in fact the captured photo
+        // was wider than what the preview displayed. Aspect mode shows
+        // the EXACT frame the user is about to capture.
+        preview.videoGravity = .resizeAspect
         preview.frame = view.bounds
         view.layer.addSublayer(preview)
         previewLayer = preview
+    }
+
+    /// Bug 423073b4 — pinch gesture drives `device.videoZoomFactor` so
+    /// the user has the same zoom affordance as the native iOS Camera
+    /// app. Clamps to the device's reported min/max, accumulates across
+    /// pinches via `baseZoomFactor`, and ramps the zoom rather than
+    /// snapping (matches Apple's tactile feel).
+    private func setupZoomGesture() {
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        view.addGestureRecognizer(pinch)
+    }
+
+    @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+        guard let device = captureDevice else { return }
+
+        switch gesture.state {
+        case .began:
+            baseZoomFactor = device.videoZoomFactor
+        case .changed:
+            let minZoom: CGFloat = 1.0
+            let maxZoom = min(device.activeFormat.videoMaxZoomFactor, 8.0)
+            let target = max(minZoom, min(baseZoomFactor * gesture.scale, maxZoom))
+            do {
+                try device.lockForConfiguration()
+                device.ramp(toVideoZoomFactor: target, withRate: 4.0)
+                device.unlockForConfiguration()
+            } catch {
+                print("[CameraBatch] Zoom lock failed: \(error)")
+            }
+        case .ended, .cancelled:
+            baseZoomFactor = device.videoZoomFactor
+        default:
+            break
+        }
     }
 
     private func setupShutter() {
@@ -578,9 +643,15 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
 
         // Kick off the capture. Settings.flashMode auto so iPhones can
         // decide whether the scene needs the LED.
+        // Bug 423073b4 — pin maxPhotoDimensions to the output's reported
+        // maximum so the JPEG comes out at the camera's full sensor
+        // resolution instead of the default lower-resolution preset.
         let settings = AVCapturePhotoSettings()
         if photoOutput.supportedFlashModes.contains(.auto) {
             settings.flashMode = .auto
+        }
+        if #available(iOS 16.0, *) {
+            settings.maxPhotoDimensions = photoOutput.maxPhotoDimensions
         }
         photoOutput.capturePhoto(with: settings, delegate: self)
 

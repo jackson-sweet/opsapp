@@ -132,6 +132,14 @@ struct ProjectFormSheet: View {
     }
 
     @State private var isSaving = false
+
+    // Bug 3cc5aefa — duplicate project name detection. When the user tries
+    // to create a project with a title that already exists locally, surface
+    // an alert with a suggested suffixed alternative ("Deck 2", "Deck 3",
+    // etc.) before committing. The user can keep typing to override, accept
+    // the suggestion, or save as-is.
+    @State private var showingDuplicateNameAlert = false
+    @State private var suggestedAlternativeName: String = ""
     @State private var errorMessage: String?
     @State private var showingError = false
     @State private var isStatusMenuFocused = false
@@ -517,6 +525,21 @@ struct ProjectFormSheet: View {
         } message: {
             Text(errorMessage ?? "An unknown error occurred")
         }
+        // Bug 3cc5aefa — collision alert when the entered title matches an
+        // existing project. Three actions: keep typing (cancel), accept the
+        // suffixed alternative, or save anyway with the original.
+        .alert("Project Name Already Exists", isPresented: $showingDuplicateNameAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Use \"\(suggestedAlternativeName)\"") {
+                title = suggestedAlternativeName
+                proceedWithSave()
+            }
+            Button("Save Anyway") {
+                proceedWithSave()
+            }
+        } message: {
+            Text("A project named \"\(title)\" already exists. Use \"\(suggestedAlternativeName)\" instead, or save anyway.")
+        }
         .loadingOverlay(isPresented: $isSaving, message: "Saving...")
         .sheet(isPresented: $showingCopyFromProject) {
             CopyFromProjectSheet(
@@ -562,8 +585,15 @@ struct ProjectFormSheet: View {
             onDesignCreated: { design in
                 capturedDeckDesign = design
                 showingDeckCreationPicker = false
-                // Open the builder so the user can draw immediately.
-                showingDeckBuilderForCapture = design
+                // Defer opening the deck builder by one run-loop turn after the
+                // picker sheet finishes dismissing. iOS cannot present a
+                // fullScreenCover while a sheet is still in its dismiss
+                // animation — setting the item binding simultaneously causes
+                // DeckBuilderView to silently not appear. Bug 1 fix (mirrors
+                // the same pattern used in ProjectDetailsView).
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    showingDeckBuilderForCapture = design
+                }
             }
         )
         .presentationDetents([.medium])
@@ -1835,6 +1865,52 @@ struct ProjectFormSheet: View {
             print("[PROJECT_SAVE] ⚠️ Save already in progress, ignoring duplicate call")
             return
         }
+
+        // Bug 3cc5aefa — check for an existing project with the same title
+        // before proceeding (create-mode only; edit-mode user is by definition
+        // already on an existing row). If one exists, prompt with a suffixed
+        // alternative; the user picks Cancel / Use suggestion / Save Anyway.
+        if case .create = mode,
+           let alternative = duplicateProjectNameAlternative(for: title) {
+            suggestedAlternativeName = alternative
+            showingDuplicateNameAlert = true
+            return
+        }
+
+        proceedWithSave()
+    }
+
+    /// Returns the existing project's suggested alternative name when the
+    /// trimmed entered title matches another project in the local store.
+    /// `nil` means no collision — caller should proceed with save.
+    private func duplicateProjectNameAlternative(for rawTitle: String) -> String? {
+        let trimmed = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let existingTitles = dataController.getAllProjects()
+            .filter { $0.deletedAt == nil }
+            .map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        let existingSet = Set(existingTitles)
+
+        guard existingSet.contains(trimmed.lowercased()) else { return nil }
+
+        // Suggest the lowest available "<title> N" suffix where N >= 2.
+        // We avoid "Copy" / "(1)" because the user's bug example was
+        // `deck two` style — a numeric suffix is unambiguous and short.
+        for n in 2...99 {
+            let candidate = "\(trimmed) \(n)"
+            if !existingSet.contains(candidate.lowercased()) {
+                return candidate
+            }
+        }
+        return "\(trimmed) Copy"
+    }
+
+    /// Internal save path used both by the direct save button and by the
+    /// duplicate-name alert when the user accepts the suggestion or chooses
+    /// Save Anyway.
+    private func proceedWithSave() {
+        guard !isSaving else { return }
         isSaving = true
 
         Task {

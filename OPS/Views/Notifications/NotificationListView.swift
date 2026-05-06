@@ -62,13 +62,20 @@ struct NotificationListView: View {
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.top, OPSStyle.Layout.spacing2_5)
 
-                // All / Unread filter
-                Picker("Filter", selection: $filter) {
-                    ForEach(NotificationFilter.allCases, id: \.self) { f in
-                        Text(f.rawValue).tag(f)
-                    }
-                }
-                .pickerStyle(.segmented)
+                // All / Unread filter — Bug c5860693: replaced default
+                // .pickerStyle(.segmented) (UIKit-rendered, off-brand on the
+                // dark canvas) with the OPS-native SettingsSegmentedPicker.
+                // Subtle fill on the active segment, tertiaryText on inactive,
+                // matches every other in-app filter (settings notifications,
+                // permissions tabs, etc.).
+                SettingsSegmentedPicker(
+                    selection: filter,
+                    options: [
+                        (NotificationFilter.unread, "UNREAD"),
+                        (NotificationFilter.all, "ALL")
+                    ],
+                    onChange: { filter = $0 }
+                )
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.top, OPSStyle.Layout.spacing2)
 
@@ -632,6 +639,8 @@ struct NotificationListView: View {
                 return ("shippingbox", OPSStyle.Colors.warningStatus)
             case "inventory_critical":
                 return ("shippingbox.fill", OPSStyle.Colors.errorStatus)
+            case "time_off_requested":
+                return ("calendar.badge.clock", OPSStyle.Colors.warningStatus)
             case "time_off_approved":
                 return ("calendar.badge.checkmark", OPSStyle.Colors.successStatus)
             case "time_off_denied":

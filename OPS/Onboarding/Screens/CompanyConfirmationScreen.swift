@@ -14,6 +14,7 @@ struct CompanyConfirmationScreen: View {
 
     @State private var isJoining = false
     @State private var errorMessage: String?
+    @State private var showJoinFailedAlert = false
     @State private var logoOpacity: Double = 0
     @State private var contentOpacity: Double = 0
     @State private var buttonOpacity: Double = 0
@@ -228,6 +229,11 @@ struct CompanyConfirmationScreen: View {
                 buttonOpacity = 1.0
             }
         }
+        .alert("Couldn't Join Crew", isPresented: $showJoinFailedAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(errorMessage ?? "Something went wrong. Please try again.")
+        }
     }
 
     // MARK: - Subviews
@@ -391,6 +397,11 @@ struct CompanyConfirmationScreen: View {
                     generator.notificationOccurred(.error)
                     isJoining = false
                     errorMessage = error.localizedDescription
+                    // Bug b00e9120: parity with ProfileJoinScreen — surface
+                    // failures via alert, not just inline text. Inline-only
+                    // errors were missed in the field because the user often
+                    // taps Back before reading; the alert blocks until ack.
+                    showJoinFailedAlert = true
                 }
             }
         }

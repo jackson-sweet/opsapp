@@ -13,9 +13,16 @@ struct NotificationListView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    enum NotificationFilter: String, CaseIterable {
+        case unread = "Unread"
+        case all    = "All"
+    }
+
     @State private var notifications: [NotificationDTO] = []
     @State private var isLoading = true
     @State private var showingOlder = false
+    @State private var filter: NotificationFilter = .unread
+    @State private var expandedId: String? = nil
 
     var body: some View {
         ZStack {
@@ -55,6 +62,16 @@ struct NotificationListView: View {
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.top, OPSStyle.Layout.spacing2_5)
 
+                // All / Unread filter
+                Picker("Filter", selection: $filter) {
+                    ForEach(NotificationFilter.allCases, id: \.self) { f in
+                        Text(f.rawValue).tag(f)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing2)
+
                 if isLoading {
                     Spacer()
                     ProgressView()
@@ -76,7 +93,7 @@ struct NotificationListView: View {
                             SyncStatusSection()
                                 .environmentObject(dataController)
 
-                            if notifications.isEmpty {
+                            if filteredNotifications.isEmpty {
                                 emptyState
                                     .padding(.top, 60)
                             } else {
@@ -209,6 +226,14 @@ struct NotificationListView: View {
 
     // MARK: - Notification List (Sectioned)
 
+    /// Notifications after applying the current filter (All / Unread).
+    private var filteredNotifications: [NotificationDTO] {
+        switch filter {
+        case .all:    return notifications
+        case .unread: return notifications.filter { !$0.isRead }
+        }
+    }
+
     /// Buckets used to group notifications in the list.
     private enum NotificationBucket {
         case today
@@ -226,7 +251,7 @@ struct NotificationListView: View {
         var lastWeek: [NotificationDTO] = []
         var older: [NotificationDTO] = []
 
-        for notification in notifications {
+        for notification in filteredNotifications {
             guard let date = parseCreatedAt(notification.createdAt) else {
                 older.append(notification)
                 continue
@@ -419,77 +444,157 @@ struct NotificationListView: View {
     // MARK: - Row
 
     private func notificationRow(_ notification: NotificationDTO) -> some View {
-        // Bug G2 — condensed glass card row per spec v2:
-        //   Title: Mohave Medium 16pt (bodyBold)
-        //   Body:  Mohave Light 14pt  (smallBody), single line
-        //   Time:  JetBrains Mono 12pt (smallCaption), right-aligned
-        // Row becomes a glass surface with panelRadius so it reads as a card,
-        // not a dense list item. Full description is available in the
-        // tap-through target, not crammed into the row.
-        Button(action: {
-            handleNotificationTap(notification)
-        }) {
-            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
-                // Leading accent column: unread dot + icon, vertically centered
-                // against the title line so the card reads as a single unit.
-                VStack(spacing: 6) {
-                    Circle()
-                        .fill(notification.isRead ? Color.clear : OPSStyle.Colors.primaryAccent)
-                        .frame(width: 6, height: 6)
+        let isExpanded = expandedId == notification.id
 
-                    notificationIcon(for: notification.type)
+        return VStack(alignment: .leading, spacing: 0) {
+            // Collapsed header — always visible
+            Button(action: {
+                withAnimation(collapseAnimation) {
+                    if isExpanded {
+                        expandedId = nil
+                    } else {
+                        expandedId = notification.id
+                        // Mark as read on expand
+                        markAsRead(notification)
+                    }
                 }
-                .padding(.top, 2)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }) {
+                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
+                    // Leading accent column: unread dot + icon
+                    VStack(spacing: 6) {
+                        Circle()
+                            .fill(notification.isRead ? Color.clear : OPSStyle.Colors.primaryAccent)
+                            .frame(width: 6, height: 6)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
-                        Text(notification.title.uppercased())
-                            .font(OPSStyle.Typography.bodyBold)
+                        notificationIcon(for: notification.type)
+                    }
+                    .padding(.top, 2)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
+                            Text(notification.title.uppercased())
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(
+                                    notification.isRead
+                                        ? OPSStyle.Colors.secondaryText
+                                        : OPSStyle.Colors.primaryText
+                                )
+                                .tracking(0.5)
+                                .lineLimit(1)
+
+                            Spacer(minLength: OPSStyle.Layout.spacing2)
+
+                            Text(relativeTime(notification.createdAt))
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
+
+                        Text(notification.body)
+                            .font(OPSStyle.Typography.smallBody)
                             .foregroundColor(
                                 notification.isRead
-                                    ? OPSStyle.Colors.secondaryText
-                                    : OPSStyle.Colors.primaryText
+                                    ? OPSStyle.Colors.tertiaryText
+                                    : OPSStyle.Colors.secondaryText
                             )
-                            .tracking(0.5)
-                            .lineLimit(1)
-
-                        Spacer(minLength: OPSStyle.Layout.spacing2)
-
-                        Text(relativeTime(notification.createdAt))
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
+                            .lineLimit(isExpanded ? nil : 1)
+                            .truncationMode(.tail)
                     }
 
-                    Text(notification.body)
-                        .font(OPSStyle.Typography.smallBody)
-                        .foregroundColor(
-                            notification.isRead
-                                ? OPSStyle.Colors.tertiaryText
-                                : OPSStyle.Colors.secondaryText
-                        )
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .padding(.top, 4)
                 }
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2_5)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
-                    .fill(OPSStyle.Colors.cardBackgroundDark.opacity(0.6))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
-                    .stroke(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .contentShape(Rectangle())
+            .buttonStyle(PlainButtonStyle())
+
+            // Expanded detail — full body + deep-link action button
+            if isExpanded {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                    Rectangle()
+                        .fill(OPSStyle.Colors.cardBorderSubtle)
+                        .frame(height: 1)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+
+                    Text(notification.body)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .padding(.top, OPSStyle.Layout.spacing2)
+
+                    // Deep-link action if applicable
+                    let hasDeepLink = (notification.projectId != nil && !(notification.projectId?.isEmpty ?? true))
+                        || (notification.deepLinkType != nil && !(notification.deepLinkType?.isEmpty ?? true))
+                    if hasDeepLink {
+                        let actionLabel: String = {
+                            if let projectId = notification.projectId, !projectId.isEmpty {
+                                return "VIEW PROJECT"
+                            }
+                            switch notification.deepLinkType ?? "" {
+                            case "subscription", "trial_expiry": return "VIEW PLAN"
+                            case "paymentReview":                return "REVIEW PAYMENTS"
+                            case "taskReview":                   return "REVIEW TASKS"
+                            case "unscheduledReview":            return "REVIEW SCHEDULE"
+                            case "photoStorage":                 return "MANAGE PHOTOS"
+                            default:                             return "OPEN"
+                            }
+                        }()
+
+                        Button(action: {
+                            handleNotificationTap(notification)
+                        }) {
+                            HStack(spacing: OPSStyle.Layout.spacing1) {
+                                Image(systemName: "arrow.right.circle")
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                Text(actionLabel)
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .tracking(0.5)
+                            }
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    }
+
+                    Spacer().frame(height: OPSStyle.Layout.spacing2)
+                }
+                .transition(collapseTransition)
+            }
         }
-        .buttonStyle(PlainButtonStyle())
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
+                .fill(OPSStyle.Colors.cardBackgroundDark.opacity(isExpanded ? 0.9 : 0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
+                .stroke(
+                    isExpanded ? OPSStyle.Colors.primaryAccent.opacity(0.25) : OPSStyle.Colors.cardBorderSubtle,
+                    lineWidth: OPSStyle.Layout.Border.standard
+                )
+        )
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, 4)
+    }
+
+    /// Mark a notification as read in local state and sync to server.
+    private func markAsRead(_ notification: NotificationDTO) {
+        guard let index = notifications.firstIndex(where: { $0.id == notification.id }),
+              !notifications[index].isRead else { return }
+        notifications[index].isRead = true
+        appState.unreadNotificationCount = max(0, appState.unreadNotificationCount - 1)
+        Task {
+            let repo = NotificationRepository()
+            try? await repo.markAsRead(notification.id)
+        }
     }
 
     private func notificationIcon(for type: String) -> some View {

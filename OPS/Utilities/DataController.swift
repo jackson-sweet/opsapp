@@ -3598,6 +3598,40 @@ class DataController: ObservableObject {
         }
     }
 
+    /// Scans all "accepted" projects and advances any that have at least one
+    /// task scheduled in the past to "inProgress".  Called on every foreground
+    /// return so stale accepted jobs automatically move to active on the next
+    /// day a crew member opens the app.
+    @MainActor
+    func advanceAcceptedProjectsWithPastTasks() async {
+        guard let context = modelContext else { return }
+
+        let now = Date()
+        // Fetch all projects (SwiftData #Predicate with enum cases is unreliable;
+        // filter in-memory to stay consistent with the rest of this file).
+        let descriptor = FetchDescriptor<Project>()
+        guard let allProjects = try? context.fetch(descriptor) else { return }
+
+        let acceptedProjects = allProjects.filter { $0.status == .accepted && $0.deletedAt == nil }
+        guard !acceptedProjects.isEmpty else { return }
+
+        for project in acceptedProjects {
+            let hasPastTask = project.tasks.contains { task in
+                guard let start = task.startDate else { return false }
+                return start <= now
+            }
+            guard hasPastTask else { continue }
+
+            print("[PROJECT_STATUS] '\(project.title)' accepted → inProgress (past-dated task found)")
+            do {
+                try await updateProjectStatus(project: project, to: .inProgress)
+                print("[PROJECT_STATUS] ✅ '\(project.title)' status updated to inProgress")
+            } catch {
+                print("[PROJECT_STATUS] ❌ Failed to advance '\(project.title)': \(error)")
+            }
+        }
+    }
+
     /// Update a project's status - SINGLE SOURCE OF TRUTH for project status updates
     /// - Parameters:
     ///   - project: The project to update

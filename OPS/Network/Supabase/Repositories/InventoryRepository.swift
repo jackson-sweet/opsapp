@@ -30,6 +30,35 @@ class InventoryRepository {
             .value
     }
 
+    /// Sync variant: includes soft-deleted rows so the local store can mirror tombstones.
+    /// `since` filters by `updated_at` (delta sync) — pass nil for a full pull.
+    func fetchItemsForSync(since: Date? = nil) async throws -> [InventoryItemReadDTO] {
+        var query = client
+            .from("inventory_items")
+            .select()
+            .eq("company_id", value: companyId)
+        if let since = since {
+            query = query.gte("updated_at", value: isoString(since))
+        }
+        return try await query
+            .order("updated_at", ascending: true)
+            .execute()
+            .value
+    }
+
+    func fetchDeletedItemIds(since: Date) async throws -> [String] {
+        struct IdRow: Codable { let id: String }
+        let rows: [IdRow] = try await client
+            .from("inventory_items")
+            .select("id")
+            .eq("company_id", value: companyId)
+            .not("deleted_at", operator: .is, value: "null")
+            .gte("deleted_at", value: isoString(since))
+            .execute()
+            .value
+        return rows.map { $0.id }
+    }
+
     func createItem(_ dto: CreateInventoryItemDTO) async throws -> InventoryItemReadDTO {
         try await client
             .from("inventory_items")
@@ -75,6 +104,33 @@ class InventoryRepository {
             .order("sort_order", ascending: true)
             .execute()
             .value
+    }
+
+    func fetchUnitsForSync(since: Date? = nil) async throws -> [InventoryUnitReadDTO] {
+        var query = client
+            .from("inventory_units")
+            .select()
+            .eq("company_id", value: companyId)
+        if let since = since {
+            query = query.gte("updated_at", value: isoString(since))
+        }
+        return try await query
+            .order("updated_at", ascending: true)
+            .execute()
+            .value
+    }
+
+    func fetchDeletedUnitIds(since: Date) async throws -> [String] {
+        struct IdRow: Codable { let id: String }
+        let rows: [IdRow] = try await client
+            .from("inventory_units")
+            .select("id")
+            .eq("company_id", value: companyId)
+            .not("deleted_at", operator: .is, value: "null")
+            .gte("deleted_at", value: isoString(since))
+            .execute()
+            .value
+        return rows.map { $0.id }
     }
 
     func createUnit(_ dto: CreateInventoryUnitDTO) async throws -> InventoryUnitReadDTO {
@@ -140,6 +196,33 @@ class InventoryRepository {
             .value
     }
 
+    func fetchTagsForSync(since: Date? = nil) async throws -> [InventoryTagReadDTO] {
+        var query = client
+            .from("inventory_tags")
+            .select()
+            .eq("company_id", value: companyId)
+        if let since = since {
+            query = query.gte("updated_at", value: isoString(since))
+        }
+        return try await query
+            .order("updated_at", ascending: true)
+            .execute()
+            .value
+    }
+
+    func fetchDeletedTagIds(since: Date) async throws -> [String] {
+        struct IdRow: Codable { let id: String }
+        let rows: [IdRow] = try await client
+            .from("inventory_tags")
+            .select("id")
+            .eq("company_id", value: companyId)
+            .not("deleted_at", operator: .is, value: "null")
+            .gte("deleted_at", value: isoString(since))
+            .execute()
+            .value
+        return rows.map { $0.id }
+    }
+
     func createTag(_ dto: CreateInventoryTagDTO) async throws -> InventoryTagReadDTO {
         try await client
             .from("inventory_tags")
@@ -176,12 +259,38 @@ class InventoryRepository {
 
     // MARK: - Item-Tag Junction
 
+    /// Fetches every join row visible to the caller — kept for legacy callers.
+    /// Sync uses `fetchItemTagsForCompany()` which filters via the items table.
     func fetchAllItemTags() async throws -> [InventoryItemTagReadDTO] {
         try await client
             .from("inventory_item_tags")
             .select()
             .execute()
             .value
+    }
+
+    /// Fetch every (item_id, tag_id) join row whose item belongs to this company.
+    /// `inventory_item_tags` has no timestamps, so this is always a full pull —
+    /// fine in practice (a few hundred rows max per company).
+    func fetchItemTagsForCompany() async throws -> [InventoryItemTagReadDTO] {
+        struct Joined: Codable {
+            let id: String
+            let itemId: String
+            let tagId: String
+            enum CodingKeys: String, CodingKey {
+                case id
+                case itemId = "item_id"
+                case tagId = "tag_id"
+            }
+        }
+        // Filter join rows whose parent item belongs to this company.
+        let rows: [Joined] = try await client
+            .from("inventory_item_tags")
+            .select("id, item_id, tag_id, inventory_items!inner(company_id)")
+            .eq("inventory_items.company_id", value: companyId)
+            .execute()
+            .value
+        return rows.map { InventoryItemTagReadDTO(id: $0.id, itemId: $0.itemId, tagId: $0.tagId) }
     }
 
     func setItemTags(itemId: String, tagIds: [String]) async throws {
@@ -213,6 +322,21 @@ class InventoryRepository {
             .value
     }
 
+    /// Snapshots are immutable (no updated_at, no deleted_at); delta filters on `created_at`.
+    func fetchSnapshotsForSync(since: Date? = nil) async throws -> [InventorySnapshotReadDTO] {
+        var query = client
+            .from("inventory_snapshots")
+            .select()
+            .eq("company_id", value: companyId)
+        if let since = since {
+            query = query.gte("created_at", value: isoString(since))
+        }
+        return try await query
+            .order("created_at", ascending: true)
+            .execute()
+            .value
+    }
+
     func fetchSnapshotItems(snapshotId: String) async throws -> [InventorySnapshotItemReadDTO] {
         try await client
             .from("inventory_snapshot_items")
@@ -221,6 +345,24 @@ class InventoryRepository {
             .order("name", ascending: true)
             .execute()
             .value
+    }
+
+    /// Bulk fetch snapshot items for an arbitrary set of snapshot ids.
+    /// Used during sync to populate items for newly-pulled snapshots.
+    func fetchSnapshotItemsForSnapshots(_ snapshotIds: [String]) async throws -> [InventorySnapshotItemReadDTO] {
+        guard !snapshotIds.isEmpty else { return [] }
+        return try await client
+            .from("inventory_snapshot_items")
+            .select()
+            .in("snapshot_id", values: snapshotIds)
+            .execute()
+            .value
+    }
+
+    private func isoString(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
     }
 
     func createFullSnapshot(

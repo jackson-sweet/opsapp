@@ -35,6 +35,11 @@ struct OPSApp: App {
     // Schema is driven by the current VersionedSchema (`OPSSchemaV2`) and the
     // container runs `OPSMigrationPlan` on launch so stores written by earlier
     // builds (e.g. pre-`WizardState.id`) are migrated in place.
+    //
+    // Error 134504 ("unknown model version") means the on-disk store was created
+    // before this app introduced versioned schemas. SwiftData can't map it to any
+    // schema in the migration plan, so it refuses to open it. We delete the store
+    // and start fresh — Supabase sync will re-hydrate all data on next launch.
     var sharedModelContainer: ModelContainer = {
         let schema = Schema(versionedSchema: OPSSchemaV2.self)
 
@@ -44,15 +49,27 @@ struct OPSApp: App {
             allowsSave: true
         )
 
-        do {
-            return try ModelContainer(
+        func makeContainer() throws -> ModelContainer {
+            try ModelContainer(
                 for: schema,
                 migrationPlan: OPSMigrationPlan.self,
                 configurations: [modelConfiguration]
             )
+        }
+
+        do {
+            return try makeContainer()
         } catch {
-            // In production app, we would handle this more gracefully
-            fatalError("Failed to create model container: \(error.localizedDescription)")
+            // Pre-versioning stores have no version fingerprint; SwiftData
+            // surfaces this as SwiftDataError (not the underlying CoreData
+            // 134504). Wipe the store and retry — Supabase sync re-hydrates.
+            print("[SWIFTDATA] Container failed (\(error)) — deleting store and retrying")
+            destroyDefaultStore()
+            do {
+                return try makeContainer()
+            } catch {
+                fatalError("Failed to create model container after store reset: \(error.localizedDescription)")
+            }
         }
     }()
     
@@ -357,6 +374,12 @@ struct OPSApp: App {
         // Subscription check has its own guards and handles missing data gracefully
         // Gating this behind health check allowed expired subscriptions to bypass validation
         await subscriptionManager.checkSubscriptionStatus()
+
+        // Advance any "accepted" projects whose tasks have start dates in the
+        // past. This catches the common case where a job was accepted days ago,
+        // tasks were scheduled, but the app was never opened on the actual
+        // work day to trigger the real-time task-status hook.
+        await dataController.advanceAcceptedProjectsWithPastTasks()
     }
 
     /// Performs data health checks and initiates sync operations if data is healthy
@@ -442,6 +465,16 @@ struct OPSApp: App {
 
 }
 
+
+// Removes the default SwiftData SQLite store and its WAL/SHM sidecars.
+// Called when the store has no version fingerprint and can't be migrated.
+private func destroyDefaultStore() {
+    let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+    for name in ["default.store", "default.store-wal", "default.store-shm"] {
+        let url = appSupport.appendingPathComponent(name)
+        try? FileManager.default.removeItem(at: url)
+    }
+}
 
 // Function to clear all authentication data on fresh install
 private func clearAllAuthenticationData() {

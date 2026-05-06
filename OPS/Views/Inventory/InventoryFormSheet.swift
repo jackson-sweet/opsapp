@@ -33,6 +33,16 @@ struct InventoryFormSheet: View {
     @State private var warningThresholdText: String
     @State private var criticalThresholdText: String
 
+    // Threshold tab state
+    enum ThresholdType: String, CaseIterable {
+        case warning = "Warning"
+        case critical = "Critical"
+    }
+    @State private var activeThreshold: ThresholdType = .warning
+
+    // Drag gesture tracking for swipe-to-increment threshold
+    @State private var thresholdDragAccumulator: CGFloat = 0
+
     // UI state
     @State private var isSaving = false
     @State private var showingDeleteConfirmation = false
@@ -483,58 +493,109 @@ struct InventoryFormSheet: View {
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
-            // Warning threshold
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    Circle()
-                        .fill(OPSStyle.Colors.warningStatus)
-                        .frame(width: 8, height: 8)
-                    Text("Warning Level")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+            // Segmented tab to choose which threshold to edit
+            Picker("Threshold", selection: $activeThreshold) {
+                ForEach(ThresholdType.allCases, id: \.self) { t in
+                    Text(t.rawValue).tag(t)
                 }
-
-                TextField("e.g. 20 (optional)", text: $warningThresholdText)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .keyboardType(.decimalPad)
-                    .padding(.vertical, OPSStyle.Layout.spacing2)
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
             }
+            .pickerStyle(.segmented)
 
-            // Critical threshold
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    Circle()
-                        .fill(OPSStyle.Colors.errorStatus)
-                        .frame(width: 8, height: 8)
-                    Text("Critical Level")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-
-                TextField("e.g. 5 (optional)", text: $criticalThresholdText)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .keyboardType(.decimalPad)
-                    .padding(.vertical, OPSStyle.Layout.spacing2)
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-            }
+            // Active threshold display + swipe-to-increment + text field
+            thresholdValueEditor
 
             // Help text
-            Text("Leave empty to use tag defaults")
+            Text("Swipe the value left/right to adjust  ·  Leave empty to use tag defaults")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+    }
+
+    /// The value editor for the currently-active threshold type.
+    /// Shows a large swipeable number display above a text field so the user
+    /// can either drag to nudge or type an exact value.
+    private var thresholdValueEditor: some View {
+        let isWarning = activeThreshold == .warning
+        let dotColor = isWarning ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.errorStatus
+        let label = isWarning ? "Warning Level" : "Critical Level"
+        let placeholder = isWarning ? "e.g. 20 (optional)" : "e.g. 5 (optional)"
+        let valueBinding: Binding<String> = isWarning ? $warningThresholdText : $criticalThresholdText
+
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 8, height: 8)
+                Text(label)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+
+            // Large swipeable value display
+            let displayValue = valueBinding.wrappedValue.isEmpty ? "—" : valueBinding.wrappedValue
+            ZStack {
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .fill(OPSStyle.Colors.cardBackgroundDark)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(dotColor.opacity(0.4), lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+
+                VStack(spacing: 4) {
+                    Text(displayValue)
+                        .font(.system(size: 32, weight: .semibold, design: .monospaced))
+                        .foregroundColor(valueBinding.wrappedValue.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
+                        Image(systemName: "arrow.left")
+                            .font(.system(size: 10))
+                        Text("SWIPE TO ADJUST")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .tracking(0.5)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 10))
+                    }
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .padding(.vertical, OPSStyle.Layout.spacing3)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 88)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 5)
+                    .onChanged { value in
+                        let delta = value.translation.width - thresholdDragAccumulator
+                        // Every 20pt of drag = ±1 step
+                        let steps = Int(delta / 20)
+                        if steps != 0 {
+                            thresholdDragAccumulator += CGFloat(steps) * 20
+                            let current = Double(valueBinding.wrappedValue) ?? 0
+                            let newValue = max(0, current + Double(steps))
+                            let formatted = newValue.truncatingRemainder(dividingBy: 1) == 0
+                                ? String(Int(newValue))
+                                : String(format: "%.2f", newValue)
+                            valueBinding.wrappedValue = formatted
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                    }
+                    .onEnded { _ in
+                        thresholdDragAccumulator = 0
+                    }
+            )
+
+            // Precise text-field input
+            TextField(placeholder, text: valueBinding)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .keyboardType(.decimalPad)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
         }
     }
 

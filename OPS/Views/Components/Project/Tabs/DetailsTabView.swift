@@ -948,9 +948,11 @@ private class InlineAddressCompleter: NSObject, ObservableObject, MKLocalSearchC
 // MARK: - Photos Section
 
 struct PhotosSection: View {
-    let project: Project
+    @Bindable var project: Project
     let onPhotoTap: (Int) -> Void
     let onAddPhoto: () -> Void
+
+    @EnvironmentObject private var dataController: DataController
 
     var body: some View {
         let photos = project.getProjectImages()
@@ -971,16 +973,31 @@ struct PhotosSection: View {
                     }
                     .padding(14)
                 } else {
-                    // Horizontal scroll of photo thumbnails
+                    // Horizontal scroll of photo thumbnails with per-photo
+                    // client-visibility toggle (eye icon). Tapping the eye
+                    // adds/removes the URL from clientVisibleImagesString and
+                    // syncs the change to project_photos.is_client_visible so
+                    // the web client portal reflects the crew's choice.
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(Array(photos.enumerated()), id: \.element) { index, url in
-                                Button(action: { onPhotoTap(index) }) {
-                                    PhotoThumbnail(url: url, project: project)
-                                        .frame(width: 72, height: 72)
-                                        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+                                ZStack(alignment: .topTrailing) {
+                                    Button(action: { onPhotoTap(index) }) {
+                                        PhotoThumbnail(url: url, project: project)
+                                            .frame(width: 72, height: 72)
+                                            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+
+                                    // Per-photo client-portal visibility toggle.
+                                    // Filled eye = visible to client, slashed = hidden.
+                                    ClientVisibilityButton(
+                                        url: url,
+                                        project: project,
+                                        dataController: dataController
+                                    )
+                                    .offset(x: 4, y: -4)
                                 }
-                                .buttonStyle(PlainButtonStyle())
                             }
                         }
                         .padding(14)
@@ -1001,6 +1018,82 @@ struct PhotosSection: View {
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
             )
             .padding(.horizontal, 16)
+        }
+    }
+}
+
+// MARK: - Client Visibility Button
+
+/// Eye icon toggle that marks a single project photo as visible (or
+/// hidden) in the client portal. Writes the change to the local model
+/// and syncs to project_photos.is_client_visible on Supabase.
+private struct ClientVisibilityButton: View {
+    let url: String
+    let project: Project
+    let dataController: DataController
+
+    @State private var isSyncing = false
+
+    private var isVisible: Bool {
+        project.isImageClientVisible(url)
+    }
+
+    var body: some View {
+        Button(action: toggleVisibility) {
+            ZStack {
+                Circle()
+                    .fill(isSyncing
+                          ? OPSStyle.Colors.cardBackgroundDark.opacity(0.85)
+                          : (isVisible
+                             ? OPSStyle.Colors.primaryAccent.opacity(0.9)
+                             : Color.black.opacity(0.55)))
+                    .frame(width: 22, height: 22)
+
+                if isSyncing {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
+                        .scaleEffect(0.5)
+                } else {
+                    Image(systemName: isVisible ? "eye.fill" : "eye.slash.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
+        .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+        .accessibilityLabel(isVisible ? "Hide from client portal" : "Show to client portal")
+        .disabled(isSyncing)
+    }
+
+    private func toggleVisibility() {
+        guard !isSyncing else { return }
+        let newVisible = !isVisible
+
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+        // Optimistic local write
+        project.setImageClientVisible(url, visible: newVisible)
+        try? dataController.modelContext?.save()
+
+        // Sync to Supabase best-effort
+        isSyncing = true
+        Task {
+            defer { Task { @MainActor in isSyncing = false } }
+            do {
+                try await dataController.imageSyncManager?.setPhotoClientVisibility(
+                    url: url,
+                    isVisible: newVisible,
+                    projectId: project.id
+                )
+            } catch {
+                // Revert local optimistic write on failure
+                await MainActor.run {
+                    project.setImageClientVisible(url, visible: !newVisible)
+                    try? dataController.modelContext?.save()
+                }
+                print("[CLIENT_VISIBILITY] Failed to sync for \(url): \(error)")
+            }
         }
     }
 }

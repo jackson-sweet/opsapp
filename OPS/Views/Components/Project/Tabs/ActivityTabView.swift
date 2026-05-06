@@ -68,9 +68,17 @@ struct ActivityTabView: View {
 
     // MARK: - Notes Feed
 
+    /// Unified chronologically-sorted feed merging notes and annotated photos.
+    private var feedItems: [ActivityFeedItem] {
+        var items: [ActivityFeedItem] = []
+        items += notesViewModel.notes.map { .note($0) }
+        items += notesViewModel.annotations.map { .annotation($0) }
+        return items.sorted { $0.createdAt > $1.createdAt }
+    }
+
     private var notesFeed: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if notesViewModel.isLoading && notesViewModel.notes.isEmpty {
+            if notesViewModel.isLoading && notesViewModel.notes.isEmpty && notesViewModel.annotations.isEmpty {
                 HStack {
                     Spacer()
                     ProgressView()
@@ -78,7 +86,7 @@ struct ActivityTabView: View {
                     Spacer()
                 }
                 .padding(.vertical, OPSStyle.Layout.spacing4)
-            } else if notesViewModel.notes.isEmpty {
+            } else if feedItems.isEmpty {
                 // Empty state
                 VStack(spacing: 12) {
                     Image(systemName: "note.text")
@@ -94,20 +102,30 @@ struct ActivityTabView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, OPSStyle.Layout.spacing5)
             } else {
-                ForEach(notesViewModel.notes) { note in
-                    ActivityEntryView(
-                        note: note,
-                        authorName: notesViewModel.authorName(for: note.authorId),
-                        teamMember: notesViewModel.teamMember(for: note.authorId),
-                        isOwnNote: notesViewModel.isOwnNote(note),
-                        onDelete: {
-                            Task { await notesViewModel.deleteNote(note) }
-                        },
-                        onEdit: { newContent in
-                            Task { await notesViewModel.updateNoteContent(note, newContent: newContent) }
-                        },
-                        onPhotoTap: onPhotoTap
-                    )
+                ForEach(feedItems) { item in
+                    switch item {
+                    case .note(let note):
+                        ActivityEntryView(
+                            note: note,
+                            authorName: notesViewModel.authorName(for: note.authorId),
+                            teamMember: notesViewModel.teamMember(for: note.authorId),
+                            isOwnNote: notesViewModel.isOwnNote(note),
+                            onDelete: {
+                                Task { await notesViewModel.deleteNote(note) }
+                            },
+                            onEdit: { newContent in
+                                Task { await notesViewModel.updateNoteContent(note, newContent: newContent) }
+                            },
+                            onPhotoTap: onPhotoTap
+                        )
+                    case .annotation(let annotation):
+                        AnnotationEntryView(
+                            annotation: annotation,
+                            authorName: notesViewModel.authorName(for: annotation.authorId),
+                            teamMember: notesViewModel.teamMember(for: annotation.authorId),
+                            onPhotoTap: onPhotoTap
+                        )
+                    }
                 }
             }
         }
@@ -384,6 +402,117 @@ struct ActivityTabView: View {
     }
 }
 
+// MARK: - Activity Feed Item
+
+/// Unified wrapper used to sort notes and photo-annotation comments into a
+/// single chronological feed without creating a heavyweight view model.
+private enum ActivityFeedItem: Identifiable {
+    case note(ProjectNote)
+    case annotation(PhotoAnnotation)
+
+    var id: String {
+        switch self {
+        case .note(let n): return "note-\(n.id)"
+        case .annotation(let a): return "annotation-\(a.id)"
+        }
+    }
+
+    var createdAt: Date {
+        switch self {
+        case .note(let n): return n.createdAt
+        case .annotation(let a): return a.createdAt
+        }
+    }
+}
+
+// MARK: - Annotation Entry View
+
+/// Activity feed card for a photo annotation that carries a text note.
+/// Shows the annotated photo thumbnail on the left so the crew can immediately
+/// see which photo the comment refers to, then the author, timestamp, and note.
+private struct AnnotationEntryView: View {
+    let annotation: PhotoAnnotation
+    let authorName: String
+    let teamMember: TeamMember?
+    let onPhotoTap: (([String], Int) -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header: avatar + name + "commented on a photo" + timestamp
+            HStack(spacing: 8) {
+                if let member = teamMember {
+                    TeamMemberAvatar(teamMember: member, size: 28)
+                } else {
+                    Circle()
+                        .fill(OPSStyle.Colors.cardBackgroundDark)
+                        .frame(width: 28, height: 28)
+                        .overlay(
+                            Text(String(authorName.prefix(1)).uppercased())
+                                .font(OPSStyle.Typography.status)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        )
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(authorName)
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    Text("commented on a photo")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+
+                Spacer()
+
+                Text(relativeTimestamp)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+
+            // Photo thumbnail + note side by side
+            HStack(alignment: .top, spacing: 10) {
+                // Thumbnail — tapping opens the photo viewer on this image
+                Button(action: {
+                    onPhotoTap?([annotation.photoURL], 0)
+                }) {
+                    PhotoThumbnail(url: annotation.photoURL, project: nil)
+                        .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                // Note text
+                Text(annotation.note)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+        )
+    }
+
+    private var relativeTimestamp: String {
+        let interval = Date().timeIntervalSince(annotation.createdAt)
+        if interval < 60 { return "just now" }
+        if interval < 3600 { return "\(Int(interval / 60))m ago" }
+        if interval < 86400 { return "\(Int(interval / 3600))h ago" }
+        if interval < 604800 { return "\(Int(interval / 86400))d ago" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter.string(from: annotation.createdAt)
+    }
+}
+
 // MARK: - ProjectPhotosCarousel (Bug e5310f3d)
 
 /// Carousel that observes `ImageSyncManager` so it can render
@@ -391,10 +520,16 @@ struct ActivityTabView: View {
 /// placeholders crossfade in when an upload starts, show a spinner
 /// over a dimmed thumbnail of the picked image, and dissolve out when
 /// the URL lands on the project row.
+///
+/// Each resolved photo tile also carries a per-photo client-portal
+/// visibility toggle (eye icon) so the crew can opt individual photos
+/// in or out of the web client portal without leaving the activity feed.
 private struct ProjectPhotosCarousel: View {
     let project: Project
     @ObservedObject var imageSyncManager: ImageSyncManager
     let onPhotoTap: (Int) -> Void
+
+    @EnvironmentObject private var dataController: DataController
 
     var body: some View {
         let photos = project.getProjectImages()
@@ -436,14 +571,25 @@ private struct ProjectPhotosCarousel: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(Array(photos.enumerated()), id: \.element) { index, url in
-                            Button(action: { onPhotoTap(index) }) {
-                                PhotoThumbnail(url: url, project: project)
-                                    .frame(width: 72, height: 72)
-                                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+                            ZStack(alignment: .topTrailing) {
+                                Button(action: { onPhotoTap(index) }) {
+                                    PhotoThumbnail(url: url, project: project)
+                                        .frame(width: 72, height: 72)
+                                        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .wizardTarget(index == 0 ? "view_photo" : "")
+                                .transition(.opacity)
+
+                                // Per-photo client-portal visibility toggle.
+                                // Filled eye = visible to client, slashed = hidden.
+                                CarouselVisibilityButton(
+                                    url: url,
+                                    project: project,
+                                    dataController: dataController
+                                )
+                                .offset(x: 4, y: -4)
                             }
-                            .buttonStyle(PlainButtonStyle())
-                            .wizardTarget(index == 0 ? "view_photo" : "")
-                            .transition(.opacity)
                         }
 
                         // In-flight placeholders ride after the saved
@@ -459,6 +605,81 @@ private struct ProjectPhotosCarousel: View {
                     .animation(OPSStyle.Animation.fast, value: pending.map { $0.id })
                     .animation(OPSStyle.Animation.fast, value: photos.count)
                 }
+            }
+        }
+    }
+}
+
+// MARK: - Carousel Visibility Button
+
+/// Eye icon that marks a single project photo as visible / hidden in
+/// the client portal. Tapping writes the change to the local model and
+/// syncs to project_photos.is_client_visible on Supabase.
+private struct CarouselVisibilityButton: View {
+    let url: String
+    let project: Project
+    let dataController: DataController
+
+    @State private var isSyncing = false
+
+    private var isVisible: Bool {
+        project.isImageClientVisible(url)
+    }
+
+    var body: some View {
+        Button(action: toggleVisibility) {
+            ZStack {
+                Circle()
+                    .fill(isSyncing
+                          ? Color.black.opacity(0.45)
+                          : (isVisible
+                             ? OPSStyle.Colors.primaryAccent.opacity(0.9)
+                             : Color.black.opacity(0.55)))
+                    .frame(width: 22, height: 22)
+
+                if isSyncing {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
+                        .scaleEffect(0.5)
+                } else {
+                    Image(systemName: isVisible ? "eye.fill" : "eye.slash.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
+        .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+        .accessibilityLabel(isVisible ? "Hide from client portal" : "Show to client portal")
+        .disabled(isSyncing)
+    }
+
+    private func toggleVisibility() {
+        guard !isSyncing else { return }
+        let newVisible = !isVisible
+
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+        // Optimistic local write
+        project.setImageClientVisible(url, visible: newVisible)
+        try? dataController.modelContext?.save()
+
+        isSyncing = true
+        Task {
+            defer { Task { @MainActor in isSyncing = false } }
+            do {
+                try await dataController.imageSyncManager?.setPhotoClientVisibility(
+                    url: url,
+                    isVisible: newVisible,
+                    projectId: project.id
+                )
+            } catch {
+                // Revert optimistic write on failure
+                await MainActor.run {
+                    project.setImageClientVisible(url, visible: !newVisible)
+                    try? dataController.modelContext?.save()
+                }
+                print("[CLIENT_VISIBILITY] Failed to sync for \(url): \(error)")
             }
         }
     }

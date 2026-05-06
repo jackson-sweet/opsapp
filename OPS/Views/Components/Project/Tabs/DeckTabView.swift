@@ -24,21 +24,31 @@ struct DeckTabView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var viewMode: DeckTabViewMode = .threeD
-    @State private var deckDesign: DeckDesign?
-    @State private var hasLoaded = false
+
+    // Bug 4 fix: use @Query so SwiftData automatically invalidates this view
+    // when a DeckDesign is inserted/updated for this project — no manual
+    // loadDesign() or onAppear dance needed. The previous @State + loadDesign()
+    // pattern missed the case where DeckBuilderView saves and dismisses while
+    // ProjectDetailsView stays alive, leaving the deck tab stale until the
+    // user navigated away and back.
+    @Query private var allDesigns: [DeckDesign]
+
+    /// Most-recently-updated non-deleted design for this project.
+    private var deckDesign: DeckDesign? {
+        allDesigns
+            .filter { $0.projectId == project.id && $0.deletedAt == nil }
+            .sorted { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
+            .first
+    }
 
     var body: some View {
         Group {
-            if !hasLoaded {
-                Color.clear
-            } else if let design = deckDesign, hasVertices(design) {
+            if let design = deckDesign, hasVertices(design) {
                 designViewer(design: design)
             } else {
                 emptyState
             }
         }
-        .onAppear { loadDesign() }
-        .onChange(of: project.id) { _, _ in loadDesign() }
     }
 
     // MARK: - Design Viewer
@@ -280,40 +290,6 @@ struct DeckTabView: View {
     }
 
     // MARK: - Helpers
-
-    private func loadDesign() {
-        let projectId = project.id
-        let descriptor = FetchDescriptor<DeckDesign>(
-            predicate: #Predicate { $0.projectId == projectId && $0.deletedAt == nil },
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
-        )
-        deckDesign = try? modelContext.fetch(descriptor).first
-        hasLoaded = true
-
-        // Debug: log what we found
-        if let d = deckDesign {
-            let dd = d.drawingData
-            print("[DECK_TAB] Found design '\(d.title)' for project \(projectId)")
-            print("[DECK_TAB] scaleFactor: \(dd.scaleFactor.map { "\($0)" } ?? "nil")")
-            print("[DECK_TAB] vertices: \(dd.vertices.count), edges: \(dd.edges.count)")
-            print("[DECK_TAB] isClosed: \(dd.isClosed), isMultiLevel: \(dd.isMultiLevel)")
-            if dd.isMultiLevel {
-                for (i, level) in dd.levels.enumerated() {
-                    print("[DECK_TAB] level[\(i)] '\(level.name)': \(level.vertices.count) verts, \(level.edges.count) edges, closed: \(level.isClosed)")
-                }
-            }
-            if !dd.vertices.isEmpty {
-                let positions = dd.vertices.map(\.position)
-                let xs = positions.map(\.x)
-                let ys = positions.map(\.y)
-                print("[DECK_TAB] vertex X range: \(xs.min()!) .. \(xs.max()!)")
-                print("[DECK_TAB] vertex Y range: \(ys.min()!) .. \(ys.max()!)")
-            }
-            print("[DECK_TAB] hasVertices: \(hasVertices(d))")
-        } else {
-            print("[DECK_TAB] No design found for project \(projectId)")
-        }
-    }
 
     private func hasVertices(_ design: DeckDesign) -> Bool {
         if design.drawingData.isMultiLevel {

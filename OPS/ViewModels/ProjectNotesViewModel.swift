@@ -11,6 +11,9 @@ import SwiftData
 @MainActor
 class ProjectNotesViewModel: ObservableObject {
     @Published var notes: [ProjectNote] = []
+    /// Photo annotations that carry a non-empty note — surfaced in the
+    /// activity feed alongside regular text notes.
+    @Published var annotations: [PhotoAnnotation] = []
     @Published var newNoteText: String = ""
     @Published var mentionSuggestions: [TeamMember] = []
     @Published var isLoading = false
@@ -110,6 +113,22 @@ class ProjectNotesViewModel: ObservableObject {
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
         notes = (try? context.fetch(descriptor)) ?? []
+        loadAnnotationsFromLocal()
+    }
+
+    /// Loads photo annotations with non-empty notes from local SwiftData.
+    /// Called after every note reload so the unified feed stays in sync.
+    private func loadAnnotationsFromLocal() {
+        guard let context = modelContext else { return }
+        let pid = projectId
+        let descriptor = FetchDescriptor<PhotoAnnotation>(
+            predicate: #Predicate { $0.projectId == pid && $0.deletedAt == nil },
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        let all = (try? context.fetch(descriptor)) ?? []
+        // Only surface annotations that carry a visible note — drawing-only
+        // annotations (no text) aren't meaningful in a text feed.
+        annotations = all.filter { !$0.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
     // MARK: - Pending Images

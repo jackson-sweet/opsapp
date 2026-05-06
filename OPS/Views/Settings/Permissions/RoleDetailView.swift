@@ -140,6 +140,34 @@ enum PermissionLevel: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Search tag metadata
+// Maps permission key → extra keyword aliases used for search.
+// Keeps search logic colocated with the registry so there is one place to update.
+private let permissionSearchTags: [String: [String]] = [
+    "projects.create":              ["new project", "add project"],
+    "projects.edit":                ["modify project", "update project"],
+    "tasks.create":                 ["new task", "add task"],
+    "tasks.edit":                   ["modify task", "update task"],
+    "tasks.delete":                 ["remove task"],
+    "tasks.change_status":          ["task status", "mark complete", "mark done"],
+    "clients.create":               ["new client", "add client", "customer"],
+    "clients.edit":                 ["modify client", "update client", "customer"],
+    "estimates.create":             ["new estimate", "quote", "proposal"],
+    "expenses.create":              ["new expense", "add expense", "receipt"],
+    "pipeline.view":                ["funnel", "leads", "opportunity"],
+    "pipeline.manage":              ["funnel", "leads", "opportunity"],
+    "calendar.edit":                ["reschedule", "scheduling", "shift", "move event", "calendar change"],
+    "inventory.view":               ["stock", "materials", "supplies", "parts"],
+    "team.view":                    ["crew", "staff", "members"],
+    "team.manage":                  ["crew", "staff", "members", "hire", "manage people"],
+    "settings.company":             ["company settings", "business", "org"],
+    "settings.billing":             ["billing", "subscription", "payment", "plan"],
+    "job_board.manage_sections":    ["columns", "board", "kanban", "sections"],
+    "deck_builder.view":            ["designs", "proposals", "presentation"],
+    "deck_builder.create":          ["new design", "new proposal"],
+    "deck_builder.edit":            ["modify design", "update proposal"],
+]
+
 // MARK: - View
 
 struct RoleDetailView: View {
@@ -163,9 +191,34 @@ struct RoleDetailView: View {
     // Pending changes
     @State private var pendingChanges: [String: PermissionChange] = [:]
 
+    // Search + collapse
+    @State private var searchQuery: String = ""
+    @State private var expandedCategories: Set<String> = []
+
     enum PermissionChange: Equatable {
         case enable(scope: String)
         case disable
+    }
+
+    // MARK: - Search helpers
+
+    private func matchesSearch(_ perm: PermissionDefinition) -> Bool {
+        let q = searchQuery.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return true }
+        if perm.id.lowercased().contains(q) { return true }
+        if perm.label.lowercased().contains(q) { return true }
+        if let tags = permissionSearchTags[perm.id] {
+            return tags.contains { $0.lowercased().contains(q) }
+        }
+        return false
+    }
+
+    private func visiblePermissions(for category: String) -> [PermissionDefinition] {
+        PermissionRegistry.permissions(for: category).filter { matchesSearch($0) }
+    }
+
+    private var visibleCategories: [String] {
+        PermissionRegistry.categories.filter { !visiblePermissions(for: $0).isEmpty }
     }
 
     private var hasPendingChanges: Bool {
@@ -295,16 +348,53 @@ struct RoleDetailView: View {
                                 .padding(.horizontal, 20)
                             }
 
-                            // Permission categories
-                            ForEach(PermissionRegistry.categories, id: \.self) { category in
+                            // Search field
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                TextField("Search permissions…", text: $searchQuery)
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .autocorrectionDisabled()
+                                    .autocapitalization(.none)
+                                if !searchQuery.isEmpty {
+                                    Button(action: { searchQuery = "" }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
+                            .background(OPSStyle.Colors.cardBackgroundDark)
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                            )
+                            .padding(.horizontal, 20)
+
+                            // Permission categories (collapsible)
+                            ForEach(visibleCategories, id: \.self) { category in
                                 if let flag = PermissionRegistry.featureFlag(for: category),
                                    !permissionStore.isFeatureEnabled(flag) {
                                     gatedCategory(category)
                                 } else {
-                                    permissionCategory(category)
+                                    collapsiblePermissionCategory(category)
                                 }
                             }
+
+                            if visibleCategories.isEmpty && !searchQuery.isEmpty {
+                                Text("No permissions match \"\(searchQuery)\"")
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.horizontal, 20)
+                            }
                         }
+                        .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                         .padding(.bottom, hasPendingChanges ? 80 : 0)
                         .tabBarPadding()
@@ -339,7 +429,114 @@ struct RoleDetailView: View {
         }
     }
 
-    // MARK: - Category Card
+    // MARK: - Collapsible Category Card
+
+    /// A collapsible wrapper around `permissionCategory`. Each category starts
+    /// collapsed; when a search query is active every visible category auto-
+    /// expands so the user can see the matching rows without extra taps.
+    private func collapsiblePermissionCategory(_ category: String) -> some View {
+        let isExpanded = expandedCategories.contains(category)
+            || !searchQuery.trimmingCharacters(in: .whitespaces).isEmpty
+
+        return VStack(spacing: 0) {
+            // Header — always visible, tapping toggles expanded state
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(OPSStyle.Animation.spring) {
+                    if expandedCategories.contains(category) {
+                        expandedCategories.remove(category)
+                    } else {
+                        expandedCategories.insert(category)
+                    }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: PermissionRegistry.iconForCategory(category))
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    Text(category.uppercased())
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 0)
+
+                    let permCount = visiblePermissions(for: category).count
+                    let enabledCount = visiblePermissions(for: category).filter { effectiveLevel(for: $0.id) != .off }.count
+                    if enabledCount > 0 {
+                        Text("\(enabledCount)/\(permCount)")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+
+                    Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            if isExpanded {
+                Rectangle()
+                    .fill(OPSStyle.Colors.cardBorderSubtle)
+                    .frame(height: 1)
+
+                permissionCategoryRows(category)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .background(OPSStyle.Colors.background)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Renders just the rows + bulk picker for a category (used inside collapsible body).
+    private func permissionCategoryRows(_ category: String) -> some View {
+        let permissions = visiblePermissions(for: category)
+        let catLevel = categoryLevel(for: category)
+        let isMixed = catLevel == nil
+
+        return VStack(spacing: 0) {
+            // Bulk scope picker
+            VStack(alignment: .leading, spacing: 6) {
+                if isMixed {
+                    Text("MIXED")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                permissionScopePicker(
+                    selection: catLevel ?? .off,
+                    isMixed: isMixed,
+                    isReadOnly: isPresetRole,
+                    onChange: { level in setCategoryLevel(category, to: level) }
+                )
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(OPSStyle.Colors.subtleBackground)
+
+            // Individual permission rows
+            ForEach(permissions) { perm in
+                Rectangle()
+                    .fill(OPSStyle.Colors.cardBorderSubtle)
+                    .frame(height: 1)
+                permissionRow(perm)
+            }
+        }
+    }
+
+    // MARK: - Category Card (non-collapsible, retained for reference)
 
     private func permissionCategory(_ category: String) -> some View {
         let permissions = PermissionRegistry.permissions(for: category)
@@ -462,6 +659,7 @@ struct RoleDetailView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Scope Picker
@@ -502,6 +700,7 @@ struct RoleDetailView: View {
             }
         }
         .padding(2)
+        .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .fill(OPSStyle.Colors.subtleBackground)

@@ -94,11 +94,6 @@ struct DeckCanvasView: View {
                 // Selection overlays (screen space)
                 selectionOverlay
 
-                // Top info bar
-                if viewModel.isClosed, let area = viewModel.totalArea {
-                    dimensionInfoBar(area: area)
-                }
-
                 // Live dimension HUD — top-right of canvas while drawing.
                 // Bug 9c2b8866 — finger blocks the mid-line label, so the
                 // user couldn't read the live measurement. This pins the
@@ -1135,32 +1130,6 @@ struct DeckCanvasView: View {
             .allowsHitTesting(false)
             .transition(.opacity)
         }
-    }
-
-    // MARK: - Info Bar
-
-    @ViewBuilder
-    private func dimensionInfoBar(area: Double) -> some View {
-        VStack {
-            HStack(spacing: OPSStyle.Layout.spacing3) {
-                Label(DimensionEngine.formatArea(area, system: viewModel.drawingData.config.measurementSystem),
-                      systemImage: "square.dashed")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(Color.white)
-                if let perimeter = viewModel.totalPerimeter {
-                    Label(DimensionEngine.format(perimeter, system: viewModel.drawingData.config.measurementSystem),
-                          systemImage: "ruler")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackground.opacity(0.9))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            Spacer()
-        }
-        .padding(.top, 8)
     }
 
     // MARK: - Helpers

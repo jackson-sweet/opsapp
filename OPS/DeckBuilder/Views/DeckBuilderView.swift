@@ -162,6 +162,13 @@ struct DeckBuilderView: View {
                         // over" the title bar via padding tricks).
                         floatingTitlePill
 
+                        // At-a-glance metrics — sqft + linear feet pill floats below
+                        // the title badge when the polygon is closed. Moved here from
+                        // DeckCanvasView so it doesn't overlap with the titleBar. Bug 11.
+                        if viewModel.isClosed, let area = viewModel.totalArea {
+                            metricspill(area: area)
+                        }
+
                         // AR accuracy banner — spans full width under title bar
                         arAccuracyBanner
 
@@ -683,6 +690,36 @@ struct DeckBuilderView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
             }
+        }
+    }
+
+    // MARK: - Metrics Pill (sqft + lin ft, below title when polygon is closed)
+
+    @ViewBuilder
+    private func metricspill(area: Double) -> some View {
+        HStack {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
+                Label(DimensionEngine.formatArea(area, system: viewModel.drawingData.config.measurementSystem),
+                      systemImage: "square.dashed")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(Color.white)
+                if let perimeter = viewModel.totalPerimeter {
+                    Label(DimensionEngine.format(perimeter, system: viewModel.drawingData.config.measurementSystem),
+                          systemImage: "ruler")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+            .background(OPSStyle.Colors.cardBackground.opacity(0.96))
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
+            )
+            .shadow(color: Color.black.opacity(0.2), radius: 6, y: 2)
+            Spacer()
         }
     }
 

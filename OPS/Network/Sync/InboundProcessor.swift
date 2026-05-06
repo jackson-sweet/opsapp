@@ -38,6 +38,8 @@ final class InboundProcessor {
     private var wizardStateRepo: WizardStateRepository
     private var invoiceRepo: InvoiceRepository
     private var estimateRepo: EstimateRepository
+    private var calendarUserEventRepo: CalendarUserEventRepository
+    private var inventoryRepo: InventoryRepository
 
     /// Tracks entities touched during the current sync pass so Spotlight receives
     /// targeted, minimal updates after each sync instead of a full re-index.
@@ -67,6 +69,8 @@ final class InboundProcessor {
         self.wizardStateRepo = WizardStateRepository(userId: userId)
         self.invoiceRepo = InvoiceRepository(companyId: companyId)
         self.estimateRepo = EstimateRepository(companyId: companyId)
+        self.calendarUserEventRepo = CalendarUserEventRepository(companyId: companyId)
+        self.inventoryRepo = InventoryRepository(companyId: companyId)
     }
 
     // MARK: - Reconfigure
@@ -102,6 +106,8 @@ final class InboundProcessor {
         self.wizardStateRepo = WizardStateRepository(userId: newUserId)
         self.invoiceRepo = InvoiceRepository(companyId: newCompanyId)
         self.estimateRepo = EstimateRepository(companyId: newCompanyId)
+        self.calendarUserEventRepo = CalendarUserEventRepository(companyId: newCompanyId)
+        self.inventoryRepo = InventoryRepository(companyId: newCompanyId)
     }
 
     // MARK: - Sync Priority Order
@@ -121,7 +127,13 @@ final class InboundProcessor {
         .photoAnnotation,
         .deckDesign,
         .estimate,
-        .invoice
+        .invoice,
+        .calendarUserEvent,   // Bug 1 — user-created time-off / personal events
+        .inventoryUnit,
+        .inventoryTag,
+        .inventoryItem,
+        .inventorySnapshot,
+        .inventorySnapshotItem
     ]
 
     // MARK: - Full Sync
@@ -241,6 +253,18 @@ final class InboundProcessor {
             try await syncEstimates(since: since, context: context)
         case .invoice:
             try await syncInvoices(since: since, context: context)
+        case .calendarUserEvent:
+            try await syncCalendarUserEvents(context: context)
+        case .inventoryUnit:
+            try await syncInventoryUnits(since: since, context: context)
+        case .inventoryTag:
+            try await syncInventoryTags(since: since, context: context)
+        case .inventoryItem:
+            try await syncInventoryItems(since: since, context: context)
+        case .inventorySnapshot:
+            try await syncInventorySnapshots(since: since, context: context)
+        case .inventorySnapshotItem:
+            try await syncInventorySnapshotItems(context: context)
         default:
             print("[InboundProcessor] Entity type \(entityType.rawValue) not yet supported for inbound sync")
         }
@@ -1273,6 +1297,57 @@ final class InboundProcessor {
             }
         }
 
+        // Link inventory: items → unit (by unitId) and items → tags (by tagIds).
+        // Snapshot items → snapshot (by snapshotId).
+        let inventoryItems: [InventoryItem]
+        let inventoryUnits: [InventoryUnit]
+        let inventoryTags: [InventoryTag]
+        let inventorySnapshots: [InventorySnapshot]
+        let inventorySnapshotItems: [InventorySnapshotItem]
+        do {
+            inventoryItems = try context.fetch(FetchDescriptor<InventoryItem>())
+            inventoryUnits = try context.fetch(FetchDescriptor<InventoryUnit>())
+            inventoryTags = try context.fetch(FetchDescriptor<InventoryTag>())
+            inventorySnapshots = try context.fetch(FetchDescriptor<InventorySnapshot>())
+            inventorySnapshotItems = try context.fetch(FetchDescriptor<InventorySnapshotItem>())
+        } catch {
+            print("[InboundProcessor] ⚠️ Failed to fetch inventory entities for linking: \(error)")
+            do { try context.save() } catch {
+                context.rollback()
+            }
+            return
+        }
+
+        var unitById: [String: InventoryUnit] = [:]
+        for u in inventoryUnits { unitById[u.id] = u }
+        var tagById: [String: InventoryTag] = [:]
+        for t in inventoryTags { tagById[t.id] = t }
+        var snapshotById: [String: InventorySnapshot] = [:]
+        for s in inventorySnapshots { snapshotById[s.id] = s }
+
+        for item in inventoryItems {
+            if let unitId = item.unitId, let unit = unitById[unitId] {
+                if item.unit?.id != unit.id {
+                    item.unit = unit
+                }
+            } else if item.unit != nil && item.unitId == nil {
+                item.unit = nil
+            }
+
+            let resolvedTags = item.tagIds.compactMap { tagById[$0] }
+            if Set(item.tags.map(\.id)) != Set(resolvedTags.map(\.id)) {
+                item.tags = resolvedTags
+            }
+        }
+
+        for snapItem in inventorySnapshotItems {
+            if let snapshot = snapshotById[snapItem.snapshotId] {
+                if snapItem.snapshot?.id != snapshot.id {
+                    snapItem.snapshot = snapshot
+                }
+            }
+        }
+
         do {
             try context.save()
             print("[InboundProcessor] Relationships linked")
@@ -1608,5 +1683,342 @@ final class InboundProcessor {
             spotlightTracker.markDeleted(domain: SpotlightDomain.invoice, id: id)
             try context.save()
         }
+    }
+
+    // MARK: - Calendar User Events (Bug 1)
+
+    /// Pull the current user's CalendarUserEvents from the server and merge them
+    /// into the local SwiftData store. Fetches a ±12-month window around today
+    /// so all relevant time-off and personal events are available offline.
+    private func syncCalendarUserEvents(context: ModelContext) async throws {
+        let userId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        guard !userId.isEmpty else { return }
+
+        let cal = Calendar.current
+        let now = Date()
+        guard let windowStart = cal.date(byAdding: .year, value: -1, to: now),
+              let windowEnd   = cal.date(byAdding: .year, value: 1,  to: now) else { return }
+
+        let dtos = try await calendarUserEventRepo.fetchForUser(userId, from: windowStart, to: windowEnd)
+
+        for dto in dtos {
+            let eventId = dto.id
+            let descriptor = FetchDescriptor<CalendarUserEvent>(
+                predicate: #Predicate { $0.id == eventId }
+            )
+            if let existing = try context.fetch(descriptor).first {
+                // Respect pending local edits — only overwrite if no pending sync
+                if !existing.needsSync {
+                    existing.title      = dto.title
+                    existing.startDate  = dto.startDate
+                    existing.endDate    = dto.endDate
+                    existing.allDay     = dto.allDay
+                    existing.notes      = dto.notes
+                    existing.status     = dto.status
+                    existing.reviewedBy = dto.reviewedBy
+                    existing.reviewedAt = dto.reviewedAt
+                    existing.deletedAt  = dto.deletedAt
+                    existing.seriesId   = dto.seriesId
+                    existing.lastSyncedAt = Date()
+                }
+            } else {
+                // Insert new event (skip soft-deleted rows from server)
+                guard dto.deletedAt == nil else { continue }
+                context.insert(dto.toModel())
+            }
+        }
+
+        try context.save()
+
+        // Notify calendar views that user events have changed
+        NotificationCenter.default.post(name: Notification.Name("CalendarUserEventsDidChange"), object: nil)
+        print("[InboundProcessor] Synced \(dtos.count) calendar user events for user \(userId)")
+    }
+
+    // MARK: - Inventory Units
+
+    private func syncInventoryUnits(since: Date?, context: ModelContext) async throws {
+        let dtos = try await inventoryRepo.fetchUnitsForSync(since: since)
+        for dto in dtos {
+            try mergeInventoryUnit(dto: dto, context: context)
+        }
+
+        if let sinceDate = since {
+            let deletedIds = try await inventoryRepo.fetchDeletedUnitIds(since: sinceDate)
+            for id in deletedIds {
+                try markInventoryUnitDeleted(id: id, context: context)
+            }
+        }
+
+        print("[InboundProcessor] Merged \(dtos.count) inventory units")
+    }
+
+    private func mergeInventoryUnit(dto: InventoryUnitReadDTO, context: ModelContext) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<InventoryUnit>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try context.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .inventoryUnit,
+                entityId: id,
+                fields: ["companyId", "display", "isDefault", "sortOrder", "deletedAt"],
+                context: context
+            )
+            if accept.contains("companyId") { existing.companyId = dto.companyId }
+            if accept.contains("display")   { existing.display = dto.display }
+            if accept.contains("isDefault") { existing.isDefault = dto.isDefault }
+            if accept.contains("sortOrder") { existing.sortOrder = dto.sortOrder }
+            if accept.contains("deletedAt") {
+                existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+            }
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+
+        try context.save()
+    }
+
+    private func markInventoryUnitDeleted(id: String, context: ModelContext) throws {
+        let descriptor = FetchDescriptor<InventoryUnit>(
+            predicate: #Predicate { $0.id == id }
+        )
+        if let existing = try context.fetch(descriptor).first {
+            existing.deletedAt = Date()
+            existing.needsSync = false
+            try context.save()
+        }
+    }
+
+    // MARK: - Inventory Tags
+
+    private func syncInventoryTags(since: Date?, context: ModelContext) async throws {
+        let dtos = try await inventoryRepo.fetchTagsForSync(since: since)
+        for dto in dtos {
+            try mergeInventoryTag(dto: dto, context: context)
+        }
+
+        if let sinceDate = since {
+            let deletedIds = try await inventoryRepo.fetchDeletedTagIds(since: sinceDate)
+            for id in deletedIds {
+                try markInventoryTagDeleted(id: id, context: context)
+            }
+        }
+
+        print("[InboundProcessor] Merged \(dtos.count) inventory tags")
+    }
+
+    private func mergeInventoryTag(dto: InventoryTagReadDTO, context: ModelContext) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<InventoryTag>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try context.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .inventoryTag,
+                entityId: id,
+                fields: ["companyId", "name", "warningThreshold", "criticalThreshold", "deletedAt"],
+                context: context
+            )
+            if accept.contains("companyId")          { existing.companyId = dto.companyId }
+            if accept.contains("name")               { existing.name = dto.name }
+            if accept.contains("warningThreshold")   { existing.warningThreshold = dto.warningThreshold }
+            if accept.contains("criticalThreshold")  { existing.criticalThreshold = dto.criticalThreshold }
+            if accept.contains("deletedAt") {
+                existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+            }
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+
+        try context.save()
+    }
+
+    private func markInventoryTagDeleted(id: String, context: ModelContext) throws {
+        let descriptor = FetchDescriptor<InventoryTag>(
+            predicate: #Predicate { $0.id == id }
+        )
+        if let existing = try context.fetch(descriptor).first {
+            existing.deletedAt = Date()
+            existing.needsSync = false
+            try context.save()
+        }
+    }
+
+    // MARK: - Inventory Items
+
+    /// Pulls inventory items + the item↔tag join table and rebuilds `tagIds` on each item.
+    /// `tagIds` is the source of truth for the SwiftData `tags` relationship, which is
+    /// then wired up in `linkAllRelationships`.
+    private func syncInventoryItems(since: Date?, context: ModelContext) async throws {
+        let dtos = try await inventoryRepo.fetchItemsForSync(since: since)
+        for dto in dtos {
+            try mergeInventoryItem(dto: dto, context: context)
+        }
+
+        if let sinceDate = since {
+            let deletedIds = try await inventoryRepo.fetchDeletedItemIds(since: sinceDate)
+            for id in deletedIds {
+                try markInventoryItemDeleted(id: id, context: context)
+            }
+        }
+
+        // Always refresh the join table — it has no timestamps, so there's no delta.
+        // Cost: a single small query (~hundreds of rows max per company).
+        try await refreshInventoryItemTags(context: context)
+
+        print("[InboundProcessor] Merged \(dtos.count) inventory items")
+    }
+
+    private func mergeInventoryItem(dto: InventoryItemReadDTO, context: ModelContext) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<InventoryItem>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let existing = try context.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .inventoryItem,
+                entityId: id,
+                fields: [
+                    "companyId", "name", "itemDescription", "quantity", "unitId",
+                    "sku", "notes", "imageUrl",
+                    "warningThreshold", "criticalThreshold", "deletedAt"
+                ],
+                context: context
+            )
+            if accept.contains("companyId")          { existing.companyId = dto.companyId }
+            if accept.contains("name")               { existing.name = dto.name }
+            if accept.contains("itemDescription")    { existing.itemDescription = dto.description }
+            if accept.contains("quantity")           { existing.quantity = dto.quantity }
+            if accept.contains("unitId")             { existing.unitId = dto.unitId }
+            if accept.contains("sku")                { existing.sku = dto.sku }
+            if accept.contains("notes")              { existing.notes = dto.notes }
+            if accept.contains("imageUrl")           { existing.imageUrl = dto.imageUrl }
+            if accept.contains("warningThreshold")   { existing.warningThreshold = dto.warningThreshold }
+            if accept.contains("criticalThreshold")  { existing.criticalThreshold = dto.criticalThreshold }
+            if accept.contains("deletedAt") {
+                existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+            }
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+
+        try context.save()
+    }
+
+    private func markInventoryItemDeleted(id: String, context: ModelContext) throws {
+        let descriptor = FetchDescriptor<InventoryItem>(
+            predicate: #Predicate { $0.id == id }
+        )
+        if let existing = try context.fetch(descriptor).first {
+            existing.deletedAt = Date()
+            existing.needsSync = false
+            try context.save()
+        }
+    }
+
+    /// Pulls every (item_id, tag_id) row for this company and rewrites each item's
+    /// `tagIds` array. The relationship array (`item.tags`) is wired up later by
+    /// `linkAllRelationships` once Tag rows are present locally.
+    private func refreshInventoryItemTags(context: ModelContext) async throws {
+        let joinRows = try await inventoryRepo.fetchItemTagsForCompany()
+
+        // Group tag IDs by item ID.
+        var tagsByItem: [String: [String]] = [:]
+        for row in joinRows {
+            tagsByItem[row.itemId, default: []].append(row.tagId)
+        }
+
+        // Apply to every local item belonging to this company. Items not in the
+        // join map get an empty array so removed tags clear out.
+        let descriptor = FetchDescriptor<InventoryItem>()
+        let items = try context.fetch(descriptor)
+        for item in items where item.companyId == self.companyId {
+            let serverTagIds = (tagsByItem[item.id] ?? []).sorted()
+            let localTagIds = item.tagIds.sorted()
+            if serverTagIds != localTagIds && !hasPendingOperations(entityType: .inventoryItem, entityId: item.id, context: context) {
+                item.tagIds = serverTagIds
+            }
+        }
+        try context.save()
+    }
+
+    // MARK: - Inventory Snapshots
+
+    /// Snapshots are append-only — no updates, no soft-deletes. Just upsert by id.
+    private func syncInventorySnapshots(since: Date?, context: ModelContext) async throws {
+        let dtos = try await inventoryRepo.fetchSnapshotsForSync(since: since)
+        for dto in dtos {
+            try mergeInventorySnapshot(dto: dto, context: context)
+        }
+        print("[InboundProcessor] Merged \(dtos.count) inventory snapshots")
+    }
+
+    private func mergeInventorySnapshot(dto: InventorySnapshotReadDTO, context: ModelContext) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<InventorySnapshot>(
+            predicate: #Predicate { $0.id == id }
+        )
+        if try context.fetch(descriptor).first == nil {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+            try context.save()
+        }
+    }
+
+    // MARK: - Inventory Snapshot Items
+
+    /// Snapshot items are immutable. For any local snapshot belonging to this company
+    /// whose item list is empty, pull its rows in one batched query.
+    private func syncInventorySnapshotItems(context: ModelContext) async throws {
+        let snapshotDescriptor = FetchDescriptor<InventorySnapshot>()
+        let snapshots = try context.fetch(snapshotDescriptor).filter { $0.companyId == self.companyId }
+
+        let snapshotsNeedingItems = snapshots.filter { ($0.items?.isEmpty ?? true) && $0.itemCount > 0 }
+        guard !snapshotsNeedingItems.isEmpty else {
+            print("[InboundProcessor] No snapshots need item backfill")
+            return
+        }
+
+        let snapshotIds = snapshotsNeedingItems.map { $0.id }
+        let dtos = try await inventoryRepo.fetchSnapshotItemsForSnapshots(snapshotIds)
+
+        // Insert any items not already present locally.
+        let allItemIds = Set(dtos.map { $0.id })
+        let existingDescriptor = FetchDescriptor<InventorySnapshotItem>(
+            predicate: #Predicate { allItemIds.contains($0.id) }
+        )
+        let existingItems = try context.fetch(existingDescriptor)
+        let existingIds = Set(existingItems.map { $0.id })
+
+        for dto in dtos where !existingIds.contains(dto.id) {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+        try context.save()
+
+        print("[InboundProcessor] Merged \(dtos.count) snapshot items across \(snapshotIds.count) snapshots")
     }
 }

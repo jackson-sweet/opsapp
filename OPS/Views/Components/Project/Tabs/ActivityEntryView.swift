@@ -13,6 +13,14 @@ struct ActivityEntryView: View {
     let authorName: String
     let teamMember: TeamMember?
     let isOwnNote: Bool
+    /// Bug 213bbaa4 — full set of valid mention strings (every team
+    /// member's full name + the literal "All Team"). Used by the highlighter
+    /// to span the entire mention even when it contains spaces. Without
+    /// this the previous word-split parser only painted the leading
+    /// `@<FirstWord>` blue and left the trailing word in the default
+    /// foreground colour ("@Harrison" blue, "Sweet" not — same for
+    /// "@All Team").
+    let mentionNames: [String]
     let onDelete: () -> Void
     let onEdit: (String) -> Void
     let onPhotoTap: (([String], Int) -> Void)?
@@ -165,22 +173,70 @@ struct ActivityEntryView: View {
         return formatter.string(from: note.createdAt)
     }
 
+    /// Bug 213bbaa4 — render `@Mention` spans in the accent colour with
+    /// the rest of the body in the primary colour. Mentions can contain
+    /// spaces (e.g. "@Harrison Sweet", "@All Team"), so a naive
+    /// `split(separator: " ")` paints only the first word. Instead we
+    /// scan for `@`, look ahead for the longest match against
+    /// `mentionNames` (sorted longest-first so "All Team" wins over
+    /// "All"), and highlight that whole span. Unrecognised `@<token>`
+    /// strings still highlight the single token as a graceful fallback —
+    /// preserves intent when the mention's referent has been removed
+    /// from the team or when the post comes from another platform
+    /// using a slightly different mention shape.
     private func mentionHighlightedText(_ text: String) -> some View {
-        let words = text.split(separator: " ", omittingEmptySubsequences: false)
-        var result = Text("")
+        // Sort longest-first so "All Team" wins the prefix match against
+        // "All" if both happen to be valid.
+        let sortedNames = mentionNames.sorted { $0.count > $1.count }
 
-        for word in words {
-            if word.hasPrefix("@") {
-                result = result + Text(String(word) + " ")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+        var segments: [(text: String, isMention: Bool)] = []
+        var buffer = ""
+        var i = text.startIndex
+
+        while i < text.endIndex {
+            if text[i] == "@" {
+                if !buffer.isEmpty {
+                    segments.append((buffer, false))
+                    buffer = ""
+                }
+                let afterAt = text.index(after: i)
+                let remainder = text[afterAt...]
+
+                // Try the longest-known-mention match first.
+                if let matched = sortedNames.first(where: { remainder.hasPrefix($0) }) {
+                    segments.append(("@" + matched, true))
+                    i = text.index(afterAt, offsetBy: matched.count)
+                    continue
+                }
+
+                // Fallback: highlight the contiguous non-space token after `@`.
+                let tokenEnd = remainder.firstIndex(where: { $0 == " " || $0 == "\n" }) ?? text.endIndex
+                let token = String(remainder[..<tokenEnd])
+                if !token.isEmpty {
+                    segments.append(("@" + token, true))
+                    i = tokenEnd
+                    continue
+                }
+
+                // Bare "@" with nothing after it — treat as plain text.
+                buffer.append("@")
+                i = afterAt
             } else {
-                result = result + Text(String(word) + " ")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                buffer.append(text[i])
+                i = text.index(after: i)
             }
         }
 
+        if !buffer.isEmpty {
+            segments.append((buffer, false))
+        }
+
+        var result = Text("")
+        for segment in segments {
+            result = result + Text(segment.text)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(segment.isMention ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+        }
         return result
     }
 }

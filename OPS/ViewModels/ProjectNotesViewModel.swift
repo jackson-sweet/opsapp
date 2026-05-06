@@ -27,7 +27,17 @@ class ProjectNotesViewModel: ObservableObject {
     private var repository: ProjectNoteRepository?
     private var companyId: String?
     private var currentUserId: String?
-    private var allTeamMembers: [TeamMember] = []
+    private(set) var allTeamMembers: [TeamMember] = []
+
+    /// Bug 213bbaa4 — every valid mention string an author may type
+    /// (every team member's full name plus the literal "All Team").
+    /// Surfaced for the activity feed renderer so multi-word mentions
+    /// are highlighted as a single span instead of just the first word.
+    var mentionNames: [String] {
+        var names = allTeamMembers.map { $0.fullName }
+        names.append("All Team")
+        return names
+    }
     private var modelContext: ModelContext?
     private weak var dataController: DataController?
     private var notificationObserver: NSObjectProtocol?

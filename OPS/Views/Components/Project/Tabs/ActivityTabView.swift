@@ -110,6 +110,7 @@ struct ActivityTabView: View {
                             authorName: notesViewModel.authorName(for: note.authorId),
                             teamMember: notesViewModel.teamMember(for: note.authorId),
                             isOwnNote: notesViewModel.isOwnNote(note),
+                            mentionNames: notesViewModel.mentionNames,
                             onDelete: {
                                 Task { await notesViewModel.deleteNote(note) }
                             },

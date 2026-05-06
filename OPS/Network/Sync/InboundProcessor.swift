@@ -1238,6 +1238,18 @@ final class InboundProcessor {
     private func linkAllRelationships(context: ModelContext) {
         print("[InboundProcessor] Linking all relationships...")
 
+        // Dedupe ProjectTask rows BEFORE fetching for relationship wiring. The
+        // 60s origin-suppression window in mergeTask covers most echo races,
+        // but a sync that runs after the window has expired (cold-start delta,
+        // network reconnect after a >1min outage, etc.) can re-insert a row
+        // we already hold locally — leaving two SwiftData rows with the same
+        // id. Rendering paths read `project.tasks` directly so duplicates
+        // visibly fan out into multiple list rows pointed at the same id.
+        // The startup `cleanupDuplicateTasks` only runs once per launch; this
+        // pass plugs the mid-session gap so duplicates can't accumulate
+        // between launches.
+        dedupeProjectTasks(in: context)
+
         let projects: [Project]
         let tasks: [ProjectTask]
         let clients: [Client]
@@ -1355,6 +1367,67 @@ final class InboundProcessor {
             print("[InboundProcessor] ⚠️ Relationship linking save failed: \(error) — rolling back")
             context.rollback()
         }
+    }
+
+    // MARK: - End-of-Sync Dedup
+
+    /// Removes duplicate `ProjectTask` rows by id. Runs at the start of
+    /// `linkAllRelationships` so the relationship-wiring pass sees a clean set
+    /// of canonical rows. Mirrors `DataController.cleanupDuplicateTasks` —
+    /// same winner-selection rule (needsSync row preferred, otherwise
+    /// most-recently-synced) — but operates on the inbound sync's context
+    /// instead of the main one, so it covers the mid-session gap that
+    /// startup-only cleanup misses.
+    ///
+    /// Bug 3dba878f: project_tasks.id lacks `@Attribute(.unique)`; pre-existing
+    /// hardening (lowercase canonicalization + 60s origin suppression +
+    /// post-create dedupe in TaskFormSheet) prevents most new duplicates, but
+    /// nothing catches a row re-inserted by a sync that runs after the 60s
+    /// suppression window expires. Without this pass, the user sees one task
+    /// rendered as multiple list rows pointed at the same id.
+    private func dedupeProjectTasks(in context: ModelContext) {
+        do {
+            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+            let grouped = Dictionary(grouping: allTasks, by: { $0.id })
+            let duplicateGroups = grouped.filter { $0.value.count > 1 }
+            guard !duplicateGroups.isEmpty else { return }
+
+            var totalDeleted = 0
+            for (_, copies) in duplicateGroups {
+                let winnerIdx = pickFreshestProjectTaskIndex(copies)
+                for (idx, dup) in copies.enumerated() where idx != winnerIdx {
+                    context.delete(dup)
+                    totalDeleted += 1
+                }
+            }
+
+            if totalDeleted > 0 {
+                print("[InboundProcessor] Deduped \(totalDeleted) ProjectTask rows across \(duplicateGroups.count) ids")
+            }
+        } catch {
+            print("[InboundProcessor] ⚠️ ProjectTask dedup failed: \(error)")
+        }
+    }
+
+    /// Winner-selection rule shared with `DataController.cleanupDuplicateTasks`:
+    /// rows with `needsSync == true` win first (never discard unsynced edits),
+    /// otherwise the most-recently-synced row wins.
+    private func pickFreshestProjectTaskIndex(_ duplicates: [ProjectTask]) -> Int {
+        var winnerIdx = 0
+        for i in 1..<duplicates.count {
+            let cur = duplicates[i]
+            let win = duplicates[winnerIdx]
+
+            if cur.needsSync != win.needsSync {
+                if cur.needsSync { winnerIdx = i }
+                continue
+            }
+
+            let curSync = cur.lastSyncedAt ?? .distantPast
+            let winSync = win.lastSyncedAt ?? .distantPast
+            if curSync > winSync { winnerIdx = i }
+        }
+        return winnerIdx
     }
 
     // MARK: - Pending Operations Check

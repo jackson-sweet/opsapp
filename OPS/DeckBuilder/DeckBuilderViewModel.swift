@@ -1544,11 +1544,32 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Render + Save Thumbnail
 
     func renderAndSave() async {
-        guard let image = DeckRenderer.renderToPNG(drawingData: drawingData) else { return }
+        // Bug a34a2fbe — persist the drawing FIRST, unconditionally. The
+        // previous version gated `save()` behind a successful PNG render +
+        // S3 thumbnail upload; if either step failed (renderToPNG returns
+        // nil, S3 upload throws, network drops, render runs out of memory)
+        // the early return / catch path silently dismissed the deck builder
+        // without ever writing the user's drawing to SwiftData. The user
+        // then exited to the project's deck tab and saw an empty state for
+        // a deck they thought they'd saved — the bug as filed.
+        //
+        // The thumbnail is a UX nice-to-have (renders the deck card on
+        // project lists / portal). The drawing data is the user's actual
+        // work. Save the drawing first, then attempt the thumbnail as a
+        // best-effort enhancement; thumbnail failure must not block the
+        // primary save.
+        save()
+
+        guard let image = DeckRenderer.renderToPNG(drawingData: drawingData) else {
+            print("[DeckBuilder] Thumbnail render returned nil — drawing already saved, skipping S3 upload")
+            return
+        }
 
         do {
             let url = try await DeckRenderer.saveToS3(image: image, deckDesign: deckDesign)
             deckDesign.thumbnailURL = url
+            // Re-save so thumbnailURL hits the store (and gets enqueued for
+            // sync via the setter chain on DeckDesign).
             save()
 
             // Insert project_photos row so the deck drawing appears in the project gallery
@@ -1561,7 +1582,7 @@ class DeckBuilderViewModel: ObservableObject {
                 )
             }
         } catch {
-            print("[DeckBuilder] Failed to save thumbnail: \(error)")
+            print("[DeckBuilder] Failed to save thumbnail: \(error) — drawing was already persisted by the initial save()")
         }
     }
 

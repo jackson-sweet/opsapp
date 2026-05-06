@@ -306,6 +306,17 @@ struct DayPageView: View {
                             }
                         )
                     }
+                    // Bug 6e7c63a9: pull-to-refresh on the day's task list.
+                    // viewModel.refreshProjects() drives a full SyncEngine
+                    // pass via DataController.refreshProjectsFromBackend, so
+                    // the user gets fresh tasks, projects, and user events
+                    // (time-off, personal events) in one gesture. Light
+                    // haptic on commit — meaningful interaction per the
+                    // OPS haptic principles.
+                    .refreshable {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        await viewModel.refreshProjects()
+                    }
                     .coordinateSpace(name: "dayScroll")
                     // Active page: convert pixel offset to slot ID, push to viewModel
                     .onPreferenceChange(DayScrollOffsetKey.self) { offset in

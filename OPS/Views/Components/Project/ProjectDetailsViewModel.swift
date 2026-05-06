@@ -667,16 +667,21 @@ class ProjectDetailsViewModel: ObservableObject {
         let previousIds = Set(task.getTeamMemberIds())
 
         if previousIds != selectedTaskTeamMemberIds {
-            task.setTeamMemberIds(Array(selectedTaskTeamMemberIds))
-            task.needsSync = true
-            try? dataController?.modelContext?.save()
-
-            Task {
-                let memberIdsString = Array(selectedTaskTeamMemberIds).joined(separator: ",")
-                try? await dataController?.updateTaskFields(
-                    taskId: task.id,
-                    fields: ["team_member_ids": .string(memberIdsString)]
-                )
+            // Route through the typed `updateTaskTeamMembers` helper instead
+            // of the generic `updateTaskFields(team_member_ids: .string(csv))`
+            // path. The server column is a Postgres `uuid[]`; a comma-string
+            // either fails the cast outright or gets accepted as a single
+            // bogus uuid string depending on PostgREST coercion. The typed
+            // helper also rolls up project-level team members from tasks and
+            // sends push notifications to newly-assigned members — matching
+            // the invariants the TaskFormSheet edit path already enforces.
+            let memberIds = Array(selectedTaskTeamMemberIds)
+            Task { @MainActor in
+                do {
+                    try await dataController?.updateTaskTeamMembers(task: task, memberIds: memberIds)
+                } catch {
+                    print("[PROJECT_DETAILS] Failed to save task team members: \(error.localizedDescription)")
+                }
             }
         }
     }

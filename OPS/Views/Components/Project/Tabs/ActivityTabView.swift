@@ -616,6 +616,9 @@ private struct ProjectPhotosCarousel: View {
 /// Eye icon that marks a single project photo as visible / hidden in
 /// the client portal. Tapping writes the change to the local model and
 /// syncs to project_photos.is_client_visible on Supabase.
+///
+/// Bug 8ff95cd4 — gated on `projects.edit`. Crew without edit
+/// permission and mention-only viewers never see the toggle.
 private struct CarouselVisibilityButton: View {
     let url: String
     let project: Project
@@ -627,7 +630,19 @@ private struct CarouselVisibilityButton: View {
         project.isImageClientVisible(url)
     }
 
+    private var canToggle: Bool {
+        PermissionStore.shared.can("projects.edit")
+    }
+
     var body: some View {
+        if !canToggle {
+            EmptyView()
+        } else {
+            toggleButton
+        }
+    }
+
+    private var toggleButton: some View {
         Button(action: toggleVisibility) {
             ZStack {
                 Circle()
@@ -657,6 +672,9 @@ private struct CarouselVisibilityButton: View {
 
     private func toggleVisibility() {
         guard !isSyncing else { return }
+        // Bug 8ff95cd4 — defense-in-depth permission re-check before
+        // dispatching the write.
+        guard canToggle else { return }
         let newVisible = !isVisible
 
         UIImpactFeedbackGenerator(style: .light).impactOccurred()

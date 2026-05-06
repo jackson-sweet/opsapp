@@ -1027,6 +1027,14 @@ struct PhotosSection: View {
 /// Eye icon toggle that marks a single project photo as visible (or
 /// hidden) in the client portal. Writes the change to the local model
 /// and syncs to project_photos.is_client_visible on Supabase.
+///
+/// Bug 8ff95cd4 — gated on `projects.edit` (the same permission that
+/// guards every other project-level decision in the OPS hierarchy:
+/// adding tasks, editing dates, assigning team, etc.). Crew members
+/// without edit permission, mention-only viewers, and the customer
+/// portal user never see the eye icon at all. The toggle path also
+/// re-checks the permission as defense-in-depth so a stale UI cannot
+/// fire a write the role isn't entitled to.
 private struct ClientVisibilityButton: View {
     let url: String
     let project: Project
@@ -1038,7 +1046,19 @@ private struct ClientVisibilityButton: View {
         project.isImageClientVisible(url)
     }
 
+    private var canToggle: Bool {
+        PermissionStore.shared.can("projects.edit")
+    }
+
     var body: some View {
+        if !canToggle {
+            EmptyView()
+        } else {
+            toggleButton
+        }
+    }
+
+    private var toggleButton: some View {
         Button(action: toggleVisibility) {
             ZStack {
                 Circle()
@@ -1068,6 +1088,11 @@ private struct ClientVisibilityButton: View {
 
     private func toggleVisibility() {
         guard !isSyncing else { return }
+        // Bug 8ff95cd4 — defense-in-depth permission re-check before
+        // dispatching the write. The button is hidden when the role
+        // lacks projects.edit, but a stale UI or an accessibility
+        // shortcut shouldn't be able to bypass that.
+        guard canToggle else { return }
         let newVisible = !isVisible
 
         UIImpactFeedbackGenerator(style: .light).impactOccurred()

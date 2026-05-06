@@ -753,19 +753,26 @@ struct PhotoCommentViewer: View {
                 // accidentally goes public until the crew opts each photo
                 // in. The icon (eye / eye.slash) and accent colour both
                 // change to make the state legible at a glance in sun.
-                OPSActionBarButton(
-                    icon: currentVisibilityState ? "eye.fill" : "eye.slash",
-                    label: currentVisibilityState ? "VISIBLE" : "HIDDEN",
-                    iconColor: currentVisibilityState
-                        ? OPSStyle.Colors.successStatus
-                        : OPSStyle.Colors.tertiaryText,
-                    labelColor: currentVisibilityState
-                        ? OPSStyle.Colors.successStatus
-                        : OPSStyle.Colors.secondaryText,
-                    action: toggleClientVisibility
-                )
+                //
+                // Bug 8ff95cd4 — gated on `projects.edit`. Roles without
+                // edit permission see the photo but cannot flip whether
+                // the customer sees it; same gate that protects every
+                // other project-level decision in the app.
+                if PermissionStore.shared.can("projects.edit") {
+                    OPSActionBarButton(
+                        icon: currentVisibilityState ? "eye.fill" : "eye.slash",
+                        label: currentVisibilityState ? "VISIBLE" : "HIDDEN",
+                        iconColor: currentVisibilityState
+                            ? OPSStyle.Colors.successStatus
+                            : OPSStyle.Colors.tertiaryText,
+                        labelColor: currentVisibilityState
+                            ? OPSStyle.Colors.successStatus
+                            : OPSStyle.Colors.secondaryText,
+                        action: toggleClientVisibility
+                    )
 
-                Spacer()
+                    Spacer()
+                }
 
                 OPSActionBarButton(
                     icon: "pencil.tip",
@@ -787,6 +794,12 @@ struct PhotoCommentViewer: View {
     /// stale optimistic one because the user's next sync would silently
     /// re-flip it.
     private func toggleClientVisibility() {
+        // Bug 8ff95cd4 — defense-in-depth permission re-check before
+        // dispatching the write. The action-bar button is hidden when
+        // the role lacks projects.edit, but a stale UI shouldn't be
+        // able to bypass that.
+        guard PermissionStore.shared.can("projects.edit") else { return }
+
         guard currentIndex < photos.count,
               let project = cachedProject,
               let imageSyncManager = dataController.imageSyncManager else {

@@ -166,11 +166,24 @@ enum SyncEntityType: String, CaseIterable {
     case projectNote
     case photoAnnotation
     case calendarUserEvent
-    case inventoryItem
-    case inventoryUnit
-    case inventoryTag
-    case inventorySnapshot
-    case inventorySnapshotItem
+    case catalogCategory
+    case catalogUnit
+    case catalogTag
+    case catalogItem
+    case catalogVariant
+    case catalogOption
+    case catalogOptionValue
+    case catalogVariantOptionValue
+    case catalogItemTag
+    case catalogSnapshot
+    case catalogSnapshotItem
+    case catalogOrder
+    case catalogOrderItem
+    case companyDefaultProduct
+    case productOption
+    case productOptionValue
+    case productPricingModifier
+    case productMaterial
     case timeEntry
     case signatureCapture
     case formSubmission
@@ -198,11 +211,24 @@ enum SyncEntityType: String, CaseIterable {
         case .projectNote:           return "project_notes"
         case .photoAnnotation:       return "project_photo_annotations"
         case .calendarUserEvent:     return "calendar_user_events"
-        case .inventoryItem:         return "inventory_items"
-        case .inventoryUnit:         return "inventory_units"
-        case .inventoryTag:          return "inventory_tags"
-        case .inventorySnapshot:     return "inventory_snapshots"
-        case .inventorySnapshotItem: return "inventory_snapshot_items"
+        case .catalogCategory:              return "catalog_categories"
+        case .catalogUnit:                  return "catalog_units"
+        case .catalogTag:                   return "catalog_tags"
+        case .catalogItem:                  return "catalog_items"
+        case .catalogVariant:               return "catalog_variants"
+        case .catalogOption:                return "catalog_options"
+        case .catalogOptionValue:           return "catalog_option_values"
+        case .catalogVariantOptionValue:    return "catalog_variant_option_values"
+        case .catalogItemTag:               return "catalog_item_tags"
+        case .catalogSnapshot:              return "catalog_snapshots"
+        case .catalogSnapshotItem:          return "catalog_snapshot_items"
+        case .catalogOrder:                 return "catalog_orders"
+        case .catalogOrderItem:             return "catalog_order_items"
+        case .companyDefaultProduct:        return "company_default_products"
+        case .productOption:                return "product_options"
+        case .productOptionValue:           return "product_option_values"
+        case .productPricingModifier:       return "product_pricing_modifiers"
+        case .productMaterial:              return "product_materials"
         case .timeEntry:             return "time_entries"
         case .signatureCapture:      return "signature_captures"
         case .formSubmission:        return "form_submissions"
@@ -227,12 +253,19 @@ enum SyncEntityType: String, CaseIterable {
              .calendarUserEvent:                            return 7
         case .expense, .estimate, .invoice:                 return 8
         case .lineItem, .payment:                           return 9
-        case .inventoryItem, .inventoryUnit,
-             .inventoryTag:                                 return 10
-        case .inventorySnapshot, .inventorySnapshotItem:    return 11
+        case .catalogCategory, .catalogUnit,
+             .catalogTag, .catalogItem:                     return 10
+        case .catalogOption, .catalogOptionValue,
+             .catalogVariant, .catalogVariantOptionValue,
+             .catalogItemTag:                               return 11
+        case .catalogSnapshot, .catalogSnapshotItem:        return 12
+        case .productOption, .productOptionValue,
+             .productPricingModifier, .productMaterial:     return 13
+        case .companyDefaultProduct,
+             .catalogOrder, .catalogOrderItem:              return 14
         case .timeEntry, .signatureCapture,
-             .formSubmission:                               return 12
-        case .localPhoto:                                   return 13
+             .formSubmission:                               return 15
+        case .localPhoto:                                   return 16
         case .deckDesign:                                   return 7
         case .wizardState:                                  return 7
         }

@@ -2352,29 +2352,31 @@ struct ProjectFormSheet: View {
             resolvedTeamMemberIds = project.teamMembers.map { $0.id }
         }
 
-        if !resolvedTeamMemberIds.isEmpty {
-            let taskMembers = allTeamMembers.filter { resolvedTeamMemberIds.contains($0.id) }
-            task.teamMembers = taskMembers.map { member in
-                let user = User(
-                    id: member.id,
-                    firstName: member.firstName,
-                    lastName: member.lastName,
-                    role: UserRole(rawValue: member.role.lowercased()) ?? .crew,
-                    companyId: companyId
-                )
-                user.email = member.email
-                return user
-            }
-            task.setTeamMemberIds(resolvedTeamMemberIds)
+        // Bug daaf7efe — set the canonical CSV first, then resolve the
+        // [User] relationship from SwiftData. The previous version built
+        // `task.teamMembers` by instantiating brand-new User() instances
+        // that were never inserted into modelContext; SwiftData silently
+        // dropped them when saving the relationship array, so the
+        // subsequent `task.teamMembers.map { $0.id }` (used to populate the
+        // DTO at the Supabase write site) returned [] and the server-side
+        // team_member_ids landed empty. Verified in prod: project
+        // 2438 Prospector Way (created 2026-05-04 20:23) has 4 team
+        // members but its 3 tasks all have empty team_member_ids.
+        task.setTeamMemberIds(resolvedTeamMemberIds)
+        let resolvedLowercaseIds = task.getTeamMemberIds()
+        if !resolvedLowercaseIds.isEmpty {
+            let userDescriptor = FetchDescriptor<User>(
+                predicate: #Predicate<User> { user in resolvedLowercaseIds.contains(user.id) }
+            )
+            task.teamMembers = (try? modelContext.fetch(userDescriptor)) ?? []
         } else {
             task.teamMembers = []
-            task.setTeamMemberIds([])
         }
 
         await MainActor.run {
             modelContext.insert(task)
             try? modelContext.save()
-            print("[TASK_CREATE] ✅ Task saved locally")
+            print("[TASK_CREATE] ✅ Task saved locally with \(task.teamMembers.count) team members (csv ids: \(resolvedLowercaseIds.count))")
         }
 
         // Update project status if needed (e.g., reopen completed/closed project)
@@ -2395,7 +2397,12 @@ struct ProjectFormSheet: View {
                 status: localTask.status.rawValue,
                 taskColor: taskType.color,
                 displayOrder: nil,
-                teamMemberIds: task.teamMembers.map { $0.id },
+                // Bug daaf7efe — read from the authoritative CSV (which
+                // setTeamMemberIds populated) rather than the [User]
+                // relationship. SwiftData drops non-managed User instances
+                // assigned via `task.teamMembers = ...`, so the relationship
+                // can be empty even when the CSV is correct.
+                teamMemberIds: task.getTeamMemberIds(),
                 sourceLineItemId: nil,
                 sourceEstimateId: nil,
                 startDate: localTask.startDate.map { ISO8601DateFormatter().string(from: $0) },
@@ -2556,23 +2563,18 @@ struct ProjectFormSheet: View {
             resolvedTeamMemberIds = project.teamMembers.map { $0.id }
         }
 
-        if !resolvedTeamMemberIds.isEmpty {
-            let taskMembers = allTeamMembers.filter { resolvedTeamMemberIds.contains($0.id) }
-            task.teamMembers = taskMembers.map { member in
-                let user = User(
-                    id: member.id,
-                    firstName: member.firstName,
-                    lastName: member.lastName,
-                    role: UserRole(rawValue: member.role.lowercased()) ?? .crew,
-                    companyId: companyId
-                )
-                user.email = member.email
-                return user
-            }
-            task.setTeamMemberIds(resolvedTeamMemberIds)
+        // Bug daaf7efe — same pattern as createTask: set CSV first, then
+        // resolve [User] from SwiftData so the relationship contains
+        // managed objects. New User() instances would be dropped silently.
+        task.setTeamMemberIds(resolvedTeamMemberIds)
+        let resolvedLowercaseIds = task.getTeamMemberIds()
+        if !resolvedLowercaseIds.isEmpty {
+            let userDescriptor = FetchDescriptor<User>(
+                predicate: #Predicate<User> { user in resolvedLowercaseIds.contains(user.id) }
+            )
+            task.teamMembers = (try? modelContext.fetch(userDescriptor)) ?? []
         } else {
             task.teamMembers = []
-            task.setTeamMemberIds([])
         }
 
         // Set scheduling dates directly on the task
@@ -2587,7 +2589,7 @@ struct ProjectFormSheet: View {
             modelContext.insert(task)
             project.tasks.append(task)
             try? modelContext.save()
-            print("[TASK_CREATE_LOCAL] ✅ Task saved locally (tutorial mode)")
+            print("[TASK_CREATE_LOCAL] ✅ Task saved locally (tutorial mode) with \(task.teamMembers.count) team members")
         }
     }
 }

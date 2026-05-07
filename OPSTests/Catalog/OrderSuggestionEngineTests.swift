@@ -71,7 +71,7 @@ final class OrderSuggestionEngineTests: XCTestCase {
 
     /// Variant qty = 30, family default warning = 100 → suggested,
     /// recommendedQuantity = warning * 2 = 200.
-    func test_suggests_belowWarning_with_2x_warning_target() {
+    func test_suggests_belowWarning_with_2x_warning_target() throws {
         let cornerFamily = family(id: "f_corner", name: "Corner", warning: 100)
         let v = variant(id: "v1", familyId: "f_corner", quantity: 30)
 
@@ -82,11 +82,12 @@ final class OrderSuggestionEngineTests: XCTestCase {
         )
 
         XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result.first?.variantId, "v1")
-        XCTAssertEqual(result.first?.familyName, "Corner")
-        XCTAssertEqual(result.first?.currentQuantity, 30, accuracy: 0.001)
-        XCTAssertEqual(result.first?.warningThreshold, 100, accuracy: 0.001)
-        XCTAssertEqual(result.first?.recommendedQuantity, 200, accuracy: 0.001)
+        let suggestion = try XCTUnwrap(result.first)
+        XCTAssertEqual(suggestion.variantId, "v1")
+        XCTAssertEqual(suggestion.familyName, "Corner")
+        XCTAssertEqual(suggestion.currentQuantity, 30, accuracy: 0.001)
+        XCTAssertEqual(suggestion.warningThreshold, 100, accuracy: 0.001)
+        XCTAssertEqual(suggestion.recommendedQuantity, 200, accuracy: 0.001)
     }
 
     /// Variant qty = 200, family default warning = 100 → no suggestion.
@@ -105,7 +106,7 @@ final class OrderSuggestionEngineTests: XCTestCase {
 
     /// Variant has no override, family has no default, category default = 50.
     /// Variant qty = 10 → suggested, recommendedQuantity = 100.
-    func test_walksCategoryDefault_whenNoFamilyOrVariantThreshold() {
+    func test_walksCategoryDefault_whenNoFamilyOrVariantThreshold() throws {
         let postsCategory = category(id: "cat_posts", name: "Posts", warning: 50)
         let postFamily = family(id: "f_post", name: "Post", categoryId: "cat_posts")
         let v = variant(id: "v1", familyId: "f_post", quantity: 10)
@@ -117,8 +118,9 @@ final class OrderSuggestionEngineTests: XCTestCase {
         )
 
         XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result.first?.warningThreshold, 50, accuracy: 0.001)
-        XCTAssertEqual(result.first?.recommendedQuantity, 100, accuracy: 0.001)
+        let suggestion = try XCTUnwrap(result.first)
+        XCTAssertEqual(suggestion.warningThreshold, 50, accuracy: 0.001)
+        XCTAssertEqual(suggestion.recommendedQuantity, 100, accuracy: 0.001)
     }
 
     /// No threshold anywhere in the cascade → no suggestion.
@@ -136,7 +138,7 @@ final class OrderSuggestionEngineTests: XCTestCase {
     }
 
     /// Variant override beats family default when both exist.
-    func test_variantOverride_winsOverFamilyDefault() {
+    func test_variantOverride_winsOverFamilyDefault() throws {
         let cornerFamily = family(id: "f_corner", name: "Corner", warning: 100)
         let v = variant(id: "v1", familyId: "f_corner", quantity: 15, warning: 20)
 
@@ -147,8 +149,9 @@ final class OrderSuggestionEngineTests: XCTestCase {
         )
 
         XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result.first?.warningThreshold, 20, accuracy: 0.001)
-        XCTAssertEqual(result.first?.recommendedQuantity, 40, accuracy: 0.001)
+        let suggestion = try XCTUnwrap(result.first)
+        XCTAssertEqual(suggestion.warningThreshold, 20, accuracy: 0.001)
+        XCTAssertEqual(suggestion.recommendedQuantity, 40, accuracy: 0.001)
     }
 
     /// Inactive and soft-deleted variants are skipped even if below threshold.

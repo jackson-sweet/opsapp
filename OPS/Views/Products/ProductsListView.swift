@@ -179,7 +179,7 @@ struct ProductsListView: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
                     Spacer()
-                    Text(product.defaultPrice, format: .currency(code: "USD").precision(.fractionLength(0)))
+                    Text(product.basePrice, format: .currency(code: "USD").precision(.fractionLength(0)))
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }

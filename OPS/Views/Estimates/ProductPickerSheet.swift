@@ -110,7 +110,7 @@ struct ProductPickerSheet: View {
                 Text(product.name)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                Text("\(product.type.rawValue.uppercased()) · \(product.defaultPrice, format: .currency(code: "USD"))/\(product.unit ?? "ea")")
+                Text("\(product.type.rawValue.uppercased()) · \(product.basePrice, format: .currency(code: "USD"))/\(product.unit ?? "ea")")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
@@ -129,7 +129,7 @@ struct ProductPickerSheet: View {
                 description: product.name,
                 type: product.type,
                 quantity: 1,
-                unitPrice: product.defaultPrice,
+                unitPrice: product.basePrice,
                 isOptional: false,
                 productId: product.id,
                 taskTypeId: product.taskTypeId

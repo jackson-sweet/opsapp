@@ -132,7 +132,7 @@ struct MaterialPickerSheet: View {
                 productId: product.id,
                 name: product.name,
                 unitType: mapped,
-                unitPrice: product.defaultPrice,
+                unitPrice: product.basePrice,
                 taskTypeId: product.taskTypeId,
                 taskTypeColor: taskTypes.first(where: { $0.id == product.taskTypeId && $0.deletedAt == nil })?.color
             )
@@ -150,7 +150,7 @@ struct MaterialPickerSheet: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
 
                     HStack(spacing: 4) {
-                        Text(String(format: "$%.2f / %@", product.defaultPrice, isLinearMode ? "lin ft" : "sq ft"))
+                        Text(String(format: "$%.2f / %@", product.basePrice, isLinearMode ? "lin ft" : "sq ft"))
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 

@@ -23,6 +23,11 @@ class InvoiceLineItem: Identifiable {
     var parentLineItemId: String?
     var createdAt: Date
 
+    // Configurable-product snapshot
+    var configuredOptionsJSON: String?    // {"mount_type":"<id>", "color":"<id>", "corners": 4}
+    var resolvedUnitPrice: Double?
+    var resolvedOptionsLabel: String?
+
     init(
         id: String = UUID().uuidString,
         invoiceId: String,
@@ -31,6 +36,9 @@ class InvoiceLineItem: Identifiable {
         quantity: Double = 1,
         unitPrice: Double = 0,
         displayOrder: Int = 0,
+        configuredOptionsJSON: String? = nil,
+        resolvedUnitPrice: Double? = nil,
+        resolvedOptionsLabel: String? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
@@ -41,6 +49,9 @@ class InvoiceLineItem: Identifiable {
         self.unitPrice = unitPrice
         self.lineTotal = quantity * unitPrice
         self.displayOrder = displayOrder
+        self.configuredOptionsJSON = configuredOptionsJSON
+        self.resolvedUnitPrice = resolvedUnitPrice
+        self.resolvedOptionsLabel = resolvedOptionsLabel
         self.createdAt = createdAt
     }
 }

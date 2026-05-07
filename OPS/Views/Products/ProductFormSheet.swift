@@ -254,7 +254,7 @@ struct ProductFormSheet: View {
                     name = prod.name
                     productDescription = prod.productDescription ?? ""
                     type = prod.type
-                    defaultPrice = String(format: "%.2f", prod.defaultPrice)
+                    defaultPrice = String(format: "%.2f", prod.basePrice)
                     unitCost = prod.unitCost.map { String(format: "%.2f", $0) } ?? ""
                     unit = prod.unit ?? ""
                     taxable = prod.taxable

@@ -44,7 +44,7 @@ struct ProductDTO: Codable, Identifiable {
             companyId: companyId,
             name: name,
             type: type.flatMap { LineItemType(rawValue: $0) } ?? .labor,
-            defaultPrice: unitPrice,
+            basePrice: unitPrice,
             isActive: isActive,
             createdAt: SupabaseDate.parse(createdAt) ?? Date()
         )

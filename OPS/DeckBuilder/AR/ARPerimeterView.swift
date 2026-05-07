@@ -646,7 +646,7 @@ private struct ARTriggerButton: View {
             let product = linears[productIndex]
             viewModel.activeAssignment = AssignedItem(
                 productId: product.id, name: product.name,
-                unitType: .linearFoot, unitPrice: product.defaultPrice
+                unitType: .linearFoot, unitPrice: product.basePrice
             )
         }
     }

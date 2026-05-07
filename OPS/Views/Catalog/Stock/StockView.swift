@@ -246,8 +246,8 @@ struct StockView: View {
             content
         }
         .sheet(item: $selectedRow) { row in
-            // FIXME(catalog): replaced in Phase 6 Task 48 with VariantDetailView.
-            VariantDetailRowStub(row: row)
+            VariantDetailView(row: row)
+                .environmentObject(dataController)
         }
     }
 
@@ -559,36 +559,3 @@ struct ThresholdBanner: View {
     }
 }
 
-// MARK: - Detail stub (replaced in Task 48 by VariantDetailView)
-
-private struct VariantDetailRowStub: View {
-    let row: EnrichedVariantRow
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
-                VStack(spacing: OPSStyle.Layout.spacing2) {
-                    Text("// VARIANT")
-                        .font(OPSStyle.Typography.panelTitle)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    Text(row.family.name)
-                        .font(OPSStyle.Typography.pageTitle)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                    Text("[Detail screen lands in Task 48]")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-            }
-            .navigationTitle("VARIANT")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") { dismiss() }
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-            }
-        }
-    }
-}

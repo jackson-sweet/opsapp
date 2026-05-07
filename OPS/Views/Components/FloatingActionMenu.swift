@@ -732,10 +732,12 @@ struct FloatingActionMenu: View {
             TaskFormSheet(mode: .create) { _ in }
         }
         .sheet(isPresented: $showingCatalogAddVariant) {
-            CatalogAddVariantStub()
+            VariantFormSheet()
+                .environmentObject(dataController)
         }
         .sheet(isPresented: $showingCatalogAddFamily) {
-            CatalogAddFamilyStub()
+            AddFamilySheet()
+                .environmentObject(dataController)
         }
         .sheet(isPresented: $showingCatalogImport) {
             CatalogImportStub()
@@ -1341,66 +1343,10 @@ struct FloatingActionMenu: View {
 // Placeholder sheets wired to the catalog FAB actions added in Phase 5
 // Task 44. Each gets replaced with a real flow in a later phase:
 //
-//   - CatalogAddVariantStub        → Phase 6 (variant authoring)
-//   - CatalogAddFamilyStub         → Phase 7 (family authoring)
+//   - CatalogAddVariantStub        → REPLACED in Phase 6 by `VariantFormSheet`
+//   - CatalogAddFamilyStub         → REPLACED in Phase 6 by `AddFamilySheet`
 //   - CatalogImportStub            → Phase 8 (catalog import)
 //   - CatalogQuickAddProductStub   → Phase 7 (product quick-add)
-
-private struct CatalogAddVariantStub: View {
-    @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
-                VStack(spacing: OPSStyle.Layout.spacing2) {
-                    Text("// ADD VARIANT")
-                        .font(OPSStyle.Typography.panelTitle)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    Text("[Coming in Phase 6]")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .navigationTitle("ADD VARIANT")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-            }
-        }
-    }
-}
-
-private struct CatalogAddFamilyStub: View {
-    @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
-                VStack(spacing: OPSStyle.Layout.spacing2) {
-                    Text("// ADD FAMILY")
-                        .font(OPSStyle.Typography.panelTitle)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    Text("[Coming in Phase 7]")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .navigationTitle("ADD FAMILY")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-            }
-        }
-    }
-}
 
 private struct CatalogImportStub: View {
     @Environment(\.dismiss) private var dismiss

@@ -99,6 +99,90 @@ class CatalogRepository {
             .update(updates).eq("id", value: id).select().single().execute().value
     }
 
+    func createVariant(_ dto: CreateCatalogVariantDTO) async throws -> CatalogVariantDTO {
+        try await client.from("catalog_variants")
+            .insert(dto).select().single().execute().value
+    }
+
+    func updateVariant(_ id: String, fields: UpdateCatalogVariantDTO) async throws -> CatalogVariantDTO {
+        try await client.from("catalog_variants")
+            .update(fields).eq("id", value: id).select().single().execute().value
+    }
+
+    func softDeleteVariant(_ id: String) async throws {
+        struct SoftDelete: Codable { let deleted_at: String; let updated_at: String }
+        let now = isoString(Date())
+        try await client.from("catalog_variants")
+            .update(SoftDelete(deleted_at: now, updated_at: now))
+            .eq("id", value: id).execute()
+    }
+
+    // MARK: - Family writes
+
+    func createFamily(_ dto: CreateCatalogItemDTO) async throws -> CatalogItemDTO {
+        try await client.from("catalog_items")
+            .insert(dto).select().single().execute().value
+    }
+
+    func updateFamily(_ id: String, fields: UpdateCatalogItemDTO) async throws -> CatalogItemDTO {
+        try await client.from("catalog_items")
+            .update(fields).eq("id", value: id).select().single().execute().value
+    }
+
+    func softDeleteFamily(_ id: String) async throws {
+        struct SoftDelete: Codable { let deleted_at: String; let updated_at: String }
+        let now = isoString(Date())
+        try await client.from("catalog_items")
+            .update(SoftDelete(deleted_at: now, updated_at: now))
+            .eq("id", value: id).execute()
+    }
+
+    // MARK: - Variant ↔ option-value writes
+
+    func createVariantOptionValue(variantId: String, optionValueId: String) async throws {
+        let dto = UpsertCatalogVariantOptionValueDTO(variantId: variantId, optionValueId: optionValueId)
+        try await client.from("catalog_variant_option_values")
+            .insert(dto).execute()
+    }
+
+    func deleteVariantOptionValues(variantId: String) async throws {
+        try await client.from("catalog_variant_option_values")
+            .delete().eq("variant_id", value: variantId).execute()
+    }
+
+    // MARK: - Inventory deduction audit log
+
+    /// Records a row in `inventory_deductions` for a manual variant
+    /// adjustment. Best-effort: failures should not block the user since
+    /// the underlying quantity update has already succeeded by the time
+    /// this is called.
+    func recordVariantDeduction(
+        id: String,
+        catalogVariantId: String,
+        previousQuantity: Double,
+        newQuantity: Double,
+        deductedBy: String?,
+        reason: String,
+        projectId: String? = nil,
+        taskId: String? = nil,
+        notes: String? = nil
+    ) async throws {
+        let dto = CreateInventoryDeductionDTO(
+            id: id,
+            companyId: companyId,
+            catalogVariantId: catalogVariantId,
+            projectId: projectId,
+            taskId: taskId,
+            quantityDeducted: previousQuantity - newQuantity,
+            previousQuantity: previousQuantity,
+            newQuantity: newQuantity,
+            reason: reason,
+            deductedBy: deductedBy,
+            notes: notes
+        )
+        try await client.from("inventory_deductions").insert(dto).execute()
+    }
+
     // MARK: - Options
 
     func fetchOptionsForCompany() async throws -> [CatalogOptionDTO] {

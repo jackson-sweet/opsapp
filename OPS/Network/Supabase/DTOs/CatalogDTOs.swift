@@ -423,6 +423,15 @@ struct UpdateCatalogVariantDTO: Codable {
     var warningThreshold: Double?
     var criticalThreshold: Double?
     var unitId: String?
+    /// True when the field should explicitly be set to NULL on the row.
+    /// Each `setNull*` flag corresponds to the value field of the same
+    /// name; when true, the encoder writes `JSON null` even though the
+    /// Swift value is nil. Without it, nil values are dropped so partial
+    /// updates don't clobber unrelated columns.
+    var setNullSku: Bool = false
+    var setNullWarningThreshold: Bool = false
+    var setNullCriticalThreshold: Bool = false
+    var setNullUnitId: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case sku
@@ -432,6 +441,126 @@ struct UpdateCatalogVariantDTO: Codable {
         case warningThreshold   = "warning_threshold"
         case criticalThreshold  = "critical_threshold"
         case unitId             = "unit_id"
+    }
+
+    init(
+        sku: String? = nil,
+        quantity: Double? = nil,
+        priceOverride: Double? = nil,
+        unitCostOverride: Double? = nil,
+        warningThreshold: Double? = nil,
+        criticalThreshold: Double? = nil,
+        unitId: String? = nil,
+        setNullSku: Bool = false,
+        setNullWarningThreshold: Bool = false,
+        setNullCriticalThreshold: Bool = false,
+        setNullUnitId: Bool = false
+    ) {
+        self.sku = sku
+        self.quantity = quantity
+        self.priceOverride = priceOverride
+        self.unitCostOverride = unitCostOverride
+        self.warningThreshold = warningThreshold
+        self.criticalThreshold = criticalThreshold
+        self.unitId = unitId
+        self.setNullSku = setNullSku
+        self.setNullWarningThreshold = setNullWarningThreshold
+        self.setNullCriticalThreshold = setNullCriticalThreshold
+        self.setNullUnitId = setNullUnitId
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        if setNullSku { try c.encodeNil(forKey: .sku) }
+        else { try c.encodeIfPresent(sku, forKey: .sku) }
+        try c.encodeIfPresent(quantity, forKey: .quantity)
+        try c.encodeIfPresent(priceOverride, forKey: .priceOverride)
+        try c.encodeIfPresent(unitCostOverride, forKey: .unitCostOverride)
+        if setNullWarningThreshold { try c.encodeNil(forKey: .warningThreshold) }
+        else { try c.encodeIfPresent(warningThreshold, forKey: .warningThreshold) }
+        if setNullCriticalThreshold { try c.encodeNil(forKey: .criticalThreshold) }
+        else { try c.encodeIfPresent(criticalThreshold, forKey: .criticalThreshold) }
+        if setNullUnitId { try c.encodeNil(forKey: .unitId) }
+        else { try c.encodeIfPresent(unitId, forKey: .unitId) }
+    }
+}
+
+struct UpdateCatalogItemDTO: Codable {
+    var name: String?
+    var categoryId: String?
+    var description: String?
+    var defaultPrice: Double?
+    var defaultUnitCost: Double?
+    var defaultWarningThreshold: Double?
+    var defaultCriticalThreshold: Double?
+    var defaultUnitId: String?
+    var notes: String?
+    var isActive: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case categoryId                 = "category_id"
+        case description
+        case defaultPrice               = "default_price"
+        case defaultUnitCost            = "default_unit_cost"
+        case defaultWarningThreshold    = "default_warning_threshold"
+        case defaultCriticalThreshold   = "default_critical_threshold"
+        case defaultUnitId              = "default_unit_id"
+        case notes
+        case isActive                   = "is_active"
+    }
+
+    // Custom encode skips nil values so a partial update doesn't clobber
+    // unrelated columns. Default `Codable` synthesis would emit JSON null
+    // for nil optionals, which PostgREST treats as "set this column to
+    // NULL" — exactly the behavior we want to avoid for partial updates.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(name, forKey: .name)
+        try c.encodeIfPresent(categoryId, forKey: .categoryId)
+        try c.encodeIfPresent(description, forKey: .description)
+        try c.encodeIfPresent(defaultPrice, forKey: .defaultPrice)
+        try c.encodeIfPresent(defaultUnitCost, forKey: .defaultUnitCost)
+        try c.encodeIfPresent(defaultWarningThreshold, forKey: .defaultWarningThreshold)
+        try c.encodeIfPresent(defaultCriticalThreshold, forKey: .defaultCriticalThreshold)
+        try c.encodeIfPresent(defaultUnitId, forKey: .defaultUnitId)
+        try c.encodeIfPresent(notes, forKey: .notes)
+        try c.encodeIfPresent(isActive, forKey: .isActive)
+    }
+}
+
+// MARK: - Inventory deduction (audit log for variant quantity adjustments)
+
+/// Insert payload for `inventory_deductions`. Records every manual or
+/// project-driven variant quantity change so the change history is
+/// preserved across devices. Catalog deductions reference the variant
+/// directly via `catalog_variant_id`; the legacy `inventory_item_id`
+/// column is left null on new rows.
+struct CreateInventoryDeductionDTO: Codable {
+    let id: String
+    let companyId: String
+    let catalogVariantId: String
+    let projectId: String?
+    let taskId: String?
+    let quantityDeducted: Double
+    let previousQuantity: Double
+    let newQuantity: Double
+    let reason: String
+    let deductedBy: String?
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case companyId          = "company_id"
+        case catalogVariantId   = "catalog_variant_id"
+        case projectId          = "project_id"
+        case taskId             = "task_id"
+        case quantityDeducted   = "quantity_deducted"
+        case previousQuantity   = "previous_quantity"
+        case newQuantity        = "new_quantity"
+        case reason
+        case deductedBy         = "deducted_by"
+        case notes
     }
 }
 

@@ -1416,6 +1416,101 @@ class DeckBuilderViewModel: ObservableObject {
         save()
     }
 
+    // MARK: - Catalog metadata (deck-catalog integration spec § 4.3)
+
+    /// Updates the catalog metadata vocabulary fields on a railing config
+    /// without touching the rest of it. Each parameter is optional so the
+    /// caller can change a single field without re-supplying the others.
+    /// No-op when the edge has no railing config.
+    func setRailingMetadata(
+        edgeId: String,
+        color: String? = nil,
+        mountType: String? = nil,
+        mountSurface: String? = nil,
+        postHeight: Double? = nil
+    ) {
+        guard var edge = activeEdge(byId: edgeId), var railing = edge.railingConfig else { return }
+        pushUndo("set railing metadata")
+        if let color { railing.color = color }
+        if let mountType { railing.mountType = mountType }
+        if let mountSurface { railing.mountSurface = mountSurface }
+        if let postHeight { railing.postHeight = postHeight }
+        edge.railingConfig = railing
+        activeUpdateEdge(edge)
+        save()
+    }
+
+    /// Updates the catalog metadata vocabulary fields on a stair config.
+    /// No-op when the edge has no stair config.
+    func setStairMetadata(
+        edgeId: String,
+        color: String? = nil,
+        mountType: String? = nil
+    ) {
+        guard var edge = activeEdge(byId: edgeId), var stair = edge.stairConfig else { return }
+        pushUndo("set stair metadata")
+        if let color { stair.color = color }
+        if let mountType { stair.mountType = mountType }
+        edge.stairConfig = stair
+        activeUpdateEdge(edge)
+        save()
+    }
+
+    /// Sets `color` on every currently-selected surface. Falls back to
+    /// the active footprint when no surface is selected (mirrors
+    /// `assignItemToFootprint`'s legacy fallback). DEC-CAT-1.
+    func setColorOnSelectedSurfaces(_ color: String) {
+        let targetIds = selection.selectedSurfaceIds
+        guard !targetIds.isEmpty else { return }
+        pushUndo("set surface color")
+        var surfaces = activePersistedSurfaces
+        for i in surfaces.indices where targetIds.contains(surfaces[i].id) {
+            surfaces[i].color = color
+        }
+        activePersistedSurfaces = surfaces
+        save()
+    }
+
+    /// Sets `boardMaterial` on every currently-selected surface.
+    func setMaterialOnSelectedSurfaces(_ material: String) {
+        let targetIds = selection.selectedSurfaceIds
+        guard !targetIds.isEmpty else { return }
+        pushUndo("set surface material")
+        var surfaces = activePersistedSurfaces
+        for i in surfaces.indices where targetIds.contains(surfaces[i].id) {
+            surfaces[i].boardMaterial = material
+        }
+        activePersistedSurfaces = surfaces
+        save()
+    }
+
+    /// Public, multi-level-aware accessor for an edge by id. Used by views
+    /// that render details about a selected edge regardless of which level
+    /// it lives on. Returns nil when the id can't be located in any
+    /// active context.
+    func findEdge(byId id: String) -> DeckEdge? {
+        if isMultiLevel {
+            if let active = activeLevel, let e = active.edge(byId: id) { return e }
+            for level in drawingData.levels {
+                if let e = level.edge(byId: id) { return e }
+            }
+            return nil
+        }
+        return drawingData.edge(byId: id)
+    }
+
+    /// Public, multi-level-aware accessor for a persisted surface by id.
+    func findSurface(byId id: String) -> DeckSurface? {
+        if isMultiLevel {
+            if let active = activeLevel, let s = active.surfaces.first(where: { $0.id == id }) { return s }
+            for level in drawingData.levels {
+                if let s = level.surfaces.first(where: { $0.id == id }) { return s }
+            }
+            return nil
+        }
+        return drawingData.surfaces.first(where: { $0.id == id })
+    }
+
     // MARK: - Vertex Properties
 
     func setVertexElevation(_ vertexId: String, elevation: Double, source: ElevationSource = .manual) {

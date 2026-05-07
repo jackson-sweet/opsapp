@@ -92,17 +92,61 @@ struct CreateCatalogOrderDTO: Codable {
     let status: String
     let title: String?
     let supplierName: String?
+    let supplierContact: String?
+    let expectedDeliveryDate: String?
     let notes: String?
     let createdById: String?
 
     enum CodingKeys: String, CodingKey {
-        case companyId      = "company_id"
+        case companyId            = "company_id"
         case status
         case title
-        case supplierName   = "supplier_name"
+        case supplierName         = "supplier_name"
+        case supplierContact      = "supplier_contact"
+        case expectedDeliveryDate = "expected_delivery_date"
         case notes
-        case createdById    = "created_by_id"
+        case createdById          = "created_by_id"
     }
+
+    init(
+        companyId: String,
+        status: String = "draft",
+        title: String? = nil,
+        supplierName: String? = nil,
+        supplierContact: String? = nil,
+        expectedDeliveryDate: String? = nil,
+        notes: String? = nil,
+        createdById: String? = nil
+    ) {
+        self.companyId = companyId
+        self.status = status
+        self.title = title
+        self.supplierName = supplierName
+        self.supplierContact = supplierContact
+        self.expectedDeliveryDate = expectedDeliveryDate
+        self.notes = notes
+        self.createdById = createdById
+    }
+}
+
+struct UpdateCatalogOrderDTO: Codable {
+    var title: String?
+    var supplierName: String?
+    var supplierContact: String?
+    var expectedDeliveryDate: String?
+    var notes: String?
+    var updatedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case supplierName         = "supplier_name"
+        case supplierContact      = "supplier_contact"
+        case expectedDeliveryDate = "expected_delivery_date"
+        case notes
+        case updatedAt            = "updated_at"
+    }
+
+    init() {}
 }
 
 struct CreateCatalogOrderItemDTO: Codable {
@@ -119,4 +163,18 @@ struct CreateCatalogOrderItemDTO: Codable {
         case costPerUnit        = "cost_per_unit"
         case notes
     }
+}
+
+struct UpdateCatalogOrderItemDTO: Codable {
+    var quantityRequested: Double?
+    var costPerUnit: Double?
+    var notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case quantityRequested = "quantity_requested"
+        case costPerUnit       = "cost_per_unit"
+        case notes
+    }
+
+    init() {}
 }

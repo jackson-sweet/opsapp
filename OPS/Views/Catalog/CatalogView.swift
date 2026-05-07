@@ -25,6 +25,7 @@ struct CatalogView: View {
     @AppStorage("catalog.selectedSegment") private var selectedSegmentRaw: String = CatalogSegment.stock.rawValue
 
     @State private var showOrders: Bool = false
+    @State private var ordersInitialSubSegment: OrdersSubSegment = .suggested
     @State private var showSnapshots: Bool = false
     @State private var showCategoriesManage: Bool = false
     @State private var showTagsManage: Bool = false
@@ -72,13 +73,22 @@ struct CatalogView: View {
                 .animation(.easeInOut(duration: 0.18), value: selectedSegment)
             }
         }
-        .sheet(isPresented: $showOrders)            { OrdersSheet() }
+        .sheet(isPresented: $showOrders) {
+            OrdersSheet(initialSubSegment: ordersInitialSubSegment)
+                .environmentObject(dataController)
+                .environmentObject(appState)
+        }
         .sheet(isPresented: $showSnapshots)         { SnapshotListView() }
         .sheet(isPresented: $showCategoriesManage)  { CategoriesManageSheet() }
         .sheet(isPresented: $showTagsManage)        { TagsManageSheet() }
         .sheet(isPresented: $showUnitsManage)       { UnitsManageSheet() }
         .sheet(isPresented: $showThresholdsManage)  { ThresholdsManageSheet() }
         .sheet(isPresented: $showDefaultsManage)    { DefaultsManageSheet() }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenCatalogOrders"))) { notif in
+            let raw = notif.userInfo?["subSegment"] as? String
+            ordersInitialSubSegment = OrdersSubSegment(rawValue: raw ?? "") ?? .suggested
+            showOrders = true
+        }
     }
 
     private var header: some View {

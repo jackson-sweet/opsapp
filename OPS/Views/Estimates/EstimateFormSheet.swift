@@ -20,6 +20,8 @@ struct EstimateFormSheet: View {
     @State private var showLineItemSheet = false
     @State private var showProductPicker = false
     @State private var editingLineItem: EstimateLineItem? = nil
+    @State private var pickedProduct: Product? = nil
+    @State private var configuringProduct: Product? = nil
     @State private var clientSectionExpanded = true
     @State private var paymentSectionExpanded = false
     @State private var notesSectionExpanded = false
@@ -126,7 +128,8 @@ struct EstimateFormSheet: View {
                     LineItemEditSheet(
                         estimateId: est.id,
                         viewModel: viewModel,
-                        editing: editingLineItem
+                        editing: editingLineItem,
+                        product: configuringProduct
                     )
                 }
             }
@@ -134,9 +137,17 @@ struct EstimateFormSheet: View {
                 if let est = estimate {
                     ProductPickerSheet(
                         estimateId: est.id,
-                        viewModel: viewModel
+                        viewModel: viewModel,
+                        selectedProduct: $pickedProduct
                     )
                 }
+            }
+            .onChange(of: pickedProduct) { _, newValue in
+                guard let product = newValue else { return }
+                editingLineItem = nil
+                configuringProduct = product
+                showLineItemSheet = true
+                pickedProduct = nil
             }
             .onAppear {
                 if let est = editing {
@@ -178,6 +189,7 @@ struct EstimateFormSheet: View {
                     ForEach(lineItems) { item in
                         Button {
                             editingLineItem = item
+                            configuringProduct = nil
                             showLineItemSheet = true
                         } label: {
                             lineItemRow(item)
@@ -208,6 +220,7 @@ struct EstimateFormSheet: View {
 
                 Button("[+ CUSTOM LINE ITEM]") {
                     editingLineItem = nil
+                    configuringProduct = nil
                     showLineItemSheet = true
                 }
                 .font(OPSStyle.Typography.smallCaption)
@@ -219,12 +232,30 @@ struct EstimateFormSheet: View {
     }
 
     private func lineItemRow(_ item: EstimateLineItem) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let unitLabel = item.unit ?? "ea"
+        let displayUnitPrice = item.resolvedUnitPrice ?? item.unitPrice
+        let qty = item.quantity.truncatingRemainder(dividingBy: 1) == 0
+            ? String(Int(item.quantity))
+            : String(format: "%.1f", item.quantity)
+        return VStack(alignment: .leading, spacing: 2) {
             HStack {
-                Text(item.name)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .lineLimit(1)
+                if let label = item.resolvedOptionsLabel, !label.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(item.name)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .lineLimit(1)
+                        Text(label)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
+                    }
+                } else {
+                    Text(item.name)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+                }
                 Spacer()
                 Text(item.lineTotal, format: .currency(code: "USD").precision(.fractionLength(0)))
                     .font(OPSStyle.Typography.body)
@@ -234,10 +265,7 @@ struct EstimateFormSheet: View {
                 Text(item.type.rawValue.uppercased())
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                let qty = item.quantity.truncatingRemainder(dividingBy: 1) == 0
-                    ? String(Int(item.quantity))
-                    : String(format: "%.1f", item.quantity)
-                Text("[\(qty)\(item.unit ?? "") · \(item.unitPrice, format: .currency(code: "USD"))/\(item.unit ?? "ea")]")
+                Text("[\(qty)\(unitLabel) · \(displayUnitPrice, format: .currency(code: "USD"))/\(unitLabel)]")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }

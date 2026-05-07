@@ -101,6 +101,9 @@ struct InvoiceLineItemDTO: Codable, Identifiable {
     let lineTotal: Double?
     let sortOrder: Int?
     let parentLineItemId: String?
+    let configuredOptions: RawJSONColumn?
+    let resolvedUnitPrice: Double?
+    let resolvedOptionsLabel: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -114,7 +117,10 @@ struct InvoiceLineItemDTO: Codable, Identifiable {
         case type
         case lineTotal  = "line_total"
         case sortOrder  = "sort_order"
-        case parentLineItemId = "parent_line_item_id"
+        case parentLineItemId    = "parent_line_item_id"
+        case configuredOptions   = "configured_options"
+        case resolvedUnitPrice   = "resolved_unit_price"
+        case resolvedOptionsLabel = "resolved_options_label"
     }
 
     func toModel() -> InvoiceLineItem {
@@ -133,6 +139,9 @@ struct InvoiceLineItemDTO: Codable, Identifiable {
         item.unit = unit
         item.itemDescription = description
         item.parentLineItemId = parentLineItemId
+        item.configuredOptionsJSON = configuredOptions?.rawJSONString
+        item.resolvedUnitPrice = resolvedUnitPrice
+        item.resolvedOptionsLabel = resolvedOptionsLabel
         return item
     }
 }

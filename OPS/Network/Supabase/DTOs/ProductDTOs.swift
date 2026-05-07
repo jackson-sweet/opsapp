@@ -172,6 +172,10 @@ struct UpdateProductDTO: Codable {
 struct RawJSONColumn: Codable {
     let rawJSONString: String
 
+    init(rawJSONString: String) {
+        self.rawJSONString = rawJSONString
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         // Preserve raw JSON by re-encoding through JSONSerialization.

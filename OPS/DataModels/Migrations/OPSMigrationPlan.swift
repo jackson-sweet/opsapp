@@ -20,6 +20,13 @@
 //  of. The `didMigrate` UUID backfill is kept as defense-in-depth in case a
 //  row somehow lands in V2 with an empty id.
 //
+//  V2 → V3 stage: drops the legacy `Inventory*` entities and registers the
+//  new `catalog_*` / `product_*` extension entities. The schema diff itself
+//  performs the destructive work (SwiftData removes records of entity types
+//  absent from the new schema), so `willMigrate` has nothing to do. We set
+//  `needs_full_catalog_sync` in `didMigrate` so InboundProcessor pulls a
+//  fresh full catalog on next launch.
+//
 
 import Foundation
 import SwiftData
@@ -34,23 +41,21 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
     }
 
     /// V2 → V3 drops the legacy Inventory* entities and registers the new
-    /// catalog_* / product_* extension entities. SwiftData removes records of
-    /// entity types not present in the new schema, so the diff itself does the
-    /// destructive work; we just flag InboundProcessor to pull a fresh full
-    /// catalog sync on next launch.
+    /// catalog_* / product_* extension entities, then flags InboundProcessor
+    /// to pull a fresh full catalog sync on next launch.
     static let migrateInventoryToCatalogV2toV3 = MigrationStage.custom(
         fromVersion: OPSSchemaV2.self,
         toVersion: OPSSchemaV3.self,
-        willMigrate: { context in
-            // No-op intentionally. We rely on the schema diff itself to drop
-            // the inventory entities. SwiftData removes records of entity
-            // types not present in the new schema.
-            try? context.save()
+        willMigrate: { _ in
+            // Intentionally empty. SwiftData drops entity types absent from the new
+            // schema during the schema transform itself; nothing for us to do here.
+            // The new catalog/product-extension entities will be empty until the
+            // next inbound sync runs.
         },
         didMigrate: { _ in
             // Force a fresh full-sync flag so InboundProcessor pulls all
             // catalog data on next launch.
-            UserDefaults.standard.set(true, forKey: "ops.needsFullCatalogSync")
+            UserDefaults.standard.set(true, forKey: "needs_full_catalog_sync")
         }
     )
 

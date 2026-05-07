@@ -51,12 +51,26 @@ enum OPSSchemaCommon {
         FormSubmission.self,
         LocalPhoto.self,
 
-        // Inventory models
-        InventoryItem.self,
-        InventorySnapshot.self,
-        InventorySnapshotItem.self,
-        InventoryTag.self,
-        InventoryUnit.self,
+        // Catalog models (replaces old inventory models)
+        CatalogCategory.self,
+        CatalogItem.self,
+        CatalogVariant.self,
+        CatalogOption.self,
+        CatalogOptionValue.self,
+        CatalogVariantOptionValue.self,
+        CatalogTag.self,
+        CatalogUnit.self,
+        CatalogSnapshot.self,
+        CatalogSnapshotItem.self,
+        CatalogOrder.self,
+        CatalogOrderItem.self,
+        CompanyDefaultProduct.self,
+
+        // Product configurability
+        ProductOption.self,
+        ProductOptionValue.self,
+        ProductPricingModifier.self,
+        ProductMaterial.self,
 
         // Deck builder
         DeckDesign.self

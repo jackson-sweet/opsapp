@@ -26,12 +26,33 @@ import SwiftData
 
 enum OPSMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [OPSSchemaV1.self, OPSSchemaV2.self]
+        [OPSSchemaV1.self, OPSSchemaV2.self, OPSSchemaV3.self]
     }
 
     static var stages: [MigrationStage] {
-        [migrateWizardStateIdV1toV2]
+        [migrateWizardStateIdV1toV2, migrateInventoryToCatalogV2toV3]
     }
+
+    /// V2 → V3 drops the legacy Inventory* entities and registers the new
+    /// catalog_* / product_* extension entities. SwiftData removes records of
+    /// entity types not present in the new schema, so the diff itself does the
+    /// destructive work; we just flag InboundProcessor to pull a fresh full
+    /// catalog sync on next launch.
+    static let migrateInventoryToCatalogV2toV3 = MigrationStage.custom(
+        fromVersion: OPSSchemaV2.self,
+        toVersion: OPSSchemaV3.self,
+        willMigrate: { context in
+            // No-op intentionally. We rely on the schema diff itself to drop
+            // the inventory entities. SwiftData removes records of entity
+            // types not present in the new schema.
+            try? context.save()
+        },
+        didMigrate: { _ in
+            // Force a fresh full-sync flag so InboundProcessor pulls all
+            // catalog data on next launch.
+            UserDefaults.standard.set(true, forKey: "ops.needsFullCatalogSync")
+        }
+    )
 
     /// Bridges the pre-`id` WizardState shape into the V2 schema by dropping
     /// every legacy row before the schema transform runs, then defensively

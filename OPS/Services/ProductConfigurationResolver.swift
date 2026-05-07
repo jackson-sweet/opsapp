@@ -92,19 +92,7 @@ struct ProductConfigurationResolver {
     }
 }
 
-/// Lightweight `Encodable` wrapper for snapshot serialization. Local to this resolver —
-/// distinct from `RawJSONColumn` (DTO passthrough) and Supabase's `AnyJSON`.
-struct AnyCodable: Encodable {
-    let value: Any
-    init(_ v: Any) { self.value = v }
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.singleValueContainer()
-        switch value {
-        case let s as String:  try c.encode(s)
-        case let i as Int:     try c.encode(i)
-        case let d as Double:  try c.encode(d)
-        case let b as Bool:    try c.encode(b)
-        default:               try c.encodeNil()
-        }
-    }
-}
+// `AnyCodable` lives in `OPS/DeckBuilder/Engine/ComponentEmitter.swift`.
+// The components-projection emitter and this resolver share the same
+// scalar Codable wrapper — kept in one place so encode + decode behave
+// identically on either side of the line_item snapshot boundary.

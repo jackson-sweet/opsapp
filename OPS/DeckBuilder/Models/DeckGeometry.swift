@@ -133,6 +133,55 @@ struct RailingConfig: Codable, Equatable {
     var railingType: RailingType
     var maxPostSpacing: Double      // inches between posts (e.g., 60" for glass, 84" for picket)
     var assignedItems: [AssignedItem] = []
+
+    // Catalog metadata vocabulary (deck-catalog integration spec § 3.4).
+    // Free-text strings — companies author option values per Product, so
+    // the deck side stays decoupled from any one company's vocabulary.
+    // The assignment sheet renders a picker over the assigned Product's
+    // option values when one exists; otherwise free-text against these
+    // defaults.
+    var color: String = "Black"
+    var mountType: String = "Topmount"      // Topmount | Sidemount | Surface
+    var mountSurface: String = "Surface"    // Surface | Concrete | other
+    var postHeight: Double = 36.0           // inches; drives post_set.height (IRC R312 minimum)
+
+    enum CodingKeys: String, CodingKey {
+        case railingType, maxPostSpacing, assignedItems
+        case color, mountType, mountSurface, postHeight
+    }
+
+    init(
+        railingType: RailingType,
+        maxPostSpacing: Double,
+        assignedItems: [AssignedItem] = [],
+        color: String = "Black",
+        mountType: String = "Topmount",
+        mountSurface: String = "Surface",
+        postHeight: Double = 36.0
+    ) {
+        self.railingType = railingType
+        self.maxPostSpacing = maxPostSpacing
+        self.assignedItems = assignedItems
+        self.color = color
+        self.mountType = mountType
+        self.mountSurface = mountSurface
+        self.postHeight = postHeight
+    }
+
+    init(from decoder: Decoder) throws {
+        // Custom decoder so legacy JSON (saved before the catalog vocabulary
+        // landed) round-trips with sensible defaults instead of throwing on
+        // missing keys. Swift's synthesized init(from:) calls `decode` for
+        // every property regardless of the property's inline default.
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.railingType = try c.decode(RailingType.self, forKey: .railingType)
+        self.maxPostSpacing = try c.decode(Double.self, forKey: .maxPostSpacing)
+        self.assignedItems = try c.decodeIfPresent([AssignedItem].self, forKey: .assignedItems) ?? []
+        self.color = try c.decodeIfPresent(String.self, forKey: .color) ?? "Black"
+        self.mountType = try c.decodeIfPresent(String.self, forKey: .mountType) ?? "Topmount"
+        self.mountSurface = try c.decodeIfPresent(String.self, forKey: .mountSurface) ?? "Surface"
+        self.postHeight = try c.decodeIfPresent(Double.self, forKey: .postHeight) ?? 36.0
+    }
 }
 
 enum RailingType: String, Codable, CaseIterable {
@@ -200,6 +249,66 @@ struct StairConfig: Codable, Equatable {
     /// other side (e.g. against a fence the renderer can't infer).
     var flipDirection: Bool = false
 
+    // Catalog metadata vocabulary (deck-catalog integration spec § 3.4).
+    // `mountType` uses a different vocabulary than railing (Surface | Top | Side)
+    // because stairs land on grade, on top of an existing landing, or against
+    // the side of a deck — each maps to a distinct stair-product variant.
+    var color: String = "Black"
+    var mountType: String = "Surface"   // Surface | Top | Side
+
+    enum CodingKeys: String, CodingKey {
+        case width, risePerStep, runPerTread, treadCount, alignment, offset
+        case railingConfig, assignedItems, totalRiseInches, flipDirection
+        case color, mountType
+    }
+
+    init(
+        width: Double,
+        risePerStep: Double = 7.5,
+        runPerTread: Double = 10.0,
+        treadCount: Int? = nil,
+        alignment: StairAlignment = .center,
+        offset: Double = 0,
+        railingConfig: RailingConfig? = nil,
+        assignedItems: [AssignedItem] = [],
+        totalRiseInches: Double? = nil,
+        flipDirection: Bool = false,
+        color: String = "Black",
+        mountType: String = "Surface"
+    ) {
+        self.width = width
+        self.risePerStep = risePerStep
+        self.runPerTread = runPerTread
+        self.treadCount = treadCount
+        self.alignment = alignment
+        self.offset = offset
+        self.railingConfig = railingConfig
+        self.assignedItems = assignedItems
+        self.totalRiseInches = totalRiseInches
+        self.flipDirection = flipDirection
+        self.color = color
+        self.mountType = mountType
+    }
+
+    init(from decoder: Decoder) throws {
+        // Custom decoder so legacy JSON round-trips with sensible defaults
+        // instead of throwing on missing keys. See RailingConfig for the
+        // rationale.
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.width = try c.decode(Double.self, forKey: .width)
+        self.risePerStep = try c.decodeIfPresent(Double.self, forKey: .risePerStep) ?? 7.5
+        self.runPerTread = try c.decodeIfPresent(Double.self, forKey: .runPerTread) ?? 10.0
+        self.treadCount = try c.decodeIfPresent(Int.self, forKey: .treadCount)
+        self.alignment = try c.decodeIfPresent(StairAlignment.self, forKey: .alignment) ?? .center
+        self.offset = try c.decodeIfPresent(Double.self, forKey: .offset) ?? 0
+        self.railingConfig = try c.decodeIfPresent(RailingConfig.self, forKey: .railingConfig)
+        self.assignedItems = try c.decodeIfPresent([AssignedItem].self, forKey: .assignedItems) ?? []
+        self.totalRiseInches = try c.decodeIfPresent(Double.self, forKey: .totalRiseInches)
+        self.flipDirection = try c.decodeIfPresent(Bool.self, forKey: .flipDirection) ?? false
+        self.color = try c.decodeIfPresent(String.self, forKey: .color) ?? "Black"
+        self.mountType = try c.decodeIfPresent(String.self, forKey: .mountType) ?? "Surface"
+    }
+
     /// Calculate tread count from total rise (elevation difference at edge endpoints)
     static func calculateTreadCount(totalRise: Double, risePerStep: Double = 7.5) -> Int {
         guard totalRise > 0 else { return 0 }
@@ -229,6 +338,15 @@ struct AssignedItem: Identifiable, Codable, Equatable {
     var unitPrice: Double?          // price per unit (optional — may come from product)
     var taskTypeId: String?         // task type this material belongs to
     var taskTypeColor: String?      // hex color cached from TaskType at assignment time
+    /// Flags this assignment as a gate (drives `gate` component emission per
+    /// the deck-catalog integration spec § 3.5). Auto-defaulted on by the
+    /// assignment sheet when the picked Product's `category` (or tag)
+    /// contains "gate" (case-insensitive); the user can override either way.
+    var isGate: Bool = false
+
+    enum CodingKeys: String, CodingKey {
+        case id, productId, name, unitType, unitPrice, taskTypeId, taskTypeColor, isGate
+    }
 
     init(
         id: String = UUID().uuidString,
@@ -237,7 +355,8 @@ struct AssignedItem: Identifiable, Codable, Equatable {
         unitType: UnitType,
         unitPrice: Double? = nil,
         taskTypeId: String? = nil,
-        taskTypeColor: String? = nil
+        taskTypeColor: String? = nil,
+        isGate: Bool = false
     ) {
         self.id = id
         self.productId = productId
@@ -246,6 +365,19 @@ struct AssignedItem: Identifiable, Codable, Equatable {
         self.unitPrice = unitPrice
         self.taskTypeId = taskTypeId
         self.taskTypeColor = taskTypeColor
+        self.isGate = isGate
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.productId = try c.decodeIfPresent(String.self, forKey: .productId)
+        self.name = try c.decode(String.self, forKey: .name)
+        self.unitType = try c.decode(UnitType.self, forKey: .unitType)
+        self.unitPrice = try c.decodeIfPresent(Double.self, forKey: .unitPrice)
+        self.taskTypeId = try c.decodeIfPresent(String.self, forKey: .taskTypeId)
+        self.taskTypeColor = try c.decodeIfPresent(String.self, forKey: .taskTypeColor)
+        self.isGate = try c.decodeIfPresent(Bool.self, forKey: .isGate) ?? false
     }
 }
 
@@ -294,16 +426,40 @@ struct DeckSurface: Identifiable, Codable, Equatable {
     /// renderers (e.g. "BBQ Area", "Hot Tub Pad").
     var label: String?
 
+    // Catalog metadata vocabulary (deck-catalog integration spec § 3.4).
+    // Defaults pick the most common new-construction values so partially-
+    // configured surfaces still emit meaningful `deck_board` components.
+    var color: String = "Brown"
+    var boardMaterial: String = "composite"  // composite | pvc | cedar | treated | other
+
+    enum CodingKeys: String, CodingKey {
+        case id, vertexIds, assignedItems, label, color, boardMaterial
+    }
+
     init(
         id: String = UUID().uuidString,
         vertexIds: Set<String> = [],
         assignedItems: [AssignedItem] = [],
-        label: String? = nil
+        label: String? = nil,
+        color: String = "Brown",
+        boardMaterial: String = "composite"
     ) {
         self.id = id
         self.vertexIds = vertexIds
         self.assignedItems = assignedItems
         self.label = label
+        self.color = color
+        self.boardMaterial = boardMaterial
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.vertexIds = try c.decode(Set<String>.self, forKey: .vertexIds)
+        self.assignedItems = try c.decodeIfPresent([AssignedItem].self, forKey: .assignedItems) ?? []
+        self.label = try c.decodeIfPresent(String.self, forKey: .label)
+        self.color = try c.decodeIfPresent(String.self, forKey: .color) ?? "Brown"
+        self.boardMaterial = try c.decodeIfPresent(String.self, forKey: .boardMaterial) ?? "composite"
     }
 }
 
@@ -329,6 +485,16 @@ struct DeckDrawingData: Codable {
 
     var levels: [DeckLevel] = []
     var levelConnections: [LevelConnection] = []
+
+    // MARK: - Catalog projection
+
+    /// Catalog-facing projection of the drawing — one row per visible
+    /// component (railing, deck_board, stair_set, gate, post_set) with
+    /// metadata keys the `DesignToEstimateAdapter` consumes.
+    /// Recomputed from geometry on every `toJSON()` (Phase 2); never read
+    /// for rendering. Absent on legacy JSON; backfilled on first load
+    /// (deck-catalog integration spec § 3.2 + § 4.2).
+    var components: [DesignComponentRow]? = nil
 
     // MARK: - Vertex Helpers
 

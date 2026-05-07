@@ -96,7 +96,6 @@ struct FloatingActionMenu: View {
     @State private var showingCreateClient = false
     @State private var showingCreateTaskType = false
     @State private var showingCreateTask = false
-    @State private var showingCreateInventoryItem = false
     @State private var showingCreateExpense = false
     @State private var showingCreateEstimate = false
     @State private var showingCreateInvoice = false
@@ -104,6 +103,17 @@ struct FloatingActionMenu: View {
     @State private var showingPersonalEventSheet = false
     @State private var showingTimeOffSheet = false
     @State private var showingLogActivity = false
+
+    // Catalog FAB state — adapts based on selected segment in CatalogView. The
+    // segment selection lives in @AppStorage so the FAB and CatalogView share
+    // a single source of truth without an explicit parameter pipeline.
+    @AppStorage("catalog.selectedSegment") private var catalogSelectedSegmentRaw: String = CatalogSegment.stock.rawValue
+
+    @State private var showingCatalogAddVariant = false
+    @State private var showingCatalogAddFamily = false
+    @State private var showingCatalogImport = false
+    @State private var showingCatalogQuickAddProduct = false
+    @State private var showingCatalogFullSetupAlert = false
 
     // View models — lazily created only when their sheets open
     @StateObject private var expenseViewModel = ExpenseViewModel()
@@ -118,9 +128,9 @@ struct FloatingActionMenu: View {
 
     // Parameters
     let currentTab: Int
-    let hasInventoryAccess: Bool
+    let hasCatalogAccess: Bool
     var isScheduleTab: Bool = false
-    var isInventoryTab: Bool = false
+    var isCatalogTab: Bool = false
 
     private let dragRowHeight: CGFloat = 64
 
@@ -202,7 +212,7 @@ struct FloatingActionMenu: View {
         guard dataController.currentUser != nil else { return false }
         if appState.isInventorySelectionMode { return false }
         if isScheduleTab { return true }
-        if isInventoryTab && hasInventoryAccess { return true }
+        if isCatalogTab && hasCatalogAccess { return true }
         return permissionStore.can("projects.create")
             || permissionStore.can("tasks.create")
             || permissionStore.can("clients.create")
@@ -369,23 +379,93 @@ struct FloatingActionMenu: View {
             ])
         )
 
-        // Inventory — shown when user has inventory access
-        if hasInventoryAccess {
-            groups.append(
-                FABMenuGroup(id: "inventory", title: "INVENTORY", items: [
+        // Catalog — shown when user has catalog access. Actions vary by which
+        // CatalogView segment is currently selected; when off-tab, surface a
+        // single shortcut so users can jump straight to add-variant.
+        if hasCatalogAccess {
+            let segment = CatalogSegment(rawValue: catalogSelectedSegmentRaw) ?? .stock
+            var catalogItems: [FABMenuItem] = []
+            if isCatalogTab && segment == .stock {
+                catalogItems = [
                     FABMenuItem(
-                        id: "new-inventory-item",
-                        icon: "shippingbox.fill",
-                        label: "New Inventory Item",
+                        id: "catalog-add-variant",
+                        icon: "plus.app",
+                        label: "Add Variant",
+                        permission: "inventory.manage",  // renamed in Phase 12
+                        disabledInTutorial: true,
+                        action: {
+                            showCreateMenu = false
+                            showingCatalogAddVariant = true
+                        }
+                    ),
+                    FABMenuItem(
+                        id: "catalog-add-family",
+                        icon: "square.stack.3d.up",
+                        label: "Add Family",
                         permission: "inventory.manage",
                         disabledInTutorial: true,
                         action: {
                             showCreateMenu = false
-                            showingCreateInventoryItem = true
+                            showingCatalogAddFamily = true
                         }
                     ),
-                ])
-            )
+                    FABMenuItem(
+                        id: "catalog-import",
+                        icon: "square.and.arrow.down",
+                        label: "Import",
+                        permission: "inventory.import",
+                        disabledInTutorial: true,
+                        action: {
+                            showCreateMenu = false
+                            showingCatalogImport = true
+                        }
+                    ),
+                ]
+            } else if isCatalogTab && segment == .products {
+                catalogItems = [
+                    FABMenuItem(
+                        id: "catalog-quick-add-product",
+                        icon: "plus",
+                        label: "Quick Add",
+                        permission: "inventory.manage",
+                        disabledInTutorial: true,
+                        action: {
+                            showCreateMenu = false
+                            showingCatalogQuickAddProduct = true
+                        }
+                    ),
+                    FABMenuItem(
+                        id: "catalog-full-setup-product",
+                        icon: "slider.horizontal.3",
+                        label: "Full Setup",
+                        permission: "inventory.manage",
+                        disabledInTutorial: true,
+                        action: {
+                            showCreateMenu = false
+                            showingCatalogFullSetupAlert = true
+                        }
+                    ),
+                ]
+            } else {
+                // Catalog access but not on the Catalog tab — surface a single
+                // shortcut so the user can still kick off an add-variant flow.
+                catalogItems = [
+                    FABMenuItem(
+                        id: "catalog-add-variant",
+                        icon: "plus.app",
+                        label: "Add Variant",
+                        permission: "inventory.manage",
+                        disabledInTutorial: true,
+                        action: {
+                            showCreateMenu = false
+                            showingCatalogAddVariant = true
+                        }
+                    ),
+                ]
+            }
+            if !catalogItems.isEmpty {
+                groups.append(FABMenuGroup(id: "catalog", title: "CATALOG", items: catalogItems))
+            }
         }
 
         groups.append(
@@ -651,8 +731,22 @@ struct FloatingActionMenu: View {
         .sheet(isPresented: $showingCreateTask) {
             TaskFormSheet(mode: .create) { _ in }
         }
-        .sheet(isPresented: $showingCreateInventoryItem) {
-            InventoryFormSheet(item: nil)
+        .sheet(isPresented: $showingCatalogAddVariant) {
+            CatalogAddVariantStub()
+        }
+        .sheet(isPresented: $showingCatalogAddFamily) {
+            CatalogAddFamilyStub()
+        }
+        .sheet(isPresented: $showingCatalogImport) {
+            CatalogImportStub()
+        }
+        .sheet(isPresented: $showingCatalogQuickAddProduct) {
+            CatalogQuickAddProductStub()
+        }
+        .alert("Full setup is on web", isPresented: $showingCatalogFullSetupAlert) {
+            Button("OK") {}
+        } message: {
+            Text("Author options, modifiers, and recipes from the web app for now.")
         }
         .sheet(isPresented: $showingCreateExpense) {
             ExpenseFormSheet(viewModel: expenseViewModel)
@@ -1239,6 +1333,128 @@ struct FloatingActionMenu: View {
         }
         .opacity(isHidden ? 0.5 : 1.0)
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Catalog FAB Stubs
+//
+// Placeholder sheets wired to the catalog FAB actions added in Phase 5
+// Task 44. Each gets replaced with a real flow in a later phase:
+//
+//   - CatalogAddVariantStub        → Phase 6 (variant authoring)
+//   - CatalogAddFamilyStub         → Phase 7 (family authoring)
+//   - CatalogImportStub            → Phase 8 (catalog import)
+//   - CatalogQuickAddProductStub   → Phase 7 (product quick-add)
+
+private struct CatalogAddVariantStub: View {
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    Text("// ADD VARIANT")
+                        .font(OPSStyle.Typography.panelTitle)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text("[Coming in Phase 6]")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .navigationTitle("ADD VARIANT")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+            }
+        }
+    }
+}
+
+private struct CatalogAddFamilyStub: View {
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    Text("// ADD FAMILY")
+                        .font(OPSStyle.Typography.panelTitle)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text("[Coming in Phase 7]")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .navigationTitle("ADD FAMILY")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+            }
+        }
+    }
+}
+
+private struct CatalogImportStub: View {
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    Text("// IMPORT")
+                        .font(OPSStyle.Typography.panelTitle)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text("[Coming in Phase 8]")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .navigationTitle("IMPORT")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+            }
+        }
+    }
+}
+
+private struct CatalogQuickAddProductStub: View {
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    Text("// QUICK ADD")
+                        .font(OPSStyle.Typography.panelTitle)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text("[Coming in Phase 7]")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .navigationTitle("QUICK ADD")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+            }
+        }
     }
 }
 

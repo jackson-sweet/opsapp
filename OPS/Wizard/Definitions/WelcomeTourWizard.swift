@@ -60,13 +60,14 @@ struct WelcomeTourWizard: WizardDefinitionProtocol {
             completionNotification: nil  // Advanced via NEXT button, not notification
         ))
 
-        // Inventory — gated by inventory.view with "all" scope
+        // Catalog — gated by inventory.view with "all" scope (key renamed to
+        // catalog.view in Phase 12 alongside the SQL migration).
         if permissionStore.can("inventory.view", requiredScope: "all") {
             built.append(WizardStepDefinition(
-                id: "welcome_inventory",
-                instruction: "INVENTORY",
-                description: "Track what you have, what you need, what's running low.",
-                targetScreen: "Inventory",
+                id: "welcome_catalog",
+                instruction: "CATALOG",
+                description: "Stock, products, and orders. Track what you have and what you need.",
+                targetScreen: "Catalog",
                 canSkip: false,
                 completionNotification: nil  // Advanced via NEXT button, not notification
             ))

@@ -51,8 +51,10 @@ struct MainTabView: View {
     @State private var assignRoleMemberId: String?
     @State private var assignRoleWasSeated: Bool = false
 
-    // Track inventory access for conditional tab
-    private var hasInventoryAccess: Bool {
+    // Track catalog access for conditional tab. Permission key remains
+    // `inventory.view` for now — Phase 12 renames the key alongside the SQL
+    // migration so it stays a single source of truth.
+    private var hasCatalogAccess: Bool {
         permissionStore.can("inventory.view", requiredScope: "all")
     }
     
@@ -133,13 +135,13 @@ struct MainTabView: View {
         if hasPipelineAccess { idx += 1 }
         return idx
     }
-    private var inventoryTabIndex: Int? {
-        guard hasInventoryAccess else { return nil }
+    private var catalogTabIndex: Int? {
+        guard hasCatalogAccess else { return nil }
         return jobBoardTabIndex + 1
     }
     private var scheduleTabIndex: Int {
         var idx = jobBoardTabIndex + 1
-        if hasInventoryAccess { idx += 1 }
+        if hasCatalogAccess { idx += 1 }
         return idx
     }
     private var settingsTabIndex: Int {
@@ -160,9 +162,9 @@ struct MainTabView: View {
         // Add Job Board tab for all users (admin, office crew, and field crew)
         baseTabs.append(TabItem(iconName: "briefcase.fill", wizardStepId: "welcome_job_board"))
 
-        // Add Inventory tab if user has inventory access
-        if hasInventoryAccess {
-            baseTabs.append(TabItem(iconName: "shippingbox.fill", wizardStepId: "welcome_inventory"))
+        // Add Catalog tab if user has catalog access
+        if hasCatalogAccess {
+            baseTabs.append(TabItem(iconName: "square.stack.3d.up.fill", wizardStepId: "welcome_catalog"))
         }
 
         // Add Schedule and Settings for all users
@@ -222,8 +224,8 @@ struct MainTabView: View {
                     MoneyTabView()
                 } else if selectedTab == jobBoardTabIndex {
                     JobBoardView()
-                } else if selectedTab == inventoryTabIndex {
-                    InventoryView()
+                } else if selectedTab == catalogTabIndex {
+                    CatalogView()
                 } else if selectedTab == scheduleTabIndex {
                     ScheduleView()
                 } else if selectedTab == settingsTabIndex {
@@ -277,7 +279,7 @@ struct MainTabView: View {
             // Floating action menu - visible across all tabs except Settings and during initial sync/loading
             // IMPORTANT: Always render to preserve @State (sheet presentation) when app goes to background
             // Use opacity and allowsHitTesting instead of conditional rendering to prevent sheet dismissal
-            FloatingActionMenu(currentTab: selectedTab, hasInventoryAccess: hasInventoryAccess, isScheduleTab: selectedTab == scheduleTabIndex, isInventoryTab: inventoryTabIndex != nil && selectedTab == inventoryTabIndex)
+            FloatingActionMenu(currentTab: selectedTab, hasCatalogAccess: hasCatalogAccess, isScheduleTab: selectedTab == scheduleTabIndex, isCatalogTab: catalogTabIndex != nil && selectedTab == catalogTabIndex)
                 .environmentObject(dataController)
                 .environmentObject(appState)
                 .opacity(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects && !appState.isScheduleSelectionMode && !appState.isShowingMapOverlay && !appState.isInProjectMode ? 1 : 0)
@@ -663,8 +665,8 @@ struct MainTabView: View {
                 withAnimation { selectedTab = jobBoardTabIndex }
             case "Schedule":
                 withAnimation { selectedTab = scheduleTabIndex }
-            case "Inventory":
-                if let idx = inventoryTabIndex {
+            case "Catalog":
+                if let idx = catalogTabIndex {
                     withAnimation { selectedTab = idx }
                 }
             case "Settings":
@@ -762,7 +764,7 @@ struct MainTabView: View {
             case scheduleTabIndex: tabName = "Schedule"
             case settingsTabIndex: tabName = "Settings"
             default:
-                if let inv = inventoryTabIndex, newTab == inv { tabName = "Inventory" }
+                if let cat = catalogTabIndex, newTab == cat { tabName = "Catalog" }
                 else if let pip = pipelineTabIndex, newTab == pip { tabName = "Pipeline" }
                 else { tabName = "Unknown" }
             }

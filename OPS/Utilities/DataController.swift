@@ -3641,6 +3641,11 @@ class DataController: ObservableObject {
         // Capture previous status to detect completion
         let previousStatus = project.status
 
+        // TODO(catalog): when newStatus == .inProgress, invoke CutListMaterializer
+        // for each install task on the project to write task_materials rows from
+        // the snapshotted line item recipes. Wired in a follow-up; the
+        // materializer is ready (OPS/Services/CutListMaterializer.swift).
+
         // Apply locally
         project.status = newStatus
 

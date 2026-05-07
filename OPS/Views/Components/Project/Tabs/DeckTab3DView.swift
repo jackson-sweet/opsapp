@@ -3,8 +3,12 @@
 //  OPS
 //
 //  Read-only 3D SceneKit viewer for deck designs in project details.
-//  Builds geometry directly from canvas coordinates and normalizes to fill viewport.
-//  Does NOT require scaleFactor — works with any drawing data that has vertices.
+//  Delegates scene construction to DeckSceneBuilder so the viewer renders
+//  the same geometry as the editor — including stairs, house walls,
+//  railings, and ALL levels (not just the first). Falls back to a
+//  geometry-from-canvas-coordinates pass when the design has no
+//  scaleFactor set (uncalibrated drawings); the calibrated path is the
+//  expected one for any deck saved from the builder.
 //
 
 import SwiftUI
@@ -12,7 +16,6 @@ import SceneKit
 
 struct DeckTab3DView: View {
     let drawingData: DeckDrawingData
-    @State private var sceneReady = false
 
     var body: some View {
         GeometryReader { geo in
@@ -37,7 +40,7 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         scnView.backgroundColor = UIColor(red: 10/255, green: 10/255, blue: 10/255, alpha: 1)
         scnView.preferredFramesPerSecond = 60
 
-        let scene = buildNormalizedScene()
+        let scene = buildScene()
         scnView.scene = scene
         if let cam = scene.rootNode.childNode(withName: "camera", recursively: true) {
             scnView.pointOfView = cam
@@ -46,32 +49,48 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         return scnView
     }
 
-    func updateUIView(_ uiView: SCNView, context: Context) {}
+    func updateUIView(_ uiView: SCNView, context: Context) {
+        // Rebuild when the drawing changes so edits in the editor flow through
+        // to the project tab without a full screen tear-down.
+        let scene = buildScene()
+        uiView.scene = scene
+        if let cam = scene.rootNode.childNode(withName: "camera", recursively: true) {
+            uiView.pointOfView = cam
+        }
+    }
 
-    // MARK: - Build Scene from Canvas Coordinates
+    /// Prefer the canonical builder when the design is calibrated. Falls back
+    /// to a minimal canvas-space scene when no scaleFactor exists so the
+    /// viewer still shows *something* for early-draft designs that haven't
+    /// been calibrated yet.
+    private func buildScene() -> SCNScene {
+        if let scale = drawingData.scaleFactor, scale > 0 {
+            return DeckSceneBuilder.buildScene(from: drawingData)
+        }
+        return buildFallbackScene()
+    }
 
-    private func buildNormalizedScene() -> SCNScene {
+    // MARK: - Fallback Scene (no scaleFactor)
+
+    /// Minimal SceneKit scene built from raw canvas coordinates. Used only
+    /// when the design lacks a scaleFactor — DeckSceneBuilder requires real
+    /// units, so this provides a usable preview for uncalibrated drawings.
+    /// Renders surfaces + edges across ALL levels (not just the first).
+    private func buildFallbackScene() -> SCNScene {
         let scene = SCNScene()
 
-        let positions: [CGPoint]
-        let edges: [DeckEdge]
-        let isClosed: Bool
-
-        if drawingData.isMultiLevel, let level = drawingData.levels.first {
-            positions = level.orderedPositions
-            edges = level.edges
-            isClosed = level.isClosed
+        // Aggregate positions across every level so the camera frames the
+        // whole design — fixes the prior bug where only level 1 was visible.
+        let allPositions: [CGPoint]
+        if drawingData.isMultiLevel {
+            allPositions = drawingData.levels.flatMap { $0.orderedPositions }
         } else {
-            positions = drawingData.orderedPositions
-            edges = drawingData.edges
-            isClosed = drawingData.isClosed
+            allPositions = drawingData.orderedPositions
         }
+        guard allPositions.count >= 2 else { return scene }
 
-        guard positions.count >= 2 else { return scene }
-
-        // Calculate bounds and normalize to a 5-unit cube centered at origin
-        let xs = positions.map { Float($0.x) }
-        let ys = positions.map { Float($0.y) }
+        let xs = allPositions.map { Float($0.x) }
+        let ys = allPositions.map { Float($0.y) }
         let minX = xs.min()!, maxX = xs.max()!
         let minY = ys.min()!, maxY = ys.max()!
         let centerX = (minX + maxX) / 2
@@ -84,58 +103,92 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         let targetSize: Float = 5.0
         let scale = targetSize / maxSpan
 
-        // Convert canvas point to normalized 3D coordinate (XZ plane)
         func toScene(_ p: CGPoint) -> (x: Float, z: Float) {
             let x = (Float(p.x) - centerX) * scale
             let z = (Float(p.y) - centerY) * scale
             return (x, z)
         }
 
-        let deckHeight: Float = 0.5 // Visual deck thickness
-        let postHeight: Float = 1.5 // Posts below deck
+        let deckHeight: Float = 0.5
+        let postHeight: Float = 1.5
 
-        // --- Deck surface (filled polygon) ---
+        // Render every level — surfaces + edges + posts. Without this loop,
+        // multi-level designs only ever showed level 1 in the viewer.
+        let levelsToRender: [(positions: [CGPoint], edges: [DeckEdge], vertices: [DeckVertex], isClosed: Bool, levelOffset: Float)]
+        if drawingData.isMultiLevel {
+            levelsToRender = drawingData.levels.enumerated().map { idx, level in
+                // Stack additional levels visually — each level above 0 sits
+                // a small offset higher so they're distinguishable.
+                let stackOffset = Float(idx) * (deckHeight * 1.5)
+                return (level.orderedPositions, level.edges, level.vertices, level.isClosed, stackOffset)
+            }
+        } else {
+            levelsToRender = [(drawingData.orderedPositions, drawingData.edges, drawingData.vertices, drawingData.isClosed, 0)]
+        }
+
+        for level in levelsToRender {
+            let levelDeckY = deckHeight + level.levelOffset
+            renderFallbackLevel(
+                positions: level.positions,
+                edges: level.edges,
+                vertices: level.vertices,
+                isClosed: level.isClosed,
+                levelDeckY: levelDeckY,
+                postHeight: postHeight,
+                toScene: toScene,
+                scene: scene
+            )
+        }
+
+        addGroundPlane(scene: scene, targetSize: targetSize)
+        addLighting(scene: scene)
+        addCamera(scene: scene, targetSize: targetSize, deckHeight: deckHeight)
+
+        return scene
+    }
+
+    private func renderFallbackLevel(
+        positions: [CGPoint],
+        edges: [DeckEdge],
+        vertices: [DeckVertex],
+        isClosed: Bool,
+        levelDeckY: Float,
+        postHeight: Float,
+        toScene: (CGPoint) -> (x: Float, z: Float),
+        scene: SCNScene
+    ) {
+        let beamHeight: Float = 0.08
+        let beamWidth: Float = 0.06
+
+        // Surface
         if isClosed, positions.count >= 3 {
             let scenePoints = positions.map { p -> CGPoint in
                 let s = toScene(p)
                 return CGPoint(x: CGFloat(s.x), y: CGFloat(s.z))
             }
-            if let surfaceGeo = DeckMeshGenerator.createPolygonGeometry(
-                vertices: scenePoints,
-                yHeight: deckHeight
-            ) {
+            if let surfaceGeo = DeckMeshGenerator.createPolygonGeometry(vertices: scenePoints, yHeight: levelDeckY) {
                 let surfaceMat = SCNMaterial()
                 surfaceMat.diffuse.contents = UIColor(red: 196/255, green: 149/255, blue: 106/255, alpha: 1)
                 surfaceMat.isDoubleSided = true
                 surfaceGeo.materials = [surfaceMat]
-                let surfaceNode = SCNNode(geometry: surfaceGeo)
-                scene.rootNode.addChildNode(surfaceNode)
+                scene.rootNode.addChildNode(SCNNode(geometry: surfaceGeo))
             }
-
-            // Deck underside (slightly below)
-            if let undersideGeo = DeckMeshGenerator.createPolygonGeometry(
-                vertices: scenePoints,
-                yHeight: deckHeight - 0.05
-            ) {
+            if let undersideGeo = DeckMeshGenerator.createPolygonGeometry(vertices: scenePoints, yHeight: levelDeckY - 0.05) {
                 let underMat = SCNMaterial()
                 underMat.diffuse.contents = UIColor(red: 139/255, green: 108/255, blue: 74/255, alpha: 1)
                 underMat.isDoubleSided = true
                 undersideGeo.materials = [underMat]
-                let underNode = SCNNode(geometry: undersideGeo)
-                scene.rootNode.addChildNode(underNode)
+                scene.rootNode.addChildNode(SCNNode(geometry: undersideGeo))
             }
         }
 
-        // --- Edge beams (along each edge on top of deck) ---
-        let beamHeight: Float = 0.08
-        let beamWidth: Float = 0.06
+        // Edge beams
         for edge in edges {
-            guard let startVert = vertexLookup(edge.startVertexId),
-                  let endVert = vertexLookup(edge.endVertexId) else { continue }
+            guard let startVert = vertices.first(where: { $0.id == edge.startVertexId }),
+                  let endVert = vertices.first(where: { $0.id == edge.endVertexId }) else { continue }
 
             let s = toScene(startVert.position)
             let e = toScene(endVert.position)
-
             let dx = e.x - s.x
             let dz = e.z - s.z
             let length = sqrt(dx * dx + dz * dz)
@@ -151,58 +204,26 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
                 ? UIColor(red: 136/255, green: 136/255, blue: 136/255, alpha: 0.8)
                 : UIColor(red: 170/255, green: 130/255, blue: 90/255, alpha: 1)
             beamGeo.materials = [beamMat]
-
             let beamNode = SCNNode(geometry: beamGeo)
-            beamNode.position = SCNVector3(midX, deckHeight + beamHeight / 2, midZ)
+            beamNode.position = SCNVector3(midX, levelDeckY + beamHeight / 2, midZ)
             beamNode.eulerAngles.y = -angle
             scene.rootNode.addChildNode(beamNode)
-
-            // Railing posts if configured
-            if edge.railingConfig != nil {
-                let postSpacing: Float = 0.8
-                let numPosts = max(2, Int(length / postSpacing))
-                for i in 0...numPosts {
-                    let t = Float(i) / Float(numPosts)
-                    let px = s.x + dx * t
-                    let pz = s.z + dz * t
-                    let railHeight: Float = 0.7
-
-                    let postGeo = SCNBox(width: 0.04, height: CGFloat(railHeight), length: 0.04, chamferRadius: 0)
-                    let postMat = SCNMaterial()
-                    postMat.diffuse.contents = UIColor(red: 136/255, green: 136/255, blue: 136/255, alpha: 1)
-                    postGeo.materials = [postMat]
-
-                    let postNode = SCNNode(geometry: postGeo)
-                    postNode.position = SCNVector3(px, deckHeight + railHeight / 2, pz)
-                    scene.rootNode.addChildNode(postNode)
-                }
-
-                // Top rail
-                let railGeo = SCNBox(width: 0.05, height: 0.03, length: CGFloat(length), chamferRadius: 0)
-                let railMat = SCNMaterial()
-                railMat.diffuse.contents = UIColor(red: 136/255, green: 136/255, blue: 136/255, alpha: 1)
-                railGeo.materials = [railMat]
-                let railNode = SCNNode(geometry: railGeo)
-                railNode.position = SCNVector3(midX, deckHeight + 0.7, midZ)
-                railNode.eulerAngles.y = -angle
-                scene.rootNode.addChildNode(railNode)
-            }
         }
 
-        // --- Posts at each vertex ---
-        for vertex in (drawingData.isMultiLevel ? (drawingData.levels.first?.vertices ?? []) : drawingData.vertices) {
+        // Posts at every vertex
+        for vertex in vertices {
             let s = toScene(vertex.position)
             let postGeo = SCNBox(width: 0.1, height: CGFloat(postHeight), length: 0.1, chamferRadius: 0)
             let postMat = SCNMaterial()
             postMat.diffuse.contents = UIColor(red: 139/255, green: 108/255, blue: 74/255, alpha: 1)
             postGeo.materials = [postMat]
-
             let postNode = SCNNode(geometry: postGeo)
-            postNode.position = SCNVector3(s.x, deckHeight - postHeight / 2, s.z)
+            postNode.position = SCNVector3(s.x, levelDeckY - postHeight / 2, s.z)
             scene.rootNode.addChildNode(postNode)
         }
+    }
 
-        // --- Ground plane ---
+    private func addGroundPlane(scene: SCNScene, targetSize: Float) {
         let groundGeo = SCNPlane(width: CGFloat(targetSize * 4), height: CGFloat(targetSize * 4))
         let groundMat = SCNMaterial()
         groundMat.diffuse.contents = UIColor(red: 74/255, green: 94/255, blue: 58/255, alpha: 0.3)
@@ -212,8 +233,9 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         groundNode.eulerAngles.x = -.pi / 2
         groundNode.position = SCNVector3(0, -0.01, 0)
         scene.rootNode.addChildNode(groundNode)
+    }
 
-        // --- Lighting ---
+    private func addLighting(scene: SCNScene) {
         let ambientLight = SCNLight()
         ambientLight.type = .ambient
         ambientLight.intensity = 400
@@ -233,8 +255,9 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         directionalNode.light = directionalLight
         directionalNode.eulerAngles = SCNVector3(-Float.pi / 4, Float.pi / 6, 0)
         scene.rootNode.addChildNode(directionalNode)
+    }
 
-        // --- Camera ---
+    private func addCamera(scene: SCNScene, targetSize: Float, deckHeight: Float) {
         let camera = SCNCamera()
         camera.automaticallyAdjustsZRange = true
         camera.fieldOfView = 50
@@ -254,16 +277,5 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         )
         cameraNode.look(at: SCNVector3(0, deckHeight / 2, 0))
         scene.rootNode.addChildNode(cameraNode)
-
-        return scene
-    }
-
-    // MARK: - Vertex Lookup
-
-    private func vertexLookup(_ id: String) -> DeckVertex? {
-        if drawingData.isMultiLevel {
-            return drawingData.levels.first?.vertex(byId: id)
-        }
-        return drawingData.vertex(byId: id)
     }
 }

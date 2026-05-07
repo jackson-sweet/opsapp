@@ -258,8 +258,14 @@ enum UnitType: String, Codable, CaseIterable {
     case set
 }
 
-// MARK: - Footprint (Closed Polygon)
+// MARK: - Footprint (Closed Polygon) — legacy single-surface model
 
+/// Legacy single-surface assignment store. Retained for back-compat with
+/// previously-saved drawings; new per-surface assignments live in
+/// `DeckDrawingData.surfaces` / `DeckLevel.surfaces` (`DeckSurface`).
+/// On first reconciliation after migration, any populated `assignedItems`
+/// or `label` here is moved to the largest detected surface and the legacy
+/// fields are cleared.
 struct DeckFootprint: Codable, Equatable {
     var assignedItems: [AssignedItem] = []   // area-based items (surfacing, etc.)
     var isClosed: Bool = false
@@ -269,12 +275,50 @@ struct DeckFootprint: Codable, Equatable {
     var label: String?
 }
 
+// MARK: - Surfaces (Multi-Polygon)
+
+/// A persisted closed face in the deck-edge graph. Distinct from the legacy
+/// `DeckFootprint` (which assumed exactly one polygon per drawing). Every
+/// closed face detected by `SurfaceDetector` is mapped — through
+/// `SurfaceReconciler` — to one of these so per-surface material and label
+/// assignments survive across geometry edits. DECK-NEW-1.
+struct DeckSurface: Identifiable, Codable, Equatable {
+    /// Stable UUID; survives geometry edits via vertex-set Jaccard matching.
+    let id: String
+    /// Unordered membership — matched against `DetectedSurface.vertexIds`.
+    /// Updated in place when a small edit shifts the surface's boundary.
+    var vertexIds: Set<String>
+    /// Per-surface area-based items (decking material, finishes, etc.).
+    var assignedItems: [AssignedItem] = []
+    /// Optional user-supplied label that floats over the surface in the
+    /// renderers (e.g. "BBQ Area", "Hot Tub Pad").
+    var label: String?
+
+    init(
+        id: String = UUID().uuidString,
+        vertexIds: Set<String> = [],
+        assignedItems: [AssignedItem] = [],
+        label: String? = nil
+    ) {
+        self.id = id
+        self.vertexIds = vertexIds
+        self.assignedItems = assignedItems
+        self.label = label
+    }
+}
+
 // MARK: - Complete Drawing Data
 
 struct DeckDrawingData: Codable {
     var vertices: [DeckVertex] = []
     var edges: [DeckEdge] = []
     var footprint: DeckFootprint = DeckFootprint()
+    /// Per-surface material/label store (DECK-NEW-1 follow-up). One entry
+    /// per detected closed face; reconciled via `SurfaceReconciler` after
+    /// any geometry edit. Empty until the first surface is detected and
+    /// reconciled. Single-level drawings populate this; multi-level
+    /// drawings populate the equivalent on each `DeckLevel`.
+    var surfaces: [DeckSurface] = []
     var config: DrawingConfig = DrawingConfig()
     var overallElevation: Double?          // simple mode: uniform height
     var scaleFactor: Double?               // canvas points per real-world inch
@@ -423,6 +467,25 @@ struct DeckDrawingData: Codable {
         }
 
         return ordered
+    }
+
+    /// Every closed face in this drawing's edge graph. Replaces the
+    /// all-or-nothing `orderedPositions` polygon when the user draws multiple
+    /// loops, shares an edge between two surfaces, or adds detail lines
+    /// beyond the perimeter (DECK-NEW-1). Returns empty when no loop is
+    /// closed yet. For multi-level drawings, callers should ask each level
+    /// for its own surfaces — this top-level array only inspects the
+    /// single-level fields.
+    var detectedSurfaces: [DetectedSurface] {
+        SurfaceDetector.detect(vertices: vertices, edges: edges)
+    }
+
+    /// True when the drawing has at least one closed surface. More permissive
+    /// than `isClosed`, which requires every vertex to be on the perimeter
+    /// of one Hamiltonian cycle. Use this when you want to know "is there
+    /// any fillable shape on screen yet".
+    var hasAnyClosedSurface: Bool {
+        !detectedSurfaces.isEmpty
     }
 
     // MARK: - Multi-Level Helpers

@@ -49,40 +49,74 @@ struct DeckSceneBuilder {
         var allPositions: [CGPoint] = []
 
         if drawingData.isMultiLevel {
-            for level in drawingData.levels where level.isClosed {
-                let metersVerts = convertToMeters(vertices: level.orderedPositions, scaleFactor: scaleFactor)
-                allPositions.append(contentsOf: level.orderedPositions)
+            for level in drawingData.levels {
+                // DECK-NEW-1 — render every detected closed face on this level
+                // (multiple surfaces, even sharing edges). Per-surface material
+                // resolved against the level's persisted DeckSurface store.
+                let detected = level.detectedSurfaces
+                guard !detected.isEmpty || level.isClosed else { continue }
+                let surfacesIn3D: [SurfaceMesh3D]? = detected.isEmpty ? nil : detected.map { face in
+                    let metersPositions = convertToMeters(vertices: face.positions, scaleFactor: scaleFactor)
+                    let resolved = resolvedAssignedItems(for: face, in: level.surfaces)
+                    return SurfaceMesh3D(
+                        positionsInMeters: metersPositions,
+                        vertexIds: face.vertexIds,
+                        assignedItems: resolved
+                    )
+                }
+                let primaryFallback = convertToMeters(vertices: level.orderedPositions, scaleFactor: scaleFactor)
+                allPositions.append(contentsOf: detected.flatMap { $0.positions })
+                if detected.isEmpty { allPositions.append(contentsOf: level.orderedPositions) }
                 let elevationFeet = level.elevation ?? 2.5
                 let elevationM = Float(elevationFeet) * feetToMeters
                 buildDeckLevel(
                     parent: scene.rootNode,
-                    vertices2D: metersVerts,
+                    vertices2D: primaryFallback,
                     edges: level.edges,
                     allVertices: level.vertices,
                     elevationM: elevationM,
                     scaleFactor: scaleFactor,
                     perVertexElevation: level.perVertexElevation,
-                    level: level
+                    level: level,
+                    surfacesIn3D: surfacesIn3D
                 )
             }
             // Level connections (stairs between levels)
             for connection in drawingData.levelConnections {
                 buildLevelConnection(parent: scene.rootNode, connection: connection, drawingData: drawingData, scaleFactor: scaleFactor)
             }
-        } else if drawingData.isClosed {
-            let metersVerts = convertToMeters(vertices: drawingData.orderedPositions, scaleFactor: scaleFactor)
-            allPositions = drawingData.orderedPositions
+        } else {
+            // DECK-NEW-1 — same multi-surface treatment for single-level designs.
+            let detected = drawingData.detectedSurfaces
+            guard !detected.isEmpty || drawingData.isClosed else {
+                addGroundPlane(to: scene)
+                addLighting(to: scene)
+                addCamera(to: scene, fitting: allPositions, scaleFactor: scaleFactor, drawingData: drawingData)
+                return scene
+            }
+            let surfacesIn3D: [SurfaceMesh3D]? = detected.isEmpty ? nil : detected.map { face in
+                let metersPositions = convertToMeters(vertices: face.positions, scaleFactor: scaleFactor)
+                let resolved = resolvedAssignedItems(for: face, in: drawingData.surfaces)
+                return SurfaceMesh3D(
+                    positionsInMeters: metersPositions,
+                    vertexIds: face.vertexIds,
+                    assignedItems: resolved
+                )
+            }
+            let primaryFallback = convertToMeters(vertices: drawingData.orderedPositions, scaleFactor: scaleFactor)
+            allPositions = detected.isEmpty ? drawingData.orderedPositions : detected.flatMap { $0.positions }
             let elevationFeet = drawingData.overallElevation ?? 2.5
             let elevationM = Float(elevationFeet) * feetToMeters
             buildDeckLevel(
                 parent: scene.rootNode,
-                vertices2D: metersVerts,
+                vertices2D: primaryFallback,
                 edges: drawingData.edges,
                 allVertices: drawingData.vertices,
                 elevationM: elevationM,
                 scaleFactor: scaleFactor,
                 perVertexElevation: false,
-                level: nil
+                level: nil,
+                surfacesIn3D: surfacesIn3D
             )
         }
 
@@ -163,33 +197,77 @@ struct DeckSceneBuilder {
 
     // MARK: - Deck Level
 
+    /// Per-surface mesh + payload passed in when the caller wants
+    /// each detected face to render with its own material/label rather
+    /// than every face inheriting the legacy single-footprint material.
+    /// DECK-NEW-1 follow-up.
+    struct SurfaceMesh3D {
+        let positionsInMeters: [CGPoint]
+        let vertexIds: [String]   // ordered, matching positions
+        let assignedItems: [AssignedItem]
+    }
+
     private static func buildDeckLevel(
         parent: SCNNode,
-        vertices2D: [CGPoint],  // already in meters (XZ plane)
+        vertices2D: [CGPoint],  // already in meters (XZ plane) — single-surface fallback
         edges: [DeckEdge],
         allVertices: [DeckVertex],
         elevationM: Float,
         scaleFactor: Double,
         perVertexElevation: Bool,
         level: DeckLevel?,
-        skipHouseWall: Bool = false
+        skipHouseWall: Bool = false,
+        surfacesIn3D: [SurfaceMesh3D]? = nil  // DECK-NEW-1 — per-surface meshes + materials
     ) {
         let deckGroup = SCNNode()
         deckGroup.name = level.map { "deck_\($0.id)" } ?? "deck_main"
 
-        // Deck surface
-        if let surfaceGeo = DeckMeshGenerator.createPolygonGeometry(vertices: vertices2D, yHeight: elevationM) {
-            let material = deckSurfaceMaterial()
-            surfaceGeo.firstMaterial = material
+        // DECK-NEW-1 — build a surface mesh for EVERY detected face, each
+        // with its own per-surface material/color. Falls back to the
+        // all-vertices polygon when the caller didn't supply explicit
+        // surfaces (single-loop legacy path).
+        let surfaces = surfacesIn3D ?? [SurfaceMesh3D(positionsInMeters: vertices2D, vertexIds: [], assignedItems: [])]
+        for surf in surfaces {
+            guard let surfaceGeo = DeckMeshGenerator.createPolygonGeometry(vertices: surf.positionsInMeters, yHeight: elevationM) else { continue }
+            surfaceGeo.firstMaterial = surfaceMaterial(for: surf.assignedItems)
             let surfaceNode = SCNNode(geometry: surfaceGeo)
             surfaceNode.name = "deckSurface"
             deckGroup.addChildNode(surfaceNode)
         }
 
-        // Posts at each vertex
-        for (i, vert2D) in vertices2D.enumerated() {
+        // Posts at every UNIQUE perimeter vertex across surfaces (or, when
+        // no explicit surfaces were supplied, every level vertex). Shared
+        // corners between adjacent surfaces collapse to a single post —
+        // previously we emitted one per surface, which read as a duplicated
+        // post even though the geometry was correct. DECK-NEW-1 follow-up.
+        let postCandidates: [(position: CGPoint, vertexId: String?)] = {
+            if let surfaces = surfacesIn3D, !surfaces.isEmpty {
+                var candidates: [(CGPoint, String?)] = []
+                for surf in surfaces {
+                    let count = min(surf.positionsInMeters.count, surf.vertexIds.count)
+                    for i in 0..<surf.positionsInMeters.count {
+                        let vid: String? = i < count ? surf.vertexIds[i] : nil
+                        candidates.append((surf.positionsInMeters[i], vid))
+                    }
+                }
+                return candidates
+            }
+            return vertices2D.map { ($0, nil) }
+        }()
+
+        var seenPositions: Set<String> = []
+        var postIndex = 0
+        for (pos, vid) in postCandidates {
+            // Round to mm for dedupe — vertices that should collapse share
+            // the same canvas-derived meter position to within float noise.
+            let key = String(format: "%.3f|%.3f", pos.x, pos.y)
+            if !seenPositions.insert(key).inserted { continue }
+
             let vertexElevationM: Float
-            if perVertexElevation, i < allVertices.count, let vElev = allVertices[i].elevation {
+            if perVertexElevation,
+               let id = vid,
+               let v = allVertices.first(where: { $0.id == id }),
+               let vElev = v.elevation {
                 vertexElevationM = Float(vElev) * feetToMeters
             } else {
                 vertexElevationM = elevationM
@@ -197,13 +275,14 @@ struct DeckSceneBuilder {
             let postHeight = vertexElevationM
             guard postHeight > 0 else { continue }
             let postNode = DeckMeshGenerator.createBox(
-                position: SCNVector3(Float(vert2D.x), postHeight / 2, Float(vert2D.y)),
+                position: SCNVector3(Float(pos.x), postHeight / 2, Float(pos.y)),
                 width: postSizeM,
                 height: postHeight,
                 depth: postSizeM,
                 material: makeMaterial(color: postColor)
             )
-            postNode.name = "post_\(i)"
+            postNode.name = "post_\(postIndex)"
+            postIndex += 1
             deckGroup.addChildNode(postNode)
         }
 
@@ -469,11 +548,20 @@ struct DeckSceneBuilder {
         let stairGroup = SCNNode()
         stairGroup.name = "stairGroup"
 
-        let totalRiseInches = Double(deckElevationM) / Double(inchesToMeters)
+        // Use the stored total rise (set in StairConfigView) when available so
+        // the 3D rise matches what the user explicitly configured. Fall back to
+        // the deck elevation when the stair-specific value isn't stored. Bug 8.
+        let totalRiseInches: Double
+        if let stored = stairConfig.totalRiseInches, stored > 0 {
+            totalRiseInches = stored
+        } else {
+            totalRiseInches = Double(deckElevationM) / Double(inchesToMeters)
+        }
         let treadCount = stairConfig.treadCount ?? StairConfig.calculateTreadCount(totalRise: totalRiseInches, risePerStep: stairConfig.risePerStep)
         guard treadCount > 0 else { return }
 
-        let risePerStepM = Float(stairConfig.risePerStep) * inchesToMeters
+        let totalRiseMFromConfig = Float(totalRiseInches) * inchesToMeters
+        let risePerStepM = totalRiseMFromConfig / Float(treadCount)
         let runPerTreadM = Float(stairConfig.runPerTread) * inchesToMeters
         let stairWidthM = Float(stairConfig.width) * inchesToMeters
 
@@ -483,17 +571,39 @@ struct DeckSceneBuilder {
         let edgeLen = sqrt(edgeDx * edgeDx + edgeDz * edgeDz)
         guard edgeLen > 0 else { return }
 
-        // Normal direction (perpendicular, pointing outward)
-        let nx = -edgeDz / edgeLen
-        let nz = edgeDx / edgeLen
-
-        // Stair center along edge
-        let midX = (start.x + end.x) / 2
-        let midZ = (start.z + end.z) / 2
-
         // Edge tangent (for stair width)
         let tx = edgeDx / edgeLen
         let tz = edgeDz / edgeLen
+
+        // Perpendicular unit vector. The canonical perpendicular is (-dz, dx)
+        // (left-hand rule — same convention as the 2D outwardPerpendicular
+        // heuristic). Apply the user's flipDirection toggle to match the 2D
+        // canvas rendering. Bug 8 — the 3D renderer previously ignored
+        // flipDirection, so stairs could appear inside the deck surface.
+        let rawNx = -edgeDz / edgeLen
+        let rawNz = edgeDx / edgeLen
+        let nx = stairConfig.flipDirection ? -rawNx : rawNx
+        let nz = stairConfig.flipDirection ? -rawNz : rawNz
+
+        // Position the stair along the edge using alignment + offset, matching
+        // the 2D canvas logic. Bug 8 — 3D previously always centred on the
+        // edge midpoint, ignoring alignment and offset settings.
+        let stairWidthLimited = min(stairWidthM, edgeLen)
+        let gapTotal = edgeLen - stairWidthLimited
+        let offsetM = Float(stairConfig.offset) * inchesToMeters
+        let stairStartT: Float  // fraction along edge where stair begins
+        switch stairConfig.alignment {
+        case .left:
+            stairStartT = offsetM / edgeLen
+        case .center:
+            stairStartT = (gapTotal / 2 + offsetM) / edgeLen
+        case .right:
+            stairStartT = (gapTotal - offsetM) / edgeLen
+        }
+        let stairBaseX = start.x + tx * edgeLen * stairStartT
+        let stairBaseZ = start.z + tz * edgeLen * stairStartT
+        let midX = stairBaseX + tx * stairWidthLimited / 2
+        let midZ = stairBaseZ + tz * stairWidthLimited / 2
 
         // Treads
         for i in 0..<treadCount {
@@ -503,9 +613,9 @@ struct DeckSceneBuilder {
             let cx = midX + nx * outward
             let cz = midZ + nz * outward
 
-            // Tread: box oriented along edge direction
+            // Tread: box oriented along edge direction; width clamped to edge.
             let treadNode = SCNNode(geometry: SCNBox(
-                width: CGFloat(stairWidthM),
+                width: CGFloat(stairWidthLimited),
                 height: CGFloat(treadThicknessM),
                 length: CGFloat(runPerTreadM),
                 chamferRadius: 0
@@ -523,18 +633,20 @@ struct DeckSceneBuilder {
         // Stringers (angled beams on each side)
         let stringerCount = StairConfig.stringerCount(width: stairConfig.width)
         let totalRunM = Float(treadCount) * runPerTreadM
-        let stringerLengthM = sqrt(deckElevationM * deckElevationM + totalRunM * totalRunM)
-        let stringerAngle = atan2(deckElevationM, totalRunM)
+        // Use the config rise (not just deckElevationM) so the stringer angle
+        // matches the actual tread geometry. Bug 8.
+        let stringerLengthM = sqrt(totalRiseMFromConfig * totalRiseMFromConfig + totalRunM * totalRunM)
+        let stringerAngle = atan2(totalRiseMFromConfig, totalRunM)
         let stringerWidthM: Float = 2.0 * inchesToMeters  // 2" wide stringer
         let stringerDepthM: Float = 10.0 * inchesToMeters  // 10" deep stringer
 
         for s in 0..<stringerCount {
             let t = Float(s) / Float(max(stringerCount - 1, 1))
-            let lateralOffset = stairWidthM * (t - 0.5)
+            let lateralOffset = stairWidthLimited * (t - 0.5)
 
             // Stringer center point
             let centerOutward = totalRunM / 2
-            let centerY = deckElevationM / 2
+            let centerY = deckElevationM - totalRiseMFromConfig / 2
             let sx = midX + nx * centerOutward + tx * lateralOffset
             let sz = midZ + nz * centerOutward + tz * lateralOffset
 
@@ -797,12 +909,19 @@ struct DeckSceneBuilder {
         end: SCNVector3,
         deckElevationM: Float
     ) {
-        let wallHeight = deckElevationM + houseWallHeightM
+        // The wall rises from the deck surface upward (not from the ground).
+        // This makes house edges visually "rise above the deck plane" as a
+        // wall section the deck attaches to. Bug 8 — the previous formula
+        // (wallHeight = deckElevationM + houseWallHeightM, yCenter = wallHeight/2)
+        // centered the box between ground and the wall top, which buried the
+        // lower half of the wall under the deck surface.
+        let wallBottom = deckElevationM
+        let wallTop = deckElevationM + houseWallHeightM
         let wallNode = buildSpanningBox(
             from: start, to: end,
-            yCenter: wallHeight / 2,
+            yCenter: (wallBottom + wallTop) / 2,
             width: 0.05, // 2" thick wall representation
-            height: wallHeight,
+            height: houseWallHeightM,
             material: makeMaterial(color: houseWallColor)
         )
         wallNode.name = "houseWall"
@@ -911,6 +1030,54 @@ struct DeckSceneBuilder {
         material.diffuse.contents = boardTexture
         material.diffuse.wrapS = .repeat
         material.diffuse.wrapT = .repeat
+        material.roughness.contents = 0.7
+        material.isDoubleSided = true
+        return material
+    }
+
+    /// Looks up the persisted `DeckSurface.assignedItems` matching a
+    /// detected face — by exact vertex set first, then by best-Jaccard
+    /// fallback — so per-surface materials survive vertex edits the
+    /// same way `SurfaceReconciler` matches them in the data layer.
+    private static func resolvedAssignedItems(
+        for detected: DetectedSurface,
+        in persisted: [DeckSurface]
+    ) -> [AssignedItem] {
+        let dSet = Set(detected.vertexIds)
+        if let exact = persisted.first(where: { $0.vertexIds == dSet }) {
+            return exact.assignedItems
+        }
+        var best: (assigned: [AssignedItem], jaccard: Double)? = nil
+        for p in persisted {
+            let intersection = dSet.intersection(p.vertexIds).count
+            let union = dSet.union(p.vertexIds).count
+            guard union > 0 else { continue }
+            let jaccard = Double(intersection) / Double(union)
+            if jaccard > (best?.jaccard ?? -1) {
+                best = (p.assignedItems, jaccard)
+            }
+        }
+        if let match = best, match.jaccard >= SurfaceReconciler.rebindThreshold {
+            return match.assigned
+        }
+        return []
+    }
+
+    /// Per-surface material — tints the cedar board texture with the
+    /// assigned item's color when one is present, falling back to the
+    /// default unmodified texture.
+    private static func surfaceMaterial(for assignedItems: [AssignedItem]) -> SCNMaterial {
+        guard let hex = assignedItems.first?.taskTypeColor, !hex.isEmpty else {
+            return deckSurfaceMaterial()
+        }
+        let tint = UIColor(hex: hex)
+        let material = SCNMaterial()
+        material.diffuse.contents = boardTexture
+        material.diffuse.wrapS = .repeat
+        material.diffuse.wrapT = .repeat
+        material.diffuse.intensity = 0.65
+        material.multiply.contents = tint
+        material.multiply.intensity = 0.75
         material.roughness.contents = 0.7
         material.isDoubleSided = true
         return material

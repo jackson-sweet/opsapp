@@ -34,11 +34,12 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var selection: SelectionState = SelectionState()
     @Published var alignmentGuides: [AlignmentGuide] = []
     @Published var tapSelectFilter: Set<SelectableElementType> = Set(SelectableElementType.allCases)
+    /// Drag-shape sub-mode while `activeTool == .tapSelect`. DECK-NEW-4.
+    @Published var marqueeShape: MarqueeShape = .rect
 
     // MARK: - UI State
 
     @Published var showingDimensionInput: Bool = false
-    @Published var showingPropertySheet: Bool = false
     @Published var showingElevationInput: Bool = false
     @Published var showingStairConfig: Bool = false
     @Published var showingAssignmentWheel: Bool = false
@@ -210,6 +211,104 @@ class DeckBuilderViewModel: ObservableObject {
         }
     }
 
+    /// Persisted per-surface assignments for the currently active drawing
+    /// context. Mirrors `activeFootprint` but for the multi-surface model
+    /// (DECK-NEW-1 follow-up).
+    var activePersistedSurfaces: [DeckSurface] {
+        get {
+            if isMultiLevel, let level = activeLevel { return level.surfaces }
+            return drawingData.surfaces
+        }
+        set {
+            if isMultiLevel, activeLevelIndex < drawingData.levels.count {
+                drawingData.levels[activeLevelIndex].surfaces = newValue
+            } else {
+                drawingData.surfaces = newValue
+            }
+        }
+    }
+
+    /// Returns the persisted DeckSurface ID matching a given detected
+    /// surface — by exact vertex set first, then by maximum Jaccard. If
+    /// no acceptable match exists, runs a reconcile pass so the caller
+    /// gets a stable ID to operate on.
+    func persistedSurfaceId(for detected: DetectedSurface) -> String {
+        let dSet = Set(detected.vertexIds)
+        if let exact = activePersistedSurfaces.first(where: { $0.vertexIds == dSet }) {
+            return exact.id
+        }
+        // Best-effort match before reconciliation; falls back to reconcile.
+        var best: (id: String, jaccard: Double)? = nil
+        for p in activePersistedSurfaces {
+            let intersection = dSet.intersection(p.vertexIds).count
+            let union = dSet.union(p.vertexIds).count
+            guard union > 0 else { continue }
+            let jaccard = Double(intersection) / Double(union)
+            if jaccard > (best?.jaccard ?? -1) {
+                best = (p.id, jaccard)
+            }
+        }
+        if let match = best, match.jaccard >= SurfaceReconciler.rebindThreshold {
+            return match.id
+        }
+        // Force a reconcile so a brand-new persisted entry exists for this face.
+        reconcileSurfaces()
+        if let now = activePersistedSurfaces.first(where: { $0.vertexIds == dSet }) {
+            return now.id
+        }
+        return UUID().uuidString // pathological fallback
+    }
+
+    /// Reconciles persisted surfaces against the currently detected ones.
+    /// Idempotent: safe to call after any geometry mutation (and from
+    /// `save()` so persistence captures the latest reconciled state).
+    func reconcileSurfaces() {
+        if isMultiLevel {
+            for i in drawingData.levels.indices {
+                let detected = drawingData.levels[i].detectedSurfaces
+                let persisted = drawingData.levels[i].surfaces
+                let legacy = drawingData.levels[i].footprint
+                let reconciled: [DeckSurface]
+                if persisted.isEmpty && (!legacy.assignedItems.isEmpty || legacy.label != nil) {
+                    reconciled = SurfaceReconciler.migratedFromLegacy(detected: detected, legacyFootprint: legacy)
+                    if !reconciled.isEmpty {
+                        drawingData.levels[i].footprint.assignedItems.removeAll()
+                        drawingData.levels[i].footprint.label = nil
+                    }
+                } else {
+                    reconciled = SurfaceReconciler.reconcile(detected: detected, persisted: persisted)
+                }
+                drawingData.levels[i].surfaces = reconciled
+            }
+        } else {
+            let detected = drawingData.detectedSurfaces
+            let persisted = drawingData.surfaces
+            let legacy = drawingData.footprint
+            let reconciled: [DeckSurface]
+            if persisted.isEmpty && (!legacy.assignedItems.isEmpty || legacy.label != nil) {
+                reconciled = SurfaceReconciler.migratedFromLegacy(detected: detected, legacyFootprint: legacy)
+                if !reconciled.isEmpty {
+                    drawingData.footprint.assignedItems.removeAll()
+                    drawingData.footprint.label = nil
+                }
+            } else {
+                reconciled = SurfaceReconciler.reconcile(detected: detected, persisted: persisted)
+            }
+            drawingData.surfaces = reconciled
+        }
+
+        // Drop selection IDs that no longer correspond to any persisted surface.
+        let liveIds: Set<String>
+        if isMultiLevel {
+            liveIds = Set(drawingData.levels.flatMap { $0.surfaces.map { $0.id } })
+        } else {
+            liveIds = Set(drawingData.surfaces.map { $0.id })
+        }
+        if !liveIds.isEmpty {
+            selection.selectedSurfaceIds = selection.selectedSurfaceIds.intersection(liveIds)
+        }
+    }
+
     /// Look up a vertex in the active context
     private func activeVertex(byId id: String) -> DeckVertex? {
         if isMultiLevel, let level = activeLevel { return level.vertex(byId: id) }
@@ -252,6 +351,14 @@ class DeckBuilderViewModel: ObservableObject {
         return drawingData.isClosed
     }
 
+    /// Every detected closed face in the active context. Used by the face
+    /// hit-test so a tap inside ANY surface (not just a Hamiltonian cycle of
+    /// every vertex) selects it. DECK-NEW-1.
+    private var activeSurfaces: [DetectedSurface] {
+        if isMultiLevel, let level = activeLevel { return level.detectedSurfaces }
+        return drawingData.detectedSurfaces
+    }
+
     // MARK: - Undo/Redo
 
     private var undoStack: [DrawingSnapshot] = []
@@ -282,21 +389,37 @@ class DeckBuilderViewModel: ObservableObject {
     var totalArea: Double? {
         guard let scale = drawingData.scaleFactor, scale > 0 else { return nil }
         if isMultiLevel {
-            // Skip self-intersecting levels — their shoelace value is the signed
-            // sum of cancelling regions, not a usable area. Returning nil for the
-            // whole drawing forces the user to fix the geometry before they can
-            // chase a number that wasn't real.
-            let validLevels = drawingData.levels.filter { level in
-                level.isClosed &&
-                !PolygonMath.isSelfIntersecting(vertices: level.orderedPositions)
+            // DECK-NEW-1 — sum every detected face on every level, not the
+            // single all-vertices polygon. Falls back to the legacy
+            // perimeter calculation for levels that are simple closed
+            // polygons but produce no detected surfaces (degenerate edge
+            // cases). Self-intersecting faces are excluded since their
+            // shoelace area is not a usable measurement.
+            var total: Double = 0
+            for level in drawingData.levels {
+                let surfaces = level.detectedSurfaces
+                if surfaces.isEmpty {
+                    guard level.isClosed,
+                          !PolygonMath.isSelfIntersecting(vertices: level.orderedPositions) else { continue }
+                    total += PolygonMath.realWorldArea(vertices: level.orderedPositions, scaleFactor: scale)
+                } else {
+                    for surface in surfaces {
+                        guard !PolygonMath.isSelfIntersecting(vertices: surface.positions) else { continue }
+                        total += PolygonMath.realWorldArea(vertices: surface.positions, scaleFactor: scale)
+                    }
+                }
             }
-            guard !validLevels.isEmpty else { return nil }
-            // If at least one level is invalid we still return nil — partial sums
-            // would mislead the user into thinking the deck is priceable.
-            guard validLevels.count == drawingData.levels.filter({ $0.isClosed }).count else { return nil }
-            return validLevels.reduce(0) { total, level in
-                total + PolygonMath.realWorldArea(vertices: level.orderedPositions, scaleFactor: scale)
+            return total > 0 ? total : nil
+        }
+        // Single-level — sum across all detected surfaces.
+        let surfaces = drawingData.detectedSurfaces
+        if !surfaces.isEmpty {
+            var total: Double = 0
+            for surface in surfaces {
+                guard !PolygonMath.isSelfIntersecting(vertices: surface.positions) else { continue }
+                total += PolygonMath.realWorldArea(vertices: surface.positions, scaleFactor: scale)
             }
+            return total > 0 ? total : nil
         }
         guard isClosed else { return nil }
         let positions = drawingData.orderedPositions
@@ -315,6 +438,50 @@ class DeckBuilderViewModel: ObservableObject {
         }
         guard activeEdges.count > 0 else { return nil }
         return PolygonMath.perimeter(vertices: drawingData.orderedPositions) / scale
+    }
+
+    /// Live "12' 6\"  90°" string for the in-progress draw. Returned as a
+    /// pre-formatted label so the floating header HUD can render it without
+    /// duplicating the formatting/snap math. Nil when no draw is in flight.
+    /// DECK-NEW-3 — moved out of DeckCanvasView so the HUD pill can live in
+    /// the same VStack as the title pill (shared gridlines).
+    var liveDimensionLabel: String? {
+        guard case .drawing(let fromId, let startPosition, let currentEnd) = drawingMode else { return nil }
+        let distance = SnapEngine.distance(startPosition, currentEnd)
+        guard distance > 1 else { return nil }
+
+        let dimText: String
+        if let scale = drawingData.scaleFactor, scale > 0.001 {
+            let inches = distance / scale
+            dimText = DimensionEngine.format(inches, system: drawingData.config.measurementSystem)
+        } else {
+            let inches = distance / DeckBuilderViewModel.prescaleFallbackScale
+            dimText = "~" + DimensionEngine.format(inches, system: drawingData.config.measurementSystem)
+        }
+
+        let angleText: String
+        if let fromVertexId = fromId {
+            let edges = isMultiLevel ? (activeLevel?.edges ?? []) : drawingData.edges
+            let connected = edges.filter { $0.startVertexId == fromVertexId || $0.endVertexId == fromVertexId }
+            if let prev = connected.last {
+                let otherId = prev.startVertexId == fromVertexId ? prev.endVertexId : prev.startVertexId
+                let lookupVertices = isMultiLevel ? (activeLevel?.vertices ?? []) : drawingData.vertices
+                if let other = lookupVertices.first(where: { $0.id == otherId }) {
+                    let prevA = SnapEngine.lineAngle(from: startPosition, to: other.position)
+                    let newA = SnapEngine.lineAngle(from: startPosition, to: currentEnd)
+                    var rel = newA - prevA; if rel < 0 { rel += 360 }; if rel > 180 { rel = 360 - rel }
+                    angleText = String(format: "%.0f°", rel)
+                } else {
+                    angleText = String(format: "%.0f°", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
+                }
+            } else {
+                angleText = String(format: "%.0f°", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
+            }
+        } else {
+            angleText = String(format: "%.0f°", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
+        }
+
+        return "\(dimText)  \(angleText)"
     }
 
     // MARK: - Init
@@ -342,6 +509,13 @@ class DeckBuilderViewModel: ObservableObject {
             self.autosaveEnabled = true
             startAutosaveTimer()
         }
+
+        // DECK-NEW-1 follow-up — migrate legacy single-`footprint` payloads
+        // to the per-surface store on first load. Reconciler is idempotent
+        // and safe to run on already-migrated drawings; this just ensures
+        // a user who opens an OLD drawing without editing still sees the
+        // correct per-surface materials in 2D and 3D.
+        reconcileSurfaces()
 
         // Bug ab554b5f — designs that arrive in the builder with geometry but
         // have NEVER been synced (template / sketch / AR creation paths)
@@ -491,7 +665,6 @@ class DeckBuilderViewModel: ObservableObject {
     func switchToLevel(_ index: Int) {
         guard index < drawingData.levels.count else { return }
         drawingMode = .idle // Cancel any in-progress drawing to prevent cross-level edges
-        showingPropertySheet = false
         activeLevelIndex = index
         selection.clear()
         editingEdgeId = nil
@@ -757,6 +930,81 @@ class DeckBuilderViewModel: ObservableObject {
         save()
     }
 
+    // MARK: - Stair Hit Test (DECK-NEW-6)
+
+    /// Returns the edge id whose stair rectangle contains `point` in canvas
+    /// space. Mirrors the geometry built by `DeckCanvasView.drawStairIndicator`
+    /// so the tap target matches the rendered stair shape exactly: outward
+    /// perpendicular from the deck fill, alignment + offset along the edge,
+    /// width clamped to edge length. Returns nil when the tap is outside
+    /// every stair (or no edges have stairs).
+    private func findStairEdgeAtPoint(_ point: CGPoint) -> String? {
+        let edges = activeEdges
+        let vertices = activeVertices
+        let polygon = activeOrderedPositions
+        let scale: Double
+        if let s = drawingData.scaleFactor, s > 0 {
+            scale = s
+        } else {
+            scale = DeckBuilderViewModel.prescaleFallbackScale
+        }
+
+        for edge in edges {
+            guard let config = edge.stairConfig,
+                  let tc = config.treadCount, tc > 0,
+                  let start = vertices.first(where: { $0.id == edge.startVertexId }),
+                  let end = vertices.first(where: { $0.id == edge.endVertexId }) else { continue }
+
+            let s = start.position
+            let e = end.position
+            let dx = e.x - s.x
+            let dy = e.y - s.y
+            let edgeLen = sqrt(dx * dx + dy * dy)
+            guard edgeLen > 0 else { continue }
+            let edgeNx = dx / edgeLen
+            let edgeNy = dy / edgeLen
+
+            let outward = PolygonMath.outwardPerpendicular(
+                edgeStart: s, edgeEnd: e, polygonVertices: polygon
+            )
+            let perpX = config.flipDirection ? -outward.x : outward.x
+            let perpY = config.flipDirection ? -outward.y : outward.y
+
+            let stairWidth = min(CGFloat(config.width) * CGFloat(scale), edgeLen)
+            let totalRunInches = Double(tc) * config.runPerTread
+            let stairDepth = CGFloat(totalRunInches) * CGFloat(scale)
+            let offsetCanvas = CGFloat(config.offset) * CGFloat(scale)
+            let gapTotal = edgeLen - stairWidth
+            let stairStartT: CGFloat
+            switch config.alignment {
+            case .left:   stairStartT = offsetCanvas / edgeLen
+            case .center: stairStartT = (gapTotal / 2 + offsetCanvas) / edgeLen
+            case .right:  stairStartT = (gapTotal - offsetCanvas) / edgeLen
+            }
+
+            let baseStart = CGPoint(
+                x: s.x + edgeNx * edgeLen * stairStartT,
+                y: s.y + edgeNy * edgeLen * stairStartT
+            )
+            let baseEnd = CGPoint(
+                x: baseStart.x + edgeNx * stairWidth,
+                y: baseStart.y + edgeNy * stairWidth
+            )
+            let farStart = CGPoint(
+                x: baseStart.x + CGFloat(perpX) * stairDepth,
+                y: baseStart.y + CGFloat(perpY) * stairDepth
+            )
+            let farEnd = CGPoint(
+                x: baseEnd.x + CGFloat(perpX) * stairDepth,
+                y: baseEnd.y + CGFloat(perpY) * stairDepth
+            )
+            if PolygonMath.pointInPolygon(point, vertices: [baseStart, baseEnd, farEnd, farStart]) {
+                return edge.id
+            }
+        }
+        return nil
+    }
+
     // MARK: - Selection
 
     func handleTap(at point: CGPoint, hitThreshold: Double = 25.0) {
@@ -771,6 +1019,23 @@ class DeckBuilderViewModel: ObservableObject {
             return
         }
 
+        // DECK-NEW-6 — stairs are tap-selectable. Hit-test the stair rectangle
+        // for any edge with a stairConfig BEFORE the regular edge check so a
+        // tap inside the stair geometry counts as "select that edge + edit
+        // its stair" instead of "miss" (the stair lives outside the edge
+        // line itself, so without this it was unreachable by tap).
+        if tapSelectFilter.contains(.edge),
+           let stairEdgeId = findStairEdgeAtPoint(point) {
+            if !additive { selection.clear() }
+            selection.selectedEdgeIds = [stairEdgeId]
+            editingEdgeId = stairEdgeId
+            hapticMedium()
+            // Auto-open the stair editor — single tap = edit. Field users
+            // expect the stair to behave like any other selectable thing.
+            showingStairConfig = true
+            return
+        }
+
         if tapSelectFilter.contains(.edge),
            let edgeId = PolygonMath.findEdgeAtPoint(point, edges: activeEdges, vertices: activeVertices, hitThreshold: hitThreshold * 0.8) {
             if !additive { selection.clear() }
@@ -781,18 +1046,25 @@ class DeckBuilderViewModel: ObservableObject {
             return
         }
 
-        if tapSelectFilter.contains(.face),
-           activeIsClosed,
-           // Block face-selection on self-intersecting shapes: the renderer
-           // fills via non-zero while pointInPolygon uses even-odd, so the
-           // visible fill region and tap-targetable region disagree. Force the
-           // user to fix the shape (the EDGES CROSS warning is already on screen).
-           !PolygonMath.isSelfIntersecting(vertices: activeOrderedPositions),
-           PolygonMath.pointInPolygon(point, vertices: activeOrderedPositions) {
-            if !additive { selection.clear() }
-            selection.selectedFootprint.toggle()
-            hapticLight()
-            return
+        // DECK-NEW-1 — face hit-test against EVERY detected surface, not
+        // just the all-vertices polygon. Surfaces are tested smallest-first
+        // so a tap inside a small inner surface selects it instead of the
+        // larger outer one that contains it. Toggles the matching persisted
+        // DeckSurface in `selection.selectedSurfaceIds` (per-surface
+        // selection — DECK-NEW-1 follow-up).
+        if tapSelectFilter.contains(.face) {
+            let surfaces = activeSurfaces
+            let ordered = surfaces.sorted { abs(PolygonMath.signedArea(vertices: $0.positions)) < abs(PolygonMath.signedArea(vertices: $1.positions)) }
+            for detected in ordered {
+                guard !PolygonMath.isSelfIntersecting(vertices: detected.positions) else { continue }
+                if PolygonMath.pointInPolygon(point, vertices: detected.positions) {
+                    if !additive { selection.clear() }
+                    let persistedId = persistedSurfaceId(for: detected)
+                    selection.toggleSurface(persistedId)
+                    hapticLight()
+                    return
+                }
+            }
         }
 
         if !additive {
@@ -820,11 +1092,12 @@ class DeckBuilderViewModel: ObservableObject {
                 exitMultiSelect()
                 return
             }
-            // Long-pressed a selected element → open properties like any other mode
+            // Long-press just selects the element. Properties sheet was removed
+            // (deck-new-7) — long-press on something already selected is now a no-op
+            // beyond the haptic confirm.
             handleTap(at: point, hitThreshold: hitThreshold)
             if !selection.isEmpty {
                 hapticMedium()
-                showingPropertySheet = true
             }
             return
         }
@@ -846,11 +1119,10 @@ class DeckBuilderViewModel: ObservableObject {
             && PolygonMath.pointInPolygon(point, vertices: activeOrderedPositions)
         guard hitsVertex || hitsEdge || hitsFootprint else { return }
 
-        // Same hit detection as tap, but always shows property sheet
+        // Same hit detection as tap; property sheet removed (deck-new-7)
         handleTap(at: point, hitThreshold: hitThreshold)
         if !selection.isEmpty {
             hapticMedium()
-            showingPropertySheet = true
         }
     }
 
@@ -1155,23 +1427,97 @@ class DeckBuilderViewModel: ObservableObject {
         save()
     }
 
-    // MARK: - Footprint Properties
+    // MARK: - Footprint / Surface Properties
 
+    /// Assigns an item to every currently-selected surface. Falls back to
+    /// the legacy single-footprint store only if no surface is selected
+    /// (covers callers that haven't migrated yet — should be unreachable
+    /// in normal flows since the picker only opens when a surface or edge
+    /// is selected). DECK-NEW-1 follow-up.
     func assignItemToFootprint(_ item: AssignedItem) {
-        pushUndo("assign footprint item")
-        var fp = activeFootprint
-        fp.assignedItems.append(item)
-        activeFootprint = fp
+        pushUndo("assign surface item")
+        let targetIds = selection.selectedSurfaceIds
+        if targetIds.isEmpty {
+            var fp = activeFootprint
+            fp.assignedItems.append(item)
+            activeFootprint = fp
+        } else {
+            var surfaces = activePersistedSurfaces
+            for i in surfaces.indices where targetIds.contains(surfaces[i].id) {
+                surfaces[i].assignedItems.append(item)
+            }
+            activePersistedSurfaces = surfaces
+        }
         hapticLight()
-        showAssignmentConfirmation("Surface: \(item.name)")
+        let count = max(targetIds.count, 1)
+        let suffix = count == 1 ? "" : " ×\(count)"
+        showAssignmentConfirmation("Surface: \(item.name)\(suffix)")
         save()
     }
 
+    /// Removes an item from every selected surface and from the legacy
+    /// footprint store (so an item that survived from a pre-migration
+    /// drawing also clears).
     func removeFootprintItem(_ itemId: String) {
-        pushUndo("remove footprint item")
+        pushUndo("remove surface item")
+        let targetIds = selection.selectedSurfaceIds
+        if !targetIds.isEmpty {
+            var surfaces = activePersistedSurfaces
+            for i in surfaces.indices where targetIds.contains(surfaces[i].id) {
+                surfaces[i].assignedItems.removeAll { $0.id == itemId }
+            }
+            activePersistedSurfaces = surfaces
+        }
         var fp = activeFootprint
         fp.assignedItems.removeAll { $0.id == itemId }
         activeFootprint = fp
+        save()
+    }
+
+    /// Sets a label on every currently-selected surface. Pass `nil` or
+    /// empty to clear. DECK-NEW-1 follow-up.
+    func setLabelOnSelectedSurfaces(_ raw: String?) {
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value: String? = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        let targetIds = selection.selectedSurfaceIds
+        guard !targetIds.isEmpty else { return }
+        pushUndo("label surface")
+        var surfaces = activePersistedSurfaces
+        for i in surfaces.indices where targetIds.contains(surfaces[i].id) {
+            surfaces[i].label = value
+        }
+        activePersistedSurfaces = surfaces
+        save()
+    }
+
+    /// Reassigns every currently-selected surface to a different level.
+    /// Used by DECK-NEW-4 (selection overhaul). Detected surfaces are
+    /// identified by their stable persisted id; the persisted record is
+    /// removed from the source level and inserted on the destination.
+    /// Geometry (vertices/edges) does NOT move — only the per-surface
+    /// payload (assigned items + label).
+    func moveSelectedSurfacesToLevel(at destinationIndex: Int) {
+        guard isMultiLevel,
+              destinationIndex >= 0,
+              destinationIndex < drawingData.levels.count else { return }
+        let targetIds = selection.selectedSurfaceIds
+        guard !targetIds.isEmpty else { return }
+        pushUndo("move surface to level")
+
+        var moved: [DeckSurface] = []
+        for li in drawingData.levels.indices where li != destinationIndex {
+            var surfaces = drawingData.levels[li].surfaces
+            let migrated = surfaces.filter { targetIds.contains($0.id) }
+            if !migrated.isEmpty {
+                surfaces.removeAll { targetIds.contains($0.id) }
+                drawingData.levels[li].surfaces = surfaces
+                moved.append(contentsOf: migrated)
+            }
+        }
+        if !moved.isEmpty {
+            drawingData.levels[destinationIndex].surfaces.append(contentsOf: moved)
+        }
+        hapticMedium()
         save()
     }
 
@@ -1258,7 +1604,7 @@ class DeckBuilderViewModel: ObservableObject {
         // selection.clear() above resets selectedFootprint to false; calling
         // out the dependency explicitly so the rule survives any future
         // refactor that uses a partial-clear instead of full clear.
-        if !activeIsClosed { selection.selectedFootprint = false }
+        if !activeIsClosed { selection.selectedSurfaceIds.removeAll() }
         hapticMedium()
         save()
     }
@@ -1279,7 +1625,7 @@ class DeckBuilderViewModel: ObservableObject {
         activeFootprint = fp
         pruneOrphanedLevelConnections()
         selection.clear()
-        if !activeIsClosed { selection.selectedFootprint = false }
+        if !activeIsClosed { selection.selectedSurfaceIds.removeAll() }
         hapticMedium()
         save()
     }
@@ -1311,11 +1657,19 @@ class DeckBuilderViewModel: ObservableObject {
         activeEdges = edges
         activeVertices = verts
 
-        var fp = activeFootprint
-        if selection.selectedFootprint {
-            // User asked to clear the surface assignment, not the geometry
-            fp.assignedItems.removeAll()
+        // Clear per-surface assignments for any selected surfaces. The
+        // surface geometry stays intact (it's defined by the edges), only
+        // the materials/label payload is reset.
+        if !selection.selectedSurfaceIds.isEmpty {
+            var surfaces = activePersistedSurfaces
+            for i in surfaces.indices where selection.selectedSurfaceIds.contains(surfaces[i].id) {
+                surfaces[i].assignedItems.removeAll()
+                surfaces[i].label = nil
+            }
+            activePersistedSurfaces = surfaces
         }
+
+        var fp = activeFootprint
         fp.isClosed = activeIsClosed
         activeFootprint = fp
 
@@ -1366,14 +1720,14 @@ class DeckBuilderViewModel: ObservableObject {
     /// Drop everything except edges from the selection.
     func selectOnlyEdges() {
         selection.selectedVertexIds.removeAll()
-        selection.selectedFootprint = false
+        selection.selectedSurfaceIds.removeAll()
         hapticLight()
     }
 
     /// Drop everything except vertices from the selection.
     func selectOnlyVertices() {
         selection.selectedEdgeIds.removeAll()
-        selection.selectedFootprint = false
+        selection.selectedSurfaceIds.removeAll()
         hapticLight()
     }
 
@@ -1394,13 +1748,18 @@ class DeckBuilderViewModel: ObservableObject {
             return predicate(edge)
         }
         selection.selectedVertexIds.removeAll()
-        selection.selectedFootprint = false
+        selection.selectedSurfaceIds.removeAll()
         hapticLight()
     }
 
     // MARK: - Persistence
 
     func save() {
+        // Reconcile the per-surface assignment store against current
+        // geometry before persisting. Idempotent — surfaces with stable
+        // vertex membership pass through unchanged. DECK-NEW-1 follow-up.
+        reconcileSurfaces()
+
         isLocallySaved = false
         deckDesign.drawingData = drawingData  // triggers needsSync via setter
         // Insert on first save if the design was created via the blank-canvas

@@ -42,6 +42,8 @@ struct EstimateGeneratorService {
             orderedPositions: drawingData.orderedPositions,
             isPolygonClosed: drawingData.isClosed,
             drawingData: drawingData,
+            persistedSurfaces: drawingData.surfaces,
+            detectedSurfaces: drawingData.detectedSurfaces,
             levelPrefix: nil,
             startingSortOrder: 0
         ).items
@@ -63,6 +65,8 @@ struct EstimateGeneratorService {
                 orderedPositions: level.orderedPositions,
                 isPolygonClosed: level.isClosed,
                 drawingData: drawingData,
+                persistedSurfaces: level.surfaces,
+                detectedSurfaces: level.detectedSurfaces,
                 levelPrefix: level.name,
                 startingSortOrder: sortOrder
             )
@@ -142,6 +146,8 @@ struct EstimateGeneratorService {
         orderedPositions: [CGPoint],
         isPolygonClosed: Bool,
         drawingData: DeckDrawingData,
+        persistedSurfaces: [DeckSurface],
+        detectedSurfaces: [DetectedSurface],
         levelPrefix: String?,
         startingSortOrder: Int
     ) -> (items: [GeneratedLineItem], nextSortOrder: Int) {
@@ -149,37 +155,53 @@ struct EstimateGeneratorService {
         var sortOrder = startingSortOrder
         let prefix = levelPrefix.map { "\($0) \u{2014} " } ?? ""
 
-        // 1. Surface items (from footprint)
-        for item in footprint.assignedItems {
-            let areaSqFt: Double
-            if levelPrefix != nil {
-                // Multi-level: walk the edge graph for area, gate on closure +
-                // self-intersection. Without these guards a half-drawn or bowtied
-                // level would still ship into the estimate with a phantom number.
-                guard let scale = drawingData.scaleFactor, scale > 0,
-                      isPolygonClosed,
-                      orderedPositions.count >= 3,
-                      !PolygonMath.isSelfIntersecting(vertices: orderedPositions) else { continue }
-                areaSqFt = PolygonMath.realWorldArea(vertices: orderedPositions, scaleFactor: scale) / 144.0
-            } else {
-                // Single-level uses the validated helper that already gates the
-                // same way — keeps this branch in lockstep with totalArea / UI.
-                areaSqFt = calculateAreaSqFt(drawingData: drawingData)
+        // 1. Surface items — per-surface materials & areas (DECK-NEW-1
+        //    follow-up). Iterates the persisted DeckSurface store; each
+        //    surface is matched to a detected face by vertex set so the
+        //    area used for billing is THIS surface's area, not the whole
+        //    polygon's. Falls back to the legacy single-footprint payload
+        //    only when the persisted store is empty (e.g. a drawing that
+        //    was generated before reconcile was first run).
+        let perSurfaceItems = perSurfaceLineItems(
+            persistedSurfaces: persistedSurfaces,
+            detectedSurfaces: detectedSurfaces,
+            scaleFactor: drawingData.scaleFactor,
+            prefix: prefix,
+            startingSortOrder: sortOrder
+        )
+        items.append(contentsOf: perSurfaceItems.items)
+        sortOrder = perSurfaceItems.nextSortOrder
+
+        // Legacy footprint fallback — only when no per-surface payload
+        // exists. Same area math as before so unmigrated drawings still
+        // produce identical estimates.
+        if persistedSurfaces.isEmpty {
+            for item in footprint.assignedItems {
+                let areaSqFt: Double
+                if levelPrefix != nil {
+                    guard let scale = drawingData.scaleFactor, scale > 0,
+                          isPolygonClosed,
+                          orderedPositions.count >= 3,
+                          !PolygonMath.isSelfIntersecting(vertices: orderedPositions) else { continue }
+                    areaSqFt = PolygonMath.realWorldArea(vertices: orderedPositions, scaleFactor: scale) / 144.0
+                } else {
+                    areaSqFt = calculateAreaSqFt(drawingData: drawingData)
+                }
+                items.append(GeneratedLineItem(
+                    name: "\(prefix)\(item.name)",
+                    description: nil,
+                    type: .material,
+                    quantity: round(areaSqFt * 100) / 100,
+                    unit: "sq ft",
+                    unitPrice: item.unitPrice ?? 0,
+                    productId: item.productId,
+                    taskTypeId: item.taskTypeId,
+                    category: "Surface",
+                    sortOrder: sortOrder,
+                    isOptional: false
+                ))
+                sortOrder += 1
             }
-            items.append(GeneratedLineItem(
-                name: "\(prefix)\(item.name)",
-                description: nil,
-                type: .material,
-                quantity: round(areaSqFt * 100) / 100,
-                unit: "sq ft",
-                unitPrice: item.unitPrice ?? 0,
-                productId: item.productId,
-                taskTypeId: item.taskTypeId,
-                category: "Surface",
-                sortOrder: sortOrder,
-                isOptional: false
-            ))
-            sortOrder += 1
         }
 
         // 2. Substructure (footings from vertices)
@@ -451,6 +473,7 @@ struct EstimateGeneratorService {
         if drawingData.isMultiLevel {
             for level in drawingData.levels {
                 if !level.footprint.assignedItems.isEmpty { return true }
+                if level.surfaces.contains(where: { !$0.assignedItems.isEmpty }) { return true }
                 if level.edges.contains(where: { $0.railingConfig != nil }) { return true }
                 if level.edges.contains(where: { $0.stairConfig != nil }) { return true }
                 if level.edges.contains(where: { !$0.assignedItems.isEmpty }) { return true }
@@ -460,6 +483,7 @@ struct EstimateGeneratorService {
             return false
         }
         if !drawingData.footprint.assignedItems.isEmpty { return true }
+        if drawingData.surfaces.contains(where: { !$0.assignedItems.isEmpty }) { return true }
         if drawingData.edges.contains(where: { $0.railingConfig != nil }) { return true }
         if drawingData.edges.contains(where: { $0.stairConfig != nil }) { return true }
         if drawingData.edges.contains(where: { !$0.assignedItems.isEmpty }) { return true }
@@ -473,6 +497,78 @@ struct EstimateGeneratorService {
         guard !arEdges.isEmpty else { return nil }
         let maxAccuracy = arEdges.compactMap { $0.accuracyPercent }.max() ?? 3.0
         return "Note: Some measurements in this estimate were captured via AR and have an accuracy of \u{00B1}\(Int(maxAccuracy))%. Verify dimensions before ordering materials."
+    }
+
+    // MARK: - Per-Surface Helpers (DECK-NEW-1 follow-up)
+
+    /// Generates surface line items per persisted DeckSurface, matched to
+    /// detected faces by vertex set. Each item is billed against the
+    /// matching face's own real-world area, not the whole polygon. When a
+    /// persisted surface has no detected match (e.g. transient state mid-
+    /// edit before reconcile runs), it's skipped — `save()` will rebind
+    /// it on the next pass.
+    private static func perSurfaceLineItems(
+        persistedSurfaces: [DeckSurface],
+        detectedSurfaces: [DetectedSurface],
+        scaleFactor: Double?,
+        prefix: String,
+        startingSortOrder: Int
+    ) -> (items: [GeneratedLineItem], nextSortOrder: Int) {
+        guard !persistedSurfaces.isEmpty,
+              let scale = scaleFactor, scale > 0 else {
+            return (items: [], nextSortOrder: startingSortOrder)
+        }
+
+        var items: [GeneratedLineItem] = []
+        var sortOrder = startingSortOrder
+
+        for surface in persistedSurfaces {
+            guard !surface.assignedItems.isEmpty else { continue }
+
+            let dSet = surface.vertexIds
+            let detected: DetectedSurface? = detectedSurfaces.first(where: { Set($0.vertexIds) == dSet })
+                ?? detectedSurfaces
+                    .filter { Set($0.vertexIds).intersection(dSet).count > 0 }
+                    .max(by: { lhs, rhs in
+                        let li = Set(lhs.vertexIds).intersection(dSet).count
+                        let ri = Set(rhs.vertexIds).intersection(dSet).count
+                        return li < ri
+                    })
+            guard let face = detected,
+                  face.positions.count >= 3,
+                  !PolygonMath.isSelfIntersecting(vertices: face.positions) else { continue }
+
+            let areaSqFt = PolygonMath.realWorldArea(vertices: face.positions, scaleFactor: scale) / 144.0
+            let surfaceLabel: String? = {
+                if let l = surface.label?.trimmingCharacters(in: .whitespacesAndNewlines), !l.isEmpty { return l }
+                return nil
+            }()
+
+            for item in surface.assignedItems {
+                let displayName: String
+                if let label = surfaceLabel {
+                    displayName = "\(prefix)\(label) \u{2014} \(item.name)"
+                } else {
+                    displayName = "\(prefix)\(item.name)"
+                }
+                items.append(GeneratedLineItem(
+                    name: displayName,
+                    description: nil,
+                    type: .material,
+                    quantity: round(areaSqFt * 100) / 100,
+                    unit: "sq ft",
+                    unitPrice: item.unitPrice ?? 0,
+                    productId: item.productId,
+                    taskTypeId: item.taskTypeId,
+                    category: "Surface",
+                    sortOrder: sortOrder,
+                    isOptional: false
+                ))
+                sortOrder += 1
+            }
+        }
+
+        return (items, sortOrder)
     }
 
     // MARK: - Geometry Helpers

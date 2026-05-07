@@ -98,7 +98,10 @@ struct PerspectiveCorrectionView: View {
 
                     // Draggable handles — separate from the outline so each
                     // handle hit area is generous (44pt) without obscuring
-                    // adjacent corners.
+                    // adjacent corners. The named coordinateSpace on this ZStack
+                    // ensures DragGesture reports in the ZStack's local frame
+                    // (same space as imageRect), so normalizedPoint converts
+                    // correctly. Bug 12.
                     cornerHandle(position: cornerInView(topLeft, imageRect: imageRect)) { newPos in
                         topLeft = normalizedPoint(newPos, imageRect: imageRect)
                     }
@@ -126,6 +129,7 @@ struct PerspectiveCorrectionView: View {
                             )
                     }
                 }
+                .coordinateSpace(name: "perspectiveEditor")
             }
             .padding(.horizontal, OPSStyle.Layout.spacing4)
 
@@ -177,7 +181,12 @@ struct PerspectiveCorrectionView: View {
             .contentShape(Rectangle())
             .position(position)
             .gesture(
-                DragGesture(minimumDistance: 0)
+                // Use the named coordinateSpace declared on the parent ZStack so
+                // value.location is in ZStack-local space (the same space as
+                // imageRect). Without this, SwiftUI reports location in the
+                // view's local 44×44 frame, making corner mapping incorrect.
+                // Bug 12.
+                DragGesture(minimumDistance: 0, coordinateSpace: .named("perspectiveEditor"))
                     .onChanged { value in
                         onChange(value.location)
                     }

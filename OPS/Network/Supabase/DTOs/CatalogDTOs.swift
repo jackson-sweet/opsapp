@@ -450,6 +450,38 @@ struct UpsertCatalogVariantOptionValueDTO: Codable {
     }
 }
 
+struct UpdateCatalogCategoryDTO: Codable {
+    var name: String?
+    var parentId: String?
+    var sortOrder: Int?
+    var colorHex: String?
+    var defaultWarningThreshold: Double?
+    var defaultCriticalThreshold: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case parentId                   = "parent_id"
+        case sortOrder                  = "sort_order"
+        case colorHex                   = "color_hex"
+        case defaultWarningThreshold    = "default_warning_threshold"
+        case defaultCriticalThreshold   = "default_critical_threshold"
+    }
+
+    // Custom encode skips nil values so a partial update doesn't clobber
+    // unrelated columns. Default `Codable` synthesis would emit JSON null
+    // for nil optionals, which PostgREST treats as "set this column to
+    // NULL" — exactly the behavior we want to avoid for partial updates.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(name, forKey: .name)
+        try c.encodeIfPresent(parentId, forKey: .parentId)
+        try c.encodeIfPresent(sortOrder, forKey: .sortOrder)
+        try c.encodeIfPresent(colorHex, forKey: .colorHex)
+        try c.encodeIfPresent(defaultWarningThreshold, forKey: .defaultWarningThreshold)
+        try c.encodeIfPresent(defaultCriticalThreshold, forKey: .defaultCriticalThreshold)
+    }
+}
+
 struct CreateCatalogTagDTO: Codable {
     let companyId: String
     let name: String
@@ -457,6 +489,19 @@ struct CreateCatalogTagDTO: Codable {
     enum CodingKeys: String, CodingKey {
         case companyId  = "company_id"
         case name
+    }
+}
+
+struct UpdateCatalogTagDTO: Codable {
+    var name: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(name, forKey: .name)
     }
 }
 
@@ -475,6 +520,31 @@ struct CreateCatalogUnitDTO: Codable {
         case dimension
         case isDefault      = "is_default"
         case sortOrder      = "sort_order"
+    }
+}
+
+struct UpdateCatalogUnitDTO: Codable {
+    var display: String?
+    var abbreviation: String?
+    var dimension: String?
+    var isDefault: Bool?
+    var sortOrder: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case display
+        case abbreviation
+        case dimension
+        case isDefault      = "is_default"
+        case sortOrder      = "sort_order"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(display, forKey: .display)
+        try c.encodeIfPresent(abbreviation, forKey: .abbreviation)
+        try c.encodeIfPresent(dimension, forKey: .dimension)
+        try c.encodeIfPresent(isDefault, forKey: .isDefault)
+        try c.encodeIfPresent(sortOrder, forKey: .sortOrder)
     }
 }
 

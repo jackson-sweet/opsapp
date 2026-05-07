@@ -36,6 +36,24 @@ class CatalogRepository {
         return rows.map(\.id)
     }
 
+    func createCategory(_ dto: CreateCatalogCategoryDTO) async throws -> CatalogCategoryDTO {
+        try await client.from("catalog_categories")
+            .insert(dto).select().single().execute().value
+    }
+
+    func updateCategory(_ id: String, fields: UpdateCatalogCategoryDTO) async throws -> CatalogCategoryDTO {
+        try await client.from("catalog_categories")
+            .update(fields).eq("id", value: id).select().single().execute().value
+    }
+
+    func softDeleteCategory(_ id: String) async throws {
+        struct SoftDelete: Codable { let deleted_at: String; let updated_at: String }
+        let now = isoString(Date())
+        try await client.from("catalog_categories")
+            .update(SoftDelete(deleted_at: now, updated_at: now))
+            .eq("id", value: id).execute()
+    }
+
     // MARK: - Items (variant families)
 
     func fetchItemsForSync(since: Date? = nil) async throws -> [CatalogItemDTO] {
@@ -161,6 +179,24 @@ class CatalogRepository {
         return try await query.order("updated_at", ascending: true).execute().value
     }
 
+    func createTag(_ dto: CreateCatalogTagDTO) async throws -> CatalogTagDTO {
+        try await client.from("catalog_tags")
+            .insert(dto).select().single().execute().value
+    }
+
+    func updateTag(_ id: String, fields: UpdateCatalogTagDTO) async throws -> CatalogTagDTO {
+        try await client.from("catalog_tags")
+            .update(fields).eq("id", value: id).select().single().execute().value
+    }
+
+    func softDeleteTag(_ id: String) async throws {
+        struct SoftDelete: Codable { let deleted_at: String; let updated_at: String }
+        let now = isoString(Date())
+        try await client.from("catalog_tags")
+            .update(SoftDelete(deleted_at: now, updated_at: now))
+            .eq("id", value: id).execute()
+    }
+
     func fetchItemTagsForCompany() async throws -> [CatalogItemTagDTO] {
         struct Joined: Codable {
             let id: String
@@ -185,6 +221,24 @@ class CatalogRepository {
         var query = client.from("catalog_units").select().eq("company_id", value: companyId)
         if let since = since { query = query.gte("updated_at", value: isoString(since)) }
         return try await query.order("sort_order", ascending: true).execute().value
+    }
+
+    func createUnit(_ dto: CreateCatalogUnitDTO) async throws -> CatalogUnitDTO {
+        try await client.from("catalog_units")
+            .insert(dto).select().single().execute().value
+    }
+
+    func updateUnit(_ id: String, fields: UpdateCatalogUnitDTO) async throws -> CatalogUnitDTO {
+        try await client.from("catalog_units")
+            .update(fields).eq("id", value: id).select().single().execute().value
+    }
+
+    func softDeleteUnit(_ id: String) async throws {
+        struct SoftDelete: Codable { let deleted_at: String; let updated_at: String }
+        let now = isoString(Date())
+        try await client.from("catalog_units")
+            .update(SoftDelete(deleted_at: now, updated_at: now))
+            .eq("id", value: id).execute()
     }
 
     // MARK: - Snapshots

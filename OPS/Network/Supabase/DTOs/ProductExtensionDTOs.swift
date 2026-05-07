@@ -1,0 +1,198 @@
+//
+//  ProductExtensionDTOs.swift
+//  OPS
+//
+//  DTOs for the configurable-Product layers: options, option values,
+//  pricing modifiers, and recipe rows (product_materials).
+//
+
+import Foundation
+
+struct ProductOptionDTO: Codable, Identifiable {
+    let id: String
+    let productId: String
+    let name: String
+    let kind: String          // 'select' | 'integer' | 'boolean'
+    let affectsPrice: Bool
+    let affectsRecipe: Bool
+    let required: Bool
+    let defaultValue: String?
+    let optionDefaultSource: String?
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case productId            = "product_id"
+        case name
+        case kind
+        case affectsPrice         = "affects_price"
+        case affectsRecipe        = "affects_recipe"
+        case required
+        case defaultValue         = "default_value"
+        case optionDefaultSource  = "option_default_source"
+        case sortOrder            = "sort_order"
+    }
+
+    func toModel() -> ProductOption {
+        ProductOption(
+            id: id, productId: productId, name: name,
+            kind: ProductOptionKind(rawValue: kind) ?? .select,
+            affectsPrice: affectsPrice, affectsRecipe: affectsRecipe,
+            required: required, defaultValue: defaultValue,
+            optionDefaultSource: optionDefaultSource, sortOrder: sortOrder
+        )
+    }
+}
+
+struct ProductOptionValueDTO: Codable, Identifiable {
+    let id: String
+    let optionId: String
+    let value: String
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case optionId   = "option_id"
+        case value
+        case sortOrder  = "sort_order"
+    }
+
+    func toModel() -> ProductOptionValue {
+        ProductOptionValue(id: id, optionId: optionId, value: value, sortOrder: sortOrder)
+    }
+}
+
+struct ProductPricingModifierDTO: Codable, Identifiable {
+    let id: String
+    let productId: String
+    let optionId: String
+    let triggerValueId: String?
+    let triggerIntMin: Int?
+    let triggerIntMax: Int?
+    let modifierKind: String
+    let amount: Double
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case productId        = "product_id"
+        case optionId         = "option_id"
+        case triggerValueId   = "trigger_value_id"
+        case triggerIntMin    = "trigger_int_min"
+        case triggerIntMax    = "trigger_int_max"
+        case modifierKind     = "modifier_kind"
+        case amount
+    }
+
+    func toModel() -> ProductPricingModifier {
+        ProductPricingModifier(
+            id: id, productId: productId, optionId: optionId,
+            triggerValueId: triggerValueId,
+            triggerIntMin: triggerIntMin, triggerIntMax: triggerIntMax,
+            modifierKind: PricingModifierKind(rawValue: modifierKind) ?? .addPerUnit,
+            amount: amount
+        )
+    }
+}
+
+struct ProductMaterialDTO: Codable, Identifiable {
+    let id: String
+    let productId: String
+    let catalogVariantId: String?
+    let catalogItemId: String?
+    let variantSelector: AnyJSON?
+    let quantityPerUnit: Double
+    let scaledByOptionId: String?
+    let unitId: String?
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case productId          = "product_id"
+        case catalogVariantId   = "catalog_variant_id"
+        case catalogItemId      = "catalog_item_id"
+        case variantSelector    = "variant_selector"
+        case quantityPerUnit    = "quantity_per_unit"
+        case scaledByOptionId   = "scaled_by_option_id"
+        case unitId             = "unit_id"
+        case notes
+    }
+
+    func toModel() -> ProductMaterial {
+        ProductMaterial(
+            id: id, productId: productId,
+            catalogVariantId: catalogVariantId, catalogItemId: catalogItemId,
+            variantSelectorJSON: variantSelector?.rawJSONString,
+            quantityPerUnit: quantityPerUnit,
+            scaledByOptionId: scaledByOptionId,
+            unitId: unitId, notes: notes
+        )
+    }
+}
+
+// MARK: - Create / Update DTOs
+
+struct CreateProductOptionDTO: Codable {
+    let productId: String
+    let name: String
+    let kind: String
+    let affectsPrice: Bool
+    let affectsRecipe: Bool
+    let required: Bool
+    let defaultValue: String?
+    let optionDefaultSource: String?
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case productId            = "product_id"
+        case name
+        case kind
+        case affectsPrice         = "affects_price"
+        case affectsRecipe        = "affects_recipe"
+        case required
+        case defaultValue         = "default_value"
+        case optionDefaultSource  = "option_default_source"
+        case sortOrder            = "sort_order"
+    }
+}
+
+struct CreateProductPricingModifierDTO: Codable {
+    let productId: String
+    let optionId: String
+    let triggerValueId: String?
+    let triggerIntMin: Int?
+    let triggerIntMax: Int?
+    let modifierKind: String
+    let amount: Double
+
+    enum CodingKeys: String, CodingKey {
+        case productId       = "product_id"
+        case optionId        = "option_id"
+        case triggerValueId  = "trigger_value_id"
+        case triggerIntMin   = "trigger_int_min"
+        case triggerIntMax   = "trigger_int_max"
+        case modifierKind    = "modifier_kind"
+        case amount
+    }
+}
+
+struct CreateProductMaterialDTO: Codable {
+    let productId: String
+    let catalogVariantId: String?
+    let catalogItemId: String?
+    let variantSelector: AnyJSON?
+    let quantityPerUnit: Double
+    let scaledByOptionId: String?
+    let unitId: String?
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case productId         = "product_id"
+        case catalogVariantId  = "catalog_variant_id"
+        case catalogItemId     = "catalog_item_id"
+        case variantSelector   = "variant_selector"
+        case quantityPerUnit   = "quantity_per_unit"
+        case scaledByOptionId  = "scaled_by_option_id"
+        case unitId            = "unit_id"
+        case notes
+    }
+}

@@ -59,6 +59,7 @@ enum OPSSchemaCommon {
         CatalogOptionValue.self,
         CatalogVariantOptionValue.self,
         CatalogTag.self,
+        CatalogItemTag.self,
         CatalogUnit.self,
         CatalogSnapshot.self,
         CatalogSnapshotItem.self,

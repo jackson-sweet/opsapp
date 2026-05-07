@@ -31,7 +31,7 @@ struct ProductDTO: Codable, Identifiable {
     let minimumQuantity: Double?
     let showBomOnEstimate: Bool
     let showInStorefront: Bool
-    let tieredPricing: AnyJSON?            // jsonb passthrough
+    let tieredPricing: RawJSONColumn?            // jsonb passthrough
     let taskTypeId: String?
     let taskTypeRef: String?
     let unitId: String?
@@ -169,13 +169,13 @@ struct UpdateProductDTO: Codable {
 
 /// Type-erased JSON value for `tiered_pricing` and other jsonb fields we want
 /// to pass through without strong typing.
-struct AnyJSON: Codable {
+struct RawJSONColumn: Codable {
     let rawJSONString: String
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         // Preserve raw JSON by re-encoding through JSONSerialization.
-        let value = try container.decode(JSONValue.self)
+        let value = try container.decode(RawJSONValue.self)
         let data = try JSONEncoder().encode(value)
         rawJSONString = String(data: data, encoding: .utf8) ?? "{}"
     }
@@ -183,21 +183,21 @@ struct AnyJSON: Codable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         if let data = rawJSONString.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode(JSONValue.self, from: data) {
+           let decoded = try? JSONDecoder().decode(RawJSONValue.self, from: data) {
             try container.encode(decoded)
         } else {
-            try container.encode(JSONValue.object([:]))
+            try container.encode(RawJSONValue.object([:]))
         }
     }
 }
 
-private indirect enum JSONValue: Codable {
+private indirect enum RawJSONValue: Codable {
     case null
     case bool(Bool)
     case number(Double)
     case string(String)
-    case array([JSONValue])
-    case object([String: JSONValue])
+    case array([RawJSONValue])
+    case object([String: RawJSONValue])
 
     init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
@@ -205,8 +205,8 @@ private indirect enum JSONValue: Codable {
         if let b = try? c.decode(Bool.self) { self = .bool(b); return }
         if let n = try? c.decode(Double.self) { self = .number(n); return }
         if let s = try? c.decode(String.self) { self = .string(s); return }
-        if let a = try? c.decode([JSONValue].self) { self = .array(a); return }
-        if let o = try? c.decode([String: JSONValue].self) { self = .object(o); return }
+        if let a = try? c.decode([RawJSONValue].self) { self = .array(a); return }
+        if let o = try? c.decode([String: RawJSONValue].self) { self = .object(o); return }
         self = .null
     }
 

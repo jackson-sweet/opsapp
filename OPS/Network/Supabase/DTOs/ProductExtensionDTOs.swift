@@ -99,7 +99,7 @@ struct ProductMaterialDTO: Codable, Identifiable {
     let productId: String
     let catalogVariantId: String?
     let catalogItemId: String?
-    let variantSelector: AnyJSON?
+    let variantSelector: RawJSONColumn?
     let quantityPerUnit: Double
     let scaledByOptionId: String?
     let unitId: String?
@@ -179,7 +179,7 @@ struct CreateProductMaterialDTO: Codable {
     let productId: String
     let catalogVariantId: String?
     let catalogItemId: String?
-    let variantSelector: AnyJSON?
+    let variantSelector: RawJSONColumn?
     let quantityPerUnit: Double
     let scaledByOptionId: String?
     let unitId: String?

@@ -9,16 +9,10 @@
 import Foundation
 import SwiftData
 
-enum ThresholdStatus: String, CaseIterable, Comparable {
-    case normal
-    case warning
-    case critical
-
-    static func < (lhs: ThresholdStatus, rhs: ThresholdStatus) -> Bool {
-        let order: [ThresholdStatus: Int] = [.normal: 0, .warning: 1, .critical: 2]
-        return (order[lhs] ?? 0) < (order[rhs] ?? 0)
-    }
-}
+// NOTE: `ThresholdStatus` is defined in `InventoryItem.swift` for now.
+// When that file is deleted (Phase 4 / Task 41), move the enum to a
+// dedicated `OPS/DataModels/Enums/ThresholdStatus.swift` file or
+// reintroduce it here.
 
 @Model
 final class CatalogVariant: Identifiable {

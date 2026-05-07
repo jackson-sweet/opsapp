@@ -496,7 +496,7 @@ struct SettingsView: View {
             }
         case .productsServices:
             NavigationStack {
-                ProductsListView()
+                CatalogProductsListView()
                     .environmentObject(dataController)
             }
         case .integrations:

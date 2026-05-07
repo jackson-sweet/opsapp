@@ -59,8 +59,14 @@ struct CatalogView: View {
                         StockView()
                             .transition(.opacity)
                     case .products:
-                        CatalogProductsListView()
-                            .transition(.opacity)
+                        // Local NavigationStack scoped to the products
+                        // segment — Stock uses sheet presentation and
+                        // doesn't need stack semantics, so wrapping at
+                        // the segment level keeps both flows clean.
+                        NavigationStack {
+                            CatalogProductsListView()
+                        }
+                        .transition(.opacity)
                     }
                 }
                 .animation(.easeInOut(duration: 0.18), value: selectedSegment)

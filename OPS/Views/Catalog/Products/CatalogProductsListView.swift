@@ -7,10 +7,9 @@
 //  navigates into ProductDetailView for read-only options/modifiers/recipe
 //  inspection plus light editing of base fields.
 //
-//  The filename and struct are intentionally `Catalog`-prefixed to dodge a
-//  build-graph collision with the legacy Views/Products/ProductsListView
-//  (Xcode keys .stringsdata by basename). Once the legacy folder is
-//  retired the names can collapse back to `ProductsListView`.
+//  The `Catalog` prefix is retained to keep the rename diff isolated.
+//  When future phases revisit naming the struct can collapse back to
+//  `ProductsListView` without colliding with anything else.
 //
 
 import SwiftUI
@@ -90,24 +89,22 @@ struct CatalogProductsListView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+        ZStack {
+            OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    searchBar
-                    filterBar
-                    Divider().background(OPSStyle.Colors.separator)
+            VStack(spacing: 0) {
+                searchBar
+                filterBar
+                Divider().background(OPSStyle.Colors.separator)
 
-                    if filteredProducts.isEmpty {
-                        emptyState
-                    } else {
-                        productList
-                    }
+                if filteredProducts.isEmpty {
+                    emptyState
+                } else {
+                    productList
                 }
             }
-            .navigationBarHidden(true)
         }
+        .navigationBarHidden(true)
         .trackScreen("Catalog.Products")
     }
 

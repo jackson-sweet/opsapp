@@ -107,6 +107,9 @@ struct MainTabView: View {
     private let openJobBoardObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenJobBoard"))
 
+    private let openCatalogObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenCatalog"))
+
     private let openSubscriptionObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenSubscription"))
 
@@ -535,6 +538,15 @@ struct MainTabView: View {
             print("[PUSH_NAVIGATION] Opening job board")
             withAnimation(OPSStyle.Animation.fast) {
                 selectedTab = jobBoardTabIndex
+            }
+        }
+
+        // Handle opening catalog from notification rail / deep link
+        .onReceive(openCatalogObserver) { _ in
+            guard let idx = catalogTabIndex else { return }
+            print("[PUSH_NAVIGATION] Opening catalog")
+            withAnimation(OPSStyle.Animation.fast) {
+                selectedTab = idx
             }
         }
 

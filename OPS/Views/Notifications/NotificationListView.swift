@@ -552,6 +552,7 @@ struct NotificationListView: View {
                             case "taskReview":                   return "REVIEW TASKS"
                             case "unscheduledReview":            return "REVIEW SCHEDULE"
                             case "photoStorage":                 return "MANAGE PHOTOS"
+                            case "catalogOrders":                return notification.actionLabel ?? "REVIEW"
                             default:                             return "OPEN"
                             }
                         }()
@@ -639,6 +640,8 @@ struct NotificationListView: View {
                 return ("shippingbox", OPSStyle.Colors.warningStatus)
             case "inventory_critical":
                 return ("shippingbox.fill", OPSStyle.Colors.errorStatus)
+            case "threshold_alert":
+                return ("exclamationmark.triangle.fill", OPSStyle.Colors.warningStatus)
             case "time_off_requested":
                 return ("calendar.badge.clock", OPSStyle.Colors.warningStatus)
             case "time_off_approved":
@@ -756,6 +759,23 @@ struct NotificationListView: View {
             // gone — avoids sheet-on-sheet deadlock.
             appState.pendingRailDeepLink = "photoStorage"
             dismiss()
+        case "catalogOrders":
+            // Threshold rail entry. Switch to the catalog tab, then ask
+            // CatalogView to present OrdersSheet at the right sub-segment.
+            // The query string on `actionUrl` carries the tab name so the
+            // same notification can land on suggested / draft / sent.
+            let subSegment = subSegmentFromActionUrl(notification.actionUrl) ?? "SUGGESTED"
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("OpenCatalog"), object: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("OpenCatalogOrders"),
+                        object: nil,
+                        userInfo: ["subSegment": subSegment]
+                    )
+                }
+            }
         default:
             // Deep link to project if applicable
             if let projectId = notification.projectId, !projectId.isEmpty {
@@ -799,5 +819,23 @@ struct NotificationListView: View {
         let relFormatter = RelativeDateTimeFormatter()
         relFormatter.unitsStyle = .abbreviated
         return relFormatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    /// Parses the `tab=<value>` query parameter from `ops://catalog/orders?tab=...`
+    /// and maps it to the OrdersSubSegment rawValue used by OrdersSheet.
+    /// Returns nil when the URL is missing, malformed, or carries an unknown
+    /// tab value — caller defaults to SUGGESTED in that case.
+    private func subSegmentFromActionUrl(_ urlString: String?) -> String? {
+        guard let urlString = urlString,
+              let comps = URLComponents(string: urlString),
+              let tab = comps.queryItems?.first(where: { $0.name == "tab" })?.value else {
+            return nil
+        }
+        switch tab.lowercased() {
+        case "suggested": return "SUGGESTED"
+        case "draft":     return "DRAFT"
+        case "sent":      return "SENT"
+        default:          return nil
+        }
     }
 }

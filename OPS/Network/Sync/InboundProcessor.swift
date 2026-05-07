@@ -209,6 +209,10 @@ final class InboundProcessor {
         print("[InboundProcessor] Linking relationships...")
         linkAllRelationships(context: context)
 
+        // Reconcile threshold rail notification (Phase 9). Wrapped in its
+        // own try-island so a notification failure can never break sync.
+        await reconcileThresholdNotifications(context: context)
+
         // Dispatch targeted Spotlight index updates based on what this sync touched.
         // Only runs after initial backfill — first-run indexing is coordinated by
         // SpotlightBackfillCoordinator which runs a full bulk index.
@@ -261,12 +265,84 @@ final class InboundProcessor {
         // Re-link relationships after pulling updates
         linkAllRelationships(context: context)
 
+        // Reconcile threshold rail notification (Phase 9). Wrapped in its
+        // own try-island so a notification failure can never break sync.
+        await reconcileThresholdNotifications(context: context)
+
         // Dispatch targeted Spotlight index updates for the delta
         if SpotlightIndexManager.shared.hasCompletedInitialBackfill {
             await spotlightTracker.dispatch(context: context)
         }
 
         print("[InboundProcessor] ======== DELTA SYNC COMPLETED ========")
+    }
+
+    // MARK: - Threshold Notifications (Phase 9)
+
+    /// Recompute the order suggestion list at end-of-sync and ensure the
+    /// notification rail reflects current state:
+    ///   - count == 0 → mark all unread `threshold_alert` entries as read
+    ///     so the rail clears once stock is restored.
+    ///   - count > 0 → ensure exactly one unread `threshold_alert` exists.
+    ///
+    /// Wrapped in a single do/catch — a failure here never breaks sync.
+    /// The notification table mutation is idempotent (`hasUnreadOfType`
+    /// gate) so retries on next sync are safe.
+    private func reconcileThresholdNotifications(context: ModelContext) async {
+        guard let userId = SupabaseService.shared.currentUserId, !userId.isEmpty else {
+            return
+        }
+        let companyId = self.companyId
+        guard !companyId.isEmpty else { return }
+
+        let variants = (try? context.fetch(FetchDescriptor<CatalogVariant>())) ?? []
+        let families = (try? context.fetch(FetchDescriptor<CatalogItem>())) ?? []
+        let categories = (try? context.fetch(FetchDescriptor<CatalogCategory>())) ?? []
+
+        let scopedVariants = variants.filter { $0.companyId == companyId }
+        let scopedFamilies = families.filter { $0.companyId == companyId }
+        let scopedCategories = categories.filter { $0.companyId == companyId }
+
+        let suggestions = OrderSuggestionEngine().suggest(
+            variants: scopedVariants,
+            families: scopedFamilies,
+            categories: scopedCategories
+        )
+        let count = suggestions.count
+
+        do {
+            if count == 0 {
+                try await NotificationRepository.shared.markAllAsReadByType(
+                    type: "threshold_alert",
+                    userId: userId
+                )
+                print("[InboundProcessor] threshold reconcile: 0 below — cleared rail")
+            } else {
+                let exists = try await NotificationRepository.shared.hasUnreadOfType(
+                    type: "threshold_alert",
+                    userId: userId
+                )
+                if !exists {
+                    let dto = NotificationRepository.CreateNotificationDTO(
+                        userId: userId,
+                        companyId: companyId,
+                        type: "threshold_alert",
+                        title: "// \(count) ITEM\(count == 1 ? "" : "S") BELOW THRESHOLD",
+                        body: "Tap to review and draft an order.",
+                        deepLinkType: "catalogOrders",
+                        persistent: true,
+                        actionUrl: "ops://catalog/orders?tab=suggested",
+                        actionLabel: "REVIEW"
+                    )
+                    try await NotificationRepository.shared.createNotification(dto)
+                    print("[InboundProcessor] threshold reconcile: created rail entry for \(count) item(s)")
+                } else {
+                    print("[InboundProcessor] threshold reconcile: \(count) below; existing rail entry kept")
+                }
+            }
+        } catch {
+            print("[InboundProcessor] threshold reconcile failed: \(error)")
+        }
     }
 
     // MARK: - Entity Type Dispatch

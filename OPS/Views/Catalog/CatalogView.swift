@@ -18,11 +18,26 @@ enum CatalogSegment: String, CaseIterable, Identifiable {
 struct CatalogView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.modelContext) private var modelContext
 
     // Segment selection persisted via AppStorage so the FAB can read the same
     // source of truth and adapt its action set without an explicit parameter.
     @AppStorage("catalog.selectedSegment") private var selectedSegmentRaw: String = CatalogSegment.stock.rawValue
+
+    private var canViewProducts: Bool { permissionStore.can("catalog.products.view") }
+    private var canViewOrders:   Bool { permissionStore.can("catalog.orders.view") }
+    private var canManage:       Bool { permissionStore.can("catalog.manage") }
+    private var canImport:       Bool { permissionStore.can("catalog.import") }
+
+    /// Available segments for the current user. Stock is always present
+    /// when this view is reachable (catalog.view gates the tab itself);
+    /// products is conditional on catalog.products.view.
+    private var availableSegments: [CatalogSegment] {
+        var result: [CatalogSegment] = [.stock]
+        if canViewProducts { result.append(.products) }
+        return result
+    }
 
     @State private var showOrders: Bool = false
     @State private var ordersInitialSubSegment: OrdersSubSegment = .suggested
@@ -35,7 +50,9 @@ struct CatalogView: View {
     @State private var showImport: Bool = false
 
     private var selectedSegment: CatalogSegment {
-        CatalogSegment(rawValue: selectedSegmentRaw) ?? .stock
+        let raw = CatalogSegment(rawValue: selectedSegmentRaw) ?? .stock
+        // Don't return a segment the user can't access.
+        return availableSegments.contains(raw) ? raw : .stock
     }
 
     private func setSegment(_ segment: CatalogSegment) {
@@ -49,10 +66,12 @@ struct CatalogView: View {
             VStack(spacing: 0) {
                 header
 
-                segmentBar
+                if availableSegments.count > 1 {
+                    segmentBar
 
-                Divider()
-                    .background(OPSStyle.Colors.separator)
+                    Divider()
+                        .background(OPSStyle.Colors.separator)
+                }
 
                 Group {
                     switch selectedSegment {
@@ -106,7 +125,7 @@ struct CatalogView: View {
 
     private var segmentBar: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            ForEach(CatalogSegment.allCases) { segment in
+            ForEach(availableSegments) { segment in
                 Button {
                     setSegment(segment)
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -139,28 +158,52 @@ struct CatalogView: View {
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
+    @ViewBuilder
     private var kebabButton: some View {
-        Menu {
-            Section("STOCK") {
-                Button { showSnapshots = true }        label: { Label("Snapshots", systemImage: "clock.arrow.circlepath") }
-                Button { showCategoriesManage = true } label: { Label("Categories", systemImage: "folder") }
-                Button { showTagsManage = true }       label: { Label("Tags", systemImage: "tag") }
-                Button { showUnitsManage = true }      label: { Label("Units", systemImage: "ruler") }
-                Button { showThresholdsManage = true } label: { Label("Thresholds", systemImage: "exclamationmark.triangle") }
+        // The kebab is only useful when at least one of its sections is
+        // populated. Snapshots are read-only for anyone with catalog.view.
+        let showStockSection: Bool = true  // Snapshots are always visible (read-only).
+        let showStockManageRows = canManage
+        let showOrdersSection = canViewOrders
+        let showSetupSection = canManage || canImport
+
+        if showStockSection || showOrdersSection || showSetupSection {
+            Menu {
+                if showStockSection {
+                    Section("STOCK") {
+                        Button { showSnapshots = true } label: {
+                            Label("Snapshots", systemImage: "clock.arrow.circlepath")
+                        }
+                        if showStockManageRows {
+                            Button { showCategoriesManage = true } label: { Label("Categories", systemImage: "folder") }
+                            Button { showTagsManage = true }       label: { Label("Tags", systemImage: "tag") }
+                            Button { showUnitsManage = true }      label: { Label("Units", systemImage: "ruler") }
+                            Button { showThresholdsManage = true } label: { Label("Thresholds", systemImage: "exclamationmark.triangle") }
+                        }
+                    }
+                }
+                if showOrdersSection {
+                    Section("ORDERS") {
+                        Button { showOrders = true } label: { Label("Orders", systemImage: "shippingbox") }
+                    }
+                }
+                if showSetupSection {
+                    Section("SETUP") {
+                        if canManage {
+                            Button { showDefaultsManage = true } label: { Label("Defaults", systemImage: "gearshape") }
+                        }
+                        if canImport {
+                            Button { showImport = true } label: { Label("Import…", systemImage: "square.and.arrow.down") }
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.title3)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
             }
-            Section("ORDERS") {
-                Button { showOrders = true } label: { Label("Orders", systemImage: "shippingbox") }
-            }
-            Section("SETUP") {
-                Button { showDefaultsManage = true } label: { Label("Defaults", systemImage: "gearshape") }
-                Button { showImport = true }         label: { Label("Import…", systemImage: "square.and.arrow.down") }
-            }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.title3)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            .accessibilityLabel("Catalog menu")
         }
-        .accessibilityLabel("Catalog menu")
     }
 }

@@ -2230,6 +2230,96 @@ class DeckBuilderViewModel: ObservableObject {
             drawingData.allEdges.contains(where: { $0.dimension != nil })
     }
 
+    // MARK: - Catalog merge (deck-catalog spec § 4.5)
+
+    /// Builds the merged line item list for the current design — adapter
+    /// pass + legacy pass + de-dupe per spec § 4.5.1. Companies that
+    /// haven't configured any `CompanyDefaultProduct` rows fall through
+    /// to the legacy path unchanged (adapter returns []; merge passes
+    /// legacy through). The result is what the persistence loop in
+    /// `generateEstimate()` writes — and what `EstimatePreviewSheet`
+    /// renders as the user-facing summary.
+    func mergedCatalogLineItems() -> [CatalogEstimateMerger.LineItem] {
+        let legacy = EstimateGeneratorService.generateLineItems(from: drawingData)
+
+        guard let context = modelContext else {
+            // Without SwiftData (preview / test paths) the adapter can't
+            // resolve defaults — fall through to legacy as if no
+            // defaults exist.
+            return CatalogEstimateMerger.merge(
+                adapterItems: [],
+                legacyItems: legacy,
+                defaultsCovered: []
+            )
+        }
+
+        let adapter = DesignToEstimateAdapter()
+        let raw = adapter.generate(
+            design: deckDesign,
+            companyId: deckDesign.companyId,
+            modelContext: context
+        )
+
+        let enriched: [CatalogEstimateMerger.EnrichedAdapterItem] = raw.compactMap { item in
+            guard let product = lookupProduct(id: item.productId, in: context) else { return nil }
+            return CatalogEstimateMerger.EnrichedAdapterItem(
+                raw: item,
+                productName: product.name,
+                productDescription: product.productDescription,
+                unit: legacyUnit(for: product.pricingUnit),
+                category: legacyCategory(for: item.componentType),
+                taskTypeId: product.taskTypeId
+            )
+        }
+
+        let defaultsCovered: Set<DesignComponentType> = Set(raw.map { $0.componentType })
+
+        return CatalogEstimateMerger.merge(
+            adapterItems: enriched,
+            legacyItems: legacy,
+            defaultsCovered: defaultsCovered
+        )
+    }
+
+    /// Resolves a Product by id from SwiftData. Returns nil when the
+    /// adapter references a product that's no longer in the local
+    /// catalog (rare, but possible if the company deleted it between
+    /// the design saving and estimate generation).
+    private func lookupProduct(id: String, in context: ModelContext) -> Product? {
+        let descriptor = FetchDescriptor<Product>(
+            predicate: #Predicate { $0.id == id }
+        )
+        return (try? context.fetch(descriptor))?.first
+    }
+
+    /// Maps a Product.pricingUnit to the legacy `unit` string the
+    /// estimate persistence path uses on `EstimateLineItem.unit`. Stays
+    /// in sync with EstimateGeneratorService's unit vocabulary so the
+    /// adapter and legacy paths produce homogeneous-looking line items.
+    private func legacyUnit(for pricingUnit: ProductPricingUnit) -> String {
+        switch pricingUnit {
+        case .each:       return "each"
+        case .flatRate:   return "flat"
+        case .linearFoot: return "linear ft"
+        case .sqft:       return "sq ft"
+        case .hour:       return "hour"
+        case .day:        return "day"
+        }
+    }
+
+    /// Maps a `DesignComponentType` to the legacy category bucket the
+    /// estimate UI groups by — keeps adapter rows showing up in the
+    /// expected category band on the preview / printed estimate.
+    private func legacyCategory(for componentType: DesignComponentType) -> String {
+        switch componentType {
+        case .railing:    return "Railing"
+        case .deckBoard:  return "Surface"
+        case .stairSet:   return "Stairs"
+        case .gate:       return "Other"
+        case .postSet:    return "Railing"
+        }
+    }
+
     /// Check if an estimate already exists for this deck design
     func checkForDuplicateEstimate() async -> Estimate? {
         guard let projectId = deckDesign.projectId else { return nil }
@@ -2271,8 +2361,19 @@ class DeckBuilderViewModel: ObservableObject {
         isGeneratingEstimate = true
         defer { isGeneratingEstimate = false }
 
-        let lineItems = EstimateGeneratorService.generateLineItems(from: drawingData)
-        guard !lineItems.isEmpty else { return }
+        // Force a save first so drawingDataJSON carries an up-to-date
+        // components projection — the adapter parses that JSON to find
+        // the components it should bill against. Deck-catalog spec § 4.5.
+        save()
+
+        // Catalog adapter pass + legacy pass + merge per spec § 4.5.1.
+        // Companies without `CompanyDefaultProduct` rows fall through to
+        // the legacy path unchanged (adapter returns []; merge passes
+        // legacy through). Companies with defaults get adapter-driven
+        // line items snapshotted with `configured_options` ready for the
+        // CutListMaterializer to resolve at install time.
+        let mergedItems = mergedCatalogLineItems()
+        guard !mergedItems.isEmpty else { return }
 
         let repo = EstimateRepository(companyId: deckDesign.companyId)
 
@@ -2299,8 +2400,12 @@ class DeckBuilderViewModel: ObservableObject {
         do {
             let created = try await repo.create(dto)
 
-            // Group line items by task type and create parent-child structure
-            let groups = EstimateGeneratorService.groupByTaskType(lineItems, taskTypes: taskTypes)
+            // Group merged line items by task type and create parent-child
+            // structure. Adapter rows in the merged result carry the
+            // configured_options + resolved_unit_price + resolved_options_label
+            // snapshot the CutListMaterializer needs at install time;
+            // legacy rows leave those fields nil.
+            let groups = CatalogEstimateMerger.groupByTaskType(mergedItems, taskTypes: taskTypes)
             var sortOrder = 0
 
             for group in groups {
@@ -2325,6 +2430,8 @@ class DeckBuilderViewModel: ObservableObject {
 
                 // Create child line items (material breakdown)
                 for child in group.children {
+                    let configuredOptionsRaw = child.configuredOptions
+                        .flatMap { CatalogEstimateMerger.encodeConfiguredOptions($0) }
                     let childDTO = CreateLineItemDTO(
                         estimateId: created.id,
                         productId: child.productId,
@@ -2338,7 +2445,10 @@ class DeckBuilderViewModel: ObservableObject {
                         taskTypeId: group.taskTypeId,
                         type: LineItemType.material.rawValue,
                         category: child.category,
-                        parentLineItemId: parentItem.id
+                        parentLineItemId: parentItem.id,
+                        configuredOptions: configuredOptionsRaw,
+                        resolvedUnitPrice: child.resolvedUnitPrice,
+                        resolvedOptionsLabel: child.resolvedOptionsLabel
                     )
                     _ = try await repo.addLineItem(childDTO)
                     sortOrder += 1

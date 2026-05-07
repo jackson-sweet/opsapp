@@ -6,7 +6,7 @@ struct EstimatePreviewSheet: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
     @Environment(\.dismiss) private var dismiss
 
-    @State private var lineItems: [EstimateGeneratorService.GeneratedLineItem] = []
+    @State private var lineItems: [CatalogEstimateMerger.LineItem] = []
     @State private var areaSqFt: Double = 0
     @State private var perimeterFt: Double = 0
     @State private var arNote: String?
@@ -116,7 +116,11 @@ struct EstimatePreviewSheet: View {
             .navigationBarHidden(true)
         }
         .onAppear {
-            lineItems = EstimateGeneratorService.generateLineItems(from: viewModel.drawingData)
+            // Use the merged catalog/legacy result so the preview reflects
+            // exactly what generateEstimate() will persist — adapter rows
+            // win for component_types with a CompanyDefaultProduct,
+            // legacy fills the gap (deck-catalog spec § 4.5).
+            lineItems = viewModel.mergedCatalogLineItems()
             areaSqFt = EstimateGeneratorService.calculateAreaSqFt(drawingData: viewModel.drawingData)
             perimeterFt = EstimateGeneratorService.calculatePerimeterFt(drawingData: viewModel.drawingData)
             arNote = EstimateGeneratorService.arAccuracyNote(from: viewModel.drawingData)
@@ -126,7 +130,7 @@ struct EstimatePreviewSheet: View {
     // MARK: - Category Row
 
     @ViewBuilder
-    private func categoryRow(_ name: String, items: [EstimateGeneratorService.GeneratedLineItem]) -> some View {
+    private func categoryRow(_ name: String, items: [CatalogEstimateMerger.LineItem]) -> some View {
         if !items.isEmpty {
             HStack {
                 Text(name)

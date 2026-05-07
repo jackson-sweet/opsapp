@@ -11,7 +11,7 @@ import Foundation
 
 struct ProductConfigurationResolver {
 
-    enum OptionValue {
+    enum OptionValue: Equatable {
         case selectId(String)   // Points at a ProductOptionValue.id
         case integer(Int)
         case boolean(Bool)

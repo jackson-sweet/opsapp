@@ -19,6 +19,7 @@ struct DesignToEstimateAdapter {
 
     struct GeneratedLineItem: Equatable {
         let productId: String
+        let componentType: DesignComponentType
         let quantity: Double
         let configuredOptions: [String: ProductConfigurationResolver.OptionValue]
         let resolvedUnitPrice: Double
@@ -27,6 +28,7 @@ struct DesignToEstimateAdapter {
 
         static func == (lhs: GeneratedLineItem, rhs: GeneratedLineItem) -> Bool {
             return lhs.productId == rhs.productId
+                && lhs.componentType == rhs.componentType
                 && lhs.quantity == rhs.quantity
                 && lhs.resolvedUnitPrice == rhs.resolvedUnitPrice
                 && lhs.resolvedOptionsLabel == rhs.resolvedOptionsLabel
@@ -82,6 +84,7 @@ struct DesignToEstimateAdapter {
 
             generated.append(GeneratedLineItem(
                 productId: defaultProduct.id,
+                componentType: component.type,
                 quantity: quantity,
                 configuredOptions: configured,
                 resolvedUnitPrice: resolution.unitPrice,

@@ -20,8 +20,11 @@ struct OrdersSheet: View {
     let initialSubSegment: OrdersSubSegment
 
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+
+    private var canManageOrders: Bool { permissionStore.can("catalog.orders.manage") }
 
     @AppStorage("catalog.orders.subSegment") private var subSegmentRaw: String = OrdersSubSegment.suggested.rawValue
 
@@ -225,7 +228,9 @@ struct OrdersSheet: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                        createDraftFromAllButton
+                        if canManageOrders {
+                            createDraftFromAllButton
+                        }
                         if let err = errorMessage {
                             Text(err)
                                 .font(OPSStyle.Typography.metadata)
@@ -242,7 +247,7 @@ struct OrdersSheet: View {
                                 SuggestedOrderRow(
                                     suggestion: suggestion,
                                     isAdded: addedVariantIds.contains(suggestion.variantId),
-                                    addAction: { addToDraft(suggestion) }
+                                    addAction: canManageOrders ? { addToDraft(suggestion) } : nil
                                 )
                             }
                         }

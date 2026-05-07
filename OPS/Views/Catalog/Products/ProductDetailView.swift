@@ -17,8 +17,11 @@ struct ProductDetailView: View {
     let product: Product
 
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+
+    private var canManageProducts: Bool { permissionStore.can("catalog.products.manage") }
 
     @Query private var allOptions: [ProductOption]
     @Query private var allOptionValues: [ProductOptionValue]
@@ -118,7 +121,7 @@ struct ProductDetailView: View {
         .navigationTitle("PRODUCT")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if hasChanges {
+            if hasChanges && canManageProducts {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Task { await save() }
@@ -182,6 +185,7 @@ struct ProductDetailView: View {
             CatalogFieldLabel("Name")
             TextField("", text: $name)
                 .textFieldStyle(CatalogTextFieldStyle())
+                .disabled(!canManageProducts)
 
             HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
@@ -189,6 +193,7 @@ struct ProductDetailView: View {
                     TextField("0", text: $basePriceString)
                         .keyboardType(.decimalPad)
                         .textFieldStyle(CatalogTextFieldStyle())
+                        .disabled(!canManageProducts)
                         .onChange(of: basePriceString) { _, newValue in
                             let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                             priceParseError = !trimmed.isEmpty && Double(trimmed) == nil
@@ -202,6 +207,7 @@ struct ProductDetailView: View {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     CatalogFieldLabel("Unit")
                     pricingUnitPicker
+                        .disabled(!canManageProducts)
                 }
             }
 
@@ -211,6 +217,7 @@ struct ProductDetailView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
             .tint(OPSStyle.Colors.primaryAccent)
+            .disabled(!canManageProducts)
             .onChange(of: taxable) { _, _ in
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
@@ -221,6 +228,7 @@ struct ProductDetailView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
             .tint(OPSStyle.Colors.primaryAccent)
+            .disabled(!canManageProducts)
             .onChange(of: isActive) { _, _ in
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }

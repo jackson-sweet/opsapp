@@ -40,9 +40,12 @@ enum PermissionRegistry {
         PermissionDefinition(id: "calendar.edit", label: "Edit Calendar", category: "Calendar"),
         // Catalog
         PermissionDefinition(id: "catalog.view", label: "View Catalog", category: "Catalog"),
+        PermissionDefinition(id: "catalog.stock.adjust", label: "Adjust Stock Quantity", category: "Catalog"),
         PermissionDefinition(id: "catalog.manage", label: "Manage Catalog", category: "Catalog"),
         PermissionDefinition(id: "catalog.import", label: "Import Catalog", category: "Catalog"),
+        PermissionDefinition(id: "catalog.products.view", label: "View Products", category: "Catalog"),
         PermissionDefinition(id: "catalog.products.manage", label: "Manage Products", category: "Catalog"),
+        PermissionDefinition(id: "catalog.orders.view", label: "View Orders", category: "Catalog"),
         PermissionDefinition(id: "catalog.orders.manage", label: "Manage Orders", category: "Catalog"),
         // Team
         PermissionDefinition(id: "team.view", label: "View Team", category: "Team"),

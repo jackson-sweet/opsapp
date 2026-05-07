@@ -14,8 +14,12 @@ struct VariantDetailView: View {
     let row: EnrichedVariantRow
 
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+
+    private var canAdjustStock: Bool { permissionStore.can("catalog.stock.adjust") }
+    private var canManage:       Bool { permissionStore.can("catalog.manage") }
 
     @State private var localQuantity: Double
     @State private var skuText: String
@@ -87,8 +91,10 @@ struct VariantDetailView: View {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                         header
                         quantityCard
-                        thresholdsCard
-                        skuCard
+                        if canManage {
+                            thresholdsCard
+                            skuCard
+                        }
                         if !row.tagIds.isEmpty {
                             tagsCard
                         }
@@ -108,7 +114,7 @@ struct VariantDetailView: View {
                     Button("Close") { dismiss() }
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                if isDirty {
+                if isDirty && canManage {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             Task { await save() }
@@ -167,7 +173,8 @@ struct VariantDetailView: View {
                                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 }
-                .disabled(isAdjusting || localQuantity <= 0)
+                .disabled(isAdjusting || localQuantity <= 0 || !canAdjustStock)
+                .opacity(canAdjustStock ? 1.0 : 0.4)
                 .accessibilityLabel("Decrease quantity")
 
                 VStack(spacing: 2) {
@@ -198,7 +205,8 @@ struct VariantDetailView: View {
                                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
                 }
-                .disabled(isAdjusting)
+                .disabled(isAdjusting || !canAdjustStock)
+                .opacity(canAdjustStock ? 1.0 : 0.4)
                 .accessibilityLabel("Increase quantity")
             }
 

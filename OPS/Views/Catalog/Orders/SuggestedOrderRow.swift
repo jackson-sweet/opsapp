@@ -13,7 +13,8 @@ import SwiftUI
 struct SuggestedOrderRow: View {
     let suggestion: OrderSuggestionEngine.Suggestion
     let isAdded: Bool
-    let addAction: () -> Void
+    /// Optional — `nil` hides the add button (read-only viewer).
+    let addAction: (() -> Void)?
 
     private var quantityFormatted: String {
         formatNumber(suggestion.currentQuantity)
@@ -68,12 +69,13 @@ struct SuggestedOrderRow: View {
                 }
             }
             Spacer()
-            Button(action: {
-                guard !isAdded else { return }
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                addAction()
-            }) {
-                Image(systemName: isAdded ? "checkmark" : "plus")
+            if let addAction = addAction {
+                Button(action: {
+                    guard !isAdded else { return }
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    addAction()
+                }) {
+                    Image(systemName: isAdded ? "checkmark" : "plus")
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                     .foregroundColor(
                         isAdded ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryText
@@ -90,17 +92,18 @@ struct SuggestedOrderRow: View {
                                     : OPSStyle.Colors.subtleBackground
                             )
                     )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(
-                                isAdded
-                                    ? OPSStyle.Colors.successStatus.opacity(0.3)
-                                    : OPSStyle.Colors.cardBorder,
-                                lineWidth: OPSStyle.Layout.Border.standard
-                            )
-                    )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(
+                                    isAdded
+                                        ? OPSStyle.Colors.successStatus.opacity(0.3)
+                                        : OPSStyle.Colors.cardBorder,
+                                    lineWidth: OPSStyle.Layout.Border.standard
+                                )
+                        )
+                }
+                .accessibilityLabel(isAdded ? "Added to draft" : "Add to draft order")
             }
-            .accessibilityLabel(isAdded ? "Added to draft" : "Add to draft order")
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2)

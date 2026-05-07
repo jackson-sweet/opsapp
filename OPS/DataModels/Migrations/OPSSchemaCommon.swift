@@ -2,19 +2,20 @@
 //  OPSSchemaCommon.swift
 //  OPS
 //
-//  Shared list of models whose persistent shape is identical across every
-//  OPS schema version. Only models whose storage changes between versions
-//  are redeclared per-version; everything else is referenced by its current
-//  Swift type on both sides of the migration.
+//  Models whose persistent shape is identical across V2 and V3 — i.e.,
+//  everything except `WizardState` (V1↔V2 boundary) and the inventory↔catalog
+//  swap (V2↔V3 boundary). Each VersionedSchema appends its version-specific
+//  model types on top of this list.
 //
 
 import Foundation
 import SwiftData
 
 enum OPSSchemaCommon {
-    /// Every `@Model` in the OPS schema except `WizardState`.
-    /// WizardState is the only model that differs between V1 and V2, so each
-    /// VersionedSchema appends its own WizardState type to this list.
+    /// Models present in both V2 and V3 (and unchanged across the V2→V3
+    /// boundary). The inventory entities live only in V2; the catalog/product-
+    /// extension entities live only in V3. WizardState is appended per-version
+    /// so V1's legacy shape stays scoped to V1.
     static let unchangedModels: [any PersistentModel.Type] = [
         // Core data models
         User.self,
@@ -51,7 +52,24 @@ enum OPSSchemaCommon {
         FormSubmission.self,
         LocalPhoto.self,
 
-        // Catalog models (replaces old inventory models)
+        // Deck builder
+        DeckDesign.self
+    ]
+
+    /// V2-only models: the legacy inventory entities. V3 drops these and
+    /// replaces them with the catalog_* / product_* entities listed in
+    /// `OPSSchemaV3.catalogModels`.
+    static let v2InventoryModels: [any PersistentModel.Type] = [
+        InventoryItem.self,
+        InventoryTag.self,
+        InventoryUnit.self,
+        InventorySnapshot.self,
+        InventorySnapshotItem.self
+    ]
+
+    /// V3-only models: catalog & variant model + configurable Products +
+    /// the company-defaults adapter map. Replaces the V2 inventory entities.
+    static let v3CatalogModels: [any PersistentModel.Type] = [
         CatalogCategory.self,
         CatalogItem.self,
         CatalogVariant.self,
@@ -67,13 +85,9 @@ enum OPSSchemaCommon {
         CatalogOrderItem.self,
         CompanyDefaultProduct.self,
 
-        // Product configurability
         ProductOption.self,
         ProductOptionValue.self,
         ProductPricingModifier.self,
-        ProductMaterial.self,
-
-        // Deck builder
-        DeckDesign.self
+        ProductMaterial.self
     ]
 }

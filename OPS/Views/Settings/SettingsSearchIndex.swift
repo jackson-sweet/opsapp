@@ -300,7 +300,7 @@ enum SettingsSearchIndex {
         let hasPipelineAccess = permissionStore.can("pipeline.view")
         let canViewOwnExpenses = permissionStore.can("expenses.view", requiredScope: "own")
         let canApproveExpenses = permissionStore.can("expenses.approve")
-        let hasInventoryAccess = permissionStore.can("inventory.view")
+        let hasInventoryAccess = permissionStore.can("catalog.view")
         let hasFinanceView = permissionStore.can("finances.view")
 
         // ─── ACCOUNT ─────────────────────────────────────────────────────

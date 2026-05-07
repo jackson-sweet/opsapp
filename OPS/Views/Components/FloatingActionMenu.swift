@@ -391,7 +391,7 @@ struct FloatingActionMenu: View {
                         id: "catalog-add-variant",
                         icon: "plus.app",
                         label: "Add Variant",
-                        permission: "inventory.manage",  // renamed in Phase 12
+                        permission: "catalog.manage",
                         disabledInTutorial: true,
                         action: {
                             showCreateMenu = false
@@ -402,7 +402,7 @@ struct FloatingActionMenu: View {
                         id: "catalog-add-family",
                         icon: "square.stack.3d.up",
                         label: "Add Family",
-                        permission: "inventory.manage",
+                        permission: "catalog.manage",
                         disabledInTutorial: true,
                         action: {
                             showCreateMenu = false
@@ -413,7 +413,7 @@ struct FloatingActionMenu: View {
                         id: "catalog-import",
                         icon: "square.and.arrow.down",
                         label: "Import",
-                        permission: "inventory.import",
+                        permission: "catalog.import",
                         disabledInTutorial: true,
                         action: {
                             showCreateMenu = false
@@ -427,7 +427,7 @@ struct FloatingActionMenu: View {
                         id: "catalog-quick-add-product",
                         icon: "plus",
                         label: "Quick Add",
-                        permission: "inventory.manage",
+                        permission: "catalog.products.manage",
                         disabledInTutorial: true,
                         action: {
                             showCreateMenu = false
@@ -438,7 +438,7 @@ struct FloatingActionMenu: View {
                         id: "catalog-full-setup-product",
                         icon: "slider.horizontal.3",
                         label: "Full Setup",
-                        permission: "inventory.manage",
+                        permission: "catalog.products.manage",
                         disabledInTutorial: true,
                         action: {
                             showCreateMenu = false
@@ -454,7 +454,7 @@ struct FloatingActionMenu: View {
                         id: "catalog-add-variant",
                         icon: "plus.app",
                         label: "Add Variant",
-                        permission: "inventory.manage",
+                        permission: "catalog.manage",
                         disabledInTutorial: true,
                         action: {
                             showCreateMenu = false

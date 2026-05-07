@@ -18,6 +18,7 @@ struct OrderDetailView: View {
     let orderId: String
 
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
@@ -410,26 +411,28 @@ struct OrderDetailView: View {
 
     private func actionButtons(order: CatalogOrder) -> some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
-            switch order.status {
-            case .draft:
-                primaryActionButton(title: "MARK SENT", color: OPSStyle.Colors.primaryAccent) {
-                    transition { try await orderRepo.markSent(order.id) }
+            if permissionStore.can("catalog.orders.manage") {
+                switch order.status {
+                case .draft:
+                    primaryActionButton(title: "MARK SENT", color: OPSStyle.Colors.primaryAccent) {
+                        transition { try await orderRepo.markSent(order.id) }
+                    }
+                    secondaryActionButton(title: "CANCEL ORDER", color: OPSStyle.Colors.errorText) {
+                        pendingCancelConfirm = true
+                    }
+                    secondaryActionButton(title: "DELETE DRAFT", color: OPSStyle.Colors.errorText) {
+                        pendingDeleteConfirm = true
+                    }
+                case .sent:
+                    primaryActionButton(title: "MARK FULFILLED", color: OPSStyle.Colors.successStatus) {
+                        transition { try await orderRepo.markFulfilled(order.id) }
+                    }
+                    secondaryActionButton(title: "CANCEL ORDER", color: OPSStyle.Colors.errorText) {
+                        pendingCancelConfirm = true
+                    }
+                case .fulfilled, .cancelled, .suggested:
+                    EmptyView()
                 }
-                secondaryActionButton(title: "CANCEL ORDER", color: OPSStyle.Colors.errorText) {
-                    pendingCancelConfirm = true
-                }
-                secondaryActionButton(title: "DELETE DRAFT", color: OPSStyle.Colors.errorText) {
-                    pendingDeleteConfirm = true
-                }
-            case .sent:
-                primaryActionButton(title: "MARK FULFILLED", color: OPSStyle.Colors.successStatus) {
-                    transition { try await orderRepo.markFulfilled(order.id) }
-                }
-                secondaryActionButton(title: "CANCEL ORDER", color: OPSStyle.Colors.errorText) {
-                    pendingCancelConfirm = true
-                }
-            case .fulfilled, .cancelled, .suggested:
-                EmptyView()
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)

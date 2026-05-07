@@ -38,8 +38,12 @@ enum PermissionRegistry {
         PermissionDefinition(id: "pipeline.manage", label: "Manage Pipeline", category: "Pipeline"),
         // Calendar
         PermissionDefinition(id: "calendar.edit", label: "Edit Calendar", category: "Calendar"),
-        // Inventory
-        PermissionDefinition(id: "inventory.view", label: "View Inventory", category: "Inventory"),
+        // Catalog
+        PermissionDefinition(id: "catalog.view", label: "View Catalog", category: "Catalog"),
+        PermissionDefinition(id: "catalog.manage", label: "Manage Catalog", category: "Catalog"),
+        PermissionDefinition(id: "catalog.import", label: "Import Catalog", category: "Catalog"),
+        PermissionDefinition(id: "catalog.products.manage", label: "Manage Products", category: "Catalog"),
+        PermissionDefinition(id: "catalog.orders.manage", label: "Manage Orders", category: "Catalog"),
         // Team
         PermissionDefinition(id: "team.view", label: "View Team", category: "Team"),
         PermissionDefinition(id: "team.manage", label: "Manage Team", category: "Team"),
@@ -157,7 +161,10 @@ private let permissionSearchTags: [String: [String]] = [
     "pipeline.view":                ["funnel", "leads", "opportunity"],
     "pipeline.manage":              ["funnel", "leads", "opportunity"],
     "calendar.edit":                ["reschedule", "scheduling", "shift", "move event", "calendar change"],
-    "inventory.view":               ["stock", "materials", "supplies", "parts"],
+    "catalog.view":                 ["stock", "materials", "supplies", "parts", "inventory", "catalog", "products"],
+    "catalog.manage":               ["edit stock", "manage stock", "adjust quantity"],
+    "catalog.products.manage":      ["edit product", "edit price", "options", "modifiers", "recipe"],
+    "catalog.orders.manage":        ["draft order", "send order", "fulfill order", "supplier"],
     "team.view":                    ["crew", "staff", "members"],
     "team.manage":                  ["crew", "staff", "members", "hire", "manage people"],
     "settings.company":             ["company settings", "business", "org"],

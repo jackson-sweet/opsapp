@@ -74,14 +74,14 @@ struct AppSettingsView: View {
                                     showProjectSettings = true
                                 }
 
-                                if permissionStore.can("inventory.view") {
+                                if permissionStore.can("catalog.view") {
                                     sectionDivider
                                     settingsRow(icon: "shippingbox", title: "Inventory Settings") {
                                         showInventorySettings = true
                                     }
                                 }
                             }
-                        } else if permissionStore.can("inventory.view") {
+                        } else if permissionStore.can("catalog.view") {
                             // Field crew with inventory access
                             settingsSection(title: "MANAGEMENT") {
                                 settingsRow(icon: "shippingbox", title: "Inventory Settings") {

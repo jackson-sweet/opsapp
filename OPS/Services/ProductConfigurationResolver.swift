@@ -56,7 +56,12 @@ struct ProductConfigurationResolver {
                 return optionValues.first { $0.id == id }?.value
             case .integer(let n):
                 if n == 0 { return nil }
-                return "\(n) \(opt.name.lowercased())\(n == 1 ? "" : "s")"
+                let lower = opt.name.lowercased()
+                // Don't double-pluralize: "Corners" (plural option name)
+                // → "4 corners", not "4 cornerss". Single-form names like
+                // "Corner" still pluralize → "4 corners".
+                let needsTrailingS = !lower.hasSuffix("s") && n != 1
+                return "\(n) \(lower)\(needsTrailingS ? "s" : "")"
             case .boolean(let b):
                 return b ? opt.name : nil
             }

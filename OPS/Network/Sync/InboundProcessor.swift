@@ -187,8 +187,22 @@ final class InboundProcessor {
             onProgress?(entityType, stepProgress)
 
             print("[InboundProcessor] Syncing \(entityType.rawValue)...")
-            try await syncEntityType(entityType, since: nil, context: context)
-            print("[InboundProcessor] \(entityType.rawValue) complete")
+            do {
+                try await syncEntityType(entityType, since: nil, context: context)
+                print("[InboundProcessor] \(entityType.rawValue) complete")
+            } catch {
+                // Bug 2837ddae fix: isolate failures to one entity type so a
+                // single bad row doesn't abort the entire sync. Telemetry
+                // captures the failure for offline diagnosis.
+                print("[InboundProcessor] FAILED \(entityType.rawValue): \(error)")
+                SyncTelemetry.logError(
+                    entityType: entityType.rawValue,
+                    error: error,
+                    isFullSync: true,
+                    companyId: companyId,
+                    userId: SupabaseService.shared.currentUserId
+                )
+            }
         }
 
         // Link relationships after all entities are pulled
@@ -230,7 +244,18 @@ final class InboundProcessor {
             guard sinceDate != nil else { continue }
 
             print("[InboundProcessor] Delta syncing \(entityType.rawValue) since \(sinceDate!)")
-            try await syncEntityType(entityType, since: sinceDate, context: context)
+            do {
+                try await syncEntityType(entityType, since: sinceDate, context: context)
+            } catch {
+                print("[InboundProcessor] FAILED delta \(entityType.rawValue): \(error)")
+                SyncTelemetry.logError(
+                    entityType: entityType.rawValue,
+                    error: error,
+                    isFullSync: false,
+                    companyId: companyId,
+                    userId: SupabaseService.shared.currentUserId
+                )
+            }
         }
 
         // Re-link relationships after pulling updates

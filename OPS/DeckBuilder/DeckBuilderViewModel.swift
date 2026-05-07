@@ -490,7 +490,19 @@ class DeckBuilderViewModel: ObservableObject {
         self.deckDesign = deckDesign
         self.modelContext = modelContext
         self.syncEngine = syncEngine
-        self.drawingData = deckDesign.drawingData
+        var loaded = deckDesign.drawingData
+        // Backfill the catalog-facing `components` projection on legacy
+        // designs that were saved before the deck-catalog vocabulary
+        // landed. The projection is derived, not stored — recomputing it
+        // here costs sub-millisecond on a typical deck and lets the
+        // adapter consume the in-memory state without going through a
+        // round-trip save first. The next save persists the projection;
+        // designs the user never reopens stay legacy on disk forever and
+        // the adapter no-ops on them, which is fine.
+        if loaded.components == nil {
+            loaded.components = ComponentEmitter.emit(loaded)
+        }
+        self.drawingData = loaded
         // If the model has already been pushed to Supabase at least once,
         // future saves enqueue updates rather than creates. Bug ab554b5f.
         self.hasEnqueuedCreate = deckDesign.lastSyncedAt != nil

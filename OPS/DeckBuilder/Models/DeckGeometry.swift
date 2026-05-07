@@ -725,9 +725,16 @@ struct DeckDrawingData: Codable {
     // MARK: - Serialization
 
     func toJSON() -> String {
+        // Recompute the catalog-facing components projection on every encode.
+        // The projection is derived from geometry — never authored directly —
+        // so refreshing it here guarantees the on-disk JSON always carries an
+        // up-to-date components array for `DesignToEstimateAdapter`.
+        var copy = self
+        copy.components = ComponentEmitter.emit(self)
+
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
-        guard let data = try? encoder.encode(self),
+        guard let data = try? encoder.encode(copy),
               let json = String(data: data, encoding: .utf8) else {
             return "{}"
         }

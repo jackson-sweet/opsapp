@@ -14,18 +14,296 @@
 //
 
 import Foundation
+import CoreGraphics
 
 enum ComponentEmitter {
+
+    /// Default residential gate width (inches) — used to subtract gate span
+    /// from a railing's `linear_feet` and to populate `gate.width`. The
+    /// `AssignedItem` model doesn't yet carry a per-gate dimension; a future
+    /// session can introduce one without breaking the metadata schema.
+    static let defaultGateWidthInches: Double = 36.0
+
     /// Returns the `components` array as Codable rows, ready for inclusion
     /// in DeckDrawingData's JSON. Pure function — no I/O, no side effects.
     /// Multi-level designs flatten components across levels with a
     /// `level_id` metadata key for downstream traceability.
-    ///
-    /// Phase 1 ships the scaffolding (data model + file location) so the
-    /// build-side contract is established. Phase 2 fills in the per-type
-    /// projection logic.
     static func emit(_ data: DeckDrawingData) -> [DesignComponentRow] {
-        return []
+        var rows: [DesignComponentRow] = []
+
+        if data.isMultiLevel {
+            for level in data.levels {
+                rows.append(contentsOf: emitLevel(level: level, data: data))
+            }
+            for connection in data.levelConnections {
+                if let row = emitConnectionStair(connection: connection, data: data) {
+                    rows.append(row)
+                }
+            }
+        } else {
+            for edge in data.edges {
+                rows.append(contentsOf: emitEdgeComponents(
+                    edge: edge,
+                    drawingData: data,
+                    levelId: nil
+                ))
+            }
+            rows.append(contentsOf: emitDeckBoardComponents(
+                surfaces: data.surfaces,
+                footprint: data.footprint,
+                isClosed: data.isClosed,
+                orderedPositions: data.orderedPositions,
+                detectedSurfaces: data.detectedSurfaces,
+                scaleFactor: data.scaleFactor,
+                levelId: nil
+            ))
+        }
+
+        return rows
+    }
+
+    // MARK: - Level (multi-level)
+
+    private static func emitLevel(level: DeckLevel, data: DeckDrawingData) -> [DesignComponentRow] {
+        var rows: [DesignComponentRow] = []
+        for edge in level.edges {
+            rows.append(contentsOf: emitEdgeComponents(
+                edge: edge,
+                drawingData: data,
+                levelId: level.id
+            ))
+        }
+        rows.append(contentsOf: emitDeckBoardComponents(
+            surfaces: level.surfaces,
+            footprint: level.footprint,
+            isClosed: level.isClosed,
+            orderedPositions: level.orderedPositions,
+            detectedSurfaces: level.detectedSurfaces,
+            scaleFactor: data.scaleFactor,
+            levelId: level.id
+        ))
+        return rows
+    }
+
+    // MARK: - Edge components
+
+    /// Emits all components attached to a single edge: railing + post_set
+    /// (paired), stair_set, and gate (one per `isGate`-flagged item).
+    /// `linear_feet` on the railing is the edge length minus any stair
+    /// span and minus all gate widths, mirroring the legacy estimate's
+    /// stair-subtraction rule and extending it for gates.
+    private static func emitEdgeComponents(
+        edge: DeckEdge,
+        drawingData: DeckDrawingData,
+        levelId: String?
+    ) -> [DesignComponentRow] {
+        var rows: [DesignComponentRow] = []
+        guard let edgeInches = edge.dimension, edgeInches > 0 else { return rows }
+
+        let gateItems = edge.assignedItems.filter { $0.isGate }
+        let totalGateInches = Double(gateItems.count) * defaultGateWidthInches
+        let stairInches = edge.stairConfig?.width ?? 0
+
+        // Railing component (with paired post_set)
+        if let railing = edge.railingConfig {
+            let netLengthInches = max(0, edgeInches - totalGateInches - stairInches)
+            let linearFt = round((netLengthInches / 12.0) * 100) / 100
+
+            // Per-edge corners_count is 0: corners live at vertices shared
+            // between edges, not within an edge's interior. The catalog
+            // model treats corner hardware as a Product option that the user
+            // can enter on the line item form for designs where it matters.
+            var meta: [String: AnyCodable] = [
+                "linear_feet": AnyCodable(linearFt),
+                "corners_count": AnyCodable(0),
+                "color": AnyCodable(railing.color),
+                "mount_type": AnyCodable(railing.mountType),
+                "mount_surface": AnyCodable(railing.mountSurface),
+                "edge_id": AnyCodable(edge.id),
+            ]
+            if let levelId = levelId { meta["level_id"] = AnyCodable(levelId) }
+            rows.append(DesignComponentRow(componentType: "railing", metadata: meta))
+
+            // Post set — emit alongside every railing.
+            let postCount = DimensionEngine.postCount(
+                edgeLengthInches: edgeInches,
+                maxSpacing: railing.maxPostSpacing
+            )
+            var postMeta: [String: AnyCodable] = [
+                "count": AnyCodable(postCount),
+                "height": AnyCodable(railing.postHeight),
+                "color": AnyCodable(railing.color),
+                "mount_type": AnyCodable(railing.mountType),
+                "edge_id": AnyCodable(edge.id),
+            ]
+            if let levelId = levelId { postMeta["level_id"] = AnyCodable(levelId) }
+            rows.append(DesignComponentRow(componentType: "post_set", metadata: postMeta))
+        }
+
+        // Stair set (per-edge stairs — distinct from level connection stairs)
+        if let stair = edge.stairConfig {
+            let totalRise = EstimateGeneratorService.calculateTotalRise(
+                edge: edge,
+                drawingData: drawingData
+            )
+            let resolvedTreadCount: Int
+            if let override = stair.treadCount, override > 0 {
+                resolvedTreadCount = override
+            } else if let rise = totalRise, rise > 0 {
+                resolvedTreadCount = StairConfig.calculateTreadCount(
+                    totalRise: rise,
+                    risePerStep: stair.risePerStep
+                )
+            } else {
+                resolvedTreadCount = 0
+            }
+
+            var meta: [String: AnyCodable] = [
+                "tread_count": AnyCodable(resolvedTreadCount),
+                "width": AnyCodable(stair.width),
+                "color": AnyCodable(stair.color),
+                "mount_type": AnyCodable(stair.mountType),
+                "edge_id": AnyCodable(edge.id),
+            ]
+            if let levelId = levelId { meta["level_id"] = AnyCodable(levelId) }
+            rows.append(DesignComponentRow(componentType: "stair_set", metadata: meta))
+        }
+
+        // Gates — one component per gate-flagged AssignedItem on this edge.
+        // count = 1 per row (each row is one gate); the railing's
+        // linear_feet has already been reduced by every gate's width.
+        for _ in gateItems {
+            let railingColor = edge.railingConfig?.color ?? "Black"
+            let railingMountType = edge.railingConfig?.mountType ?? "Topmount"
+            let railingMountSurface = edge.railingConfig?.mountSurface ?? "Surface"
+
+            var meta: [String: AnyCodable] = [
+                "count": AnyCodable(1),
+                "width": AnyCodable(defaultGateWidthInches),
+                "color": AnyCodable(railingColor),
+                "mount_type": AnyCodable(railingMountType),
+                "mount_surface": AnyCodable(railingMountSurface),
+                "edge_id": AnyCodable(edge.id),
+            ]
+            if let levelId = levelId { meta["level_id"] = AnyCodable(levelId) }
+            rows.append(DesignComponentRow(componentType: "gate", metadata: meta))
+        }
+
+        return rows
+    }
+
+    // MARK: - Deck board components
+
+    /// Emits one `deck_board` per `DeckSurface` matched to a detected
+    /// closed face (sqft from per-face area), or one per legacy footprint
+    /// when the surface store is empty and the polygon is closed.
+    /// Surfaces with no detected match (transient mid-edit state) are
+    /// skipped — `reconcileSurfaces()` rebinds them on the next save.
+    private static func emitDeckBoardComponents(
+        surfaces: [DeckSurface],
+        footprint: DeckFootprint,
+        isClosed: Bool,
+        orderedPositions: [CGPoint],
+        detectedSurfaces: [DetectedSurface],
+        scaleFactor: Double?,
+        levelId: String?
+    ) -> [DesignComponentRow] {
+        var rows: [DesignComponentRow] = []
+        guard let scale = scaleFactor, scale > 0 else { return rows }
+
+        if !surfaces.isEmpty {
+            for surface in surfaces {
+                let dSet = surface.vertexIds
+                let detected: DetectedSurface? = detectedSurfaces.first(where: {
+                    Set($0.vertexIds) == dSet
+                }) ?? detectedSurfaces
+                    .filter { Set($0.vertexIds).intersection(dSet).count > 0 }
+                    .max(by: { lhs, rhs in
+                        let li = Set(lhs.vertexIds).intersection(dSet).count
+                        let ri = Set(rhs.vertexIds).intersection(dSet).count
+                        return li < ri
+                    })
+                guard let face = detected,
+                      face.positions.count >= 3,
+                      !PolygonMath.isSelfIntersecting(vertices: face.positions) else { continue }
+
+                let areaSqFt = PolygonMath.realWorldArea(vertices: face.positions, scaleFactor: scale) / 144.0
+                guard areaSqFt > 0 else { continue }
+
+                var meta: [String: AnyCodable] = [
+                    "sqft": AnyCodable(round(areaSqFt * 100) / 100),
+                    "color": AnyCodable(surface.color),
+                    "material": AnyCodable(surface.boardMaterial),
+                    "surface_id": AnyCodable(surface.id),
+                ]
+                if let levelId = levelId { meta["level_id"] = AnyCodable(levelId) }
+                rows.append(DesignComponentRow(componentType: "deck_board", metadata: meta))
+            }
+            return rows
+        }
+
+        // Legacy footprint fallback — only when no per-surface store exists.
+        // Emit a single deck_board carrying the whole-polygon area; the
+        // `surface_id` traceback uses a stable "footprint" sentinel so the
+        // adapter's downstream logs can identify the source.
+        guard isClosed,
+              orderedPositions.count >= 3,
+              !PolygonMath.isSelfIntersecting(vertices: orderedPositions) else {
+            return rows
+        }
+        let areaSqFt = PolygonMath.realWorldArea(vertices: orderedPositions, scaleFactor: scale) / 144.0
+        guard areaSqFt > 0 else { return rows }
+
+        // Default vocabulary when the footprint carries no items — the
+        // assignment store on the legacy footprint is `assignedItems`, none
+        // of which carry color/material today. The defaults match the
+        // surface defaults so the adapter sees a consistent vocabulary.
+        var meta: [String: AnyCodable] = [
+            "sqft": AnyCodable(round(areaSqFt * 100) / 100),
+            "color": AnyCodable("Brown"),
+            "material": AnyCodable("composite"),
+            "surface_id": AnyCodable("footprint"),
+        ]
+        if let levelId = levelId { meta["level_id"] = AnyCodable(levelId) }
+        rows.append(DesignComponentRow(componentType: "deck_board", metadata: meta))
+        return rows
+    }
+
+    // MARK: - Connection stair (multi-level)
+
+    /// Emits a `stair_set` for a `LevelConnection` — used in multi-level
+    /// designs where the stair belongs to a between-levels traversal rather
+    /// than an edge of a single level. `level_id` is set to the upper level
+    /// per spec § 7.1 (stairs descend from the upper level to the lower).
+    private static func emitConnectionStair(
+        connection: LevelConnection,
+        data: DeckDrawingData
+    ) -> DesignComponentRow? {
+        guard let rise = data.elevationDifference(
+            upperLevelId: connection.upperLevelId,
+            lowerLevelId: connection.lowerLevelId
+        ), rise > 0 else { return nil }
+
+        let stair = connection.stairConfig
+        let resolvedTreadCount: Int
+        if let override = stair.treadCount, override > 0 {
+            resolvedTreadCount = override
+        } else {
+            resolvedTreadCount = StairConfig.calculateTreadCount(
+                totalRise: rise,
+                risePerStep: stair.risePerStep
+            )
+        }
+
+        let meta: [String: AnyCodable] = [
+            "tread_count": AnyCodable(resolvedTreadCount),
+            "width": AnyCodable(stair.width),
+            "color": AnyCodable(stair.color),
+            "mount_type": AnyCodable(stair.mountType),
+            "level_id": AnyCodable(connection.upperLevelId),
+            "connection_id": AnyCodable(connection.id),
+        ]
+        return DesignComponentRow(componentType: "stair_set", metadata: meta)
     }
 }
 

@@ -743,7 +743,8 @@ struct FloatingActionMenu: View {
             CatalogImportStub()
         }
         .sheet(isPresented: $showingCatalogQuickAddProduct) {
-            CatalogQuickAddProductStub()
+            QuickAddProductSheet()
+                .environmentObject(dataController)
         }
         .alert("Full setup is on web", isPresented: $showingCatalogFullSetupAlert) {
             Button("OK") {}
@@ -1346,7 +1347,7 @@ struct FloatingActionMenu: View {
 //   - CatalogAddVariantStub        → REPLACED in Phase 6 by `VariantFormSheet`
 //   - CatalogAddFamilyStub         → REPLACED in Phase 6 by `AddFamilySheet`
 //   - CatalogImportStub            → Phase 8 (catalog import)
-//   - CatalogQuickAddProductStub   → Phase 7 (product quick-add)
+//   - CatalogQuickAddProductStub   → REPLACED in Phase 7 by `QuickAddProductSheet`
 
 private struct CatalogImportStub: View {
     @Environment(\.dismiss) private var dismiss
@@ -1365,34 +1366,6 @@ private struct CatalogImportStub: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .navigationTitle("IMPORT")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-            }
-        }
-    }
-}
-
-private struct CatalogQuickAddProductStub: View {
-    @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
-                VStack(spacing: OPSStyle.Layout.spacing2) {
-                    Text("// QUICK ADD")
-                        .font(OPSStyle.Typography.panelTitle)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    Text("[Coming in Phase 7]")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .navigationTitle("QUICK ADD")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

@@ -26,15 +26,27 @@ struct WeekDayCell: View {
                 // Reserve space for spanning bars overlay (rendered by CalendarDaySelector)
                 Spacer(minLength: 0)
             }
-            .padding(.top, 4)
+            // Bug 3 — Add top + bottom breathing room so day labels and the
+            // spanning event bars below them don't crowd the cell border.
+            .padding(.top, OPSStyle.Layout.spacing1)
+            .padding(.bottom, OPSStyle.Layout.spacing1)
             .frame(maxWidth: .infinity)
             .frame(height: 86)
-            .padding(.horizontal, 4)
+            .padding(.horizontal, OPSStyle.Layout.spacing1)
             .background(cellBackground)
             .cornerRadius(OPSStyle.Layout.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .stroke(OPSStyle.Colors.primaryText, lineWidth: isSelected ? 1 : 0)
+                    .stroke(
+                        OPSStyle.Colors.primaryText,
+                        lineWidth: isSelected ? 1.5 : 0
+                    )
+                    .animation(
+                        UIAccessibility.isReduceMotionEnabled
+                            ? .none
+                            : .spring(response: 0.28, dampingFraction: 0.72),
+                        value: isSelected
+                    )
             )
             .opacity(isPast ? 0.55 : 1.0)
         }

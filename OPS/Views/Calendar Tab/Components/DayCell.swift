@@ -15,6 +15,9 @@ struct DayCell: View {
     let projectCount: Int
     let onTap: () -> Void
 
+    // Animated border transition (Bug 6)
+    @Namespace private var selectionBorderNS
+
     var body: some View {
         Button(action: onTap) {
             ZStack {
@@ -44,12 +47,18 @@ struct DayCell: View {
                         lineWidth: 1
                     )
             )
-            // Selected border (white, overrides today border)
+            // Selected border — animated spring transition (Bug 6)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                     .stroke(
                         isSelected ? OPSStyle.Colors.primaryText : Color.clear,
-                        lineWidth: 1
+                        lineWidth: isSelected ? 1.5 : 0
+                    )
+                    .animation(
+                        UIAccessibility.isReduceMotionEnabled
+                            ? .none
+                            : .spring(response: 0.28, dampingFraction: 0.72),
+                        value: isSelected
                     )
             )
         }

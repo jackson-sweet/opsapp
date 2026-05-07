@@ -53,7 +53,9 @@ struct CalendarProjectCard: View {
             .onTapGesture {
                 onTap()
             }
-        .padding(.vertical, 4)
+        // Bug 3 — Match CalendarEventCard breathing room so week-view stack
+        // stays visually consistent (8pt = 16pt total gap between cards).
+        .padding(.vertical, 8)
         .padding(.horizontal)
     }
     

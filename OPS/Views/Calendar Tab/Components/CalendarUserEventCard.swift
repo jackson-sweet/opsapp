@@ -46,7 +46,9 @@ struct CalendarUserEventCard: View {
         .background(cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 2))
         .overlay(cardBorder)
-        .padding(.vertical, 4)
+        // Bug 3 — Match CalendarEventCard / CalendarProjectCard for consistent
+        // vertical breathing room in week and day views.
+        .padding(.vertical, 8)
         .padding(.horizontal)
         .onTapGesture {
             // Tap opens the editor when one's wired up (DayCanvasView), and

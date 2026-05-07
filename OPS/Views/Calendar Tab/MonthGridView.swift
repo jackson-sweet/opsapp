@@ -145,6 +145,63 @@ class MonthGridCache: ObservableObject {
                 }
             }
 
+            // Bug 1 — Include user events (time off + personal) alongside
+            // project tasks so they show up in the month grid. We reuse the
+            // same ScheduledTaskPreview shape with a userEvent: prefix on the
+            // eventId so the day sheet can route taps differently if needed.
+            let userEvents = viewModel.userEventsForCurrentPeriod.filter { $0.deletedAt == nil }
+            for event in userEvents {
+                let evStart = calendar.startOfDay(for: event.startDate)
+                let evEnd = calendar.startOfDay(for: event.endDate)
+                let isMultiDay = !calendar.isDate(evStart, inSameDayAs: evEnd)
+                let daySpan = calendar.dateComponents([.day], from: evStart, to: evEnd).day ?? 0
+                let totalDays = max(daySpan + 1, 1)
+
+                // Time off uses amber, personal uses neutral grey so they
+                // visually distinguish from project task badges.
+                let displayColor = event.isTimeOff
+                    ? "#C4A868"  // amber
+                    : "#7A7A7A"  // neutral grey
+
+                let label = event.title.isEmpty
+                    ? (event.isTimeOff ? "Time Off" : "Personal")
+                    : event.title
+
+                var currentDate = evStart
+                var dayOffset = 0
+                while currentDate <= evEnd {
+                    let dateKey = formatDateKey(currentDate)
+                    let isFirst = dayOffset == 0
+                    let isLast = currentDate >= evEnd
+                    let weekday = calendar.component(.weekday, from: currentDate)
+                    let isMonday = (weekday == 2)
+                    let isFirstInWeek = isFirst || isMonday
+
+                    let preview = ScheduledTaskPreview(
+                        id: "userevent_\(event.id)_\(dayOffset)",
+                        eventId: "userevent:\(event.id)",
+                        title: label,
+                        color: displayColor,
+                        startDate: evStart,
+                        endDate: evEnd,
+                        isMultiDay: isMultiDay,
+                        dayOffset: dayOffset,
+                        totalDays: totalDays,
+                        isFirst: isFirst,
+                        isLast: isLast,
+                        isFirstInWeek: isFirstInWeek,
+                        taskTypeDisplay: event.isTimeOff ? "TIME OFF" : "PERSONAL"
+                    )
+
+                    if cache[dateKey] == nil { cache[dateKey] = [] }
+                    cache[dateKey]?.append(preview)
+
+                    guard let nextDate = calendar.date(byAdding: .day, value: 1, to: currentDate) else { break }
+                    currentDate = nextDate
+                    dayOffset += 1
+                }
+            }
+
             for key in cache.keys {
                 cache[key] = cache[key]?.sorted { $0.startDate < $1.startDate }
             }
@@ -754,6 +811,19 @@ struct MonthGridView: View {
                     cache.loadEvents(from: dataController, viewModel: viewModel, tutorialMode: tutorialMode)
                 }
             }
+            // Bug 1 — Reload month grid when user events (time off / personal)
+            // are added, edited, deleted, or synced from the server.
+            .onChange(of: viewModel.userEventsForCurrentPeriod.count) { _, _ in
+                if let dataController = viewModel.dataController {
+                    cache.loadEvents(from: dataController, viewModel: viewModel, tutorialMode: tutorialMode)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarUserEventsDidChange"))) { _ in
+                viewModel.loadUserEvents()
+                if let dataController = viewModel.dataController {
+                    cache.loadEvents(from: dataController, viewModel: viewModel, tutorialMode: tutorialMode)
+                }
+            }
             .sheet(item: $sheetDate) { identifiableDate in
                 DayDetailsSheet(date: identifiableDate.date, viewModel: viewModel, cache: cache)
                     .opsSheet(detents: [.medium, .large])
@@ -1034,10 +1104,11 @@ struct EventBadge: View {
     }
 
     private var badgeOpacity: Double {
+        // Bug 4: lower-opacity fill (~0.25) at all zoom levels
         if cellHeight <= 80 {
-            return 0.5
+            return 0.25
         } else {
-            return 0.2
+            return 0.18
         }
     }
 
@@ -1076,24 +1147,37 @@ struct EventBadge: View {
         return EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 2)
     }
 
+    // Badge shape helper
+    private func badgeShape() -> UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: topLeftRadius,
+            bottomLeadingRadius: bottomLeftRadius,
+            bottomTrailingRadius: bottomRightRadius,
+            topTrailingRadius: topRightRadius
+        )
+    }
+
     var body: some View {
+        let badgeColor = Color(hex: event.color) ?? OPSStyle.Colors.primaryAccent
+
+        // Bug 4: fixed vertical padding of 1pt around each badge for breathing room
         Group {
             if let height = badgeHeight {
-                (Color(hex: event.color) ?? OPSStyle.Colors.primaryAccent).opacity(badgeOpacity)
+                badgeColor.opacity(badgeOpacity)
                     .frame(maxWidth: .infinity)
                     .frame(height: height)
-                    .clipShape(UnevenRoundedRectangle(
-                        topLeadingRadius: topLeftRadius,
-                        bottomLeadingRadius: bottomLeftRadius,
-                        bottomTrailingRadius: bottomRightRadius,
-                        topTrailingRadius: topRightRadius
-                    ))
+                    .clipShape(badgeShape())
+                    // Bug 4: stroke border at same color, 30% opacity
+                    .overlay(
+                        badgeShape()
+                            .stroke(badgeColor.opacity(0.30), lineWidth: 0.5)
+                    )
                     .padding(horizontalPadding)
                     .overlay(alignment: .leading) {
                         if showText && (!event.isMultiDay || event.isFirst || event.isFirstInWeek) {
                             Text(event.title)
                                 .font(fontSize)
-                                .foregroundColor(Color(hex: event.color) ?? OPSStyle.Colors.primaryText)
+                                .foregroundColor(badgeColor)
                                 .lineLimit(1)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 2)
@@ -1107,7 +1191,7 @@ struct EventBadge: View {
                     if showText && (!event.isMultiDay || event.isFirst || event.isFirstInWeek) {
                         Text(event.title)
                             .font(fontSize)
-                            .foregroundColor(Color(hex: event.color) ?? OPSStyle.Colors.primaryText)
+                            .foregroundColor(badgeColor)
                             .lineLimit(allowTextWrap ? nil : 1)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 2)
@@ -1117,17 +1201,18 @@ struct EventBadge: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    (Color(hex: event.color) ?? OPSStyle.Colors.primaryAccent).opacity(badgeOpacity)
-                        .clipShape(UnevenRoundedRectangle(
-                            topLeadingRadius: topLeftRadius,
-                            bottomLeadingRadius: bottomLeftRadius,
-                            bottomTrailingRadius: bottomRightRadius,
-                            topTrailingRadius: topRightRadius
-                        ))
+                    badgeColor.opacity(badgeOpacity)
+                        .clipShape(badgeShape())
+                )
+                .overlay(
+                    badgeShape()
+                        .stroke(badgeColor.opacity(0.30), lineWidth: 0.5)
                 )
                 .padding(horizontalPadding)
             }
         }
+        // Bug 4: vertical padding around each badge
+        .padding(.vertical, 1)
     }
 }
 
@@ -1203,6 +1288,7 @@ struct EventBar: View {
         .clipped()
         .background(eventBackground)
         .padding(.horizontal, 2)
+        .padding(.vertical, 1)
         // Bug 70591eb5: tap forwards to the day sheet (preserving the
         // previous "badge is non-interactive" behaviour) and long-press
         // exposes quick reschedule actions via the system context menu.
@@ -1385,10 +1471,24 @@ struct DayDetailsSheet: View {
     }
 
     private var scheduledTasks: [ProjectTask] {
-        let taskIds = Set(eventPreviews.map { $0.eventId })
+        // User-event entries use a "userevent:" prefix on eventId — skip them
+        // here so they don't get resolved against the task store (Bug 1).
+        let taskIds = Set(eventPreviews
+            .map { $0.eventId }
+            .filter { !$0.hasPrefix("userevent:") })
         return taskIds.compactMap { id in
             dataController.getTask(id: id)
         }
+    }
+
+    /// User-owned events overlapping this date (Bug 1 — surface time-off /
+    /// personal events in the month-grid day sheet).
+    private var dayUserEvents: [CalendarUserEvent] {
+        viewModel.userEvents(for: date)
+    }
+
+    private var totalEventCount: Int {
+        scheduledTasks.count + dayUserEvents.count
     }
 
     // Separate new and ongoing tasks (matching week view)
@@ -1415,12 +1515,12 @@ struct DayDetailsSheet: View {
                     .padding(.horizontal)
                     .padding(.top, 8)
 
-                Text("\(scheduledTasks.count) event\(scheduledTasks.count == 1 ? "" : "s")")
+                Text("\(totalEventCount) event\(totalEventCount == 1 ? "" : "s")")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .padding(.horizontal)
 
-                if scheduledTasks.isEmpty {
+                if scheduledTasks.isEmpty && dayUserEvents.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: OPSStyle.Icons.calendar)
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl))
@@ -1480,6 +1580,38 @@ struct DayDetailsSheet: View {
                                 .wizardTarget("tap_task")
                                 .padding(.horizontal)
                             }
+                        }
+                    }
+                }
+
+                // Bug 1 — User events (time off + personal) for this date.
+                if !dayUserEvents.isEmpty {
+                    HStack(spacing: 8) {
+                        Text("PERSONAL")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                        Rectangle()
+                            .fill(OPSStyle.Colors.tertiaryText.opacity(0.3))
+                            .frame(height: 1)
+
+                        Text("[\(dayUserEvents.count)]")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 24)
+
+                    VStack(spacing: 8) {
+                        ForEach(dayUserEvents) { event in
+                            CalendarUserEventCard(
+                                event: event,
+                                onTap: {},
+                                onDelete: {
+                                    dataController.deleteRecurringEvent(event, scope: .thisOnly)
+                                    viewModel.loadUserEvents()
+                                }
+                            )
                         }
                     }
                 }

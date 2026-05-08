@@ -3146,6 +3146,26 @@ actor DataActor {
         } catch {
             let classified = classifySyncError(error)
 
+            // Idempotency: if this is a `create` retry and the server says the row
+            // already exists (PK unique-constraint violation), the first push
+            // succeeded server-side but the response was lost — network blip,
+            // app killed mid-flight, etc. Mark the op completed instead of
+            // retrying forever against a server that already has the row.
+            // See `errorIndicatesPrimaryKeyViolation` for the detection contract.
+            if operation.operationType == "create",
+               errorIndicatesPrimaryKeyViolation(error) {
+                try? modelContext.transaction {
+                    operation.status = "completed"
+                    operation.completedAt = Date()
+                    operation.lastError = nil
+                }
+                print("[DataActor] create \(operation.entityType) \(operation.entityId) — server already has row (PK conflict on retry); marking completed")
+                if operation.entityType == SyncEntityType.projectTask.rawValue {
+                    print("[DUPE_TRACE] ACTOR.outbound.completed.pkConflict id=\(operation.entityId) op=\(operation.operationType)")
+                }
+                return
+            }
+
             if case .authExpired = classified {
                 try? modelContext.transaction {
                     operation.lastError = classified.localizedDescription

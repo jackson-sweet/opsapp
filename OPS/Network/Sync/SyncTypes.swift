@@ -304,6 +304,32 @@ func classifySyncError(_ error: Error) -> SyncError {
     return .unknown(underlying: error)
 }
 
+// MARK: - Idempotency Helpers
+
+/// Returns `true` if the underlying error indicates a Postgres primary-key
+/// unique-constraint violation. Used during outbound `create` retries to
+/// recognize that a previous push already inserted the row server-side
+/// (response was lost — network blip, app killed mid-flight, etc.) and
+/// avoid retrying the INSERT forever against a server that already has it.
+///
+/// Detection is intentionally narrow:
+/// - Requires the canonical PostgREST/Postgres phrase
+///   `duplicate key value violates unique constraint`.
+/// - Requires the constraint name to end in `_pkey` so non-PK unique
+///   violations (e.g. unique email columns) are NOT swallowed — those are
+///   genuine create failures and must continue to surface to the retry path.
+///
+/// SQLSTATE for unique-violation is `23505`; we match on the message text
+/// because Supabase's Swift client surfaces the PG error string via
+/// `localizedDescription` rather than exposing the SQLSTATE directly.
+func errorIndicatesPrimaryKeyViolation(_ error: Error) -> Bool {
+    let description = error.localizedDescription
+    guard description.contains("duplicate key value violates unique constraint") else {
+        return false
+    }
+    return description.contains("_pkey")
+}
+
 // MARK: - Notification Names
 
 extension Notification.Name {

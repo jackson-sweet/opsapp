@@ -252,6 +252,22 @@ final class OutboundProcessor {
 
         } catch {
             let classified = classifySyncError(error)
+
+            // Idempotency: if this is a `create` retry and the server says the row
+            // already exists (PK unique-constraint violation), the first push
+            // succeeded server-side but the response was lost — network blip,
+            // app killed mid-flight, etc. Mark the op completed instead of
+            // retrying forever against a server that already has the row.
+            // See `errorIndicatesPrimaryKeyViolation` for the detection contract.
+            if operation.operationType == "create",
+               errorIndicatesPrimaryKeyViolation(error) {
+                operation.status = "completed"
+                operation.completedAt = Date()
+                operation.lastError = nil
+                print("[OutboundProcessor] create \(operation.entityType) \(operation.entityId) — server already has row (PK conflict on retry); marking completed")
+                return
+            }
+
             operation.lastError = classified.localizedDescription
 
             // Auth errors: don't retry, post notification for re-authentication

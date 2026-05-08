@@ -39,6 +39,10 @@ struct MoneyDashboardHeader: View {
                 avgDaysToPayment: viewModel.avgDaysToPayment,
                 expensesTrend: viewModel.expensesTrend,
                 topUnpaid: viewModel.topUnpaidInvoices,
+                activeLeadCount: viewModel.activeLeadCount,
+                weightedForecastValue: viewModel.weightedForecastValue,
+                staleLeadsCount: viewModel.staleLeadsCount,
+                nextFollowUpDue: viewModel.nextFollowUpDue,
                 onStatTap: onStatTap
             )
         }

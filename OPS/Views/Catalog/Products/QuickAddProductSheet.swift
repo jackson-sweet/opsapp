@@ -51,6 +51,12 @@ struct QuickAddProductSheet: View {
     @State private var priceParseError: Bool = false
     @State private var unitCostParseError: Bool = false
 
+    // Inline create sheets — opened from the "+ NEW …" menu items so the
+    // user never has to dismiss this sheet, navigate elsewhere, then come
+    // back. The new row's id is returned via callback and selected here.
+    @State private var showingNewCategorySheet: Bool = false
+    @State private var showingNewUnitSheet: Bool = false
+
     @FocusState private var nameFieldFocused: Bool
 
     private var companyId: String {
@@ -117,6 +123,20 @@ struct QuickAddProductSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .sheet(isPresented: $showingNewCategorySheet) {
+            InlineCreateCategorySheet(companyId: companyId) { newId in
+                // Adopt the new category as the picker's selection so the
+                // user lands back here with their just-created row chosen.
+                selectedCategoryId = newId
+            }
+            .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingNewUnitSheet) {
+            InlineCreateUnitSheet(companyId: companyId) { newId in
+                selectedUnitId = newId
+            }
+            .environmentObject(dataController)
+        }
     }
 
     // MARK: - Core fields
@@ -155,28 +175,45 @@ struct QuickAddProductSheet: View {
         }
     }
 
-    // MARK: - Unit picker (CatalogUnit-backed)
+    // MARK: - Unit picker (CatalogUnit-backed, with inline "+ NEW UNIT")
 
     private var unitPicker: some View {
-        Picker("Unit", selection: $selectedUnitId) {
-            Text("Flat rate").tag(String?.none)
-            ForEach(companyUnits) { unit in
-                Text(unit.display).tag(Optional(unit.id))
+        Menu {
+            Button {
+                selectedUnitId = nil
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Label("Flat rate", systemImage: selectedUnitId == nil ? "checkmark" : "")
             }
+            ForEach(companyUnits) { unit in
+                Button {
+                    selectedUnitId = unit.id
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    if selectedUnitId == unit.id {
+                        Label(unit.display, systemImage: "checkmark")
+                    } else {
+                        Text(unit.display)
+                    }
+                }
+            }
+            Divider()
+            Button {
+                showingNewUnitSheet = true
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Label("New unit…", systemImage: "plus")
+            }
+        } label: {
+            menuLabel(text: selectedUnitDisplay)
         }
-        .pickerStyle(.menu)
-        .tint(OPSStyle.Colors.primaryText)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .onChange(of: selectedUnitId) { _, _ in
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        }
+    }
+
+    private var selectedUnitDisplay: String {
+        guard let id = selectedUnitId,
+              let unit = companyUnits.first(where: { $0.id == id })
+        else { return "Flat rate" }
+        return unit.display
     }
 
     // MARK: - Category picker (CatalogCategory-backed, free-text on save)
@@ -190,25 +227,67 @@ struct QuickAddProductSheet: View {
     }
 
     private var categoryPicker: some View {
-        Picker("Category", selection: $selectedCategoryId) {
-            Text("None").tag(String?.none)
-            ForEach(companyCategories) { category in
-                Text(category.name).tag(Optional(category.id))
+        Menu {
+            Button {
+                selectedCategoryId = nil
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Label("None", systemImage: selectedCategoryId == nil ? "checkmark" : "")
             }
+            ForEach(companyCategories) { category in
+                Button {
+                    selectedCategoryId = category.id
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    if selectedCategoryId == category.id {
+                        Label(category.name, systemImage: "checkmark")
+                    } else {
+                        Text(category.name)
+                    }
+                }
+            }
+            Divider()
+            Button {
+                showingNewCategorySheet = true
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Label("New category…", systemImage: "plus")
+            }
+        } label: {
+            menuLabel(text: selectedCategoryDisplay)
         }
-        .pickerStyle(.menu)
-        .tint(OPSStyle.Colors.primaryText)
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var selectedCategoryDisplay: String {
+        guard let id = selectedCategoryId,
+              let category = companyCategories.first(where: { $0.id == id })
+        else { return "None" }
+        return category.name
+    }
+
+    /// Shared visual for both the category and unit Menu labels. Matches
+    /// the look of `CatalogTextFieldStyle` so the form reads as one unit
+    /// with the text fields above it.
+    @ViewBuilder
+    private func menuLabel(text: String) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text(text)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+            Spacer()
+            Image(systemName: "chevron.down")
+                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
         .padding(OPSStyle.Layout.spacing2)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
-        .onChange(of: selectedCategoryId) { _, _ in
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        }
     }
 
     // MARK: - Advanced
@@ -440,5 +519,289 @@ struct QuickAddProductSheet: View {
         let model = dto.toModel()
         modelContext.insert(model)
         try? modelContext.save()
+    }
+}
+
+// MARK: - Inline Create Category Sheet
+
+/// Minimal "+ NEW CATEGORY…" sheet — name only. The full Categories
+/// management screen handles parent nesting, sort order, color, and
+/// thresholds; this sheet is for the user who realized mid-product-create
+/// that they need a new category and wants it in two taps.
+private struct InlineCreateCategorySheet: View {
+    let companyId: String
+    let onCreated: (String) -> Void
+
+    @EnvironmentObject private var dataController: DataController
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Query private var allCategories: [CatalogCategory]
+
+    @State private var name: String = ""
+    @State private var isSaving: Bool = false
+    @State private var errorMessage: String? = nil
+
+    @FocusState private var nameFocused: Bool
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSaving
+    }
+
+    /// Sort order for the new row — append to the end of the company's
+    /// existing categories so the picker keeps a stable order.
+    private var nextSortOrder: Int {
+        let local = allCategories.filter { $0.companyId == companyId && $0.deletedAt == nil }
+        let max = local.map(\.sortOrder).max() ?? 0
+        return max + 1
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                            CatalogSectionHeader("CATEGORY")
+                            CatalogFieldLabel("Name")
+                            TextField("e.g. Hardware", text: $name)
+                                .textFieldStyle(CatalogTextFieldStyle())
+                                .focused($nameFocused)
+                                .submitLabel(.done)
+                                .onSubmit { Task { await save() } }
+                        }
+                        if let errorMessage = errorMessage {
+                            Text(errorMessage)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.errorText)
+                        }
+                    }
+                    .padding(OPSStyle.Layout.spacing3)
+                }
+            }
+            .navigationTitle("NEW CATEGORY")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        if isSaving {
+                            ProgressView().tint(OPSStyle.Colors.primaryAccent)
+                        } else {
+                            Text("SAVE")
+                                .font(OPSStyle.Typography.buttonLabel)
+                                .foregroundColor(canSave
+                                    ? OPSStyle.Colors.primaryAccent
+                                    : OPSStyle.Colors.tertiaryText)
+                        }
+                    }
+                    .disabled(!canSave)
+                }
+            }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    nameFocused = true
+                }
+            }
+        }
+        .presentationDetents([.height(220)])
+        .presentationDragIndicator(.visible)
+    }
+
+    @MainActor
+    private func save() async {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+        errorMessage = nil
+
+        let dto = CreateCatalogCategoryDTO(
+            companyId: companyId,
+            name: trimmed,
+            parentId: nil,
+            sortOrder: nextSortOrder,
+            colorHex: nil,
+            defaultWarningThreshold: nil,
+            defaultCriticalThreshold: nil
+        )
+
+        do {
+            let repo = CatalogRepository(companyId: companyId)
+            let created = try await repo.createCategory(dto)
+            // Insert into local store so the parent picker sees the new row
+            // before the next sync round.
+            let model = created.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+            try? modelContext.save()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            onCreated(created.id)
+            dismiss()
+        } catch {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+// MARK: - Inline Create Unit Sheet
+
+/// Minimal "+ NEW UNIT…" sheet — display + dimension. Abbreviation,
+/// default flag, and sort order can be edited later from the full Units
+/// management screen.
+private struct InlineCreateUnitSheet: View {
+    let companyId: String
+    let onCreated: (String) -> Void
+
+    @EnvironmentObject private var dataController: DataController
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Query private var allUnits: [CatalogUnit]
+
+    @State private var display: String = ""
+    @State private var dimension: String = "count"
+    @State private var isSaving: Bool = false
+    @State private var errorMessage: String? = nil
+
+    @FocusState private var displayFocused: Bool
+
+    /// The six dimension values match the Postgres check constraint on
+    /// catalog_units.dimension. Display labels are user-friendly; the
+    /// raw value goes to Supabase.
+    private static let dimensions: [(raw: String, label: String)] = [
+        ("count",  "Count"),
+        ("length", "Length"),
+        ("area",   "Area"),
+        ("volume", "Volume"),
+        ("mass",   "Mass"),
+        ("time",   "Time"),
+    ]
+
+    private var canSave: Bool {
+        !display.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSaving
+    }
+
+    private var nextSortOrder: Int {
+        let local = allUnits.filter { $0.companyId == companyId && $0.deletedAt == nil }
+        let max = local.map(\.sortOrder).max() ?? 0
+        return max + 1
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                            CatalogSectionHeader("UNIT")
+                            CatalogFieldLabel("Display")
+                            TextField("e.g. BOARD FT", text: $display)
+                                .textFieldStyle(CatalogTextFieldStyle())
+                                .focused($displayFocused)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.characters)
+                                .submitLabel(.done)
+                                .onSubmit { Task { await save() } }
+
+                            CatalogFieldLabel("Dimension")
+                            dimensionPicker
+                        }
+                        if let errorMessage = errorMessage {
+                            Text(errorMessage)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.errorText)
+                        }
+                    }
+                    .padding(OPSStyle.Layout.spacing3)
+                }
+            }
+            .navigationTitle("NEW UNIT")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        if isSaving {
+                            ProgressView().tint(OPSStyle.Colors.primaryAccent)
+                        } else {
+                            Text("SAVE")
+                                .font(OPSStyle.Typography.buttonLabel)
+                                .foregroundColor(canSave
+                                    ? OPSStyle.Colors.primaryAccent
+                                    : OPSStyle.Colors.tertiaryText)
+                        }
+                    }
+                    .disabled(!canSave)
+                }
+            }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    displayFocused = true
+                }
+            }
+        }
+        .presentationDetents([.height(320)])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var dimensionPicker: some View {
+        Picker("Dimension", selection: $dimension) {
+            ForEach(Self.dimensions, id: \.raw) { entry in
+                Text(entry.label).tag(entry.raw)
+            }
+        }
+        .pickerStyle(.segmented)
+        .onChange(of: dimension) { _, _ in
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+    }
+
+    @MainActor
+    private func save() async {
+        let trimmed = display.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        isSaving = true
+        defer { isSaving = false }
+        errorMessage = nil
+
+        let dto = CreateCatalogUnitDTO(
+            companyId: companyId,
+            display: trimmed,
+            abbreviation: nil,
+            dimension: dimension,
+            isDefault: false,
+            sortOrder: nextSortOrder
+        )
+
+        do {
+            let repo = CatalogRepository(companyId: companyId)
+            let created = try await repo.createUnit(dto)
+            let model = created.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+            try? modelContext.save()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            onCreated(created.id)
+            dismiss()
+        } catch {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            errorMessage = error.localizedDescription
+        }
     }
 }

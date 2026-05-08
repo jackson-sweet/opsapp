@@ -15,9 +15,11 @@
 
 import SwiftUI
 import SwiftData
+import PhotosUI
 
 struct QuickAddProductSheet: View {
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
@@ -58,6 +60,21 @@ struct QuickAddProductSheet: View {
     @State private var showingNewCategorySheet: Bool = false
     @State private var showingNewUnitSheet: Bool = false
 
+    // Thumbnail picker state. The image is held locally until the product
+    // is saved — then we upload it via ProductThumbnailUploader and PATCH
+    // the new URL onto the just-created row. Picker uses PhotosUI's
+    // PhotosPicker (single image, .images filter) for parity with
+    // EmployeeProfileView's avatar flow.
+    @State private var thumbnailPickerItem: PhotosPickerItem? = nil
+    @State private var thumbnailImage: UIImage? = nil
+    /// Becomes non-nil when the product is saved successfully but the
+    /// follow-up Storage upload fails. The user can tap to retry without
+    /// rolling back the (already-created) product.
+    @State private var thumbnailUploadFailedProductId: String? = nil
+    @State private var isUploadingThumbnail: Bool = false
+
+    private var canManageProducts: Bool { permissionStore.can("catalog.products.manage") }
+
     /// User-pinned preference. When ON, a successful save resets the form
     /// (keeping category + unit selections) and refocuses the name field
     /// instead of dismissing — so the user can keep loading new products
@@ -97,6 +114,9 @@ struct QuickAddProductSheet: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             coreFields
+                            if canManageProducts {
+                                thumbnailField
+                            }
                             categoryField
                             advancedDisclosure
                             footerNote
@@ -221,6 +241,109 @@ struct QuickAddProductSheet: View {
               let unit = companyUnits.first(where: { $0.id == id })
         else { return "Flat rate" }
         return unit.display
+    }
+
+    // MARK: - Thumbnail picker (uploads after save)
+
+    @ViewBuilder
+    private var thumbnailField: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            CatalogSectionHeader("THUMBNAIL")
+
+            if let image = thumbnailImage {
+                // Picked-state: preview the image with REPLACE + REMOVE
+                // controls. Layout matches the rest of the form (card
+                // background, hairline border) so it doesn't feel like
+                // a stowaway component.
+                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 72, height: 72)
+                        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.cardBorder,
+                                        lineWidth: OPSStyle.Layout.Border.standard)
+                        )
+
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                        PhotosPicker(
+                            selection: $thumbnailPickerItem,
+                            matching: .images,
+                            photoLibrary: .shared()
+                        ) {
+                            Text("// REPLACE")
+                                .font(OPSStyle.Typography.metadata)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .padding(.vertical, OPSStyle.Layout.spacing1)
+                                .frame(minHeight: OPSStyle.Layout.touchTargetMin / 2)
+                        }
+                        .accessibilityLabel("Replace thumbnail")
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            thumbnailImage = nil
+                            thumbnailPickerItem = nil
+                        } label: {
+                            Text("// REMOVE")
+                                .font(OPSStyle.Typography.metadata)
+                                .foregroundColor(OPSStyle.Colors.errorText)
+                                .padding(.vertical, OPSStyle.Layout.spacing1)
+                                .frame(minHeight: OPSStyle.Layout.touchTargetMin / 2)
+                        }
+                        .accessibilityLabel("Remove thumbnail")
+                    }
+
+                    Spacer()
+                }
+            } else {
+                // Empty-state: tap target large enough for gloves, voice
+                // matches the rest of the form ("// + ADD ..."). PhotosPicker
+                // is the same flavour used in EmployeeProfileView so the
+                // permission affordance is consistent across the app.
+                PhotosPicker(
+                    selection: $thumbnailPickerItem,
+                    matching: .images,
+                    photoLibrary: .shared()
+                ) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Image(systemName: "plus")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Text("// + ADD THUMBNAIL")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Spacer()
+                    }
+                    .padding(OPSStyle.Layout.spacing2)
+                    .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetStandard, alignment: .leading)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                }
+                .accessibilityLabel("Add thumbnail")
+            }
+        }
+        .onChange(of: thumbnailPickerItem) { _, newItem in
+            // Load the picked photo into a UIImage so the preview can
+            // render and so we have something to hand to the uploader at
+            // save time. Mirrors the same Transferable + UIImage flow used
+            // in ImagePickerView.
+            guard let newItem else { return }
+            Task {
+                if let data = try? await newItem.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    await MainActor.run {
+                        thumbnailImage = image
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Category picker (CatalogCategory-backed, free-text on save)
@@ -441,7 +564,15 @@ struct QuickAddProductSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    Task { await save() }
+                    // If the product itself created OK and only the
+                    // thumbnail upload failed, retry just the upload —
+                    // re-running save() would attempt a duplicate insert
+                    // and trip the local name-uniqueness pre-check.
+                    if thumbnailUploadFailedProductId != nil {
+                        Task { await retryThumbnailUpload() }
+                    } else {
+                        Task { await save() }
+                    }
                 } label: {
                     Text("RETRY")
                         .font(OPSStyle.Typography.buttonLabel)
@@ -456,7 +587,7 @@ struct QuickAddProductSheet: View {
                         )
                 }
                 .accessibilityLabel("Retry saving product")
-                .disabled(isSaving)
+                .disabled(isSaving || isUploadingThumbnail)
             }
         }
     }
@@ -615,7 +746,42 @@ struct QuickAddProductSheet: View {
         do {
             let createdDTO = try await repo.create(dto)
             applyCreatedDTO(createdDTO)
+
+            // Phase 4 — thumbnail upload happens AFTER product create so
+            // we have a productId for the object path. Failure here does
+            // NOT roll back the product; we surface a retry affordance
+            // and keep the row visible. Better degrade-gracefully than
+            // block the create.
+            var thumbnailUploadFailed = false
+            if let image = thumbnailImage, canManageProducts {
+                isUploadingThumbnail = true
+                do {
+                    let url = try await ProductThumbnailUploader.shared.upload(
+                        image,
+                        productId: createdDTO.id,
+                        companyId: companyId
+                    )
+                    var patch = UpdateProductDTO()
+                    patch.thumbnailUrl = url.absoluteString
+                    let patched = try await repo.update(createdDTO.id, fields: patch)
+                    applyThumbnailURL(patched.thumbnailUrl, productId: createdDTO.id)
+                } catch {
+                    thumbnailUploadFailed = true
+                    thumbnailUploadFailedProductId = createdDTO.id
+                    print("[QuickAddProduct] Thumbnail upload failed: \(error)")
+                }
+                isUploadingThumbnail = false
+            }
+
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+
+            if thumbnailUploadFailed {
+                // Stay on the sheet so the user sees the inline retry CTA.
+                // Surface as an explicit (recoverable) error message.
+                errorMessage = "// THUMBNAIL UPLOAD FAILED — TAP RETRY TO TRY AGAIN"
+                return
+            }
+
             if saveAndAddAnother {
                 // Keep the sheet open and re-prime for another row. We
                 // intentionally retain category + unit + advanced settings
@@ -632,6 +798,58 @@ struct QuickAddProductSheet: View {
         }
     }
 
+    /// Retries just the thumbnail upload for a product that was already
+    /// successfully created. Wired into the inline RETRY action when
+    /// `thumbnailUploadFailedProductId` is set so the user doesn't have
+    /// to re-enter all the form fields.
+    @MainActor
+    private func retryThumbnailUpload() async {
+        guard let productId = thumbnailUploadFailedProductId,
+              let image = thumbnailImage else { return }
+
+        isUploadingThumbnail = true
+        defer { isUploadingThumbnail = false }
+        errorMessage = nil
+
+        let repo = ProductRepository(companyId: companyId)
+        do {
+            let url = try await ProductThumbnailUploader.shared.upload(
+                image,
+                productId: productId,
+                companyId: companyId
+            )
+            var patch = UpdateProductDTO()
+            patch.thumbnailUrl = url.absoluteString
+            let patched = try await repo.update(productId, fields: patch)
+            applyThumbnailURL(patched.thumbnailUrl, productId: productId)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            thumbnailUploadFailedProductId = nil
+            if saveAndAddAnother {
+                resetForNextEntry()
+            } else {
+                dismiss()
+            }
+        } catch {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Applies the just-uploaded thumbnail URL to the local SwiftData copy
+    /// of the product so the catalog list refreshes without waiting for
+    /// the next sync pass.
+    @MainActor
+    private func applyThumbnailURL(_ url: String?, productId: String) {
+        guard let url else { return }
+        let descriptor = FetchDescriptor<Product>(
+            predicate: #Predicate { $0.id == productId }
+        )
+        if let local = try? modelContext.fetch(descriptor).first {
+            local.thumbnailUrl = url
+            try? modelContext.save()
+        }
+    }
+
     /// Clears per-row fields after a successful save when the
     /// save-and-add-another toggle is on. Category, unit, and advanced
     /// settings stay so the next product inherits the same shape.
@@ -645,6 +863,11 @@ struct QuickAddProductSheet: View {
         priceParseError = false
         unitCostParseError = false
         errorMessage = nil
+        // Thumbnail is per-row — clear so the next product doesn't
+        // accidentally inherit the previous product's image.
+        thumbnailImage = nil
+        thumbnailPickerItem = nil
+        thumbnailUploadFailedProductId = nil
         // Refocus the name field on the next runloop tick so the keyboard
         // stays up across the save→reset transition without flickering.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

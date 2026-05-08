@@ -118,7 +118,6 @@ struct FloatingActionMenu: View {
     @State private var showingCatalogAddFamily = false
     @State private var showingCatalogImport = false
     @State private var showingCatalogQuickAddProduct = false
-    @State private var showingCatalogFullSetupAlert = false
 
     // View models — lazily created only when their sheets open
     @StateObject private var expenseViewModel = ExpenseViewModel()
@@ -467,7 +466,7 @@ struct FloatingActionMenu: View {
                     FABMenuItem(
                         id: "catalog-quick-add-product",
                         icon: "plus",
-                        label: "Quick Add",
+                        label: "Add Product",
                         permission: "catalog.products.manage",
                         disabledInTutorial: true,
                         action: {
@@ -475,17 +474,11 @@ struct FloatingActionMenu: View {
                             showingCatalogQuickAddProduct = true
                         }
                     ),
-                    FABMenuItem(
-                        id: "catalog-full-setup-product",
-                        icon: "slider.horizontal.3",
-                        label: "Full Setup",
-                        permission: "catalog.products.manage",
-                        disabledInTutorial: true,
-                        action: {
-                            showCreateMenu = false
-                            showingCatalogFullSetupAlert = true
-                        }
-                    ),
+                    // "Full Setup" was a fake button that opened an alert
+                    // pointing the user to the web app. Removed — the redesigned
+                    // QuickAddProductSheet now surfaces that hint as a footer
+                    // note inside the sheet, which is honest about the
+                    // limitation without exposing a tappable dead-end.
                 ]
             } else {
                 // Catalog access but not on the Catalog tab — surface a single
@@ -786,11 +779,6 @@ struct FloatingActionMenu: View {
         .sheet(isPresented: $showingCatalogQuickAddProduct) {
             QuickAddProductSheet()
                 .environmentObject(dataController)
-        }
-        .alert("Full setup is on web", isPresented: $showingCatalogFullSetupAlert) {
-            Button("OK") {}
-        } message: {
-            Text("Author options, modifiers, and recipes from the web app for now.")
         }
         .sheet(isPresented: $showingCreateExpense) {
             ExpenseFormSheet(viewModel: expenseViewModel)

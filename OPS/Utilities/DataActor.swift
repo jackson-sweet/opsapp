@@ -2851,15 +2851,23 @@ actor DataActor {
         do {
             try modelContext.transaction {
                 switch update {
-                case .project(let dto):           try mergeProject(dto: dto)
-                case .task(let dto):              try mergeTask(dto: dto)
-                case .user(let dto):              try mergeUser(dto: dto)
-                case .client(let dto):            try mergeClient(dto: dto)
-                case .company(let dto):           try mergeCompany(dto: dto)
-                case .taskType(let dto):          try mergeTaskType(dto: dto)
-                case .subClient(let dto):         try mergeSubClient(dto: dto)
-                case .projectNote(let dto):       try mergeProjectNote(dto: dto)
-                case .photoAnnotation(let dto):   try mergePhotoAnnotation(dto: dto)
+                case .project(let dto):                 try mergeProject(dto: dto)
+                case .task(let dto):                    try mergeTask(dto: dto)
+                case .user(let dto):                    try mergeUser(dto: dto)
+                case .client(let dto):                  try mergeClient(dto: dto)
+                case .company(let dto):                 try mergeCompany(dto: dto)
+                case .taskType(let dto):                try mergeTaskType(dto: dto)
+                case .subClient(let dto):               try mergeSubClient(dto: dto)
+                case .projectNote(let dto):             try mergeProjectNote(dto: dto)
+                case .photoAnnotation(let dto):         try mergePhotoAnnotation(dto: dto)
+                case .catalogCategory(let dto):         try mergeCatalogCategory(dto: dto)
+                case .catalogUnit(let dto):             try mergeCatalogUnit(dto: dto)
+                case .catalogTag(let dto):              try mergeCatalogTag(dto: dto)
+                case .catalogItem(let dto):             try mergeCatalogItem(dto: dto)
+                case .catalogVariant(let dto):          try mergeCatalogVariant(dto: dto)
+                case .catalogSnapshot(let dto):         try mergeCatalogSnapshot(dto: dto)
+                case .catalogOrder(let dto):            try mergeCatalogOrder(dto: dto)
+                case .companyDefaultProduct(let dto):   try mergeCompanyDefaultProduct(dto: dto)
                 }
             }
         } catch {
@@ -2912,6 +2920,35 @@ actor DataActor {
                     if let m = try modelContext.fetch(FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == id })).first {
                         m.deletedAt = Date()
                     }
+                case "catalog_categories":
+                    if let m = try modelContext.fetch(FetchDescriptor<CatalogCategory>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "catalog_units":
+                    if let m = try modelContext.fetch(FetchDescriptor<CatalogUnit>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "catalog_tags":
+                    if let m = try modelContext.fetch(FetchDescriptor<CatalogTag>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "catalog_items":
+                    if let m = try modelContext.fetch(FetchDescriptor<CatalogItem>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "catalog_variants":
+                    if let m = try modelContext.fetch(FetchDescriptor<CatalogVariant>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "catalog_orders":
+                    if let m = try modelContext.fetch(FetchDescriptor<CatalogOrder>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                // catalog_snapshots are append-only — no deletes expected.
+                // company_default_products has a composite key (companyId,
+                // componentType) and no surrogate id — DELETE events here can't
+                // be located by id, so they're left to the next pullDelta to
+                // reconcile via syncCompanyDefaultProducts' prune step.
                 default:
                     break
                 }
@@ -3775,6 +3812,15 @@ enum RealtimeUpdate: Sendable {
     case subClient(SupabaseSubClientDTO)
     case projectNote(ProjectNoteDTO)
     case photoAnnotation(PhotoAnnotationDTO)
+    // Catalog parents (Option A — children refetch via next pullDelta).
+    case catalogCategory(CatalogCategoryDTO)
+    case catalogUnit(CatalogUnitDTO)
+    case catalogTag(CatalogTagDTO)
+    case catalogItem(CatalogItemDTO)
+    case catalogVariant(CatalogVariantDTO)
+    case catalogSnapshot(CatalogSnapshotDTO)
+    case catalogOrder(CatalogOrderDTO)
+    case companyDefaultProduct(CompanyDefaultProductDTO)
 }
 
 // MARK: - Inbound Repositories Helper

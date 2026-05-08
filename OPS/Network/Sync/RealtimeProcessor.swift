@@ -55,7 +55,17 @@ final class RealtimeProcessor: ObservableObject {
     private let supabase: SupabaseClient
     private let decoder = JSONDecoder()
 
-    /// Tables that filter on `company_id=eq.<companyId>`
+    /// Tables that filter on `company_id=eq.<companyId>`.
+    ///
+    /// Catalog Option A — only parent tables (those with a direct `company_id`
+    /// column) are subscribed here. Child tables that lack `company_id`
+    /// (`catalog_options`, `catalog_option_values`, `catalog_variant_option_values`,
+    /// `catalog_item_tags`, `catalog_snapshot_items`, `product_options`,
+    /// `product_option_values`, `product_pricing_modifiers`, `product_materials`,
+    /// `catalog_order_items`) intentionally fall through to the next pullDelta
+    /// for refresh. This keeps the realtime path simple while still pushing
+    /// edits the user is most likely to notice (variant quantity, family edits,
+    /// order status, default product changes) live to the device.
     private let companyFilteredTables = [
         "projects",
         "project_tasks",
@@ -64,7 +74,16 @@ final class RealtimeProcessor: ObservableObject {
         "sub_clients",
         "task_types",
         "project_notes",
-        "project_photo_annotations"
+        "project_photo_annotations",
+        // Catalog parents
+        "catalog_categories",
+        "catalog_units",
+        "catalog_tags",
+        "catalog_items",
+        "catalog_variants",
+        "catalog_snapshots",
+        "catalog_orders",
+        "company_default_products"
     ]
 
     // MARK: - Init
@@ -494,6 +513,41 @@ final class RealtimeProcessor: ObservableObject {
                 let dto = try record.decodeRecord(as: PhotoAnnotationDTO.self, decoder: decoder)
                 Task { await actor.handleRealtimeUpdate(.photoAnnotation(dto)) }
 
+            // Catalog parents — Option A: only parent tables fire realtime;
+            // their children (option values, joins, snapshot items, order
+            // items, product extension rows) refetch on the next pullDelta.
+            case "catalog_categories":
+                let dto = try record.decodeRecord(as: CatalogCategoryDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.catalogCategory(dto)) }
+
+            case "catalog_units":
+                let dto = try record.decodeRecord(as: CatalogUnitDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.catalogUnit(dto)) }
+
+            case "catalog_tags":
+                let dto = try record.decodeRecord(as: CatalogTagDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.catalogTag(dto)) }
+
+            case "catalog_items":
+                let dto = try record.decodeRecord(as: CatalogItemDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.catalogItem(dto)) }
+
+            case "catalog_variants":
+                let dto = try record.decodeRecord(as: CatalogVariantDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.catalogVariant(dto)) }
+
+            case "catalog_snapshots":
+                let dto = try record.decodeRecord(as: CatalogSnapshotDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.catalogSnapshot(dto)) }
+
+            case "catalog_orders":
+                let dto = try record.decodeRecord(as: CatalogOrderDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.catalogOrder(dto)) }
+
+            case "company_default_products":
+                let dto = try record.decodeRecord(as: CompanyDefaultProductDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.companyDefaultProduct(dto)) }
+
             // Non-merge tables: no actor involvement, just post events on main.
             case "expenses":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
@@ -518,7 +572,12 @@ final class RealtimeProcessor: ObservableObject {
         do {
             switch table {
             case "projects", "project_tasks", "users", "clients", "companies",
-                 "task_types", "sub_clients", "project_notes", "project_photo_annotations":
+                 "task_types", "sub_clients", "project_notes", "project_photo_annotations",
+                 // Catalog parents with surrogate-id identity. catalog_snapshots
+                 // is append-only (no DELETE expected) and company_default_products
+                 // uses a composite key (no surrogate id), so neither is dispatched.
+                 "catalog_categories", "catalog_units", "catalog_tags",
+                 "catalog_items", "catalog_variants", "catalog_orders":
                 let payload = try action.decodeOldRecord(as: IdPayload.self, decoder: decoder)
                 Task { await actor.softDeleteFromRealtime(table: table, id: payload.id) }
 

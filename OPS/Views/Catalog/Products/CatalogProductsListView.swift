@@ -249,6 +249,13 @@ private struct ProductRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
+            // Leading thumbnail when the product has one. Renders at the
+            // same 40x40pt slot every row uses regardless of image presence
+            // so the row layout stays in lockstep across the list — even
+            // products without a thumbnail get a hairline placeholder so
+            // the name column doesn't reflow when scrolling between rows.
+            thumbnailLeading
+
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     Text(product.name)
@@ -290,6 +297,44 @@ private struct ProductRow: View {
         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
+    /// Leading 40x40 thumbnail slot for the row. AsyncImage handles
+    /// fetch + decode + memory cache via URLCache; we keep an empty
+    /// placeholder of the same size for rows without an image so the row
+    /// alignment doesn't shift between rows. Border + radius mirror the
+    /// rest of the catalog's card chrome.
+    @ViewBuilder
+    private var thumbnailLeading: some View {
+        let size: CGFloat = 40
+        Group {
+            if let urlString = product.thumbnailUrl,
+               let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        Color.clear
+                    case .empty:
+                        Color.clear
+                    @unknown default:
+                        Color.clear
+                    }
+                }
+            } else {
+                Color.clear
+            }
+        }
+        .frame(width: size, height: size)
+        .background(OPSStyle.Colors.background)
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
     }

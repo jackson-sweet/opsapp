@@ -41,6 +41,11 @@ struct ProductDetailView: View {
     @State private var errorMessage: String? = nil
     @State private var priceParseError: Bool = false
 
+    /// Drives presentation of the recipe edit sheet. The read-only
+    /// `RecipeReadOnlyView` remains; this sheet supplements it for users
+    /// who can manage products.
+    @State private var showingRecipeManageSheet: Bool = false
+
     init(product: Product) {
         self.product = product
         _name = State(initialValue: product.name)
@@ -105,7 +110,11 @@ struct ProductDetailView: View {
                     if !productModifiers.isEmpty {
                         modifiersSection
                     }
-                    if !productMaterials.isEmpty {
+                    // Show the recipe section any time there are materials,
+                    // OR when the operator can manage products — managers
+                    // need the EDIT entry point even on an empty recipe so
+                    // they can add the first row.
+                    if !productMaterials.isEmpty || canManageProducts {
                         recipeSection
                     }
                     if let errorMessage = errorMessage {
@@ -137,6 +146,10 @@ struct ProductDetailView: View {
             }
         }
         .trackScreen("Catalog.Products.Detail")
+        .sheet(isPresented: $showingRecipeManageSheet) {
+            RecipeManageSheet(product: product)
+                .environmentObject(dataController)
+        }
     }
 
     // MARK: - Header
@@ -300,11 +313,52 @@ struct ProductDetailView: View {
 
     private var recipeSection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            sectionHeader(title: "RECIPE · \(productMaterials.count) ROW\(productMaterials.count == 1 ? "" : "S")")
-            RecipeReadOnlyView(
-                materials: productMaterials,
-                options: productOptions
-            )
+            recipeSectionHeader
+            if productMaterials.isEmpty {
+                Text("// NO MATERIALS YET — TAP EDIT TO BUILD THE RECIPE")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .padding(OPSStyle.Layout.spacing3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+            } else {
+                RecipeReadOnlyView(
+                    materials: productMaterials,
+                    options: productOptions
+                )
+            }
+        }
+    }
+
+    /// Recipe-specific header. Mirrors `sectionHeader(title:)` but slots an
+    /// EDIT affordance in for users with `catalog.products.manage`. The
+    /// read-only renderer below stays visible; the sheet is supplemental.
+    private var recipeSectionHeader: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text("// RECIPE · \(productMaterials.count) ROW\(productMaterials.count == 1 ? "" : "S")")
+                .font(OPSStyle.Typography.panelTitle)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Spacer()
+            if canManageProducts {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showingRecipeManageSheet = true
+                } label: {
+                    Text("EDIT")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, 4)
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin / 2)
+                }
+                .accessibilityLabel("Edit recipe")
+            }
+            viewOnWebLink
         }
     }
 

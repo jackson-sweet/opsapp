@@ -20,6 +20,7 @@ struct ProductDTO: Codable, Identifiable {
     let unitCost: Double?                  // FIXED: was cost_price
     let unit: String?
     let category: String?
+    let categoryId: String?               // FK to catalog_categories; nullable (legacy rows still on `category`)
     let sku: String?
     let kind: String?                      // 'service' | 'good'
     let pricingUnit: String?
@@ -47,6 +48,7 @@ struct ProductDTO: Codable, Identifiable {
         case unitCost              = "unit_cost"
         case unit
         case category
+        case categoryId            = "category_id"
         case sku
         case kind
         case pricingUnit           = "pricing_unit"
@@ -83,6 +85,7 @@ struct ProductDTO: Codable, Identifiable {
         prod.unitCost = unitCost
         prod.unit = unit
         prod.category = category
+        prod.categoryId = categoryId
         prod.sku = sku
         prod.isFavorite = isFavorite
         prod.minimumCharge = minimumCharge
@@ -106,7 +109,8 @@ struct CreateProductDTO: Codable {
     let unit: String?
     let pricingUnit: String?
     let unitId: String?              // FK to catalog_units; column already exists server-side
-    let category: String?
+    let category: String?            // legacy free-text — kept populated for read fallback compatibility
+    let categoryId: String?          // FK to catalog_categories; authoritative going forward
     let sku: String?
     let kind: String?
     let type: String?
@@ -123,6 +127,7 @@ struct CreateProductDTO: Codable {
         case pricingUnit  = "pricing_unit"
         case unitId       = "unit_id"
         case category
+        case categoryId   = "category_id"
         case sku
         case kind
         case type

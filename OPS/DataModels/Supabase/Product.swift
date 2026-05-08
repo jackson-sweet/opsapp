@@ -38,6 +38,7 @@ class Product: Identifiable {
     var unit: String?               // legacy free-text unit; iOS reads `pricingUnit` for new behavior
     var category: String?           // legacy free-text category on Product (separate from catalog_categories)
     var sku: String?
+    var categoryId: String?         // FK to catalog_categories.id; populated alongside legacy `category` for new writes
     var taxable: Bool
     var isActive: Bool
     var isFavorite: Bool

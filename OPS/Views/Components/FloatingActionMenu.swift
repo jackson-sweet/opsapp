@@ -109,6 +109,11 @@ struct FloatingActionMenu: View {
     // a single source of truth without an explicit parameter pipeline.
     @AppStorage("catalog.selectedSegment") private var catalogSelectedSegmentRaw: String = CatalogSegment.stock.rawValue
 
+    // BOOKS FAB state — adapts MONEY group ordering based on selected segment in
+    // BooksTabView. Mirrors the catalog pattern above.
+    @AppStorage("books.selectedSegment") private var booksSelectedSegmentRaw: String = "PIPELINE"
+    @State private var showingAddLead = false
+
     @State private var showingCatalogAddVariant = false
     @State private var showingCatalogAddFamily = false
     @State private var showingCatalogImport = false
@@ -225,6 +230,29 @@ struct FloatingActionMenu: View {
         tutorialMode && (tutorialPhase == .fabTap || showCreateMenu)
     }
 
+    // MARK: - MONEY group ordering
+
+    /// Promotes the active BOOKS segment's primary action to position 0.
+    /// `new-expense` lives in the EXPENSES group, not MONEY, so when EXPENSES
+    /// is the active segment the MONEY group falls back to its natural order.
+    private func orderedMoneyItems(rawItems: [FABMenuItem]) -> [FABMenuItem] {
+        let primaryId: String
+        switch booksSelectedSegmentRaw {
+        case "PIPELINE":  primaryId = "add-lead"
+        case "ESTIMATES": primaryId = "new-estimate"
+        case "INVOICES":  primaryId = "new-invoice"
+        case "EXPENSES":  primaryId = "new-expense"
+        default:          primaryId = "new-estimate"
+        }
+        if let idx = rawItems.firstIndex(where: { $0.id == primaryId }), idx > 0 {
+            var reordered = rawItems
+            let primary = reordered.remove(at: idx)
+            reordered.insert(primary, at: 0)
+            return reordered
+        }
+        return rawItems
+    }
+
     // MARK: - Menu Groups
 
     private var menuGroups: [FABMenuGroup] {
@@ -315,10 +343,23 @@ struct FloatingActionMenu: View {
             FABMenuGroup(id: "work", title: "WORK", items: workItems),
         ]
 
-        // Pipeline money items — only shown when the pipeline feature flag is enabled
+        // Pipeline money items — only shown when the pipeline feature flag is enabled.
+        // Order is segment-aware: the active BOOKS segment's primary action is
+        // promoted to position 0 via `orderedMoneyItems`.
         if permissionStore.isFeatureEnabled("pipeline") {
             groups.append(
-                FABMenuGroup(id: "money", title: "MONEY", items: [
+                FABMenuGroup(id: "money", title: "MONEY", items: orderedMoneyItems(rawItems: [
+                    FABMenuItem(
+                        id: "add-lead",
+                        icon: "person.badge.plus",
+                        label: "Add Lead",
+                        permission: "pipeline.manage",
+                        disabledInTutorial: true,
+                        action: {
+                            showCreateMenu = false
+                            showingAddLead = true
+                        }
+                    ),
                     FABMenuItem(
                         id: "new-estimate",
                         icon: OPSStyle.Icons.estimateDoc,
@@ -355,7 +396,7 @@ struct FloatingActionMenu: View {
                             showingRecordPayment = true
                         }
                     ),
-                ])
+                ]))
             )
         }
 
@@ -756,6 +797,15 @@ struct FloatingActionMenu: View {
         }
         .sheet(isPresented: $showingCreateEstimate) {
             EstimateFormSheet(viewModel: estimateViewModel)
+        }
+        .sheet(isPresented: $showingAddLead) {
+            AddLeadSheet { _ in
+                NotificationCenter.default.post(
+                    name: Notification.Name("LeadCreatedSuccess"),
+                    object: nil
+                )
+            }
+            .environmentObject(dataController)
         }
         .sheet(isPresented: $showingCustomizeSheet) {
             FABCustomizeSheet(groups: allPermittedItems, hiddenItemsData: $hiddenItemsData)

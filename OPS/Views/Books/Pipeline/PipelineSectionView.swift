@@ -73,6 +73,9 @@ struct PipelineSectionView: View {
                 await viewModel.loadData()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadCreatedSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
         .navigationDestination(item: $detailDestination) { lead in
             LeadDetailView(opportunity: lead, pipelineVM: viewModel)
                 .environmentObject(dataController)

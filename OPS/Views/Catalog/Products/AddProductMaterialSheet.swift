@@ -31,6 +31,7 @@ struct AddProductMaterialSheet: View {
     let editingMaterial: ProductMaterial?
     let onCreated: (ProductMaterialDTO) -> Void
 
+    @EnvironmentObject private var dataController: DataController
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
@@ -48,6 +49,18 @@ struct AddProductMaterialSheet: View {
     @State private var isSaving: Bool = false
     @State private var quantityParseError: Bool = false
     @State private var errorMessage: String? = nil
+
+    /// Drives presentation of the Stock-tab Add Family sheet when the
+    /// user lands here on a brand-new company (zero families) and wants
+    /// to author one without dismissing this sheet, navigating to STOCK,
+    /// and coming back. Same idea as the category/unit inline create on
+    /// QuickAddProductSheet — empty-state remediation.
+    @State private var showingNewFamilySheet: Bool = false
+
+    /// Same idea for variants: when a family has zero variants, the user
+    /// can spawn VariantFormSheet pre-bound to the selected family and
+    /// author one without leaving this flow.
+    @State private var showingNewVariantSheet: Bool = false
 
     @FocusState private var quantityFocused: Bool
 
@@ -168,6 +181,24 @@ struct AddProductMaterialSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .sheet(isPresented: $showingNewFamilySheet) {
+            // The Stock-tab AddFamilySheet doesn't take a callback —
+            // dismissal is enough because the SwiftData @Query in this
+            // view picks up the new row reactively. Family selection
+            // stays nil; the user picks the new family from the picker.
+            AddFamilySheet()
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingNewVariantSheet) {
+            // Pre-bind to the currently-selected family so the variant
+            // form doesn't ask the user to pick the same thing twice.
+            // If selectedFamilyId is somehow nil (it shouldn't be — the
+            // button only renders when a family is selected and has zero
+            // variants), VariantFormSheet falls back to its own family
+            // picker.
+            VariantFormSheet(initialFamily: selectedFamily)
+                .environmentObject(dataController)
+        }
     }
 
     /// Pre-fills the form when entering edit mode. Family/variant come
@@ -209,19 +240,52 @@ struct AddProductMaterialSheet: View {
 
             CatalogFieldLabel("Family")
             familyPicker
-            if companyFamilies.isEmpty {
-                Text("// NO FAMILIES YET — ADD STOCK BEFORE BUILDING A RECIPE")
-                    .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            // Empty-state remediation. The "+ NEW…" entry points live
+            // outside the picker (rather than as a Menu item) so a healthy
+            // inventory has zero clutter — see plan Phase 6: only on
+            // empty states. Hidden in edit mode.
+            if !isEditing && companyFamilies.isEmpty {
+                inlineCreateButton(label: "+ NEW FAMILY") {
+                    showingNewFamilySheet = true
+                }
             }
 
             CatalogFieldLabel("Variant")
             variantPicker
-            if selectedFamilyId != nil && variantsForSelectedFamily.isEmpty {
-                Text("// NO VARIANTS ON THIS FAMILY — AUTHOR ONE FIRST")
-                    .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            if !isEditing && selectedFamilyId != nil && variantsForSelectedFamily.isEmpty {
+                inlineCreateButton(label: "+ NEW VARIANT") {
+                    showingNewVariantSheet = true
+                }
             }
+        }
+    }
+
+    /// Pill-styled inline create entry point. Distinct from the SAVE
+    /// affordance — uses the dimmer cardBorder accent so the user reads
+    /// it as a remedial action, not the primary path. Sized to OPS
+    /// minimum touch target.
+    @ViewBuilder
+    private func inlineCreateButton(label: String, action: @escaping () -> Void) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: "plus")
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                Text(label)
+                    .font(OPSStyle.Typography.metadata)
+                Spacer()
+            }
+            .foregroundColor(OPSStyle.Colors.primaryAccent)
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
+            .padding(.vertical, OPSStyle.Layout.spacing1)
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
         }
     }
 

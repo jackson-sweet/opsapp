@@ -12,6 +12,7 @@
 
 import SwiftUI
 import SwiftData
+import PhotosUI
 
 struct ProductDetailView: View {
     let product: Product
@@ -60,6 +61,13 @@ struct ProductDetailView: View {
     /// return. The new row's id is returned via callback and selected here.
     @State private var showingNewCategorySheet: Bool = false
     @State private var showingNewUnitSheet: Bool = false
+
+    /// Picker selection for the thumbnail. Picking a new image triggers
+    /// the upload pipeline (resize → JPEG → Storage upload → PATCH on
+    /// products.thumbnail_url) without dropping out of the detail screen.
+    @State private var thumbnailPickerItem: PhotosPickerItem? = nil
+    @State private var isUploadingThumbnail: Bool = false
+    @State private var thumbnailErrorMessage: String? = nil
 
     init(product: Product) {
         self.product = product
@@ -144,6 +152,7 @@ struct ProductDetailView: View {
             OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
+                    thumbnailSection
                     headerSection
                     coreCard
                     categoryCard
@@ -204,6 +213,189 @@ struct ProductDetailView: View {
                 selectedUnitId = newId
             }
             .environmentObject(dataController)
+        }
+    }
+
+    // MARK: - Thumbnail
+
+    /// Aspect ratio for both the preview tile and the empty placeholder
+    /// so the layout doesn't jump between states.
+    private var thumbnailAspect: CGFloat { 16.0 / 10.0 }
+
+    /// Thumbnail tile at the top of the detail. Renders the remote image
+    /// when present, a tap-to-add placeholder when the user can manage
+    /// products and the row has no image, and a "// NO IMAGE" placeholder
+    /// in read-only mode when there's nothing to show. Either way the
+    /// placeholder reserves the same vertical space as the live tile.
+    @ViewBuilder
+    private var thumbnailSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            if let urlString = product.thumbnailUrl,
+               let url = URL(string: urlString) {
+                thumbnailWithImage(url: url)
+            } else if canManageProducts {
+                thumbnailEmptyPicker
+            } else {
+                thumbnailPlaceholder(label: "// NO IMAGE")
+            }
+
+            if let thumbnailErrorMessage {
+                Text(thumbnailErrorMessage)
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.errorText)
+            }
+        }
+        .onChange(of: thumbnailPickerItem) { _, newItem in
+            guard let newItem else { return }
+            Task { await uploadPickedThumbnail(newItem) }
+        }
+    }
+
+    @ViewBuilder
+    private func thumbnailWithImage(url: URL) -> some View {
+        ZStack(alignment: .topTrailing) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                case .failure:
+                    placeholderInner(label: "// IMAGE FAILED TO LOAD")
+                case .empty:
+                    placeholderInner(label: "// LOADING…")
+                @unknown default:
+                    placeholderInner(label: "// LOADING…")
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .aspectRatio(thumbnailAspect, contentMode: .fit)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+
+            if canManageProducts {
+                PhotosPicker(
+                    selection: $thumbnailPickerItem,
+                    matching: .images,
+                    photoLibrary: .shared()
+                ) {
+                    Text(isUploadingThumbnail ? "// UPLOADING…" : "// REPLACE")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
+                        .background(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                                .fill(OPSStyle.Colors.background.opacity(0.7))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                                .stroke(OPSStyle.Colors.cardBorder,
+                                        lineWidth: OPSStyle.Layout.Border.standard)
+                        )
+                }
+                .padding(OPSStyle.Layout.spacing2)
+                .disabled(isUploadingThumbnail)
+                .accessibilityLabel("Replace thumbnail")
+            }
+        }
+    }
+
+    /// Empty-state picker — full-width tap target the user can hit with
+    /// gloves. Same aspect ratio as the live tile so swapping in/out of
+    /// the image state doesn't jump the layout.
+    @ViewBuilder
+    private var thumbnailEmptyPicker: some View {
+        PhotosPicker(
+            selection: $thumbnailPickerItem,
+            matching: .images,
+            photoLibrary: .shared()
+        ) {
+            placeholderInner(label: isUploadingThumbnail
+                             ? "// UPLOADING…"
+                             : "// + ADD THUMBNAIL")
+        }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(thumbnailAspect, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .disabled(isUploadingThumbnail)
+        .accessibilityLabel("Add thumbnail")
+    }
+
+    /// Display-only placeholder used in read-only mode (no manage perm).
+    @ViewBuilder
+    private func thumbnailPlaceholder(label: String) -> some View {
+        placeholderInner(label: label)
+            .frame(maxWidth: .infinity)
+            .aspectRatio(thumbnailAspect, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+    }
+
+    /// Shared inner content for every placeholder state — keeps the
+    /// background + label rendering identical across empty / loading /
+    /// failed / read-only modes.
+    @ViewBuilder
+    private func placeholderInner(label: String) -> some View {
+        HStack {
+            Spacer()
+            Text(label)
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+    }
+
+    // MARK: - Thumbnail upload
+
+    /// Loads the picker item into a UIImage, uploads it via
+    /// ProductThumbnailUploader, then PATCHes `products.thumbnail_url`.
+    /// Any failure surfaces inline (`thumbnailErrorMessage`) without
+    /// rolling back the row — matches the QuickAddProductSheet pattern.
+    @MainActor
+    private func uploadPickedThumbnail(_ item: PhotosPickerItem) async {
+        thumbnailErrorMessage = nil
+        guard canManageProducts else { return }
+
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data) else {
+            thumbnailErrorMessage = "// COULD NOT READ SELECTED IMAGE"
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+
+        isUploadingThumbnail = true
+        defer { isUploadingThumbnail = false }
+
+        do {
+            let url = try await ProductThumbnailUploader.shared.upload(
+                image,
+                productId: product.id,
+                companyId: companyId
+            )
+            var patch = UpdateProductDTO()
+            patch.thumbnailUrl = url.absoluteString
+            let repo = ProductRepository(companyId: companyId)
+            let dto = try await repo.update(product.id, fields: patch)
+            applyDTOToLocal(dto)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } catch {
+            thumbnailErrorMessage = "// UPLOAD FAILED — TRY AGAIN"
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            print("[ProductDetailView] Thumbnail upload failed: \(error)")
         }
     }
 

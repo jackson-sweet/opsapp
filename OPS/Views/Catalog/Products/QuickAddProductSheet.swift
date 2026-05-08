@@ -2,10 +2,15 @@
 //  QuickAddProductSheet.swift
 //  OPS
 //
-//  ≤ 8s product entry: name, price, unit + an Advanced disclosure for the
-//  rare day-one fields. Inserts the returned ProductDTO into the local
-//  SwiftData context so the new row shows up in CatalogProductsListView
-//  before the next sync round.
+//  Fast product entry that respects the catalog backbone. Category and
+//  unit pull from the user's existing CatalogCategory / CatalogUnit
+//  rows so the new Product slots into the same vocabulary the Stock
+//  side already uses — no more orphan free-text strings.
+//
+//  Save button is pinned to the sheet bottom so it stays reachable
+//  when the advanced disclosure is open. A footer note tells the user
+//  options / modifiers / recipes are still authored on web (replaces
+//  the prior fake 'Full Setup' FAB alert).
 //
 
 import SwiftUI
@@ -16,16 +21,26 @@ struct QuickAddProductSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
+    @Query private var allCategories: [CatalogCategory]
+    @Query private var allUnits: [CatalogUnit]
+
     // Required core
     @State private var name: String = ""
     @State private var priceString: String = ""
-    @State private var pricingUnit: ProductPricingUnit = .flatRate
+
+    /// Selected CatalogUnit id. nil = no unit (treated as flat-rate).
+    @State private var selectedUnitId: String? = nil
+
+    /// Selected CatalogCategory id. nil = none. The Product schema stores
+    /// `category` as free text — we pick the CatalogCategory's name into
+    /// that column at save so Stock and Products read the same vocabulary
+    /// without a schema change.
+    @State private var selectedCategoryId: String? = nil
 
     // Advanced (optional)
     @State private var showAdvanced: Bool = false
     @State private var productDescription: String = ""
     @State private var sku: String = ""
-    @State private var category: String = ""
     @State private var unitCostString: String = ""
     @State private var lineItemType: LineItemType = .other
     @State private var kind: ProductKind = .service
@@ -42,6 +57,18 @@ struct QuickAddProductSheet: View {
         dataController.currentUser?.companyId ?? ""
     }
 
+    private var companyCategories: [CatalogCategory] {
+        allCategories
+            .filter { $0.companyId == companyId && $0.deletedAt == nil }
+            .sorted { ($0.sortOrder, $0.name) < ($1.sortOrder, $1.name) }
+    }
+
+    private var companyUnits: [CatalogUnit] {
+        allUnits
+            .filter { $0.companyId == companyId && $0.deletedAt == nil }
+            .sorted { ($0.sortOrder, $0.display) < ($1.sortOrder, $1.display) }
+    }
+
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !priceString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
@@ -52,18 +79,24 @@ struct QuickAddProductSheet: View {
         NavigationStack {
             ZStack {
                 OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-                        coreFields
-                        advancedDisclosure
-                        if let errorMessage = errorMessage {
-                            Text(errorMessage)
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.errorText)
+
+                VStack(spacing: 0) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                            coreFields
+                            categoryField
+                            advancedDisclosure
+                            footerNote
+                            if let errorMessage = errorMessage {
+                                Text(errorMessage)
+                                    .font(OPSStyle.Typography.caption)
+                                    .foregroundColor(OPSStyle.Colors.errorText)
+                            }
                         }
-                        saveButton
+                        .padding(OPSStyle.Layout.spacing3)
                     }
-                    .padding(OPSStyle.Layout.spacing3)
+
+                    saveBar
                 }
             }
             .navigationTitle("NEW PRODUCT")
@@ -76,7 +109,7 @@ struct QuickAddProductSheet: View {
             }
             .onAppear {
                 // Auto-focus name so the user can start typing immediately —
-                // the ≤ 8s entry budget hinges on no extra taps before input.
+                // the entry budget hinges on no extra taps before input.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                     nameFieldFocused = true
                 }
@@ -116,16 +149,19 @@ struct QuickAddProductSheet: View {
                 }
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     CatalogFieldLabel("Unit")
-                    pricingUnitPicker
+                    unitPicker
                 }
             }
         }
     }
 
-    private var pricingUnitPicker: some View {
-        Picker("Unit", selection: $pricingUnit) {
-            ForEach(ProductPricingUnit.allCases, id: \.self) { unit in
-                Text(unitDisplay(unit)).tag(unit)
+    // MARK: - Unit picker (CatalogUnit-backed)
+
+    private var unitPicker: some View {
+        Picker("Unit", selection: $selectedUnitId) {
+            Text("Flat rate").tag(String?.none)
+            ForEach(companyUnits) { unit in
+                Text(unit.display).tag(Optional(unit.id))
             }
         }
         .pickerStyle(.menu)
@@ -138,16 +174,40 @@ struct QuickAddProductSheet: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
+        .onChange(of: selectedUnitId) { _, _ in
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
     }
 
-    private func unitDisplay(_ unit: ProductPricingUnit) -> String {
-        switch unit {
-        case .flatRate:    return "Flat"
-        case .each:        return "Each"
-        case .linearFoot:  return "Per ft"
-        case .sqft:        return "Per sqft"
-        case .hour:        return "Per hour"
-        case .day:         return "Per day"
+    // MARK: - Category picker (CatalogCategory-backed, free-text on save)
+
+    @ViewBuilder
+    private var categoryField: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            CatalogSectionHeader("CATEGORY")
+            categoryPicker
+        }
+    }
+
+    private var categoryPicker: some View {
+        Picker("Category", selection: $selectedCategoryId) {
+            Text("None").tag(String?.none)
+            ForEach(companyCategories) { category in
+                Text(category.name).tag(Optional(category.id))
+            }
+        }
+        .pickerStyle(.menu)
+        .tint(OPSStyle.Colors.primaryText)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(OPSStyle.Layout.spacing2)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .onChange(of: selectedCategoryId) { _, _ in
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }
     }
 
@@ -171,25 +231,19 @@ struct QuickAddProductSheet: View {
                             .textInputAutocapitalization(.characters)
                     }
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                        CatalogFieldLabel("Category")
-                        TextField("Optional", text: $category)
+                        CatalogFieldLabel("Unit cost")
+                        TextField("0", text: $unitCostString)
+                            .keyboardType(.decimalPad)
                             .textFieldStyle(CatalogTextFieldStyle())
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                    CatalogFieldLabel("Unit cost")
-                    TextField("0", text: $unitCostString)
-                        .keyboardType(.decimalPad)
-                        .textFieldStyle(CatalogTextFieldStyle())
-                        .onChange(of: unitCostString) { _, newValue in
-                            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                            unitCostParseError = !trimmed.isEmpty && Double(trimmed) == nil
+                            .onChange(of: unitCostString) { _, newValue in
+                                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                                unitCostParseError = !trimmed.isEmpty && Double(trimmed) == nil
+                            }
+                        if unitCostParseError {
+                            Text("Must be a number")
+                                .font(OPSStyle.Typography.metadata)
+                                .foregroundColor(OPSStyle.Colors.errorText)
                         }
-                    if unitCostParseError {
-                        Text("Unit cost must be a number")
-                            .font(OPSStyle.Typography.metadata)
-                            .foregroundColor(OPSStyle.Colors.errorText)
                     }
                 }
 
@@ -241,36 +295,60 @@ struct QuickAddProductSheet: View {
         }
     }
 
-    // MARK: - Save
+    // MARK: - Footer note
 
-    private var saveButton: some View {
-        Button {
-            Task { await save() }
-        } label: {
-            HStack {
-                Spacer()
-                if isSaving {
-                    ProgressView()
-                        .tint(OPSStyle.Colors.buttonText)
-                } else {
-                    Text("SAVE")
-                        .font(OPSStyle.Typography.buttonLabel)
-                        .foregroundColor(canSave ? OPSStyle.Colors.buttonText : OPSStyle.Colors.tertiaryText)
-                }
-                Spacer()
-            }
-            .frame(height: OPSStyle.Layout.touchTargetStandard)
-            .background(canSave ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
-            .cornerRadius(OPSStyle.Layout.buttonRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                    .stroke(canSave ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
-                            lineWidth: OPSStyle.Layout.Border.standard)
-            )
+    @ViewBuilder
+    private var footerNote: some View {
+        // Replaces the prior fake 'Full Setup' FAB button. Honest about
+        // the iOS limitation without exposing a tappable dead-end.
+        HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
+            Image(systemName: "info.circle")
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Text("Need options, modifiers, or a recipe? Edit this product on web after saving.")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .disabled(!canSave)
         .padding(.top, OPSStyle.Layout.spacing2)
     }
+
+    // MARK: - Save bar (pinned)
+
+    private var saveBar: some View {
+        VStack(spacing: 0) {
+            Divider().background(OPSStyle.Colors.separator)
+            Button {
+                Task { await save() }
+            } label: {
+                HStack {
+                    Spacer()
+                    if isSaving {
+                        ProgressView()
+                            .tint(OPSStyle.Colors.buttonText)
+                    } else {
+                        Text("SAVE")
+                            .font(OPSStyle.Typography.buttonLabel)
+                            .foregroundColor(canSave ? OPSStyle.Colors.buttonText : OPSStyle.Colors.tertiaryText)
+                    }
+                    Spacer()
+                }
+                .frame(height: OPSStyle.Layout.touchTargetStandard)
+                .background(canSave ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.buttonRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                        .stroke(canSave ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder,
+                                lineWidth: OPSStyle.Layout.Border.standard)
+                )
+            }
+            .disabled(!canSave)
+            .padding(OPSStyle.Layout.spacing3)
+        }
+        .background(OPSStyle.Colors.background)
+    }
+
+    // MARK: - Save
 
     @MainActor
     private func save() async {
@@ -296,8 +374,13 @@ struct QuickAddProductSheet: View {
 
         let trimmedDescription = productDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedSku = sku.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
         let parsedUnitCost = trimmedUnitCost.isEmpty ? nil : Double(trimmedUnitCost)
+
+        // Resolve picker selections to the Product schema.
+        let selectedUnit = companyUnits.first(where: { $0.id == selectedUnitId })
+        let selectedCategory = companyCategories.first(where: { $0.id == selectedCategoryId })
+        let categoryName = selectedCategory?.name
+        let pricingUnitRaw = pricingUnit(for: selectedUnit).rawValue
 
         let dto = CreateProductDTO(
             companyId: companyId,
@@ -305,9 +388,9 @@ struct QuickAddProductSheet: View {
             description: trimmedDescription.isEmpty ? nil : trimmedDescription,
             basePrice: parsedPrice,
             unitCost: parsedUnitCost,
-            unit: nil,
-            pricingUnit: pricingUnit.rawValue,
-            category: trimmedCategory.isEmpty ? nil : trimmedCategory,
+            unit: selectedUnit?.display,
+            pricingUnit: pricingUnitRaw,
+            category: categoryName,
             sku: trimmedSku.isEmpty ? nil : trimmedSku,
             kind: kind.rawValue,
             type: lineItemType.rawValue,
@@ -324,6 +407,32 @@ struct QuickAddProductSheet: View {
         } catch {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Maps a CatalogUnit to the closest ProductPricingUnit enum case.
+    /// The enum is what drives display formatting elsewhere in the app
+    /// (estimate line items, product list price suffix). nil unit means
+    /// flat-rate. The mapping is best-effort by dimension because the
+    /// enum's six cases don't cover every possible custom unit display.
+    private func pricingUnit(for unit: CatalogUnit?) -> ProductPricingUnit {
+        guard let unit = unit else { return .flatRate }
+
+        let display = unit.display.lowercased()
+        let dimension = unit.dimension.lowercased()
+
+        if display.contains("hour") || display == "hr" { return .hour }
+        if display.contains("day")  { return .day }
+
+        switch dimension {
+        case "length": return .linearFoot
+        case "area":   return .sqft
+        case "time":
+            // Generic "time" without an obvious hour/day signal — fall
+            // back to flatRate rather than guess wrong.
+            return .flatRate
+        case "count":  return .each
+        default:       return .flatRate
         }
     }
 

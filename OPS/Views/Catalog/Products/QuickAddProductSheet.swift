@@ -23,6 +23,7 @@ struct QuickAddProductSheet: View {
 
     @Query private var allCategories: [CatalogCategory]
     @Query private var allUnits: [CatalogUnit]
+    @Query private var allProducts: [Product]
 
     // Required core
     @State private var name: String = ""
@@ -551,6 +552,25 @@ struct QuickAddProductSheet: View {
         }
         if !trimmedUnitCost.isEmpty, Double(trimmedUnitCost) == nil {
             unitCostParseError = true
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+
+        // Local name uniqueness pre-check. Catches the obvious duplicate
+        // before we burn a network round-trip — but it's intentionally
+        // local-only; a true uniqueness guarantee would need a server-side
+        // unique index on (company_id, lower(trim(name))) which is out of
+        // scope for this UI fix. If the user goes around it (two devices
+        // creating the same name simultaneously), the server still wins.
+        let lowerName = trimmedName.lowercased()
+        let duplicate = allProducts.first { existing in
+            existing.companyId == companyId &&
+            existing.isActive &&
+            existing.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased() == lowerName
+        }
+        if duplicate != nil {
+            errorMessage = "// NAME ALREADY USED — pick a different name or edit the existing product"
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return
         }

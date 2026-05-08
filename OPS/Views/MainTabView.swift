@@ -123,16 +123,49 @@ struct MainTabView: View {
     private let keyboardWillHide = NotificationCenter.default
         .publisher(for: UIResponder.keyboardWillHideNotification)
     
-    // Whether the current user has Pipeline access (requires "pipeline" special permission)
-    private var hasPipelineAccess: Bool {
+    // BOOKS tab is visible to anyone with at least one of the four financial-area
+    // permissions. The hub itself filters segments per-permission; users with a
+    // single visible segment auto-skip the hub via `booksAutoSkipDestination`.
+    private var hasBooksAccess: Bool {
         permissionStore.can("pipeline.view")
+            || permissionStore.can("finances.view")
+            || permissionStore.can("estimates.view")
+            || permissionStore.can("expenses.view")
     }
 
-    // Computed tab indices that adapt based on visible tabs (pipeline + inventory)
-    private var pipelineTabIndex: Int? { hasPipelineAccess ? 1 : nil }
+    private var visibleBooksSegments: [BooksSection] {
+        BooksSection.allCases.filter { permissionStore.can($0.requiredPermission) }
+    }
+
+    /// When the user has exactly one visible BOOKS segment (and it's not pipeline),
+    /// route them straight to that segment's list view instead of the hub.
+    /// Pipeline-only users still see the hub because the pipeline section needs
+    /// the segmented chrome around it.
+    private var booksAutoSkipDestination: AnyView? {
+        let segs = visibleBooksSegments
+        guard segs.count == 1, let only = segs.first else { return nil }
+        switch only {
+        case .pipeline:
+            return nil
+        case .estimates:
+            return AnyView(NavigationStack { EstimatesListView() })
+        case .invoices:
+            return AnyView(NavigationStack { InvoicesListView() })
+        case .expenses:
+            let scopeIsOwn = !permissionStore.hasFullAccess("expenses.view")
+            if scopeIsOwn {
+                return AnyView(NavigationStack { MyExpensesView() })
+            } else {
+                return AnyView(NavigationStack { ExpensesListView() })
+            }
+        }
+    }
+
+    // Computed tab indices that adapt based on visible tabs (BOOKS + inventory)
+    private var pipelineTabIndex: Int? { hasBooksAccess ? 1 : nil }
     private var jobBoardTabIndex: Int {
         var idx = 1
-        if hasPipelineAccess { idx += 1 }
+        if hasBooksAccess { idx += 1 }
         return idx
     }
     private var catalogTabIndex: Int? {
@@ -154,9 +187,9 @@ struct MainTabView: View {
             TabItem(iconName: "house.fill", wizardStepId: "welcome_home")
         ]
 
-        // Add Pipeline tab for admin/office crew only
-        if hasPipelineAccess {
-            baseTabs.append(TabItem(iconName: "chart.line.uptrend.xyaxis", wizardStepId: "welcome_pipeline"))
+        // Add BOOKS tab for users with any of the four financial-area perms
+        if hasBooksAccess {
+            baseTabs.append(TabItem(iconName: "chart.line.uptrend.xyaxis", wizardStepId: "welcome_books"))
         }
 
         // Add Job Board tab for all users (admin, office crew, and field crew)
@@ -221,7 +254,11 @@ struct MainTabView: View {
                 if selectedTab == 0 {
                     HomeView()
                 } else if selectedTab == pipelineTabIndex {
-                    BooksTabView()
+                    if let destination = booksAutoSkipDestination {
+                        destination
+                    } else {
+                        BooksTabView()
+                    }
                 } else if selectedTab == jobBoardTabIndex {
                     JobBoardView()
                 } else if selectedTab == catalogTabIndex {

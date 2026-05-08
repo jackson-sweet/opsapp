@@ -2,19 +2,19 @@
 //  CatalogImportSheet.swift
 //  OPS
 //
-//  Multi-step CSV import for catalog families + variants. Replaces the
-//  prior `CatalogImportStub`. Four steps stitched together by a single
-//  `Step` enum: PICK → MAP → PREVIEW → APPLY.
+//  Multi-step CSV import for catalog families + variants AND for
+//  service/product rows. Two tabs at the top — STOCK | PRODUCTS — pick
+//  the target. Each tab shares the same four-step flow:
+//  PICK → MAP → PREVIEW → APPLY, with its own parser/mapper/repository
+//  and its own column-mapping config.
 //
-//  Atomic by construction — the preview step calls
-//  `catalog_import_validate` (no writes). Only on user confirm does
-//  `catalog_import_apply` run, and that RPC is fully transactional, so
-//  the user never observes a half-imported state. RETRY is safe — a
-//  re-applied payload either lands or re-fails the same way.
+//  Atomic by construction — preview calls *_validate (no writes), apply
+//  calls *_apply (full transaction). The user never observes a half-
+//  imported state, and RETRY is safe — a re-applied payload either
+//  lands or re-fails the same way.
 //
 //  Layout matches `QuickAddProductSheet`: backgroundGradient,
-//  NavigationStack, large detent. Top progress strip walks the four
-//  steps as a tactical chip strip.
+//  NavigationStack, large detent. Top: tab switch, then progress strip.
 //
 
 import SwiftUI
@@ -28,6 +28,21 @@ struct CatalogImportSheet: View {
 
     @Query private var allCategories: [CatalogCategory]
     @Query private var allUnits: [CatalogUnit]
+
+    // MARK: - Tab state
+
+    enum Tab: Int, CaseIterable, Hashable {
+        case stock, products
+
+        var label: String {
+            switch self {
+            case .stock:    return "STOCK"
+            case .products: return "PRODUCTS"
+            }
+        }
+    }
+
+    @State private var tab: Tab = .stock
 
     // MARK: - Step state
 
@@ -46,30 +61,38 @@ struct CatalogImportSheet: View {
 
     @State private var step: Step = .pick
 
-    // MARK: - File / parse state
+    // MARK: - File / parse state (shared)
 
     @State private var isShowingFilePicker: Bool = false
     @State private var pickedFileName: String? = nil
     @State private var parsed: CSVParseResult? = nil
     @State private var parseError: String? = nil
 
-    // MARK: - Mapping state
+    // MARK: - STOCK tab state
 
-    @State private var mapping = CatalogImportColumnMapping()
+    @State private var stockMapping = CatalogImportColumnMapping()
+    @State private var stockLocalErrors: [CatalogImportError] = []
+    @State private var stockServerErrors: [CatalogImportError] = []
+    @State private var stockPendingPayload: CatalogImportPayload? = nil
 
-    // MARK: - Preview / apply state
+    @State private var stockApplyResult: CatalogImportResult? = nil
 
-    @State private var localErrors: [CatalogImportError] = []
-    @State private var serverErrors: [CatalogImportError] = []
-    @State private var pendingPayload: CatalogImportPayload? = nil
-    @State private var pendingTotalsFamilies: Int = 0
-    @State private var pendingTotalsVariants: Int = 0
+    // MARK: - PRODUCTS tab state
+
+    @State private var productsMapping = ProductsImportColumnMapping()
+    @State private var productsLocalErrors: [ProductsImportError] = []
+    @State private var productsServerErrors: [ProductsImportError] = []
+    @State private var productsPendingPayload: ProductsImportPayload? = nil
+
+    @State private var productsApplyResult: ProductsImportResult? = nil
+
+    // MARK: - Shared apply / progress state
 
     @State private var isValidating: Bool = false
     @State private var isApplying: Bool = false
-
-    @State private var applyResult: CatalogImportResult? = nil
     @State private var applyError: String? = nil
+
+    // MARK: - Derived
 
     private var companyId: String {
         dataController.currentUser?.companyId ?? ""
@@ -87,12 +110,22 @@ struct CatalogImportSheet: View {
             .map { ($0.id, $0.display) }
     }
 
+    /// Did the apply for the active tab complete successfully? Drives the
+    /// "Done" close-button label.
+    private var activeApplySucceeded: Bool {
+        switch tab {
+        case .stock:    return stockApplyResult?.success == true
+        case .products: return productsApplyResult?.success == true
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
 
                 VStack(spacing: 0) {
+                    tabStrip
                     progressStrip
 
                     Group {
@@ -125,10 +158,44 @@ struct CatalogImportSheet: View {
         )
     }
 
-    // MARK: - Header strip
+    // MARK: - Header strips
 
     private var closeLabel: String {
-        step == .apply && applyResult?.success == true ? "Done" : "Cancel"
+        step == .apply && activeApplySucceeded ? "Done" : "Cancel"
+    }
+
+    private var tabStrip: some View {
+        HStack(spacing: 0) {
+            ForEach(Tab.allCases, id: \.self) { t in
+                Button {
+                    guard tab != t else { return }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    switchTab(to: t)
+                } label: {
+                    Text(t.label)
+                        .font(OPSStyle.Typography.sectionLabel)
+                        .foregroundColor(
+                            tab == t
+                                ? OPSStyle.Colors.primaryText
+                                : OPSStyle.Colors.tertiaryText
+                        )
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
+                        .frame(maxWidth: .infinity)
+                        .overlay(alignment: .bottom) {
+                            Rectangle()
+                                .fill(
+                                    tab == t
+                                        ? OPSStyle.Colors.primaryAccent
+                                        : Color.clear
+                                )
+                                .frame(height: 2)
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(isApplying || isValidating)
+            }
+        }
+        .background(Color.black.opacity(0.25))
     }
 
     private var progressStrip: some View {
@@ -171,6 +238,28 @@ struct CatalogImportSheet: View {
         .background(Color.black.opacity(0.15))
     }
 
+    /// Flush all per-tab state when switching, so a half-finished import
+    /// in tab A never bleeds into tab B (and the user never sees the
+    /// other tab's error list).
+    private func switchTab(to newTab: Tab) {
+        tab = newTab
+        step = .pick
+        parsed = nil
+        pickedFileName = nil
+        parseError = nil
+        stockLocalErrors = []
+        stockServerErrors = []
+        stockPendingPayload = nil
+        stockApplyResult = nil
+        productsLocalErrors = []
+        productsServerErrors = []
+        productsPendingPayload = nil
+        productsApplyResult = nil
+        applyError = nil
+        isValidating = false
+        isApplying = false
+    }
+
     // MARK: - Step 0: pick
 
     private var pickStep: some View {
@@ -185,7 +274,7 @@ struct CatalogImportSheet: View {
                 Text("// SELECT CSV")
                     .font(OPSStyle.Typography.panelTitle)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                Text("One row per variant. Header row required.")
+                Text(pickSubtitle)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .multilineTextAlignment(.center)
@@ -221,6 +310,15 @@ struct CatalogImportSheet: View {
         .padding(OPSStyle.Layout.spacing3)
     }
 
+    private var pickSubtitle: String {
+        switch tab {
+        case .stock:
+            return "One row per variant. Header row required."
+        case .products:
+            return "One row per product. Header row required."
+        }
+    }
+
     // MARK: - Step 1: map
 
     private var mapStep: some View {
@@ -237,29 +335,10 @@ struct CatalogImportSheet: View {
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
 
-                    mapRow(label: "FAMILY NAME *", binding: bindingFor(\.familyName))
-                    mapRow(label: "QUANTITY *", binding: bindingFor(\.quantity))
-                    Divider().background(OPSStyle.Colors.separator)
-
-                    Text("// FAMILY-LEVEL")
-                        .font(OPSStyle.Typography.sectionLabel)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    mapRow(label: "DESCRIPTION", binding: bindingFor(\.familyDescription))
-                    mapRow(label: "CATEGORY", binding: bindingFor(\.category))
-                    mapRow(label: "DEFAULT UNIT", binding: bindingFor(\.defaultUnit))
-                    mapRow(label: "DEFAULT PRICE", binding: bindingFor(\.defaultPrice))
-                    mapRow(label: "DEFAULT UNIT COST", binding: bindingFor(\.defaultUnitCost))
-
-                    Divider().background(OPSStyle.Colors.separator)
-                    Text("// VARIANT-LEVEL")
-                        .font(OPSStyle.Typography.sectionLabel)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    mapRow(label: "SKU", binding: bindingFor(\.sku))
-                    mapRow(label: "VARIANT UNIT", binding: bindingFor(\.variantUnit))
-                    mapRow(label: "PRICE OVERRIDE", binding: bindingFor(\.priceOverride))
-                    mapRow(label: "UNIT COST OVERRIDE", binding: bindingFor(\.unitCostOverride))
-                    mapRow(label: "WARNING THRESHOLD", binding: bindingFor(\.warningThreshold))
-                    mapRow(label: "CRITICAL THRESHOLD", binding: bindingFor(\.criticalThreshold))
+                    switch tab {
+                    case .stock:    stockMapFields
+                    case .products: productsMapFields
+                    }
                 }
                 .padding(OPSStyle.Layout.spacing3)
             }
@@ -278,12 +357,66 @@ struct CatalogImportSheet: View {
                     Text("PREVIEW")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(PrimaryStepButton(disabled: !mapping.isReadyToMap))
-                .disabled(!mapping.isReadyToMap)
+                .buttonStyle(PrimaryStepButton(disabled: !isMapReady))
+                .disabled(!isMapReady)
             }
             .padding(OPSStyle.Layout.spacing3)
             .background(Color.black.opacity(0.15))
         }
+    }
+
+    private var isMapReady: Bool {
+        switch tab {
+        case .stock:    return stockMapping.isReadyToMap
+        case .products: return productsMapping.isReadyToMap
+        }
+    }
+
+    @ViewBuilder
+    private var stockMapFields: some View {
+        mapRow(label: "FAMILY NAME *", binding: stockBindingFor(\.familyName))
+        mapRow(label: "QUANTITY *", binding: stockBindingFor(\.quantity))
+        Divider().background(OPSStyle.Colors.separator)
+
+        Text("// FAMILY-LEVEL")
+            .font(OPSStyle.Typography.sectionLabel)
+            .foregroundColor(OPSStyle.Colors.tertiaryText)
+        mapRow(label: "DESCRIPTION", binding: stockBindingFor(\.familyDescription))
+        mapRow(label: "CATEGORY", binding: stockBindingFor(\.category))
+        mapRow(label: "DEFAULT UNIT", binding: stockBindingFor(\.defaultUnit))
+        mapRow(label: "DEFAULT PRICE", binding: stockBindingFor(\.defaultPrice))
+        mapRow(label: "DEFAULT UNIT COST", binding: stockBindingFor(\.defaultUnitCost))
+
+        Divider().background(OPSStyle.Colors.separator)
+        Text("// VARIANT-LEVEL")
+            .font(OPSStyle.Typography.sectionLabel)
+            .foregroundColor(OPSStyle.Colors.tertiaryText)
+        mapRow(label: "SKU", binding: stockBindingFor(\.sku))
+        mapRow(label: "VARIANT UNIT", binding: stockBindingFor(\.variantUnit))
+        mapRow(label: "PRICE OVERRIDE", binding: stockBindingFor(\.priceOverride))
+        mapRow(label: "UNIT COST OVERRIDE", binding: stockBindingFor(\.unitCostOverride))
+        mapRow(label: "WARNING THRESHOLD", binding: stockBindingFor(\.warningThreshold))
+        mapRow(label: "CRITICAL THRESHOLD", binding: stockBindingFor(\.criticalThreshold))
+    }
+
+    @ViewBuilder
+    private var productsMapFields: some View {
+        mapRow(label: "NAME *", binding: productsBindingFor(\.name))
+        mapRow(label: "BASE PRICE *", binding: productsBindingFor(\.basePrice))
+        Divider().background(OPSStyle.Colors.separator)
+
+        Text("// OPTIONAL")
+            .font(OPSStyle.Typography.sectionLabel)
+            .foregroundColor(OPSStyle.Colors.tertiaryText)
+        mapRow(label: "DESCRIPTION", binding: productsBindingFor(\.description))
+        mapRow(label: "UNIT COST", binding: productsBindingFor(\.unitCost))
+        mapRow(label: "CATEGORY", binding: productsBindingFor(\.category))
+        mapRow(label: "UNIT", binding: productsBindingFor(\.unit))
+        mapRow(label: "PRICING UNIT", binding: productsBindingFor(\.pricingUnit))
+        mapRow(label: "SKU", binding: productsBindingFor(\.sku))
+        mapRow(label: "KIND", binding: productsBindingFor(\.kind))
+        mapRow(label: "TYPE", binding: productsBindingFor(\.type))
+        mapRow(label: "TAXABLE", binding: productsBindingFor(\.isTaxable))
     }
 
     @ViewBuilder
@@ -320,10 +453,17 @@ struct CatalogImportSheet: View {
         }
     }
 
-    private func bindingFor(_ keyPath: WritableKeyPath<CatalogImportColumnMapping, String?>) -> Binding<String?> {
+    private func stockBindingFor(_ keyPath: WritableKeyPath<CatalogImportColumnMapping, String?>) -> Binding<String?> {
         Binding(
-            get: { mapping[keyPath: keyPath] },
-            set: { mapping[keyPath: keyPath] = $0 }
+            get: { stockMapping[keyPath: keyPath] },
+            set: { stockMapping[keyPath: keyPath] = $0 }
+        )
+    }
+
+    private func productsBindingFor(_ keyPath: WritableKeyPath<ProductsImportColumnMapping, String?>) -> Binding<String?> {
+        Binding(
+            get: { productsMapping[keyPath: keyPath] },
+            set: { productsMapping[keyPath: keyPath] = $0 }
         )
     }
 
@@ -343,9 +483,8 @@ struct CatalogImportSheet: View {
                             .font(OPSStyle.Typography.sectionLabel)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                             .frame(maxWidth: .infinity, alignment: .center)
-                    } else if !localErrors.isEmpty || !serverErrors.isEmpty {
-                        let combined = localErrors + serverErrors
-                        Text("// \(combined.count) ISSUE\(combined.count == 1 ? "" : "S")")
+                    } else if hasPreviewIssues {
+                        Text("// \(previewErrorRows.count) ISSUE\(previewErrorRows.count == 1 ? "" : "S")")
                             .font(OPSStyle.Typography.panelTitle)
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                         Text("Fix the CSV (or remap columns) and try again. Nothing was imported.")
@@ -353,37 +492,15 @@ struct CatalogImportSheet: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                            ForEach(combined) { err in
-                                errorRow(err)
+                            ForEach(previewErrorRows) { row in
+                                errorRow(row)
                             }
                         }
-                    } else if let payload = pendingPayload {
+                    } else if hasPreviewPayload {
                         Text("// READY")
                             .font(OPSStyle.Typography.panelTitle)
                             .foregroundColor(OPSStyle.Colors.successStatus)
-                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                            HStack {
-                                Text("FAMILIES")
-                                    .font(OPSStyle.Typography.sectionLabel)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                Spacer()
-                                Text("\(payload.families.count)")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                            }
-                            HStack {
-                                Text("VARIANTS")
-                                    .font(OPSStyle.Typography.sectionLabel)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                Spacer()
-                                Text("\(payload.variants.count)")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                            }
-                        }
-                        .padding(OPSStyle.Layout.spacing3)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        previewSummaryCard
                     }
                 }
                 .padding(OPSStyle.Layout.spacing3)
@@ -397,7 +514,7 @@ struct CatalogImportSheet: View {
                 }
                 .buttonStyle(SecondaryStepButton())
 
-                if pendingPayload != nil && localErrors.isEmpty && serverErrors.isEmpty && !isValidating {
+                if hasPreviewPayload && !hasPreviewIssues && !isValidating {
                     Button {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         runApply()
@@ -413,7 +530,79 @@ struct CatalogImportSheet: View {
         }
     }
 
-    private func errorRow(_ err: CatalogImportError) -> some View {
+    private var hasPreviewIssues: Bool {
+        switch tab {
+        case .stock:
+            return !stockLocalErrors.isEmpty || !stockServerErrors.isEmpty
+        case .products:
+            return !productsLocalErrors.isEmpty || !productsServerErrors.isEmpty
+        }
+    }
+
+    private var hasPreviewPayload: Bool {
+        switch tab {
+        case .stock:    return stockPendingPayload != nil
+        case .products: return productsPendingPayload != nil
+        }
+    }
+
+    /// Unified row representation for the preview error list, abstracted
+    /// across the two error DTO shapes. Both DTOs share the same fields
+    /// — this is just a thin adapter so the view code can render them in
+    /// one ForEach.
+    private struct ErrorRow: Identifiable, Hashable {
+        let id: String
+        let scope: String
+        let field: String
+        let reason: String
+    }
+
+    private var previewErrorRows: [ErrorRow] {
+        switch tab {
+        case .stock:
+            return (stockLocalErrors + stockServerErrors).map {
+                ErrorRow(id: $0.id, scope: $0.scope, field: $0.field, reason: $0.reason)
+            }
+        case .products:
+            return (productsLocalErrors + productsServerErrors).map {
+                ErrorRow(id: $0.id, scope: $0.scope, field: $0.field, reason: $0.reason)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var previewSummaryCard: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            switch tab {
+            case .stock:
+                if let p = stockPendingPayload {
+                    summaryRow(label: "FAMILIES", value: "\(p.families.count)")
+                    summaryRow(label: "VARIANTS", value: "\(p.variants.count)")
+                }
+            case .products:
+                if let p = productsPendingPayload {
+                    summaryRow(label: "PRODUCTS", value: "\(p.products.count)")
+                }
+            }
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+    }
+
+    private func summaryRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(OPSStyle.Typography.sectionLabel)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Spacer()
+            Text(value)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+        }
+    }
+
+    private func errorRow(_ err: ErrorRow) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: OPSStyle.Layout.spacing1) {
                 Text(err.scope.uppercased())
@@ -455,18 +644,14 @@ struct CatalogImportSheet: View {
                 Text("// APPLYING")
                     .font(OPSStyle.Typography.panelTitle)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-            } else if let result = applyResult, result.success {
+            } else if applySucceeded {
                 Image(systemName: "checkmark.seal")
                     .font(.system(size: 56, weight: .light))
                     .foregroundColor(OPSStyle.Colors.successStatus)
                 Text("// IMPORTED")
                     .font(OPSStyle.Typography.panelTitle)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                if let totals = result.totals {
-                    Text("\(totals.families) families  ·  \(totals.variants) variants")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
+                applySuccessTotalsLabel
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     dismiss()
@@ -513,7 +698,27 @@ struct CatalogImportSheet: View {
         .padding(OPSStyle.Layout.spacing3)
     }
 
-    // MARK: - Actions
+    private var applySucceeded: Bool { activeApplySucceeded }
+
+    @ViewBuilder
+    private var applySuccessTotalsLabel: some View {
+        switch tab {
+        case .stock:
+            if let totals = stockApplyResult?.totals {
+                Text("\(totals.families) families  ·  \(totals.variants) variants")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+        case .products:
+            if let totals = productsApplyResult?.totals {
+                Text("\(totals.products) product\(totals.products == 1 ? "" : "s")")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+        }
+    }
+
+    // MARK: - File picking (shared)
 
     private func handleFileSelection(_ result: Result<[URL], Error>) {
         parseError = nil
@@ -537,7 +742,12 @@ struct CatalogImportSheet: View {
                 let parsed = try CSVParser.parse(text)
                 self.parsed = parsed
                 self.pickedFileName = url.lastPathComponent
-                self.mapping = CatalogImportColumnMapping.suggest(from: parsed.headers)
+                switch tab {
+                case .stock:
+                    self.stockMapping = CatalogImportColumnMapping.suggest(from: parsed.headers)
+                case .products:
+                    self.productsMapping = ProductsImportColumnMapping.suggest(from: parsed.headers)
+                }
                 step = .map
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } catch let e as CSVParseError {
@@ -548,71 +758,146 @@ struct CatalogImportSheet: View {
         }
     }
 
+    // MARK: - Dry-run dispatcher
+
     private func runDryRun() {
+        switch tab {
+        case .stock:    runStockDryRun()
+        case .products: runProductsDryRun()
+        }
+    }
+
+    private func runStockDryRun() {
         guard let parsed = parsed else { return }
-        localErrors = []
-        serverErrors = []
-        pendingPayload = nil
+        stockLocalErrors = []
+        stockServerErrors = []
+        stockPendingPayload = nil
         step = .preview
         isValidating = true
 
         let mapResult = CatalogCSVMapper.map(
             rows: parsed.rows,
             lineNumbers: parsed.lineNumbers,
-            mapping: mapping,
+            mapping: stockMapping,
             categories: companyCategoryTuples,
             units: companyUnitTuples
         )
         if !mapResult.errors.isEmpty {
-            localErrors = mapResult.errors
+            stockLocalErrors = mapResult.errors
             isValidating = false
             return
         }
         guard let payload = mapResult.payload else {
             isValidating = false
-            localErrors = [.mapping(rowIndex: -1, field: "payload", reason: "Mapper produced no payload.")]
+            stockLocalErrors = [.mapping(rowIndex: -1, field: "payload",
+                                        reason: "Mapper produced no payload.")]
             return
         }
-        pendingPayload = payload
-        pendingTotalsFamilies = payload.families.count
-        pendingTotalsVariants = payload.variants.count
+        stockPendingPayload = payload
 
-        Task {
-            await performValidate(payload)
+        Task { await performStockValidate(payload) }
+    }
+
+    private func runProductsDryRun() {
+        guard let parsed = parsed else { return }
+        productsLocalErrors = []
+        productsServerErrors = []
+        productsPendingPayload = nil
+        step = .preview
+        isValidating = true
+
+        let mapResult = ProductsCSVMapper.map(
+            rows: parsed.rows,
+            lineNumbers: parsed.lineNumbers,
+            mapping: productsMapping,
+            categories: companyCategoryTuples,
+            units: companyUnitTuples
+        )
+        if !mapResult.errors.isEmpty {
+            productsLocalErrors = mapResult.errors
+            isValidating = false
+            return
         }
+        guard let payload = mapResult.payload else {
+            isValidating = false
+            productsLocalErrors = [.mapping(rowIndex: -1, field: "payload",
+                                            reason: "Mapper produced no payload.")]
+            return
+        }
+        productsPendingPayload = payload
+
+        Task { await performProductsValidate(payload) }
     }
 
     @MainActor
-    private func performValidate(_ payload: CatalogImportPayload) async {
+    private func performStockValidate(_ payload: CatalogImportPayload) async {
         defer { isValidating = false }
         guard !companyId.isEmpty else {
-            serverErrors = [CatalogImportError(scope: "payload", rowIndex: -1, field: "company", reason: "No active company.")]
+            stockServerErrors = [CatalogImportError(scope: "payload", rowIndex: -1,
+                                                    field: "company", reason: "No active company.")]
             return
         }
         let repo = CatalogImportRepository(companyId: companyId)
         do {
             let result = try await repo.validate(payload)
             if !result.success {
-                serverErrors = result.errors ?? []
+                stockServerErrors = result.errors ?? []
             }
         } catch {
-            serverErrors = [CatalogImportError(scope: "payload", rowIndex: -1, field: "network", reason: error.localizedDescription)]
-        }
-    }
-
-    private func runApply() {
-        guard let payload = pendingPayload else { return }
-        applyResult = nil
-        applyError = nil
-        step = .apply
-        isApplying = true
-        Task {
-            await performApply(payload)
+            stockServerErrors = [CatalogImportError(scope: "payload", rowIndex: -1,
+                                                    field: "network", reason: error.localizedDescription)]
         }
     }
 
     @MainActor
-    private func performApply(_ payload: CatalogImportPayload) async {
+    private func performProductsValidate(_ payload: ProductsImportPayload) async {
+        defer { isValidating = false }
+        guard !companyId.isEmpty else {
+            productsServerErrors = [ProductsImportError(scope: "payload", rowIndex: -1,
+                                                        field: "company", reason: "No active company.")]
+            return
+        }
+        let repo = ProductsImportRepository(companyId: companyId)
+        do {
+            let result = try await repo.validate(payload)
+            if !result.success {
+                productsServerErrors = result.errors ?? []
+            }
+        } catch {
+            productsServerErrors = [ProductsImportError(scope: "payload", rowIndex: -1,
+                                                        field: "network", reason: error.localizedDescription)]
+        }
+    }
+
+    // MARK: - Apply dispatcher
+
+    private func runApply() {
+        switch tab {
+        case .stock:    runStockApply()
+        case .products: runProductsApply()
+        }
+    }
+
+    private func runStockApply() {
+        guard let payload = stockPendingPayload else { return }
+        stockApplyResult = nil
+        applyError = nil
+        step = .apply
+        isApplying = true
+        Task { await performStockApply(payload) }
+    }
+
+    private func runProductsApply() {
+        guard let payload = productsPendingPayload else { return }
+        productsApplyResult = nil
+        applyError = nil
+        step = .apply
+        isApplying = true
+        Task { await performProductsApply(payload) }
+    }
+
+    @MainActor
+    private func performStockApply(_ payload: CatalogImportPayload) async {
         defer { isApplying = false }
         guard !companyId.isEmpty else {
             applyError = "No active company."
@@ -622,16 +907,45 @@ struct CatalogImportSheet: View {
         do {
             let result = try await repo.apply(payload)
             if result.success {
-                applyResult = result
+                stockApplyResult = result
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                // Trigger a catalog resync so the new rows show up in
-                // Stock without a manual pull.
                 NotificationCenter.default.post(
                     name: Notification.Name("CatalogImportApplied"),
                     object: nil,
                     userInfo: [
                         "families": result.totals?.families ?? 0,
                         "variants": result.totals?.variants ?? 0
+                    ]
+                )
+            } else {
+                let issues = (result.errors ?? []).prefix(3).map(\.reason).joined(separator: " · ")
+                applyError = issues.isEmpty ? "Server rejected the import." : issues
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+        } catch {
+            applyError = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
+    }
+
+    @MainActor
+    private func performProductsApply(_ payload: ProductsImportPayload) async {
+        defer { isApplying = false }
+        guard !companyId.isEmpty else {
+            applyError = "No active company."
+            return
+        }
+        let repo = ProductsImportRepository(companyId: companyId)
+        do {
+            let result = try await repo.apply(payload)
+            if result.success {
+                productsApplyResult = result
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                NotificationCenter.default.post(
+                    name: Notification.Name("ProductsImportApplied"),
+                    object: nil,
+                    userInfo: [
+                        "products": result.totals?.products ?? 0
                     ]
                 )
             } else {

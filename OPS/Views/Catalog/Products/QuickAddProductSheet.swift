@@ -471,6 +471,7 @@ struct QuickAddProductSheet: View {
             pricingUnit: pricingUnitRaw,
             unitId: selectedUnit?.id,
             category: categoryName,
+            categoryId: selectedCategory?.id,
             sku: trimmedSku.isEmpty ? nil : trimmedSku,
             kind: kind.rawValue,
             type: lineItemType.rawValue,

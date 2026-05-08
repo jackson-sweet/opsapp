@@ -32,6 +32,7 @@ struct BooksTabView: View {
     @AppStorage("books.selectedSegment") private var selectedSegmentRaw: String = BooksSection.pipeline.rawValue
 
     @State private var headerCollapsed = false
+    @State private var showARDetail = false
 
     private var selectedSegment: BooksSection {
         BooksSection(rawValue: selectedSegmentRaw) ?? .pipeline
@@ -64,8 +65,17 @@ struct BooksTabView: View {
                     VStack(spacing: 0) {
                         // Dashboard — only when user has SOMETHING to put in it
                         if hasFinances || hasPipelineView {
-                            // Phase 1C stub: stat-tap routing is wired in Phase 1D (T32).
-                            MoneyDashboardHeader(viewModel: dashboardVM, onStatTap: { _ in })
+                            MoneyDashboardHeader(viewModel: dashboardVM, onStatTap: { stat in
+                                switch stat {
+                                case .overdue:
+                                    showARDetail = true
+                                case .activeLeads, .staleLeads, .nextFollowUp:
+                                    // Jump to Pipeline segment so the user can see the leads.
+                                    selectedSegmentRaw = BooksSection.pipeline.rawValue
+                                default:
+                                    break
+                                }
+                            })
                                 .background(
                                     GeometryReader { geo in
                                         Color.clear.preference(
@@ -94,6 +104,10 @@ struct BooksTabView: View {
                 }
             }
             .background(OPSStyle.Colors.background.ignoresSafeArea())
+            .sheet(isPresented: $showARDetail) {
+                ARAgingDetailView()
+                    .environmentObject(dataController)
+            }
         }
         .trackScreen("Books")
         .task {

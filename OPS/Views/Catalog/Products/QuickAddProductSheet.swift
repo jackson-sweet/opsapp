@@ -332,6 +332,8 @@ struct QuickAddProductSheet: View {
                     }
                 }
 
+                liveMarginReadout
+
                 CatalogFieldLabel("Kind")
                 kindPicker
 
@@ -355,6 +357,48 @@ struct QuickAddProductSheet: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
         .tint(OPSStyle.Colors.primaryAccent)
+    }
+
+    /// Computed margin from the parsed price + unit cost. Returns nil when
+    /// either field is empty/invalid or price is 0 (avoids divide-by-zero
+    /// and avoids displaying a misleading `100%` when cost happens to be
+    /// blank).
+    private var liveMarginPercent: Double? {
+        let trimmedPrice = priceString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedCost = unitCostString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let price = Double(trimmedPrice), price > 0 else { return nil }
+        guard let cost = Double(trimmedCost), cost >= 0 else { return nil }
+        return ((price - cost) / price) * 100
+    }
+
+    /// Live margin readout under the SKU/Unit cost row. Shown only when
+    /// both fields parse and price > 0. JetBrains Mono numbers per the
+    /// OPS number rules — tabular lining via `.monospacedDigit()` so a
+    /// 9 → 10 transition doesn't shift the row.
+    @ViewBuilder
+    private var liveMarginReadout: some View {
+        if let margin = liveMarginPercent {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Text("// MARGIN")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Spacer()
+                Text(formattedMargin(margin))
+                    .font(OPSStyle.Typography.metadata)
+                    .monospacedDigit()
+                    .foregroundColor(margin >= 0
+                                     ? OPSStyle.Colors.tertiaryText
+                                     : OPSStyle.Colors.errorText)
+            }
+        }
+    }
+
+    /// Formats the margin as a whole-percent integer with a trailing `%`.
+    /// Negative margins (cost above price) format with a leading `-` and
+    /// render in error color.
+    private func formattedMargin(_ value: Double) -> String {
+        let rounded = Int(value.rounded())
+        return "\(rounded)%"
     }
 
     private var kindPicker: some View {

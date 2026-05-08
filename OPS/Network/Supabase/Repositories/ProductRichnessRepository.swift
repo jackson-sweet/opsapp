@@ -123,6 +123,29 @@ class ProductRichnessRepository {
 
     // MARK: - Recipe rows (product_materials)
 
+    /// Insert a new product_materials row. The id is server-generated via
+    /// `gen_random_uuid()` — we POST without an id and decode the row that
+    /// comes back so SwiftData can pin to the canonical id Postgres chose.
+    func createMaterial(_ dto: CreateProductMaterialDTO) async throws -> ProductMaterialDTO {
+        try await client.from("product_materials")
+            .insert(dto)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    /// Hard delete a product_materials row. The table has no `deleted_at`
+    /// column (verify via the SELECT in `fetchMaterialsForCompany`), so
+    /// removal is permanent on the server side. Caller is responsible for
+    /// removing the matching SwiftData row.
+    func deleteMaterial(_ id: String) async throws {
+        try await client.from("product_materials")
+            .delete()
+            .eq("id", value: id)
+            .execute()
+    }
+
     func fetchMaterialsForCompany() async throws -> [ProductMaterialDTO] {
         struct Joined: Codable {
             let id: String

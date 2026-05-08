@@ -51,11 +51,8 @@ struct MainTabView: View {
     @State private var assignRoleMemberId: String?
     @State private var assignRoleWasSeated: Bool = false
 
-    // Track catalog access for conditional tab. Permission key remains
-    // `inventory.view` for now — Phase 12 renames the key alongside the SQL
-    // migration so it stays a single source of truth.
     private var hasCatalogAccess: Bool {
-        permissionStore.can("inventory.view", requiredScope: "all")
+        permissionStore.can("catalog.view", requiredScope: "all")
     }
     
     // Observer for fetch active project notifications

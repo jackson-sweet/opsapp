@@ -46,6 +46,7 @@ struct CatalogView: View {
     @State private var showUnitsManage: Bool = false
     @State private var showThresholdsManage: Bool = false
     @State private var showDefaultsManage: Bool = false
+    @State private var showImport: Bool = false
 
     private var selectedSegment: CatalogSegment {
         let raw = CatalogSegment(rawValue: selectedSegmentRaw) ?? .stock
@@ -101,6 +102,10 @@ struct CatalogView: View {
         .sheet(isPresented: $showUnitsManage)       { UnitsManageSheet() }
         .sheet(isPresented: $showThresholdsManage)  { ThresholdsManageSheet() }
         .sheet(isPresented: $showDefaultsManage)    { DefaultsManageSheet() }
+        .sheet(isPresented: $showImport)            {
+            CatalogImportSheet()
+                .environmentObject(dataController)
+        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenCatalogOrders"))) { notif in
             let raw = notif.userInfo?["subSegment"] as? String
             ordersInitialSubSegment = OrdersSubSegment(rawValue: raw ?? "") ?? .suggested
@@ -190,7 +195,11 @@ struct CatalogView: View {
                         if canManage {
                             Button { showDefaultsManage = true } label: { Label("Defaults", systemImage: "gearshape") }
                         }
-                        // Import lives in the FAB while still a stub — re-add here when real.
+                        if permissionStore.can("catalog.import") {
+                            Button { showImport = true } label: {
+                                Label("Import…", systemImage: "square.and.arrow.down")
+                            }
+                        }
                     }
                 }
             } label: {

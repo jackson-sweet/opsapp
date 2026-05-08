@@ -774,7 +774,8 @@ struct FloatingActionMenu: View {
                 .environmentObject(dataController)
         }
         .sheet(isPresented: $showingCatalogImport) {
-            CatalogImportStub()
+            CatalogImportSheet()
+                .environmentObject(dataController)
         }
         .sheet(isPresented: $showingCatalogQuickAddProduct) {
             QuickAddProductSheet()
@@ -1380,40 +1381,12 @@ struct FloatingActionMenu: View {
 // MARK: - Catalog FAB Stubs
 //
 // Placeholder sheets wired to the catalog FAB actions added in Phase 5
-// Task 44. Each gets replaced with a real flow in a later phase:
+// Task 44. All have been replaced with real flows:
 //
 //   - CatalogAddVariantStub        → REPLACED in Phase 6 by `VariantFormSheet`
 //   - CatalogAddFamilyStub         → REPLACED in Phase 6 by `AddFamilySheet`
-//   - CatalogImportStub            → Phase 8 (catalog import)
+//   - CatalogImportStub            → REPLACED by `CatalogImportSheet` (Phase 8)
 //   - CatalogQuickAddProductStub   → REPLACED in Phase 7 by `QuickAddProductSheet`
-
-private struct CatalogImportStub: View {
-    @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                OPSStyle.Colors.backgroundGradient.ignoresSafeArea()
-                VStack(spacing: OPSStyle.Layout.spacing2) {
-                    Text("// IMPORT")
-                        .font(OPSStyle.Typography.panelTitle)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    Text("[Coming in Phase 8]")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .navigationTitle("IMPORT")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-            }
-        }
-    }
-}
 
 // MARK: - FAB Customize Sheet
 

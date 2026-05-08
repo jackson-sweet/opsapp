@@ -107,6 +107,7 @@ struct AddProductMaterialSheet: View {
                     }
                     .padding(OPSStyle.Layout.spacing3)
                 }
+                .dismissKeyboardOnTap()
             }
             .navigationTitle("ADD MATERIAL")
             .navigationBarTitleDisplayMode(.inline)

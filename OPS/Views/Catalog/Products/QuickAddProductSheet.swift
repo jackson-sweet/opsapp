@@ -107,6 +107,10 @@ struct QuickAddProductSheet: View {
                         }
                         .padding(OPSStyle.Layout.spacing3)
                     }
+                    // Tap-outside dismisses the keyboard so the user can
+                    // reach the SAVE bar without first tapping a non-field
+                    // element to lower the keyboard.
+                    .dismissKeyboardOnTap()
 
                     saveBar
                 }

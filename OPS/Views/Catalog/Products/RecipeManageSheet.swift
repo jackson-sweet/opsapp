@@ -74,6 +74,7 @@ struct RecipeManageSheet: View {
                     }
                     .padding(OPSStyle.Layout.spacing3)
                 }
+                .dismissKeyboardOnTap()
             }
             .navigationTitle("RECIPE")
             .navigationBarTitleDisplayMode(.inline)

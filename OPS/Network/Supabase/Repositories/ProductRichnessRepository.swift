@@ -135,6 +135,22 @@ class ProductRichnessRepository {
             .value
     }
 
+    /// Sparse update for an existing product_materials row. Mirrors the
+    /// shape of `ProductRepository.update`: PATCH to PostgREST, decode the
+    /// returned row so the caller has the canonical post-update payload
+    /// to write back to SwiftData. Identity fields (catalogVariantId,
+    /// catalogItemId, variantSelector) cannot be changed via this DTO —
+    /// to re-pin a row, delete and re-create instead.
+    func updateMaterial(_ id: String, fields: UpdateProductMaterialDTO) async throws -> ProductMaterialDTO {
+        try await client.from("product_materials")
+            .update(fields)
+            .eq("id", value: id)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
     /// Hard delete a product_materials row. The table has no `deleted_at`
     /// column (verify via the SELECT in `fetchMaterialsForCompany`), so
     /// removal is permanent on the server side. Caller is responsible for

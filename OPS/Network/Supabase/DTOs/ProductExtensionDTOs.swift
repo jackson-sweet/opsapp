@@ -196,3 +196,22 @@ struct CreateProductMaterialDTO: Codable {
         case notes
     }
 }
+
+/// Sparse update for an existing product_materials row. Only mutable
+/// fields are exposed — id, productId, catalogVariantId, catalogItemId,
+/// and variantSelector are identity / pin shape and require a delete +
+/// re-create rather than an update. Encoder writes only the fields the
+/// caller set, so PostgREST sees a minimal patch.
+struct UpdateProductMaterialDTO: Codable {
+    var quantityPerUnit: Double?
+    var scaledByOptionId: String?
+    var unitId: String?
+    var notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case quantityPerUnit   = "quantity_per_unit"
+        case scaledByOptionId  = "scaled_by_option_id"
+        case unitId            = "unit_id"
+        case notes
+    }
+}

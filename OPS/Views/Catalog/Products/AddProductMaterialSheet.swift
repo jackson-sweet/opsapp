@@ -22,6 +22,13 @@ import SwiftData
 struct AddProductMaterialSheet: View {
     let productId: String
     let companyId: String
+    /// When non-nil, the sheet renders in edit mode: family + variant
+    /// pickers are locked to the row's identity, only quantity and notes
+    /// are mutable, and Save calls `updateMaterial` instead of
+    /// `createMaterial`. Identity changes (re-pinning to a different
+    /// variant) require delete + re-add per the recipe row identity model
+    /// — this matches the CHECK constraint on the table.
+    let editingMaterial: ProductMaterial?
     let onCreated: (ProductMaterialDTO) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -43,6 +50,24 @@ struct AddProductMaterialSheet: View {
     @State private var errorMessage: String? = nil
 
     @FocusState private var quantityFocused: Bool
+
+    private var isEditing: Bool { editingMaterial != nil }
+    private var navTitle: String { isEditing ? "EDIT MATERIAL" : "ADD MATERIAL" }
+
+    /// Default backwards-compat init — create-mode only. Lets the existing
+    /// callers in RecipeManageSheet stay unchanged. Edit callers pass
+    /// `editingMaterial:` explicitly.
+    init(
+        productId: String,
+        companyId: String,
+        editingMaterial: ProductMaterial? = nil,
+        onCreated: @escaping (ProductMaterialDTO) -> Void
+    ) {
+        self.productId = productId
+        self.companyId = companyId
+        self.editingMaterial = editingMaterial
+        self.onCreated = onCreated
+    }
 
     // MARK: - Filtered company data
 
@@ -78,10 +103,16 @@ struct AddProductMaterialSheet: View {
     }
 
     private var canSave: Bool {
-        guard !isSaving,
-              selectedFamilyId != nil,
-              selectedVariantId != nil
-        else { return false }
+        guard !isSaving else { return false }
+        // In edit mode, family + variant identity is fixed by the row.
+        // Family-pinned rows have selectedVariantId == nil, so the create
+        // path's variant guard would block save. Edit mode only requires
+        // a positive quantity.
+        if !isEditing {
+            guard selectedFamilyId != nil,
+                  selectedVariantId != nil
+            else { return false }
+        }
         let trimmed = quantityString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
               let parsed = Double(trimmed),
@@ -109,7 +140,7 @@ struct AddProductMaterialSheet: View {
                 }
                 .dismissKeyboardOnTap()
             }
-            .navigationTitle("ADD MATERIAL")
+            .navigationTitle(navTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -133,9 +164,40 @@ struct AddProductMaterialSheet: View {
                     .disabled(!canSave)
                 }
             }
+            .onAppear { hydrateFromEditingMaterial() }
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+
+    /// Pre-fills the form when entering edit mode. Family/variant come
+    /// from the row's existing pin; quantity + notes come from the row's
+    /// current values. Variant-pinned rows hydrate fully; family-pinned
+    /// rows (catalogItemId set, catalogVariantId nil) hydrate just the
+    /// family — the iOS sheet doesn't author family-pinned rows but it
+    /// can edit their quantity/notes via the same form.
+    private func hydrateFromEditingMaterial() {
+        guard let row = editingMaterial else { return }
+        if let variantId = row.catalogVariantId,
+           let variant = allVariants.first(where: { $0.id == variantId }) {
+            selectedFamilyId = variant.catalogItemId
+            selectedVariantId = variant.id
+        } else if let itemId = row.catalogItemId {
+            selectedFamilyId = itemId
+            selectedVariantId = nil
+        }
+        quantityString = formatQuantityForField(row.quantityPerUnit)
+        notes = row.notes ?? ""
+    }
+
+    private func formatQuantityForField(_ value: Double) -> String {
+        if value == 0 { return "" }
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 3
+        return formatter.string(from: NSNumber(value: value)) ?? String(value)
     }
 
     // MARK: - Material section (two-tier picker)
@@ -164,6 +226,10 @@ struct AddProductMaterialSheet: View {
     }
 
     private var familyPicker: some View {
+        // Identity-locked when editing: changing family means re-pinning
+        // the row to a different variant, which the schema CHECK constraint
+        // disallows in-place. Edit mode renders the family as a static
+        // chip-styled label so the user sees what they're editing.
         Menu {
             if companyFamilies.isEmpty {
                 Text("No families")
@@ -188,7 +254,7 @@ struct AddProductMaterialSheet: View {
         } label: {
             menuLabel(text: selectedFamily?.name ?? "Select family")
         }
-        .disabled(companyFamilies.isEmpty)
+        .disabled(companyFamilies.isEmpty || isEditing)
     }
 
     private var variantPicker: some View {
@@ -212,7 +278,7 @@ struct AddProductMaterialSheet: View {
         } label: {
             menuLabel(text: selectedVariantDisplay)
         }
-        .disabled(selectedFamilyId == nil || variantsForSelectedFamily.isEmpty)
+        .disabled(selectedFamilyId == nil || variantsForSelectedFamily.isEmpty || isEditing)
     }
 
     private var selectedVariantDisplay: String {
@@ -327,7 +393,6 @@ struct AddProductMaterialSheet: View {
     @MainActor
     private func save() async {
         guard canSave,
-              let variantId = selectedVariantId,
               let parsedQuantity = Double(quantityString.trimmingCharacters(in: .whitespacesAndNewlines))
         else { return }
 
@@ -336,6 +401,31 @@ struct AddProductMaterialSheet: View {
         errorMessage = nil
 
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let repo = ProductRichnessRepository(companyId: companyId)
+
+        if let editing = editingMaterial {
+            await runUpdate(
+                repo: repo,
+                row: editing,
+                quantity: parsedQuantity,
+                notes: trimmedNotes
+            )
+        } else {
+            await runCreate(
+                repo: repo,
+                quantity: parsedQuantity,
+                notes: trimmedNotes
+            )
+        }
+    }
+
+    @MainActor
+    private func runCreate(
+        repo: ProductRichnessRepository,
+        quantity: Double,
+        notes trimmedNotes: String
+    ) async {
+        guard let variantId = selectedVariantId else { return }
 
         // v1 scope: variant-pinned rows only. Family-pinned recipe rows
         // (catalogItemId + variantSelectorJSON) and scaledByOptionId
@@ -349,13 +439,12 @@ struct AddProductMaterialSheet: View {
             catalogVariantId: variantId,
             catalogItemId: nil,
             variantSelector: nil,
-            quantityPerUnit: parsedQuantity,
+            quantityPerUnit: quantity,
             scaledByOptionId: nil,
             unitId: nil,
             notes: trimmedNotes.isEmpty ? nil : trimmedNotes
         )
 
-        let repo = ProductRichnessRepository(companyId: companyId)
         do {
             let createdDTO = try await repo.createMaterial(dto)
             let model = createdDTO.toModel()
@@ -365,6 +454,48 @@ struct AddProductMaterialSheet: View {
             try? modelContext.save()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             onCreated(createdDTO)
+            dismiss()
+        } catch {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func runUpdate(
+        repo: ProductRichnessRepository,
+        row: ProductMaterial,
+        quantity: Double,
+        notes trimmedNotes: String
+    ) async {
+        // Build a sparse patch that only carries fields the user actually
+        // touched. Identity columns (catalogVariantId / catalogItemId /
+        // variantSelector) are intentionally excluded — see UpdateProductMaterialDTO.
+        var fields = UpdateProductMaterialDTO()
+        if quantity != row.quantityPerUnit {
+            fields.quantityPerUnit = quantity
+        }
+        let normalizedNotes = trimmedNotes.isEmpty ? nil : trimmedNotes
+        if normalizedNotes != row.notes {
+            fields.notes = normalizedNotes
+        }
+
+        do {
+            let updatedDTO = try await repo.updateMaterial(row.id, fields: fields)
+            // Apply the canonical server payload to the local row in-place
+            // — keeps SwiftData consistent without an extra full-table sync.
+            row.quantityPerUnit = updatedDTO.quantityPerUnit
+            row.notes = updatedDTO.notes
+            row.unitId = updatedDTO.unitId
+            row.scaledByOptionId = updatedDTO.scaledByOptionId
+            row.lastSyncedAt = Date()
+            row.needsSync = false
+            try? modelContext.save()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            // The onCreated callback name is a legacy from create-only;
+            // edit callers ignore it. Fire it anyway so any future caller
+            // wanting a "save happened" hook keeps a consistent contract.
+            onCreated(updatedDTO)
             dismiss()
         } catch {
             UINotificationFeedbackGenerator().notificationOccurred(.error)

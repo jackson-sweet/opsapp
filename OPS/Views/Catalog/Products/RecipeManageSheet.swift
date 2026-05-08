@@ -34,6 +34,7 @@ struct RecipeManageSheet: View {
     @Query private var allUnits: [CatalogUnit]
 
     @State private var showingAddSheet: Bool = false
+    @State private var editingMaterial: ProductMaterial? = nil
     @State private var pendingDelete: ProductMaterial? = nil
     @State private var isDeleting: Bool = false
     @State private var errorMessage: String? = nil
@@ -102,6 +103,21 @@ struct RecipeManageSheet: View {
             )
             .environmentObject(dataController)
         }
+        .sheet(item: $editingMaterial) { material in
+            // Reuse the same sheet in edit mode — identity pickers lock,
+            // only quantity + notes are mutable. See AddProductMaterialSheet
+            // for the create/update branching logic.
+            AddProductMaterialSheet(
+                productId: product.id,
+                companyId: companyId,
+                editingMaterial: material,
+                onCreated: { _ in
+                    // The inner sheet has already mutated the SwiftData
+                    // row and dismissed itself; @Query reflects the change.
+                }
+            )
+            .environmentObject(dataController)
+        }
         .alert("Remove material?",
                isPresented: Binding(
                    get: { pendingDelete != nil },
@@ -166,6 +182,7 @@ struct RecipeManageSheet: View {
                 }
             }
             Spacer(minLength: 0)
+            editButton(material)
             deleteButton(material)
         }
         .padding(OPSStyle.Layout.spacing3)
@@ -176,6 +193,26 @@ struct RecipeManageSheet: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
+    }
+
+    /// Pencil button — opens AddProductMaterialSheet in edit mode for
+    /// this row. Family + variant lock; quantity + notes are mutable.
+    /// Sized to OPS minimum touch target (44pt) so the row exposes both
+    /// edit and delete without crowding gloves on either.
+    @ViewBuilder
+    private func editButton(_ material: ProductMaterial) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            editingMaterial = material
+        } label: {
+            Image(systemName: "pencil")
+                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .frame(width: OPSStyle.Layout.touchTargetMin,
+                       height: OPSStyle.Layout.touchTargetMin)
+        }
+        .accessibilityLabel("Edit material")
+        .disabled(isDeleting)
     }
 
     @ViewBuilder

@@ -624,12 +624,15 @@ final class SyncEngine {
         print("[SYNC_ENGINE] pullDelta — checking for server changes")
         statusText = "Checking for updates…"
 
-        // Build timestamps dictionary from stored values
+        // Build timestamps dictionary from stored values. For entity types
+        // that have never synced on this install (no stored timestamp), pass
+        // epoch so the entity is pulled fully on first encounter — otherwise
+        // newly-added entity types (e.g. the catalog_* set landed after the
+        // user's first sync) silently skip pullDelta forever.
+        let firstSyncSentinel = Date(timeIntervalSince1970: 0)
         var sinceTimestamps: [SyncEntityType: Date] = [:]
         for entityType in SyncEntityType.allCases {
-            if let ts = lastSyncTimestamp(for: entityType) {
-                sinceTimestamps[entityType] = ts
-            }
+            sinceTimestamps[entityType] = lastSyncTimestamp(for: entityType) ?? firstSyncSentinel
         }
 
         do {
@@ -644,12 +647,10 @@ final class SyncEngine {
                 )
             }
 
-            // Update all timestamps on success
+            // Update all timestamps on success.
             let now = Date()
             for entityType in SyncEntityType.allCases {
-                if sinceTimestamps[entityType] != nil {
-                    setLastSyncTimestamp(now, for: entityType)
-                }
+                setLastSyncTimestamp(now, for: entityType)
             }
         } catch {
             print("[SYNC_ENGINE] pullDelta error: \(error)")

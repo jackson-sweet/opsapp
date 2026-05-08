@@ -57,6 +57,12 @@ struct QuickAddProductSheet: View {
     @State private var showingNewCategorySheet: Bool = false
     @State private var showingNewUnitSheet: Bool = false
 
+    /// User-pinned preference. When ON, a successful save resets the form
+    /// (keeping category + unit selections) and refocuses the name field
+    /// instead of dismissing — so the user can keep loading new products
+    /// without re-opening the sheet between each one.
+    @AppStorage("catalog.product.saveAndAddAnother") private var saveAndAddAnother: Bool = false
+
     @FocusState private var nameFieldFocused: Bool
 
     private var companyId: String {
@@ -422,9 +428,31 @@ struct QuickAddProductSheet: View {
                 )
             }
             .disabled(!canSave)
-            .padding(OPSStyle.Layout.spacing3)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.top, OPSStyle.Layout.spacing3)
+
+            saveAndAddAnotherToggle
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.top, OPSStyle.Layout.spacing2)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
         }
         .background(OPSStyle.Colors.background)
+    }
+
+    /// Pinned-preference toggle. Kept under the save button so the user
+    /// can flip it before tapping save — and a 60+pt touch target on the
+    /// label means gloves can find it. The setting persists across sheet
+    /// dismissals via @AppStorage.
+    private var saveAndAddAnotherToggle: some View {
+        Toggle(isOn: $saveAndAddAnother) {
+            Text("// SAVE AND ADD ANOTHER")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+        .tint(OPSStyle.Colors.primaryAccent)
+        .onChange(of: saveAndAddAnother) { _, _ in
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
     }
 
     // MARK: - Save
@@ -487,10 +515,39 @@ struct QuickAddProductSheet: View {
             let createdDTO = try await repo.create(dto)
             applyCreatedDTO(createdDTO)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-            dismiss()
+            if saveAndAddAnother {
+                // Keep the sheet open and re-prime for another row. We
+                // intentionally retain category + unit + advanced settings
+                // (kind, line item type, taxable) so a user batch-loading
+                // products of the same shape doesn't have to re-pick them
+                // every save. Only the per-row fields reset.
+                resetForNextEntry()
+            } else {
+                dismiss()
+            }
         } catch {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Clears per-row fields after a successful save when the
+    /// save-and-add-another toggle is on. Category, unit, and advanced
+    /// settings stay so the next product inherits the same shape.
+    @MainActor
+    private func resetForNextEntry() {
+        name = ""
+        priceString = ""
+        productDescription = ""
+        sku = ""
+        unitCostString = ""
+        priceParseError = false
+        unitCostParseError = false
+        errorMessage = nil
+        // Refocus the name field on the next runloop tick so the keyboard
+        // stays up across the save→reset transition without flickering.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            nameFieldFocused = true
         }
     }
 

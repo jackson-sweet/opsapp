@@ -99,11 +99,7 @@ struct QuickAddProductSheet: View {
                             categoryField
                             advancedDisclosure
                             footerNote
-                            if let errorMessage = errorMessage {
-                                Text(errorMessage)
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.errorText)
-                            }
+                            errorRow
                         }
                         .padding(OPSStyle.Layout.spacing3)
                     }
@@ -425,6 +421,42 @@ struct QuickAddProductSheet: View {
         .pickerStyle(.segmented)
         .onChange(of: lineItemType) { _, _ in
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+    }
+
+    // MARK: - Error row with RETRY
+
+    /// Renders the save error inline with a RETRY button that re-fires
+    /// the save Task. Hidden when there's no error. The retry button is
+    /// styled as a hairline secondary action so the error message reads
+    /// as the primary signal — RETRY is the cue, not the headline.
+    @ViewBuilder
+    private var errorRow: some View {
+        if let errorMessage = errorMessage {
+            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
+                Text(errorMessage)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.errorText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    Task { await save() }
+                } label: {
+                    Text("RETRY")
+                        .font(OPSStyle.Typography.buttonLabel)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                                .stroke(OPSStyle.Colors.primaryAccent,
+                                        lineWidth: OPSStyle.Layout.Border.standard)
+                        )
+                }
+                .accessibilityLabel("Retry saving product")
+                .disabled(isSaving)
+            }
         }
     }
 

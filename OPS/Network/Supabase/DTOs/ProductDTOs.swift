@@ -22,6 +22,7 @@ struct ProductDTO: Codable, Identifiable {
     let category: String?
     let categoryId: String?               // FK to catalog_categories; nullable (legacy rows still on `category`)
     let sku: String?
+    let thumbnailUrl: String?             // Supabase Storage public URL into `product-thumbnails`; nullable
     let kind: String?                      // 'service' | 'good'
     let pricingUnit: String?
     let type: String?                      // LineItemType raw — LABOR/MATERIAL/OTHER
@@ -50,6 +51,7 @@ struct ProductDTO: Codable, Identifiable {
         case category
         case categoryId            = "category_id"
         case sku
+        case thumbnailUrl          = "thumbnail_url"
         case kind
         case pricingUnit           = "pricing_unit"
         case type
@@ -87,6 +89,7 @@ struct ProductDTO: Codable, Identifiable {
         prod.category = category
         prod.categoryId = categoryId
         prod.sku = sku
+        prod.thumbnailUrl = thumbnailUrl
         prod.isFavorite = isFavorite
         prod.minimumCharge = minimumCharge
         prod.minimumQuantity = minimumQuantity
@@ -112,6 +115,7 @@ struct CreateProductDTO: Codable {
     let category: String?            // legacy free-text — kept populated for read fallback compatibility
     let categoryId: String?          // FK to catalog_categories; authoritative going forward
     let sku: String?
+    let thumbnailUrl: String?        // Storage URL; usually nil at create time and patched in via UpdateProductDTO once the upload finishes
     let kind: String?
     let type: String?
     let isTaxable: Bool
@@ -129,6 +133,7 @@ struct CreateProductDTO: Codable {
         case category
         case categoryId   = "category_id"
         case sku
+        case thumbnailUrl = "thumbnail_url"
         case kind
         case type
         case isTaxable    = "is_taxable"
@@ -147,6 +152,7 @@ struct UpdateProductDTO: Codable {
     var category: String?             // legacy free-text — kept populated alongside the FK on edits
     var categoryId: String?           // FK to catalog_categories; authoritative going forward
     var sku: String?
+    var thumbnailUrl: String?         // Storage URL; nil = no change, "" can be used to explicitly clear (server-side stores empty string as-is — prefer attaching a new URL or leaving alone)
     var kind: String?
     var type: String?
     var isTaxable: Bool?
@@ -167,6 +173,7 @@ struct UpdateProductDTO: Codable {
         case category
         case categoryId        = "category_id"
         case sku
+        case thumbnailUrl      = "thumbnail_url"
         case kind
         case type
         case isTaxable         = "is_taxable"

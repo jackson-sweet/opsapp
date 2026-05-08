@@ -604,6 +604,7 @@ struct QuickAddProductSheet: View {
             category: categoryName,
             categoryId: selectedCategory?.id,
             sku: trimmedSku.isEmpty ? nil : trimmedSku,
+            thumbnailUrl: nil,
             kind: kind.rawValue,
             type: lineItemType.rawValue,
             isTaxable: taxable,

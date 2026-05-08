@@ -634,6 +634,7 @@ struct ProductDetailView: View {
         product.category = dto.category
         product.categoryId = dto.categoryId
         product.sku = dto.sku
+        product.thumbnailUrl = dto.thumbnailUrl
         product.taxable = dto.isTaxable ?? product.taxable
         product.isActive = dto.isActive
         product.minimumCharge = dto.minimumCharge

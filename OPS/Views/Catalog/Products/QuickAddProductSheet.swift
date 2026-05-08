@@ -469,6 +469,7 @@ struct QuickAddProductSheet: View {
             unitCost: parsedUnitCost,
             unit: selectedUnit?.display,
             pricingUnit: pricingUnitRaw,
+            unitId: selectedUnit?.id,
             category: categoryName,
             sku: trimmedSku.isEmpty ? nil : trimmedSku,
             kind: kind.rawValue,

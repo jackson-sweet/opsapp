@@ -105,6 +105,7 @@ struct CreateProductDTO: Codable {
     let unitCost: Double?
     let unit: String?
     let pricingUnit: String?
+    let unitId: String?              // FK to catalog_units; column already exists server-side
     let category: String?
     let sku: String?
     let kind: String?
@@ -120,6 +121,7 @@ struct CreateProductDTO: Codable {
         case unitCost     = "unit_cost"
         case unit
         case pricingUnit  = "pricing_unit"
+        case unitId       = "unit_id"
         case category
         case sku
         case kind

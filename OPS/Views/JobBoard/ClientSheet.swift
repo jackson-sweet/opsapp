@@ -775,6 +775,7 @@ struct ClientSheet: View {
 
         let dto = CreateOpportunityDTO(
             companyId: companyId,
+            title: "\(trimmedName) — lead",
             contactName: trimmedName,
             contactEmail: client.email,
             contactPhone: client.phoneNumber,

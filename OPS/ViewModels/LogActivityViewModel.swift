@@ -224,7 +224,11 @@ class LogActivityViewModel: ObservableObject {
                 opportunityId: opportunityId,
                 companyId: companyId,
                 type: selectedType.rawValue,
-                content: notesText.isEmpty ? nil : notesText
+                subject: nil,                     // trigger backfills from type
+                bodyText: notesText.isEmpty ? nil : notesText,
+                direction: nil,
+                outcome: nil,
+                durationMinutes: nil
             )
             _ = try await repository.logActivity(activityDTO)
 

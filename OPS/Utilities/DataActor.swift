@@ -218,8 +218,23 @@ actor DataActor {
             onProgress?(entityType, stepProgress)
 
             print("[DataActor] Syncing \(entityType.rawValue)...")
-            try await syncEntityType(entityType, since: nil, repos: repos)
-            print("[DataActor] \(entityType.rawValue) complete")
+            // Per-entity error isolation (Phase 4 Task 40 / 2837ddae): a single
+            // bad entity must not abort the entire sync. Mirrors
+            // InboundProcessor.fullSync — telemetry captures the failure for
+            // offline diagnosis, the loop continues to the next entity type.
+            do {
+                try await syncEntityType(entityType, since: nil, repos: repos)
+                print("[DataActor] \(entityType.rawValue) complete")
+            } catch {
+                print("[DataActor] FAILED \(entityType.rawValue): \(error)")
+                SyncTelemetry.logError(
+                    entityType: entityType.rawValue,
+                    error: error,
+                    isFullSync: true,
+                    companyId: companyId,
+                    userId: SupabaseService.shared.currentUserId
+                )
+            }
         }
 
         // Link FK columns into SwiftData relationship references inside a transaction.
@@ -256,10 +271,25 @@ actor DataActor {
             guard sinceDate != nil else { continue }
 
             print("[DataActor] Delta syncing \(entityType.rawValue) since \(sinceDate!)")
-            try await syncEntityType(entityType, since: sinceDate, repos: repos)
+            // Per-entity error isolation (Phase 4 Task 40 / 2837ddae). Without
+            // this, a single failing entity (e.g. a deckDesign with a broken
+            // outbound op) aborts the whole delta and downstream entries
+            // (estimate, invoice, catalog*) never sync.
+            do {
+                try await syncEntityType(entityType, since: sinceDate, repos: repos)
+            } catch {
+                print("[DataActor] FAILED delta \(entityType.rawValue): \(error)")
+                SyncTelemetry.logError(
+                    entityType: entityType.rawValue,
+                    error: error,
+                    isFullSync: false,
+                    companyId: companyId,
+                    userId: SupabaseService.shared.currentUserId
+                )
+            }
         }
 
-        try linkAllRelationships()
+        linkAllRelationships()
 
         print("[DataActor] ======== DELTA SYNC COMPLETE ========")
     }

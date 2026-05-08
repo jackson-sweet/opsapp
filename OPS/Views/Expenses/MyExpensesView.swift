@@ -131,7 +131,16 @@ struct MyExpensesView: View {
         }
         .task {
             if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
-                viewModel.setup(companyId: companyId)
+                let user = dataController.currentUser
+                let userName = [user?.firstName, user?.lastName]
+                    .compactMap { $0 }
+                    .joined(separator: " ")
+                    .trimmingCharacters(in: .whitespaces)
+                viewModel.setup(
+                    companyId: companyId,
+                    currentUserId: user?.id,
+                    currentUserName: userName.isEmpty ? nil : userName
+                )
                 await viewModel.loadAll()
             }
         }
@@ -204,45 +213,41 @@ struct MyExpensesView: View {
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        let startTime = Date()
-
         Task {
-            let userId = dataController.currentUser?.id ?? ""
-            let firstName = dataController.currentUser?.firstName ?? ""
-            let lastName = dataController.currentUser?.lastName ?? ""
-            let userName = "\(firstName) \(lastName)".trimmingCharacters(in: .whitespaces)
-
-            let calendar = Calendar.current
-            let now = Date()
-            let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
-            let endOfMonth = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: startOfMonth)!
-
-            try? await viewModel.bundleInvoice(
-                userId: userId,
-                userName: userName,
-                periodStart: startOfMonth,
-                periodEnd: endOfMonth,
-                selectedExpenseIds: selectedExpenseIdsForSubmit.isEmpty ? nil : selectedExpenseIdsForSubmit
-            )
-
-            // Ensure minimum 3 seconds of loading display
-            let elapsed = Date().timeIntervalSince(startTime)
-            let remaining = max(0, 3.0 - elapsed)
-            if remaining > 0 {
-                try? await Task.sleep(for: .seconds(remaining))
-            }
-
-            await MainActor.run {
-                withAnimation(OPSStyle.Animation.standard) {
-                    submitLoadingComplete = true
+            // Submit each selected expense individually through the always-bundle
+            // path. Each attaches to the correct period or per-job batch.
+            // ViewModel already has the submitter context from setup().
+            let ids = Array(selectedExpenseIdsForSubmit)
+            var submitFailures = 0
+            for id in ids {
+                let before = viewModel.error
+                await viewModel.submitExpense(id)
+                if viewModel.error != nil && viewModel.error != before {
+                    submitFailures += 1
                 }
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+            await viewModel.loadAll()
 
-                // Dismiss overlay after showing success briefly
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            // Surface bundling errors instead of swallowing.
+            let succeeded = submitFailures == 0
+            await MainActor.run {
+                if succeeded {
                     withAnimation(OPSStyle.Animation.standard) {
-                        showSubmitLoadingOverlay = false
-                        isSubmitting = false
+                        submitLoadingComplete = true
+                    }
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        withAnimation(OPSStyle.Animation.standard) {
+                            showSubmitLoadingOverlay = false
+                            isSubmitting = false
+                        }
+                    }
+                } else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    showSubmitLoadingOverlay = false
+                    isSubmitting = false
+                    if viewModel.error == nil {
+                        viewModel.error = "\(submitFailures) of \(ids.count) expense\(ids.count == 1 ? "" : "s") could not be submitted. Pull to refresh and try again."
                     }
                 }
             }

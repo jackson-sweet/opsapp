@@ -90,6 +90,9 @@ struct CreateExpenseDTO: Codable {
     let description: String?
     let amount: Double
     let taxAmount: Double?
+    /// ISO 4217 code (USD/CAD/etc.). Defaulted from the form's locale-aware
+    /// currency picker. Nil falls back to the column default ('USD').
+    let currency: String?
     let expenseDate: String?
     let paymentMethod: String?
     let receiptImageUrl: String?
@@ -106,6 +109,7 @@ struct CreateExpenseDTO: Codable {
         case description
         case amount
         case taxAmount            = "tax_amount"
+        case currency
         case expenseDate          = "expense_date"
         case paymentMethod        = "payment_method"
         case receiptImageUrl      = "receipt_image_url"
@@ -121,6 +125,7 @@ struct UpdateExpenseDTO: Codable {
     var description: String?
     var amount: Double?
     var taxAmount: Double?
+    var currency: String?
     var expenseDate: String?
     var paymentMethod: String?
     var receiptImageUrl: String?
@@ -134,6 +139,7 @@ struct UpdateExpenseDTO: Codable {
         case description
         case amount
         case taxAmount            = "tax_amount"
+        case currency
         case expenseDate          = "expense_date"
         case paymentMethod        = "payment_method"
         case receiptImageUrl      = "receipt_image_url"
@@ -231,6 +237,9 @@ struct ExpenseBatchDTO: Codable, Identifiable {
     let amendmentNumber: Int?
     let reviewNotes: String?
     let createdAt: String
+    /// Project this batch is scoped to. Non-nil only for companies with
+    /// review_frequency = 'per_job'; nil for period-mode batches.
+    let scopeProjectId: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -248,6 +257,7 @@ struct ExpenseBatchDTO: Codable, Identifiable {
         case amendmentNumber = "amendment_number"
         case reviewNotes     = "review_notes"
         case createdAt       = "created_at"
+        case scopeProjectId  = "scope_project_id"
     }
 }
 

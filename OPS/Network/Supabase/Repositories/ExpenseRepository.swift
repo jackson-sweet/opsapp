@@ -301,6 +301,69 @@ class ExpenseRepository {
             .execute()
     }
 
+    // MARK: - Always-Bundle Helpers
+
+    /// Returns the user's open expense_batch for the given period scope, or
+    /// creates one atomically. For per_job review_frequency pass the
+    /// expense's project as `scopeProjectId` so multiple expenses for the
+    /// same project accumulate into the same batch. Period modes pass nil.
+    ///
+    /// Wraps the public.get_or_create_open_batch RPC.
+    func getOrCreateOpenBatch(
+        submittedBy: String,
+        periodStart: String,
+        periodEnd: String,
+        scopeProjectId: String? = nil
+    ) async throws -> ExpenseBatchDTO {
+        try await client
+            .rpc("get_or_create_open_batch", params: GetOrCreateOpenBatchParams(
+                p_company_id: companyId,
+                p_submitted_by: submittedBy,
+                p_period_start: periodStart,
+                p_period_end: periodEnd,
+                p_scope_project_id: scopeProjectId
+            ))
+            .single()
+            .execute()
+            .value
+    }
+
+    /// Recompute and persist a batch's total_amount from its non-deleted
+    /// expenses. Returns the new total. Use after attaching expenses so
+    /// auto-approve threshold checks see the right value.
+    @discardableResult
+    func recalculateBatchTotal(_ batchId: String) async throws -> Double {
+        let total: Double = try await client
+            .rpc("recalculate_expense_batch_total", params: ["p_batch_id": batchId])
+            .execute()
+            .value
+        return total
+    }
+
+    private struct GetOrCreateOpenBatchParams: Encodable {
+        let p_company_id: String
+        let p_submitted_by: String
+        let p_period_start: String
+        let p_period_end: String
+        let p_scope_project_id: String?
+    }
+
+    /// Fetch all "orphan" expenses for the company — submitted but never
+    /// attached to a batch. These exist only because of pre-fix client
+    /// versions or interrupted submissions; recovery re-bundles them.
+    func fetchOrphanExpenses() async throws -> [ExpenseDTO] {
+        try await client
+            .from("expenses")
+            .select("*, expense_project_allocations(*), expense_categories(*)")
+            .eq("company_id", value: companyId)
+            .eq("status", value: ExpenseStatus.submitted.rawValue)
+            .is("batch_id", value: nil)
+            .is("deleted_at", value: nil)
+            .order("expense_date", ascending: true)
+            .execute()
+            .value
+    }
+
     func fetchBatchesByUser(_ userId: String) async throws -> [ExpenseBatchDTO] {
         try await client
             .from("expense_batches")

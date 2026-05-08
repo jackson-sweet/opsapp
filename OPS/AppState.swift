@@ -492,22 +492,21 @@ class AppState: ObservableObject {
         let formattedTotal = String(format: "$%.2f", totalOverdue)
 
         Task {
-            // Find admin/office users to notify
-            struct UserIdRow: Codable { let id: String }
-            guard let admins = try? await SupabaseService.shared.client
-                .from("users")
-                .select("id")
-                .eq("company_id", value: companyId)
-                .in("role", values: ["admin", "owner", "office"])
-                .execute()
-                .value as [UserIdRow] else { return }
+            // Notify users with invoices.record_payment — they can act on the
+            // overdue balance, not just see it. Permission-gated, never role.
+            let payerIds = (try? await RecipientLookupService.usersWithPermission(
+                companyId: companyId,
+                permission: "invoices.record_payment"
+            )) ?? []
+            let currentId = UserDefaults.standard.string(forKey: "currentUserId")
+            let recipients = payerIds.filter { $0 != currentId }
+            guard !recipients.isEmpty else { return }
 
             let notifRepo = NotificationRepository()
-            let currentId = UserDefaults.standard.string(forKey: "currentUserId")
 
-            for admin in admins {
+            for recipient in recipients {
                 let dto = NotificationRepository.CreateNotificationDTO(
-                    userId: admin.id,
+                    userId: recipient,
                     companyId: companyId,
                     type: "invoice_overdue",
                     title: "Overdue Invoices",
@@ -521,17 +520,13 @@ class AppState: ObservableObject {
                 try? await notifRepo.createNotification(dto)
             }
 
-            // Send push
-            let adminIds = admins.map(\.id).filter { $0 != currentId }
-            if !adminIds.isEmpty {
-                try? await OneSignalService.shared.sendToUsers(
-                    userIds: adminIds,
-                    title: "Overdue Invoices",
-                    body: "\(overdueCount) invoice\(overdueCount == 1 ? "" : "s") overdue totalling \(formattedTotal)",
-                    data: ["type": "invoice_overdue", "screen": "expenses"]
-                )
-            }
-            print("[OVERDUE_CHECK] 📬 Invoice overdue notification sent to \(admins.count) admins (\(overdueCount) invoices, \(formattedTotal))")
+            try? await OneSignalService.shared.sendToUsers(
+                userIds: recipients,
+                title: "Overdue Invoices",
+                body: "\(overdueCount) invoice\(overdueCount == 1 ? "" : "s") overdue totalling \(formattedTotal)",
+                data: ["type": "invoice_overdue", "screen": "expenses"]
+            )
+            print("[OVERDUE_CHECK] 📬 Invoice overdue notification sent to \(recipients.count) recipients (\(overdueCount) invoices, \(formattedTotal))")
         }
     }
 }

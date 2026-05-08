@@ -154,9 +154,18 @@ struct MoneyTabView: View {
     private func setupViewModels() {
         guard let companyId = dataController.currentUser?.companyId,
               !companyId.isEmpty else { return }
+        let user = dataController.currentUser
+        let userName = [user?.firstName, user?.lastName]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
         dashboardVM.setup(companyId: companyId, modelContext: modelContext)
         estimateVM.setup(companyId: companyId, modelContext: modelContext)
         invoiceVM.setup(companyId: companyId, modelContext: modelContext)
-        expenseVM.setup(companyId: companyId)
+        expenseVM.setup(
+            companyId: companyId,
+            currentUserId: user?.id,
+            currentUserName: userName.isEmpty ? nil : userName
+        )
     }
 }

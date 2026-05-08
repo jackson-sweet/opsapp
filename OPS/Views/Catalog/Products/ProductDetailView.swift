@@ -27,15 +27,24 @@ struct ProductDetailView: View {
     @Query private var allOptionValues: [ProductOptionValue]
     @Query private var allModifiers: [ProductPricingModifier]
     @Query private var allMaterials: [ProductMaterial]
+    @Query private var allCategories: [CatalogCategory]
+    @Query private var allUnits: [CatalogUnit]
 
     // Editable mirror of product base fields. Reset when `product.id`
     // changes so navigating between detail screens picks up the right
     // baseline without leaking edits across products.
     @State private var name: String
     @State private var basePriceString: String
-    @State private var pricingUnit: ProductPricingUnit
     @State private var taxable: Bool
     @State private var isActive: Bool
+
+    /// Selected CatalogUnit id. nil = no unit (treated as flat-rate).
+    /// Hydrated from `product.unitId` on init.
+    @State private var selectedUnitId: String?
+
+    /// Selected CatalogCategory id. nil = none. Hydrated from
+    /// `product.categoryId` on init.
+    @State private var selectedCategoryId: String?
 
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
@@ -46,17 +55,49 @@ struct ProductDetailView: View {
     /// who can manage products.
     @State private var showingRecipeManageSheet: Bool = false
 
+    /// Inline create sheets — opened from the "+ NEW …" menu items so the
+    /// user never has to leave the detail screen, navigate elsewhere, then
+    /// return. The new row's id is returned via callback and selected here.
+    @State private var showingNewCategorySheet: Bool = false
+    @State private var showingNewUnitSheet: Bool = false
+
     init(product: Product) {
         self.product = product
         _name = State(initialValue: product.name)
         _basePriceString = State(initialValue: Self.priceFieldString(product.basePrice))
-        _pricingUnit = State(initialValue: product.pricingUnit)
         _taxable = State(initialValue: product.taxable)
         _isActive = State(initialValue: product.isActive)
+        _selectedUnitId = State(initialValue: product.unitId)
+        _selectedCategoryId = State(initialValue: product.categoryId)
     }
 
     private var companyId: String {
         dataController.currentUser?.companyId ?? ""
+    }
+
+    private var companyCategories: [CatalogCategory] {
+        allCategories
+            .filter { $0.companyId == companyId && $0.deletedAt == nil }
+            .sorted { ($0.sortOrder, $0.name) < ($1.sortOrder, $1.name) }
+    }
+
+    private var companyUnits: [CatalogUnit] {
+        allUnits
+            .filter { $0.companyId == companyId && $0.deletedAt == nil }
+            .sorted { ($0.sortOrder, $0.display) < ($1.sortOrder, $1.display) }
+    }
+
+    /// Current CatalogUnit selection resolved against the local @Query.
+    /// Used both to render the picker label and to derive the legacy
+    /// `pricingUnit` enum + `unit` string at save time.
+    private var selectedCatalogUnit: CatalogUnit? {
+        guard let id = selectedUnitId else { return nil }
+        return companyUnits.first(where: { $0.id == id })
+    }
+
+    private var selectedCatalogCategory: CatalogCategory? {
+        guard let id = selectedCategoryId else { return nil }
+        return companyCategories.first(where: { $0.id == id })
     }
 
     private var productOptions: [ProductOption] {
@@ -82,7 +123,8 @@ struct ProductDetailView: View {
         if name.trimmingCharacters(in: .whitespacesAndNewlines) != product.name { return true }
         let trimmedPrice = basePriceString.trimmingCharacters(in: .whitespacesAndNewlines)
         if let parsed = Double(trimmedPrice), parsed != product.basePrice { return true }
-        if pricingUnit != product.pricingUnit { return true }
+        if selectedUnitId != product.unitId { return true }
+        if selectedCategoryId != product.categoryId { return true }
         if taxable != product.taxable { return true }
         if isActive != product.isActive { return true }
         return false
@@ -104,6 +146,7 @@ struct ProductDetailView: View {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                     headerSection
                     coreCard
+                    categoryCard
                     if !productOptions.isEmpty {
                         optionsSection
                     }
@@ -149,6 +192,18 @@ struct ProductDetailView: View {
         .sheet(isPresented: $showingRecipeManageSheet) {
             RecipeManageSheet(product: product)
                 .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingNewCategorySheet) {
+            InlineCreateCategorySheet(companyId: companyId) { newId in
+                selectedCategoryId = newId
+            }
+            .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingNewUnitSheet) {
+            InlineCreateUnitSheet(companyId: companyId) { newId in
+                selectedUnitId = newId
+            }
+            .environmentObject(dataController)
         }
     }
 
@@ -219,8 +274,11 @@ struct ProductDetailView: View {
                 }
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     CatalogFieldLabel("Unit")
-                    pricingUnitPicker
-                        .disabled(!canManageProducts)
+                    if canManageProducts {
+                        unitPicker
+                    } else {
+                        readOnlyMenuLabel(text: selectedUnitDisplay)
+                    }
                 }
             }
 
@@ -256,36 +314,155 @@ struct ProductDetailView: View {
         )
     }
 
-    private var pricingUnitPicker: some View {
-        Picker("Unit", selection: $pricingUnit) {
-            ForEach(ProductPricingUnit.allCases, id: \.self) { unit in
-                Text(unitDisplay(unit)).tag(unit)
+    // MARK: - Category card (CatalogCategory-backed)
+
+    private var categoryCard: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            CatalogSectionHeader("CATEGORY")
+            if canManageProducts {
+                categoryPicker
+            } else {
+                readOnlyMenuLabel(text: selectedCategoryDisplay)
             }
         }
-        .pickerStyle(.menu)
-        .tint(OPSStyle.Colors.primaryText)
+        .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
+    // MARK: - Unit picker (CatalogUnit-backed, with inline "+ NEW UNIT")
+
+    private var unitPicker: some View {
+        Menu {
+            Button {
+                selectedUnitId = nil
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Label("Flat rate", systemImage: selectedUnitId == nil ? "checkmark" : "")
+            }
+            ForEach(companyUnits) { unit in
+                Button {
+                    selectedUnitId = unit.id
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    if selectedUnitId == unit.id {
+                        Label(unit.display, systemImage: "checkmark")
+                    } else {
+                        Text(unit.display)
+                    }
+                }
+            }
+            Divider()
+            Button {
+                showingNewUnitSheet = true
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Label("New unit…", systemImage: "plus")
+            }
+        } label: {
+            menuLabel(text: selectedUnitDisplay)
+        }
+    }
+
+    private var selectedUnitDisplay: String {
+        // Prefer the resolved CatalogUnit; fall back to the legacy free-text
+        // unit string so detail screens for products synced before the FK
+        // existed still render something sensible.
+        if let unit = selectedCatalogUnit { return unit.display }
+        if let legacy = product.unit, !legacy.isEmpty { return legacy }
+        return "Flat rate"
+    }
+
+    // MARK: - Category picker (CatalogCategory-backed)
+
+    private var categoryPicker: some View {
+        Menu {
+            Button {
+                selectedCategoryId = nil
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Label("None", systemImage: selectedCategoryId == nil ? "checkmark" : "")
+            }
+            ForEach(companyCategories) { category in
+                Button {
+                    selectedCategoryId = category.id
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    if selectedCategoryId == category.id {
+                        Label(category.name, systemImage: "checkmark")
+                    } else {
+                        Text(category.name)
+                    }
+                }
+            }
+            Divider()
+            Button {
+                showingNewCategorySheet = true
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Label("New category…", systemImage: "plus")
+            }
+        } label: {
+            menuLabel(text: selectedCategoryDisplay)
+        }
+    }
+
+    private var selectedCategoryDisplay: String {
+        if let category = selectedCatalogCategory { return category.name }
+        if let legacy = product.category, !legacy.isEmpty { return legacy }
+        return "None"
+    }
+
+    /// Shared visual for both the category and unit Menu labels. Matches
+    /// the look of `CatalogTextFieldStyle` so the form reads as one unit
+    /// with the text fields above it.
+    @ViewBuilder
+    private func menuLabel(text: String) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text(text)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+            Spacer()
+            Image(systemName: "chevron.down")
+                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
         .padding(OPSStyle.Layout.spacing2)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(OPSStyle.Colors.cardBackgroundDark)
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
-        .onChange(of: pricingUnit) { _, _ in
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        }
     }
 
-    private func unitDisplay(_ unit: ProductPricingUnit) -> String {
-        switch unit {
-        case .flatRate:    return "Flat"
-        case .each:        return "Each"
-        case .linearFoot:  return "Per ft"
-        case .sqft:        return "Per sqft"
-        case .hour:        return "Per hour"
-        case .day:         return "Per day"
+    /// Read-only sibling of `menuLabel(text:)` — same visual chrome but no
+    /// chevron, no tap. Used when the operator lacks `catalog.products.manage`
+    /// so they can still see the current selection without an idle picker.
+    @ViewBuilder
+    private func readOnlyMenuLabel(text: String) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text(text)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .lineLimit(1)
+            Spacer()
         }
+        .padding(OPSStyle.Layout.spacing2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
 
     // MARK: - Sections
@@ -403,9 +580,27 @@ struct ProductDetailView: View {
         var fields = UpdateProductDTO()
         if trimmedName != product.name { fields.name = trimmedName }
         if parsedPrice != product.basePrice { fields.basePrice = parsedPrice }
-        if pricingUnit != product.pricingUnit { fields.pricingUnit = pricingUnit.rawValue }
         if taxable != product.taxable { fields.isTaxable = taxable }
         if isActive != product.isActive { fields.isActive = isActive }
+
+        // Unit changed: write all three columns in lockstep (legacy `unit`
+        // free-text, FK `unit_id`, and the legacy `pricing_unit` enum). The
+        // `pricingUnit(for:)` helper lives in CatalogManageHelpers.swift so
+        // create + edit derive the enum the same way.
+        if selectedUnitId != product.unitId {
+            let unit = selectedCatalogUnit
+            fields.unitId = unit?.id
+            fields.unit = unit?.display
+            fields.pricingUnit = pricingUnit(for: unit).rawValue
+        }
+
+        // Category changed: write both legacy `category` (text) and FK
+        // `category_id` so reads from either path see the right value.
+        if selectedCategoryId != product.categoryId {
+            let category = selectedCatalogCategory
+            fields.categoryId = category?.id
+            fields.category = category?.name
+        }
 
         let repo = ProductRepository(companyId: companyId)
         do {
@@ -435,7 +630,9 @@ struct ProductDetailView: View {
         product.productDescription = dto.description
         product.unitCost = dto.unitCost
         product.unit = dto.unit
+        product.unitId = dto.unitId
         product.category = dto.category
+        product.categoryId = dto.categoryId
         product.sku = dto.sku
         product.taxable = dto.isTaxable ?? product.taxable
         product.isActive = dto.isActive

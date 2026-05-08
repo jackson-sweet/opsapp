@@ -143,7 +143,9 @@ struct UpdateProductDTO: Codable {
     var unitCost: Double?
     var unit: String?
     var pricingUnit: String?
-    var category: String?
+    var unitId: String?               // FK to catalog_units; mirrors CreateProductDTO so edits keep the FK current
+    var category: String?             // legacy free-text — kept populated alongside the FK on edits
+    var categoryId: String?           // FK to catalog_categories; authoritative going forward
     var sku: String?
     var kind: String?
     var type: String?
@@ -161,7 +163,9 @@ struct UpdateProductDTO: Codable {
         case unitCost          = "unit_cost"
         case unit
         case pricingUnit       = "pricing_unit"
+        case unitId            = "unit_id"
         case category
+        case categoryId        = "category_id"
         case sku
         case kind
         case type

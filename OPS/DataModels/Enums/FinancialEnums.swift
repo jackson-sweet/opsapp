@@ -241,3 +241,57 @@ enum AccountingSyncStatus: String, Codable {
     case synced  = "synced"
     case error   = "error"
 }
+
+// MARK: - Opportunity Source
+
+/// Where a pipeline opportunity came from. Mirrors bible §9.85 source enum.
+enum OpportunitySource: String, Codable, CaseIterable, Identifiable {
+    case referral     = "referral"
+    case website      = "website"
+    case email        = "email"
+    case phone        = "phone"
+    case walkIn       = "walk_in"
+    case socialMedia  = "social_media"
+    case repeatClient = "repeat_client"
+    case other        = "other"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .referral:     return "REFERRAL"
+        case .website:      return "WEBSITE"
+        case .email:        return "EMAIL"
+        case .phone:        return "PHONE"
+        case .walkIn:       return "WALK-IN"
+        case .socialMedia:  return "SOCIAL MEDIA"
+        case .repeatClient: return "REPEAT CLIENT"
+        case .other:        return "OTHER"
+        }
+    }
+}
+
+// MARK: - Loss Reason
+
+/// Why a pipeline opportunity was marked Lost. Used by LostReasonSheet.
+enum LossReason: String, Codable, CaseIterable, Identifiable {
+    case price       = "price"
+    case timing      = "timing"
+    case competition = "competition"
+    case scope       = "scope"
+    case noResponse  = "no_response"
+    case other       = "other"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .price:       return "PRICE"
+        case .timing:      return "TIMING"
+        case .competition: return "COMPETITION"
+        case .scope:       return "SCOPE"
+        case .noResponse:  return "NO RESPONSE"
+        case .other:       return "OTHER"
+        }
+    }
+}

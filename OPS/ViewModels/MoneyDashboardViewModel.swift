@@ -87,6 +87,12 @@ class MoneyDashboardViewModel: ObservableObject {
     // Top unpaid invoices
     @Published var topUnpaidInvoices: [(clientName: String, amount: Double, daysOverdue: Int)] = []
 
+    // Pipeline stats (only populated when pipeline.view is granted)
+    @Published var activeLeadCount: Int = 0
+    @Published var weightedForecastValue: Double = 0
+    @Published var staleLeadsCount: Int = 0
+    @Published var nextFollowUpDue: Date? = nil
+
     // Breakdown arrays
     @Published var paymentBreakdown: [BreakdownItem] = []
     @Published var expenseBreakdown: [BreakdownItem] = []
@@ -97,6 +103,7 @@ class MoneyDashboardViewModel: ObservableObject {
     private var estimateRepository: EstimateRepository?
     private var invoiceRepository: InvoiceRepository?
     private var expenseRepository: ExpenseRepository?
+    private var opportunityRepository: OpportunityRepository?
     private var modelContext: ModelContext?
     private var companyId: String?
 
@@ -104,6 +111,7 @@ class MoneyDashboardViewModel: ObservableObject {
     private var allEstimates: [EstimateDTO] = []
     private var allInvoices: [InvoiceDTO] = []
     private var allExpenses: [ExpenseDTO] = []
+    private var allOpportunities: [OpportunityDTO] = []
 
     // MARK: - Setup
 
@@ -114,11 +122,13 @@ class MoneyDashboardViewModel: ObservableObject {
         estimateRepository = EstimateRepository(companyId: companyId)
         invoiceRepository = InvoiceRepository(companyId: companyId)
         expenseRepository = ExpenseRepository(companyId: companyId)
+        opportunityRepository = OpportunityRepository(companyId: companyId)
     }
 
     // MARK: - Load & Recalculate
 
-    /// Fetch all financial data from Supabase, then compute metrics.
+    /// Fetch all financial + pipeline data from Supabase, then compute metrics.
+    /// Pipeline opportunities are loaded only when `pipeline.view` is granted.
     func loadData() async {
         guard estimateRepository != nil,
               invoiceRepository != nil,
@@ -127,15 +137,19 @@ class MoneyDashboardViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
+        let canSeePipeline = PermissionStore.shared.can("pipeline.view")
+
         async let estimatesTask = fetchEstimates()
         async let invoicesTask = fetchInvoices()
         async let expensesTask = fetchExpenses()
+        async let oppsTask: [OpportunityDTO] = canSeePipeline ? fetchOpportunities() : []
 
-        let (estimates, invoices, expenses) = await (estimatesTask, invoicesTask, expensesTask)
+        let (estimates, invoices, expenses, opps) = await (estimatesTask, invoicesTask, expensesTask, oppsTask)
 
         allEstimates = estimates
         allInvoices = invoices
         allExpenses = expenses
+        allOpportunities = opps
 
         recalculate()
     }
@@ -225,6 +239,30 @@ class MoneyDashboardViewModel: ObservableObject {
         buildPaymentBreakdown(paymentsInPeriod)
         buildExpenseBreakdown(expensesInPeriod)
         buildOutstandingInvoiceBreakdown()
+
+        // ── Pipeline metrics (only meaningful when opps are loaded under pipeline.view) ──
+        let activeOpps = allOpportunities.filter { dto in
+            let stage = PipelineStage(rawValue: dto.stage)
+            let isTerminal = stage?.isTerminal ?? false
+            return !isTerminal && dto.deletedAt == nil && dto.archivedAt == nil
+        }
+        activeLeadCount = activeOpps.count
+        weightedForecastValue = activeOpps.reduce(0) { sum, dto in
+            let stage = PipelineStage(rawValue: dto.stage) ?? .newLead
+            let pct = dto.winProbability ?? stage.winProbability
+            let est = dto.estimatedValue ?? 0
+            return sum + (est * Double(pct) / 100.0)
+        }
+        staleLeadsCount = activeOpps.filter { dto in
+            guard let stage = PipelineStage(rawValue: dto.stage),
+                  let entered = SupabaseDate.parse(dto.stageEnteredAt) else { return false }
+            let days = Calendar.current.dateComponents([.day], from: entered, to: now).day ?? 0
+            return days > stage.staleThresholdDays
+        }.count
+        nextFollowUpDue = activeOpps
+            .compactMap { $0.nextFollowUpAt.flatMap { SupabaseDate.parse($0) } }
+            .filter { $0 >= now }
+            .min()
     }
 
     // MARK: - Private Helpers
@@ -255,6 +293,16 @@ class MoneyDashboardViewModel: ObservableObject {
             return try await repo.fetchAll()
         } catch {
             print("[MoneyDashboard] Failed to fetch expenses: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    private func fetchOpportunities() async -> [OpportunityDTO] {
+        guard let repo = opportunityRepository else { return [] }
+        do {
+            return try await repo.fetchAll()
+        } catch {
+            print("[MoneyDashboard] Failed to fetch opportunities: \(error.localizedDescription)")
             return []
         }
     }

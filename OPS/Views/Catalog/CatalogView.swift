@@ -28,7 +28,6 @@ struct CatalogView: View {
     private var canViewProducts: Bool { permissionStore.can("catalog.products.view") }
     private var canViewOrders:   Bool { permissionStore.can("catalog.orders.view") }
     private var canManage:       Bool { permissionStore.can("catalog.manage") }
-    private var canImport:       Bool { permissionStore.can("catalog.import") }
 
     /// Available segments for the current user. Stock is always present
     /// when this view is reachable (catalog.view gates the tab itself);
@@ -47,7 +46,6 @@ struct CatalogView: View {
     @State private var showUnitsManage: Bool = false
     @State private var showThresholdsManage: Bool = false
     @State private var showDefaultsManage: Bool = false
-    @State private var showImport: Bool = false
 
     private var selectedSegment: CatalogSegment {
         let raw = CatalogSegment(rawValue: selectedSegmentRaw) ?? .stock
@@ -165,7 +163,7 @@ struct CatalogView: View {
         let showStockSection: Bool = true  // Snapshots are always visible (read-only).
         let showStockManageRows = canManage
         let showOrdersSection = canViewOrders
-        let showSetupSection = canManage || canImport
+        let showSetupSection = canManage
 
         if showStockSection || showOrdersSection || showSetupSection {
             Menu {
@@ -192,9 +190,7 @@ struct CatalogView: View {
                         if canManage {
                             Button { showDefaultsManage = true } label: { Label("Defaults", systemImage: "gearshape") }
                         }
-                        if canImport {
-                            Button { showImport = true } label: { Label("Import…", systemImage: "square.and.arrow.down") }
-                        }
+                        // Import lives in the FAB while still a stub — re-add here when real.
                     }
                 }
             } label: {

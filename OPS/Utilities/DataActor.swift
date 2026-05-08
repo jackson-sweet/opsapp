@@ -3218,6 +3218,12 @@ actor DataActor {
         case .wizardState:
             try await handleWizardState(entityId: entityId, operationType: operationType, payload: payload)
         default:
+            // TODO(catalog-outbound): catalog/product entity types fall through
+            // to genericTablePush. The catalog sheets write directly via their
+            // repositories (immediate, online-only path), so the queue is
+            // exercised only for offline-buffered ops where generic upsert is
+            // sufficient. Promote to dedicated handlers when we need
+            // field-level merge protection or column sanitization for catalog.
             try await genericTablePush(
                 entityType: entityType,
                 entityId: entityId,

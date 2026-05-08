@@ -340,7 +340,12 @@ final class OutboundProcessor {
         case .wizardState:
             try await handleWizardState(entityId: entityId, operationType: operationType, payload: payload)
         default:
-            // For entity types without a dedicated handler, use generic table push
+            // TODO(catalog-outbound): catalog/product entity types fall through
+            // to genericTablePush. The catalog sheets currently write directly
+            // via their repositories (immediate, online-only path), so the
+            // queue is exercised only for offline-buffered ops where generic
+            // upsert is sufficient. Promote to dedicated handlers when we add
+            // field-level merge protection or column sanitization for catalog.
             try await genericTablePush(
                 entityType: entityType,
                 entityId: entityId,

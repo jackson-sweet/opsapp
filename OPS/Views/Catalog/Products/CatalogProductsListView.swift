@@ -22,6 +22,7 @@ struct CatalogProductsListView: View {
     @Query private var allProducts: [Product]
     @Query private var allMaterials: [ProductMaterial]
     @Query private var allOptions: [ProductOption]
+    @Query private var allBundleItems: [ProductBundleItem]
 
     @State private var selectedFilter: ProductFilter = .all
     @State private var searchText: String = ""
@@ -30,16 +31,16 @@ struct CatalogProductsListView: View {
         case all
         case service
         case good
-        case withRecipe
+        case bundle
 
         var id: String { rawValue }
 
         var label: String {
             switch self {
-            case .all:        return "ALL"
-            case .service:    return "SERVICE"
-            case .good:       return "GOOD"
-            case .withRecipe: return "WITH RECIPE"
+            case .all:     return "ALL"
+            case .service: return "SERVICES"
+            case .good:    return "GOODS"
+            case .bundle:  return "BUNDLES"
             }
         }
     }
@@ -62,12 +63,11 @@ struct CatalogProductsListView: View {
         case .all:
             break
         case .service:
-            result = result.filter { $0.kind == .service }
+            result = result.filter { $0.category3Way == .service }
         case .good:
-            result = result.filter { $0.kind == .good }
-        case .withRecipe:
-            let withRecipe = productIdsWithRecipe
-            result = result.filter { withRecipe.contains($0.id) }
+            result = result.filter { $0.category3Way == .material }
+        case .bundle:
+            result = result.filter { $0.kind == .package }
         }
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
@@ -78,6 +78,16 @@ struct CatalogProductsListView: View {
             }
         }
         return result.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// Bundle child counts grouped by bundle product id. Used by `ProductRow`
+    /// to render an `N CHILDREN` chip for bundles without re-querying.
+    private var bundleChildCountById: [String: Int] {
+        var counts: [String: Int] = [:]
+        for item in allBundleItems where item.deletedAt == nil {
+            counts[item.bundleProductId, default: 0] += 1
+        }
+        return counts
     }
 
     private func optionCount(for productId: String) -> Int {
@@ -191,7 +201,8 @@ struct CatalogProductsListView: View {
                         ProductRow(
                             product: product,
                             optionCount: optionCount(for: product.id),
-                            recipeCount: recipeCount(for: product.id)
+                            recipeCount: recipeCount(for: product.id),
+                            childCount: bundleChildCountById[product.id] ?? 0
                         )
                     }
                     .buttonStyle(.plain)
@@ -209,7 +220,15 @@ struct CatalogProductsListView: View {
     }
 
     private var productCount: some View {
-        Text("[ \(filteredProducts.count) PRODUCTS ]")
+        let label: String = {
+            switch selectedFilter {
+            case .all:     return "SELLABLES"
+            case .service: return "SERVICES"
+            case .good:    return "GOODS"
+            case .bundle:  return "BUNDLES"
+            }
+        }()
+        return Text("[ \(filteredProducts.count) \(label) ]")
             .font(OPSStyle.Typography.metadata)
             .foregroundColor(OPSStyle.Colors.tertiaryText)
             .padding(.top, OPSStyle.Layout.spacing3)
@@ -236,7 +255,12 @@ struct CatalogProductsListView: View {
         if companyProducts.isEmpty {
             return "// NO PRODUCTS YET — TAP + TO ADD"
         }
-        return "// NO PRODUCTS MATCH FILTER"
+        switch selectedFilter {
+        case .all:     return "// NO PRODUCTS MATCH"
+        case .service: return "// NO SERVICES YET"
+        case .good:    return "// NO GOODS YET"
+        case .bundle:  return "// NO BUNDLES YET — TAP + TO ADD"
+        }
     }
 }
 
@@ -246,14 +270,14 @@ private struct ProductRow: View {
     let product: Product
     let optionCount: Int
     let recipeCount: Int
+    let childCount: Int
 
     var body: some View {
         HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
-            // Leading thumbnail when the product has one. Renders at the
-            // same 40x40pt slot every row uses regardless of image presence
-            // so the row layout stays in lockstep across the list — even
-            // products without a thumbnail get a hairline placeholder so
-            // the name column doesn't reflow when scrolling between rows.
+            // Leading visual — kind-aware. Materials get the AsyncImage
+            // path (with a fallback icon); services and bundles always
+            // render the kind icon so the row reads the kind at a glance
+            // even when scrolling fast.
             thumbnailLeading
 
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
@@ -270,11 +294,15 @@ private struct ProductRow: View {
 
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     kindChip
-                    if optionCount > 0 {
-                        metadataChip(label: "\(optionCount) OPT")
-                    }
-                    if recipeCount > 0 {
-                        metadataChip(label: "\(recipeCount) RECIPE")
+                    if product.kind == .package {
+                        metadataChip(label: "\(childCount) CHILD\(childCount == 1 ? "" : "REN")")
+                    } else {
+                        if optionCount > 0 {
+                            metadataChip(label: "\(optionCount) OPT")
+                        }
+                        if recipeCount > 0 {
+                            metadataChip(label: "\(recipeCount) RECIPE")
+                        }
                     }
                     if let sku = product.sku, !sku.isEmpty {
                         Text(sku)
@@ -301,46 +329,58 @@ private struct ProductRow: View {
         )
     }
 
-    /// Leading 40x40 thumbnail slot for the row. AsyncImage handles
-    /// fetch + decode + memory cache via URLCache; we keep an empty
-    /// placeholder of the same size for rows without an image so the row
-    /// alignment doesn't shift between rows. Border + radius mirror the
-    /// rest of the catalog's card chrome.
+    /// Leading 40x40 slot. Materials with a thumbnail render the image;
+    /// everything else (services, bundles, fees, and materials without
+    /// a thumbnail) renders the category icon so the kind reads at a
+    /// glance. Border + radius stay consistent across all states so the
+    /// row alignment never shifts on scroll.
     @ViewBuilder
     private var thumbnailLeading: some View {
         let size: CGFloat = 40
-        Group {
-            if let urlString = product.thumbnailUrl,
-               let url = URL(string: urlString) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .failure:
-                        Color.clear
-                    case .empty:
-                        Color.clear
-                    @unknown default:
-                        Color.clear
-                    }
+        if product.category3Way == .material,
+           let urlString = product.thumbnailUrl,
+           let url = URL(string: urlString) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                case .failure, .empty:
+                    leadingIconFallback
+                @unknown default:
+                    leadingIconFallback
                 }
-            } else {
-                Color.clear
             }
+            .frame(width: size, height: size)
+            .background(OPSStyle.Colors.background)
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        } else {
+            leadingIconFallback
+                .frame(width: size, height: size)
+                .background(OPSStyle.Colors.background)
+                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
         }
-        .frame(width: size, height: size)
-        .background(OPSStyle.Colors.background)
-        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
+    }
+
+    @ViewBuilder
+    private var leadingIconFallback: some View {
+        Image(systemName: product.category3Way.iconName)
+            .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .regular))
+            .foregroundColor(OPSStyle.Colors.tertiaryText)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var kindChip: some View {
-        Text(product.kind.rawValue.uppercased())
+        Text(product.category3Way.displayLabel)
             .font(OPSStyle.Typography.metadata)
             .foregroundColor(OPSStyle.Colors.secondaryText)
             .padding(.horizontal, OPSStyle.Layout.spacing2)

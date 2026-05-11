@@ -124,6 +124,48 @@ class CatalogRepository {
             .insert(dto).select().single().execute().value
     }
 
+    /// Convenience for the iOS // SHOW IN STOCK toggle's "create new" path.
+    /// Creates a `catalog_items` family + a single default `catalog_variants`
+    /// row (no option pins, qty 0) in two round-trips. Returns the family id
+    /// so the caller can write `products.linked_catalog_item_id`.
+    /// Bug 164e0595 — New Product Sheet redesign.
+    func createDefaultItemForProduct(
+        companyId: String,
+        productName: String,
+        categoryId: String?,
+        defaultPrice: Double?,
+        defaultUnitCost: Double?,
+        defaultUnitId: String?
+    ) async throws -> CatalogItemDTO {
+        let familyDTO = CreateCatalogItemDTO(
+            companyId: companyId,
+            categoryId: categoryId,
+            name: productName,
+            description: nil,
+            defaultPrice: defaultPrice,
+            defaultUnitCost: defaultUnitCost,
+            defaultWarningThreshold: nil,
+            defaultCriticalThreshold: nil,
+            defaultUnitId: defaultUnitId
+        )
+        let createdFamily = try await createFamily(familyDTO)
+
+        let variantDTO = CreateCatalogVariantDTO(
+            companyId: companyId,
+            catalogItemId: createdFamily.id,
+            sku: nil,
+            quantity: 0,
+            priceOverride: nil,
+            unitCostOverride: nil,
+            warningThreshold: nil,
+            criticalThreshold: nil,
+            unitId: defaultUnitId
+        )
+        _ = try await createVariant(variantDTO)
+
+        return createdFamily
+    }
+
     func updateFamily(_ id: String, fields: UpdateCatalogItemDTO) async throws -> CatalogItemDTO {
         try await client.from("catalog_items")
             .update(fields).eq("id", value: id).select().single().execute().value

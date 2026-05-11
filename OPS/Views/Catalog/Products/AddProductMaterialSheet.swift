@@ -15,9 +15,35 @@
 //  authoring stays on web. Comment in `save()` documents this so future
 //  contributors don't think the omission was an oversight.
 //
+//  Draft mode (added bug 164e0595): when `onDraftReady` is supplied
+//  instead of `onCreated`, the sheet skips the repo round-trip and bundles
+//  the user's selections into a `PendingProductMaterial`. The new-product
+//  flow (QuickAddProductSheet) collects these so recipe rows can be
+//  authored before the parent Product exists, then committed against the
+//  real productId once create returns.
+//
 
 import SwiftUI
 import SwiftData
+
+/// Staged recipe row used while a brand-new Product is being authored. The
+/// productId doesn't exist yet, so the row can't be written; instead it's
+/// held in QuickAddProductSheet's local state and committed in a second
+/// pass after Product create returns the id.
+///
+/// Variant-pinned only — same v1 scope as AddProductMaterialSheet's create
+/// path. Family-pinned recipes with selectors stay web-only.
+struct PendingProductMaterial: Identifiable {
+    /// Local-only uuid for list rendering. Discarded once the row is
+    /// written; the persisted row's id comes back from the server.
+    let id: String
+    let catalogVariantId: String
+    let familyName: String
+    let variantLabel: String
+    let quantityPerUnit: Double
+    let unitDisplay: String?
+    let notes: String?
+}
 
 struct AddProductMaterialSheet: View {
     let productId: String
@@ -30,6 +56,10 @@ struct AddProductMaterialSheet: View {
     /// — this matches the CHECK constraint on the table.
     let editingMaterial: ProductMaterial?
     let onCreated: (ProductMaterialDTO) -> Void
+    /// Draft-mode callback. When non-nil, `save()` skips the repo call and
+    /// hands a PendingProductMaterial back to the caller instead. Mutually
+    /// exclusive with create/edit-mode behavior.
+    let onDraftReady: ((PendingProductMaterial) -> Void)?
 
     @EnvironmentObject private var dataController: DataController
     @Environment(\.dismiss) private var dismiss
@@ -65,11 +95,16 @@ struct AddProductMaterialSheet: View {
     @FocusState private var quantityFocused: Bool
 
     private var isEditing: Bool { editingMaterial != nil }
-    private var navTitle: String { isEditing ? "EDIT MATERIAL" : "ADD MATERIAL" }
+    private var isDraftMode: Bool { onDraftReady != nil }
+    private var navTitle: String {
+        if isEditing { return "EDIT MATERIAL" }
+        if isDraftMode { return "ADD COMPONENT" }
+        return "ADD MATERIAL"
+    }
 
-    /// Default backwards-compat init — create-mode only. Lets the existing
-    /// callers in RecipeManageSheet stay unchanged. Edit callers pass
-    /// `editingMaterial:` explicitly.
+    /// Default backwards-compat init — create / edit mode against an
+    /// existing Product. Lets the existing callers in RecipeManageSheet
+    /// stay unchanged.
     init(
         productId: String,
         companyId: String,
@@ -80,6 +115,22 @@ struct AddProductMaterialSheet: View {
         self.companyId = companyId
         self.editingMaterial = editingMaterial
         self.onCreated = onCreated
+        self.onDraftReady = nil
+    }
+
+    /// Draft-mode init — used by QuickAddProductSheet when authoring recipe
+    /// rows for a Product that hasn't been created yet. The sheet doesn't
+    /// hit the network or SwiftData; it bundles the user's selections into
+    /// a `PendingProductMaterial` and hands it back via `onDraftReady`.
+    init(
+        companyId: String,
+        onDraftReady: @escaping (PendingProductMaterial) -> Void
+    ) {
+        self.productId = ""
+        self.companyId = companyId
+        self.editingMaterial = nil
+        self.onCreated = { _ in }
+        self.onDraftReady = onDraftReady
     }
 
     // MARK: - Filtered company data
@@ -491,6 +542,28 @@ struct AddProductMaterialSheet: View {
     ) async {
         guard let variantId = selectedVariantId else { return }
 
+        // Draft mode: parent Product doesn't exist yet, so we can't write
+        // a real product_materials row. Bundle the selection and hand it
+        // back to the caller for staging — QuickAddProductSheet flushes
+        // these after the parent product is created.
+        if let onDraftReady = onDraftReady {
+            let unit = allUnits.first(where: { $0.id == selectedVariant?.unitId })
+                       ?? allUnits.first(where: { $0.id == selectedFamily?.defaultUnitId })
+            let pending = PendingProductMaterial(
+                id: UUID().uuidString,
+                catalogVariantId: variantId,
+                familyName: selectedFamily?.name ?? "Unknown",
+                variantLabel: variantDisplayLabel(for: selectedVariant),
+                quantityPerUnit: quantity,
+                unitDisplay: unit?.display,
+                notes: trimmedNotes.isEmpty ? nil : trimmedNotes
+            )
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            onDraftReady(pending)
+            dismiss()
+            return
+        }
+
         // v1 scope: variant-pinned rows only. Family-pinned recipe rows
         // (catalogItemId + variantSelectorJSON) and scaledByOptionId
         // (e.g. corner hardware kits scaled by Corners count) stay
@@ -523,6 +596,25 @@ struct AddProductMaterialSheet: View {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Best-effort label for a variant: SKU first, then concatenated option
+    /// values, falling back to the family name + variant id. Used for the
+    /// staged-row display in QuickAddProductSheet so the user can recognise
+    /// what they added without opening the row again.
+    private func variantDisplayLabel(for variant: CatalogVariant?) -> String {
+        guard let variant else { return "Variant" }
+        if let sku = variant.sku, !sku.isEmpty { return sku }
+        let optionValueIds = allVariantOptionValues
+            .filter { $0.variantId == variant.id }
+            .map(\.optionValueId)
+        let labels = allOptionValues
+            .filter { optionValueIds.contains($0.id) }
+            .map(\.value)
+        if !labels.isEmpty {
+            return labels.joined(separator: " · ")
+        }
+        return selectedFamily?.name ?? "Variant"
     }
 
     @MainActor

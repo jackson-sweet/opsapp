@@ -295,10 +295,7 @@ struct ProgressInvoiceSheet: View {
     // MARK: - Sticky Footer
 
     private var stickyFooter: some View {
-        VStack(spacing: 0) {
-            Divider()
-                .background(OPSStyle.Colors.cardBorder)
-
+        OPSFloatingButtonBar(horizontalPadding: OPSStyle.Layout.spacing3, verticalPadding: OPSStyle.Layout.spacing2_5) {
             VStack(spacing: OPSStyle.Layout.spacing2) {
                 // Subtotal row
                 HStack {
@@ -378,10 +375,6 @@ struct ProgressInvoiceSheet: View {
                 .buttonStyle(PlainButtonStyle())
                 .disabled(!hasSelections || isCreating)
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.top, OPSStyle.Layout.spacing2_5)
-            .padding(.bottom, OPSStyle.Layout.spacing4)
-            .background(OPSStyle.Colors.background)
         }
     }
 

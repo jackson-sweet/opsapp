@@ -37,8 +37,12 @@ class ARPerimeterViewModel: ObservableObject {
     // MARK: - UI State
 
     @Published var liveDimensionLabel: String = ""
-    @Published var angleSnappingEnabled: Bool = false   // Off for first line, auto-enabled after
-    @Published var lengthSnappingEnabled: Bool = true
+    // Snap defaults are OFF — record raw measurements first, normalize later. Bug efb24e29.
+    // Auto-snapping to 15° / 45° / 90° while recording AR vertices was forcing geometry
+    // off the deck or up the wall, robbing the user of accurate raw input. Users can
+    // re-enable per-axis via the ANG / LEN toggles in the topbar.
+    @Published var angleSnappingEnabled: Bool = false
+    @Published var lengthSnappingEnabled: Bool = false
     @Published var isEditingVertex: Bool = false
     @Published var editingVertexIndex: Int?
     @Published var showVertexPopover: Bool = false
@@ -159,10 +163,9 @@ class ARPerimeterViewModel: ObservableObject {
         arVertices.append(vertex)
         renderVersion += 1
 
-        // Auto-enable angle snapping after first line is placed (2nd vertex down)
-        if arVertices.count == 2 && !angleSnappingEnabled {
-            angleSnappingEnabled = true
-        }
+        // Snap toggles remain user-controlled — no auto-enable. Bug efb24e29: users
+        // were getting surprise snaps after the second vertex that pulled subsequent
+        // recordings off the deck. The ANG toggle in the topbar opts back in.
 
         // Create edge from previous vertex
         if arVertices.count >= 2 {
@@ -261,8 +264,13 @@ class ARPerimeterViewModel: ObservableObject {
                 snappedPosition = result.position
             }
 
-            // Alignment guides — detect and apply axis/parallel/perpendicular snaps
-            if arVertices.count >= 2 {
+            // Alignment guides — detect axis/parallel/perpendicular alignment with
+            // existing vertices and edges. Snapping is gated behind angleSnappingEnabled
+            // because guide-driven X/Z snaps were silently dragging the crosshair to
+            // existing vertices even with ANG/LEN toggles off (bug efb24e29). Guides
+            // still draw as visual hints when snap is on; with snap off they're hidden
+            // entirely so nothing about the on-screen crosshair is implicit.
+            if angleSnappingEnabled && arVertices.count >= 2 {
                 let (alignedPos, guides) = detectARAlignmentGuides(from: lastPos, currentEnd: snappedPosition)
                 if guides.contains(where: { $0.type == .vertical || $0.type == .horizontal }) {
                     snappedPosition = alignedPos
@@ -312,10 +320,7 @@ class ARPerimeterViewModel: ObservableObject {
             arEdges.removeLast()
         }
 
-        // Disable angle snapping if back to first-line territory
-        if arVertices.count < 2 {
-            angleSnappingEnabled = false
-        }
+        // Snap toggles are user-controlled — don't mutate on undo. Bug efb24e29.
 
         // Reset close-loop state
         isNearFirstVertex = false

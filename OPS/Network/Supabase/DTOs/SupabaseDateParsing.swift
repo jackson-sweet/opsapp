@@ -24,8 +24,34 @@ enum SupabaseDate {
         return f
     }()
 
+    /// Date-only formatter for `date` columns (no time component).
+    private static let dateOnly: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
     /// Parse a Supabase ISO 8601 string, trying fractional seconds first.
     static func parse(_ string: String) -> Date? {
         formatter.date(from: string) ?? fallback.date(from: string)
+    }
+
+    /// Parse a Supabase `date` column ("yyyy-MM-dd"). Returns midnight UTC.
+    static func parseDateOnly(_ string: String) -> Date? {
+        dateOnly.date(from: string)
+    }
+
+    /// Format a Date as a Supabase `timestamptz` ISO-8601 string with fractional seconds.
+    /// Use for `timestamptz` / `timestamp` columns (e.g. deleted_at, archived_at).
+    static func format(_ date: Date) -> String {
+        formatter.string(from: date)
+    }
+
+    /// Format a Date as a Supabase `date` column string ("yyyy-MM-dd").
+    /// Use for `date`-only columns (e.g. expected_close_date, actual_close_date).
+    static func formatDate(_ date: Date) -> String {
+        dateOnly.string(from: date)
     }
 }

@@ -64,7 +64,14 @@ final class Project: Identifiable {
 
     // Soft delete support
     var deletedAt: Date?
-    
+
+    // Audit — when and by whom this project was created. Added 2026-05-10 for
+    // the "start from recent" suggestions strip on the project form. Nil for
+    // projects synced down before the column existed; those rows are excluded
+    // from the per-user recency strip.
+    var createdAt: Date?
+    var createdBy: String?
+
     // Transient properties (not persisted to database)
     @Transient var lastTapped: Date?
     @Transient var coordinatorData: [String: Any]?

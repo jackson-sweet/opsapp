@@ -43,7 +43,6 @@ struct SettingsView: View {
         case organizationDetails
         case manageTeam
         case taskTypes
-        case schedulingType
         case inventorySettings
 
         var id: String { rawValue }
@@ -119,13 +118,23 @@ struct SettingsView: View {
                                 .padding(.horizontal, 20)
                                 .padding(.top, 16)
 
-                            // Account section
-                            settingsSection(title: "ACCOUNT") {
+                            // Organization section — company identity, team, billing, permissions
+                            settingsSection(title: "ORGANIZATION") {
                                 settingsRow(
-                                    icon: "building.2",
-                                    title: "Organization",
-                                    action: { activeDestination = .organization }
+                                    icon: "building.2.fill",
+                                    title: "Organization Details",
+                                    action: { activeDestination = .organizationDetails }
                                 )
+
+                                if isAdminOrOffice {
+                                    sectionDivider
+
+                                    settingsRow(
+                                        icon: "person.3.fill",
+                                        title: "Manage Team",
+                                        action: { activeDestination = .manageTeam }
+                                    )
+                                }
 
                                 if isAdmin {
                                     sectionDivider
@@ -135,11 +144,89 @@ struct SettingsView: View {
                                         title: "Subscription",
                                         action: { activeDestination = .subscription }
                                     )
+
+                                    sectionDivider
+
+                                    settingsRow(
+                                        icon: "person.badge.key.fill",
+                                        title: "Permissions",
+                                        action: { activeDestination = .permissions }
+                                    )
                                 }
                             }
                             .padding(.horizontal, 20)
 
-                            // App section
+                            // Business section — commerce-facing config (catalog, accounting)
+                            if hasPipelineAccess || isPipelineGated {
+                                settingsSection(title: "BUSINESS") {
+                                    if hasPipelineAccess {
+                                        settingsRow(
+                                            icon: OPSStyle.Icons.productTag,
+                                            title: "Products & Services",
+                                            action: { activeDestination = .productsServices }
+                                        )
+
+                                        sectionDivider
+
+                                        settingsRow(
+                                            icon: OPSStyle.Icons.accountingChart,
+                                            title: "Integrations",
+                                            action: { activeDestination = .integrations }
+                                        )
+                                    } else {
+                                        gatedSettingsRow(
+                                            icon: OPSStyle.Icons.productTag,
+                                            title: "Products & Services"
+                                        )
+
+                                        sectionDivider
+
+                                        gatedSettingsRow(
+                                            icon: OPSStyle.Icons.accountingChart,
+                                            title: "Integrations"
+                                        )
+                                    }
+                                }
+                                .padding(.horizontal, 20)
+                            }
+
+                            // Operations section — workflow rules. Bug 4014b472 moved these out
+                            // of BUSINESS: task taxonomy, scheduling, project review rules, and
+                            // inventory are app-behavior config, not company identity.
+                            if isAdminOrOffice || permissionStore.can("catalog.view") {
+                                settingsSection(title: "OPERATIONS") {
+                                    if isAdminOrOffice {
+                                        settingsRow(
+                                            icon: "square.grid.2x2",
+                                            title: "Task Types",
+                                            action: { activeDestination = .taskTypes }
+                                        )
+
+                                        sectionDivider
+
+                                        settingsRow(
+                                            icon: "hammer.circle",
+                                            title: "Project Rules",
+                                            action: { activeDestination = .projectSettings }
+                                        )
+
+                                        if permissionStore.can("catalog.view") {
+                                            sectionDivider
+                                        }
+                                    }
+
+                                    if permissionStore.can("catalog.view") {
+                                        settingsRow(
+                                            icon: "shippingbox",
+                                            title: "Inventory",
+                                            action: { activeDestination = .inventorySettings }
+                                        )
+                                    }
+                                }
+                                .padding(.horizontal, 20)
+                            }
+
+                            // App section — device-level preferences (everyone)
                             settingsSection(title: "APP") {
                                 settingsRow(
                                     icon: OPSStyle.Icons.bellFill,
@@ -151,7 +238,7 @@ struct SettingsView: View {
 
                                 settingsRow(
                                     icon: OPSStyle.Icons.map,
-                                    title: "Map Settings",
+                                    title: "Map",
                                     action: { activeDestination = .map }
                                 )
 
@@ -243,66 +330,6 @@ struct SettingsView: View {
                                 }
                             }
                             .padding(.horizontal, 20)
-
-                            // Business section (admin/office crew, or pipeline permission holders)
-                            if isAdminOrOffice || hasPipelineAccess || isPipelineGated {
-                                settingsSection(title: "BUSINESS") {
-                                    if hasPipelineAccess {
-                                        settingsRow(
-                                            icon: OPSStyle.Icons.productTag,
-                                            title: "Products & Services",
-                                            action: { activeDestination = .productsServices }
-                                        )
-
-                                        sectionDivider
-
-                                        settingsRow(
-                                            icon: OPSStyle.Icons.accountingChart,
-                                            title: "Integrations",
-                                            action: { activeDestination = .integrations }
-                                        )
-
-                                        if isAdminOrOffice || isAdmin {
-                                            sectionDivider
-                                        }
-                                    } else if isPipelineGated {
-                                        gatedSettingsRow(
-                                            icon: OPSStyle.Icons.productTag,
-                                            title: "Products & Services"
-                                        )
-
-                                        sectionDivider
-
-                                        gatedSettingsRow(
-                                            icon: OPSStyle.Icons.accountingChart,
-                                            title: "Integrations"
-                                        )
-
-                                        if isAdminOrOffice || isAdmin {
-                                            sectionDivider
-                                        }
-                                    }
-
-                                    if isAdminOrOffice {
-                                        settingsRow(
-                                            icon: "hammer.circle",
-                                            title: "Project Settings",
-                                            action: { activeDestination = .projectSettings }
-                                        )
-                                    }
-
-                                    if isAdmin {
-                                        sectionDivider
-
-                                        settingsRow(
-                                            icon: "person.badge.key.fill",
-                                            title: "Permissions",
-                                            action: { activeDestination = .permissions }
-                                        )
-                                    }
-                                }
-                                .padding(.horizontal, 20)
-                            }
 
                             // Support section
                             settingsSection(title: "SUPPORT") {
@@ -444,6 +471,11 @@ struct SettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SettingsOpenOrganization"))) { _ in
             activeDestination = .organization
         }
+        // Bug 4014b472 — with Manage Team promoted to a top-level row, wizards can
+        // target it directly instead of the two-hop dance through Organization.
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SettingsOpenManageTeam"))) { _ in
+            activeDestination = .manageTeam
+        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SettingsOpenPermissions"))) { _ in
             activeDestination = .permissions
         }
@@ -496,7 +528,7 @@ struct SettingsView: View {
             }
         case .productsServices:
             NavigationStack {
-                ProductsListView()
+                ProductsServicesSettingsView()
                     .environmentObject(dataController)
             }
         case .integrations:
@@ -506,7 +538,7 @@ struct SettingsView: View {
             }
         case .projectSettings:
             NavigationStack {
-                ProjectSettingsView()
+                ProjectRulesView()
                     .environmentObject(dataController)
                     .environmentObject(permissionStore)
             }
@@ -587,11 +619,6 @@ struct SettingsView: View {
         case .taskTypes:
             NavigationStack {
                 TaskSettingsView()
-                    .environmentObject(dataController)
-            }
-        case .schedulingType:
-            NavigationStack {
-                SchedulingTypeExplanationView()
                     .environmentObject(dataController)
             }
         case .inventorySettings:
@@ -773,9 +800,9 @@ struct SettingsView: View {
 
     /// Translate a `SettingsRoute` into the existing fullScreenCover system.
     /// Most cases set `activeDestination` directly. A handful (Manage Team,
-    /// Org Details, Task Types, Scheduling Type, Inventory Settings) used to
-    /// be reachable only by drilling through their parent page; we now have
-    /// dedicated enum cases so search lands the user one tap closer.
+    /// Org Details, Task Types, Inventory Settings) used to be reachable only
+    /// by drilling through their parent page; we now have dedicated enum cases
+    /// so search lands the user one tap closer.
     private func applyRoute(_ route: SettingsRoute) {
         switch route.destination {
         case .profile:               activeDestination = .profile
@@ -791,7 +818,6 @@ struct SettingsView: View {
         case .integrations:          activeDestination = .integrations
         case .projectSettings:       activeDestination = .projectSettings
         case .taskTypes:             activeDestination = .taskTypes
-        case .schedulingType:        activeDestination = .schedulingType
         case .allPhotos:             activeDestination = .allPhotos
         case .myExpenses:            activeDestination = .myExpenses
         case .reviewExpenses:        activeDestination = .reviewExpenses

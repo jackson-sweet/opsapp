@@ -51,9 +51,8 @@ struct MainTabView: View {
     @State private var assignRoleMemberId: String?
     @State private var assignRoleWasSeated: Bool = false
 
-    // Track inventory access for conditional tab
-    private var hasInventoryAccess: Bool {
-        permissionStore.can("inventory.view", requiredScope: "all")
+    private var hasCatalogAccess: Bool {
+        permissionStore.can("catalog.view", requiredScope: "all")
     }
     
     // Observer for fetch active project notifications
@@ -105,6 +104,9 @@ struct MainTabView: View {
     private let openJobBoardObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenJobBoard"))
 
+    private let openCatalogObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenCatalog"))
+
     private let openSubscriptionObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenSubscription"))
 
@@ -114,6 +116,18 @@ struct MainTabView: View {
     private let openAppFromWebObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenAppFromWeb"))
 
+    // Bug 8ed0d2ed — wire the OpenExpenses notification (posted by AppDelegate
+    // for push and by NotificationListView for in-app expense rows). Without
+    // this listener, both paths posted into the void.
+    private let openExpensesObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenExpenses"))
+
+    private let openInvoicesObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenInvoices"))
+
+    private let openProjectsNeedingTasksObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenProjectsNeedingTasks"))
+
     // Keyboard observers
     private let keyboardWillShow = NotificationCenter.default
         .publisher(for: UIResponder.keyboardWillShowNotification)
@@ -121,25 +135,58 @@ struct MainTabView: View {
     private let keyboardWillHide = NotificationCenter.default
         .publisher(for: UIResponder.keyboardWillHideNotification)
     
-    // Whether the current user has Pipeline access (requires "pipeline" special permission)
-    private var hasPipelineAccess: Bool {
+    // BOOKS tab is visible to anyone with at least one of the four financial-area
+    // permissions. The hub itself filters segments per-permission; users with a
+    // single visible segment auto-skip the hub via `booksAutoSkipDestination`.
+    private var hasBooksAccess: Bool {
         permissionStore.can("pipeline.view")
+            || permissionStore.can("finances.view")
+            || permissionStore.can("estimates.view")
+            || permissionStore.can("expenses.view")
     }
 
-    // Computed tab indices that adapt based on visible tabs (pipeline + inventory)
-    private var pipelineTabIndex: Int? { hasPipelineAccess ? 1 : nil }
+    private var visibleBooksSegments: [BooksSection] {
+        BooksSection.allCases.filter { permissionStore.can($0.requiredPermission) }
+    }
+
+    /// When the user has exactly one visible BOOKS segment (and it's not pipeline),
+    /// route them straight to that segment's list view instead of the hub.
+    /// Pipeline-only users still see the hub because the pipeline section needs
+    /// the segmented chrome around it.
+    private var booksAutoSkipDestination: AnyView? {
+        let segs = visibleBooksSegments
+        guard segs.count == 1, let only = segs.first else { return nil }
+        switch only {
+        case .pipeline:
+            return nil
+        case .estimates:
+            return AnyView(NavigationStack { EstimatesListView() })
+        case .invoices:
+            return AnyView(NavigationStack { InvoicesListView() })
+        case .expenses:
+            let scopeIsOwn = !permissionStore.hasFullAccess("expenses.view")
+            if scopeIsOwn {
+                return AnyView(NavigationStack { MyExpensesView() })
+            } else {
+                return AnyView(NavigationStack { ExpensesListView() })
+            }
+        }
+    }
+
+    // Computed tab indices that adapt based on visible tabs (BOOKS + inventory)
+    private var pipelineTabIndex: Int? { hasBooksAccess ? 1 : nil }
     private var jobBoardTabIndex: Int {
         var idx = 1
-        if hasPipelineAccess { idx += 1 }
+        if hasBooksAccess { idx += 1 }
         return idx
     }
-    private var inventoryTabIndex: Int? {
-        guard hasInventoryAccess else { return nil }
+    private var catalogTabIndex: Int? {
+        guard hasCatalogAccess else { return nil }
         return jobBoardTabIndex + 1
     }
     private var scheduleTabIndex: Int {
         var idx = jobBoardTabIndex + 1
-        if hasInventoryAccess { idx += 1 }
+        if hasCatalogAccess { idx += 1 }
         return idx
     }
     private var settingsTabIndex: Int {
@@ -152,17 +199,17 @@ struct MainTabView: View {
             TabItem(iconName: "house.fill", wizardStepId: "welcome_home")
         ]
 
-        // Add Pipeline tab for admin/office crew only
-        if hasPipelineAccess {
-            baseTabs.append(TabItem(iconName: "chart.line.uptrend.xyaxis", wizardStepId: "welcome_pipeline"))
+        // Add BOOKS tab for users with any of the four financial-area perms
+        if hasBooksAccess {
+            baseTabs.append(TabItem(iconName: "chart.line.uptrend.xyaxis", wizardStepId: "welcome_books"))
         }
 
         // Add Job Board tab for all users (admin, office crew, and field crew)
         baseTabs.append(TabItem(iconName: "briefcase.fill", wizardStepId: "welcome_job_board"))
 
-        // Add Inventory tab if user has inventory access
-        if hasInventoryAccess {
-            baseTabs.append(TabItem(iconName: "shippingbox.fill", wizardStepId: "welcome_inventory"))
+        // Add Catalog tab if user has catalog access
+        if hasCatalogAccess {
+            baseTabs.append(TabItem(iconName: "square.stack.3d.up.fill", wizardStepId: "welcome_catalog"))
         }
 
         // Add Schedule and Settings for all users
@@ -186,6 +233,33 @@ struct MainTabView: View {
     // Check if currently on Pipeline tab (has its own FAB)
     private var isPipelineTab: Bool {
         pipelineTabIndex != nil && selectedTab == pipelineTabIndex
+    }
+
+    /// Bug 706a4d32 — single search button rendered outside the sliding tab
+    /// content so it stays visually stationary during tab swaps. Behavior
+    /// branches on the current tab so Settings still gets its expand-in-place
+    /// input while every other tab opens the universal search sheet.
+    @ViewBuilder
+    private var persistentSearchButton: some View {
+        Button {
+            let onSettings = isSettingsTab
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            if onSettings {
+                withAnimation(OPSStyle.Animation.spring) {
+                    appState.isSettingsSearchActive = true
+                }
+            } else {
+                appState.showingUniversalSearch = true
+            }
+        } label: {
+            Image(systemName: "magnifyingglass")
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .frame(width: 44, height: 44)
+                .background(OPSStyle.Colors.cardBackground)
+                .clipShape(Circle())
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 
     private var slideTransition: AnyTransition {
@@ -219,11 +293,15 @@ struct MainTabView: View {
                 if selectedTab == 0 {
                     HomeView()
                 } else if selectedTab == pipelineTabIndex {
-                    MoneyTabView()
+                    if let destination = booksAutoSkipDestination {
+                        destination
+                    } else {
+                        BooksTabView()
+                    }
                 } else if selectedTab == jobBoardTabIndex {
                     JobBoardView()
-                } else if selectedTab == inventoryTabIndex {
-                    InventoryView()
+                } else if selectedTab == catalogTabIndex {
+                    CatalogView()
                 } else if selectedTab == scheduleTabIndex {
                     ScheduleView()
                 } else if selectedTab == settingsTabIndex {
@@ -236,13 +314,38 @@ struct MainTabView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea(.all, edges: .bottom)
             // Bug 706a4d32 — inject the shared header namespace so each tab's
-            // AppHeader can match-geometry its persistent buttons (search,
-            // filter, scope, review) and keep them visually still while the
-            // rest of the content slides during a tab swap.
+            // AppHeader can match-geometry its tab-specific persistent buttons
+            // (filter, scope, month, review). The universal search button is
+            // hosted by the overlay below instead — matchedGeometryEffect with
+            // two simultaneous isSource=true views during a tab swap doesn't
+            // reliably keep the element stationary, so we lift the only truly
+            // cross-tab element out of the sliding container entirely. Tab
+            // content reserves layout space so the other right-aligned buttons
+            // keep their horizontal position.
             .environment(\.persistentHeaderNamespace, persistentHeaderNamespace)
+            .environment(\.hostsPersistentSearchButton, selectedTab != 0)
             .transition(slideTransition)
             .animation(.spring(response: 0.3, dampingFraction: 0.85), value: selectedTab)
-            
+
+            // Persistent search button overlay — rendered OUTSIDE the sliding
+            // .transition above so it stays visually still while tab content
+            // slides. Position matches AppHeader's right-aligned button slot
+            // (20pt horizontal padding, 12pt vertical padding). Hidden on
+            // the home tab where AppHeader doesn't show a search button.
+            VStack(spacing: 0) {
+                HStack {
+                    Spacer()
+                    if selectedTab != 0 {
+                        persistentSearchButton
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                Spacer()
+            }
+            .allowsHitTesting(selectedTab != 0)
+            .zIndex(3)
+
             // Image sync progress bar and sync status at top
             VStack(spacing: 8) {
                 ImageSyncProgressView(syncManager: imageSyncProgressManager)
@@ -277,7 +380,7 @@ struct MainTabView: View {
             // Floating action menu - visible across all tabs except Settings and during initial sync/loading
             // IMPORTANT: Always render to preserve @State (sheet presentation) when app goes to background
             // Use opacity and allowsHitTesting instead of conditional rendering to prevent sheet dismissal
-            FloatingActionMenu(currentTab: selectedTab, hasInventoryAccess: hasInventoryAccess, isScheduleTab: selectedTab == scheduleTabIndex, isInventoryTab: inventoryTabIndex != nil && selectedTab == inventoryTabIndex)
+            FloatingActionMenu(currentTab: selectedTab, hasCatalogAccess: hasCatalogAccess, isScheduleTab: selectedTab == scheduleTabIndex, isCatalogTab: catalogTabIndex != nil && selectedTab == catalogTabIndex)
                 .environmentObject(dataController)
                 .environmentObject(appState)
                 .opacity(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects && !appState.isScheduleSelectionMode && !appState.isShowingMapOverlay && !appState.isInProjectMode ? 1 : 0)
@@ -536,6 +639,62 @@ struct MainTabView: View {
             }
         }
 
+        // Handle opening catalog from notification rail / deep link
+        .onReceive(openCatalogObserver) { _ in
+            guard let idx = catalogTabIndex else { return }
+            print("[PUSH_NAVIGATION] Opening catalog")
+            withAnimation(OPSStyle.Animation.fast) {
+                selectedTab = idx
+            }
+        }
+
+        // Bug 8ed0d2ed — Open expenses from notification rail / push.
+        // Switch to the BOOKS tab (where Expenses lives), then ask BooksTabView
+        // to select the expenses segment. For users without books access (rare,
+        // but possible if expenses.view is the only finance permission), the
+        // booksAutoSkipDestination already routes them straight to the right
+        // expenses list, so flipping the tab is enough.
+        .onReceive(openExpensesObserver) { _ in
+            print("[PUSH_NAVIGATION] Opening expenses")
+            guard hasBooksAccess, let idx = pipelineTabIndex else {
+                print("[PUSH_NAVIGATION] No books access — expense deep link suppressed")
+                return
+            }
+            withAnimation(OPSStyle.Animation.fast) {
+                selectedTab = idx
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                NotificationCenter.default.post(
+                    name: Notification.Name("BooksSelectSegment"),
+                    object: nil,
+                    userInfo: ["segment": BooksSection.expenses.rawValue]
+                )
+            }
+        }
+
+        .onReceive(openInvoicesObserver) { _ in
+            print("[PUSH_NAVIGATION] Opening invoices")
+            guard hasBooksAccess, let idx = pipelineTabIndex else { return }
+            withAnimation(OPSStyle.Animation.fast) {
+                selectedTab = idx
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                NotificationCenter.default.post(
+                    name: Notification.Name("BooksSelectSegment"),
+                    object: nil,
+                    userInfo: ["segment": BooksSection.invoices.rawValue]
+                )
+            }
+        }
+
+        // Bug 78309d78 — Open the "projects needing tasks" review sheet from
+        // a push deep link. The in-app rail uses appState directly, so this
+        // path only runs when the user lands here via a push tap.
+        .onReceive(openProjectsNeedingTasksObserver) { _ in
+            print("[PUSH_NAVIGATION] Opening projects-needing-tasks review")
+            appState.showProjectsNeedingTasksReview = true
+        }
+
         // Handle member_joined push → present AssignMemberRoleSheet
         .onReceive(openMemberRoleAssignmentObserver) { notification in
             guard let userInfo = notification.userInfo,
@@ -550,6 +709,16 @@ struct MainTabView: View {
                 AssignMemberRoleSheet(memberId: memberId, wasSeated: assignRoleWasSeated)
                     .environmentObject(dataController)
             }
+        }
+
+        // Bug 78309d78 — sheet for the "accepted projects with no tasks"
+        // rail notification. Mounted at MainTabView so it presents reliably
+        // after the notification rail dismisses, regardless of which tab the
+        // user was on when they tapped the rail entry.
+        .sheet(isPresented: $appState.showProjectsNeedingTasksReview) {
+            ProjectsWithoutTasksReviewView()
+                .environmentObject(dataController)
+                .environmentObject(appState)
         }
 
 
@@ -663,8 +832,8 @@ struct MainTabView: View {
                 withAnimation { selectedTab = jobBoardTabIndex }
             case "Schedule":
                 withAnimation { selectedTab = scheduleTabIndex }
-            case "Inventory":
-                if let idx = inventoryTabIndex {
+            case "Catalog":
+                if let idx = catalogTabIndex {
                     withAnimation { selectedTab = idx }
                 }
             case "Settings":
@@ -688,12 +857,12 @@ struct MainTabView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardOpenManageTeam"))) { _ in
+            // Bug 4014b472 — Manage Team is a top-level Settings row in the new
+            // IA, so wizards can land there directly instead of the previous
+            // two-hop dance through Organization → ManageTeamFromOrg.
             withAnimation { selectedTab = settingsTabIndex }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                NotificationCenter.default.post(name: Notification.Name("SettingsOpenOrganization"), object: nil)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    NotificationCenter.default.post(name: Notification.Name("WizardOpenManageTeamFromOrg"), object: nil)
-                }
+                NotificationCenter.default.post(name: Notification.Name("SettingsOpenManageTeam"), object: nil)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardOpenPermissions"))) { _ in
@@ -762,7 +931,7 @@ struct MainTabView: View {
             case scheduleTabIndex: tabName = "Schedule"
             case settingsTabIndex: tabName = "Settings"
             default:
-                if let inv = inventoryTabIndex, newTab == inv { tabName = "Inventory" }
+                if let cat = catalogTabIndex, newTab == cat { tabName = "Catalog" }
                 else if let pip = pipelineTabIndex, newTab == pip { tabName = "Pipeline" }
                 else { tabName = "Unknown" }
             }

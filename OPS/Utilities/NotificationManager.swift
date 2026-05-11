@@ -31,6 +31,9 @@ enum NotificationCategory: String {
     case invoiceReady = "INVOICE_READY_NOTIFICATION"
     case invoiceRevisions = "INVOICE_REVISIONS_NOTIFICATION"
     case invoiceApproved = "INVOICE_APPROVED_NOTIFICATION"
+    /// Per-task reminder fired at lead-time (bug 4f00c2d7). Tap deep-links
+    /// to the reminder row inside the parent project detail view.
+    case taskReminder = "TASK_REMINDER_NOTIFICATION"
 }
 
 /// Notification actions that can be taken on notifications
@@ -256,6 +259,20 @@ class NotificationManager: NSObject, ObservableObject {
             options: []
         )
 
+        // Task reminders (bug 4f00c2d7) — single OPEN action; the actual
+        // confirm/dismiss happens inside the project detail view once tapped.
+        let openTaskAction = UNNotificationAction(
+            identifier: "OPEN_TASK_ACTION",
+            title: "OPEN TASK",
+            options: [.foreground]
+        )
+        let taskReminderCategory = UNNotificationCategory(
+            identifier: NotificationCategory.taskReminder.rawValue,
+            actions: [openTaskAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
         // Register all categories
         notificationCenter.setNotificationCategories([
             projectCategory,
@@ -272,7 +289,8 @@ class NotificationManager: NSObject, ObservableObject {
             expenseSubmittedCategory,
             invoiceReadyCategory,
             invoiceRevisionsCategory,
-            invoiceApprovedCategory
+            invoiceApprovedCategory,
+            taskReminderCategory
         ])
     }
     
@@ -1013,6 +1031,15 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
                  NotificationCategory.invoiceRevisions.rawValue,
                  NotificationCategory.invoiceApproved.rawValue:
                 handleExpenseNotificationResponse(userInfo: userInfo)
+
+            case NotificationCategory.taskReminder.rawValue:
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(
+                        name: .openTaskReminder,
+                        object: nil,
+                        userInfo: userInfo
+                    )
+                }
 
             default:
                 print("[NOTIFICATIONS] Unknown category: \(categoryIdentifier)")
@@ -1810,4 +1837,162 @@ extension Notification.Name {
     static let expenseUpdated = Notification.Name("expenseUpdated")
     static let calendarEventUpdated = Notification.Name("calendarEventUpdated")
     static let notificationReceived = Notification.Name("notificationReceived")
+    /// Posted when a task-reminder local notification is tapped — payload
+    /// userInfo includes `taskId`, `reminderId`, `projectId`, `requiresAck`.
+    static let openTaskReminder = Notification.Name("OpenTaskReminder")
+}
+
+// MARK: - Task Reminders (bug 4f00c2d7)
+
+extension NotificationManager {
+
+    private var taskReminderIdentifierPrefix: String { "task_reminder_" }
+
+    /// Build the UNNotificationRequest identifier for a given reminder id. We
+    /// use a stable prefix so the refresh routine can match-and-cancel without
+    /// scanning userInfo.
+    private func taskReminderIdentifier(_ reminderId: String) -> String {
+        taskReminderIdentifierPrefix + reminderId
+    }
+
+    /// Schedule (or reschedule) local UNCalendarNotificationTriggers for the
+    /// current user's outstanding task reminders. Cancels any stale schedules
+    /// whose backing reminder is no longer open or no longer targets the
+    /// current user.
+    ///
+    /// Call this from InboundProcessor after a successful pull. Cheap to call
+    /// repeatedly — no-op when nothing changed.
+    @MainActor
+    func refreshTaskReminderSchedules(context: ModelContext) async {
+        guard isNotificationsEnabled else { return }
+        guard let currentUserIdString = UserDefaults.standard.string(forKey: "currentUserId"),
+              !currentUserIdString.isEmpty else { return }
+        let currentUserId = currentUserIdString.lowercased()
+
+        let now = Date()
+
+        do {
+            // Pull every open reminder — fires_at in the future, unacked,
+            // undismissed, undeleted, and on an open task.
+            let descriptor = FetchDescriptor<TaskReminder>()
+            let all = try context.fetch(descriptor)
+
+            // Filter for "should fire on this device" — the user must be a
+            // resolved recipient AND the parent task must be open.
+            var keepIdentifiers = Set<String>()
+            var toSchedule: [TaskReminder] = []
+
+            for reminder in all {
+                guard reminder.deletedAt == nil,
+                      reminder.acknowledgedAt == nil,
+                      reminder.dismissedAt == nil,
+                      let firesAt = reminder.firesAt,
+                      firesAt > now,
+                      let task = reminder.task,
+                      task.deletedAt == nil,
+                      task.status != .completed,
+                      task.status != .cancelled,
+                      reminderTargets(currentUserId: currentUserId, reminder: reminder, task: task)
+                else { continue }
+
+                keepIdentifiers.insert(taskReminderIdentifier(reminder.id))
+                toSchedule.append(reminder)
+            }
+
+            // Cancel any previously-scheduled task reminder whose identifier
+            // is no longer in the keep set (acknowledged, rescheduled past,
+            // recipient changed, etc.).
+            let pending = await notificationCenter.pendingNotificationRequests()
+            let stale = pending
+                .map(\.identifier)
+                .filter { $0.hasPrefix(taskReminderIdentifierPrefix) && !keepIdentifiers.contains($0) }
+            if !stale.isEmpty {
+                notificationCenter.removePendingNotificationRequests(withIdentifiers: stale)
+                print("[NOTIFICATIONS] Cancelled \(stale.count) stale task reminder schedules")
+            }
+
+            // Schedule (or re-schedule) the keep set. UNUserNotificationCenter
+            // upserts on identifier, so re-adding with the same id is fine.
+            for reminder in toSchedule {
+                scheduleTaskReminder(reminder)
+            }
+            if !toSchedule.isEmpty {
+                print("[NOTIFICATIONS] Scheduled \(toSchedule.count) task reminder(s)")
+            }
+        } catch {
+            print("[NOTIFICATIONS] refreshTaskReminderSchedules failed: \(error)")
+        }
+    }
+
+    /// Resolve "is this user a target?" client-side for local scheduling.
+    /// Mirrors the server's recipient resolution but only needs to answer
+    /// `containsCurrentUser`. Authoritative dispatch (the in-app rail) is
+    /// still server-driven via `fire_due_task_reminders()`.
+    private func reminderTargets(currentUserId: String, reminder: TaskReminder, task: ProjectTask) -> Bool {
+        switch reminder.recipientMode {
+        case .taskCrew:
+            return task.getTeamMemberIds()
+                .map { $0.lowercased() }
+                .contains(currentUserId)
+        case .admins:
+            // Best-effort local check — falls back to "schedule it" if we
+            // can't tell on-device, so the user gets a possibly-redundant
+            // ping rather than silently missing it. The notification rail
+            // is authoritative.
+            return UserDefaults.standard.bool(forKey: "currentUserIsCompanyAdmin")
+        case .permission:
+            guard let permission = reminder.recipientConfig.permission else { return false }
+            return PermissionStore.shared.can(permission)
+        case .users:
+            return (reminder.recipientConfig.userIds ?? [])
+                .map { $0.lowercased() }
+                .contains(currentUserId)
+        }
+    }
+
+    private func scheduleTaskReminder(_ reminder: TaskReminder) {
+        guard let firesAt = reminder.firesAt, firesAt > Date() else { return }
+        guard reminder.task != nil else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = reminder.label
+        content.body = "\(reminder.leadTimeDisplay.lowercased()) — \(reminder.task?.displayTitle ?? "task")"
+        content.sound = .default
+        content.categoryIdentifier = NotificationCategory.taskReminder.rawValue
+        content.threadIdentifier = "project_\(reminder.task?.projectId ?? "unknown")"
+        content.userInfo = [
+            "taskId":       reminder.taskId,
+            "reminderId":   reminder.id,
+            "projectId":    reminder.task?.projectId ?? "",
+            "requiresAck":  reminder.requiresAck
+        ]
+
+        let components = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute],
+            from: firesAt
+        )
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+
+        let request = UNNotificationRequest(
+            identifier: taskReminderIdentifier(reminder.id),
+            content: content,
+            trigger: trigger
+        )
+
+        notificationCenter.add(request) { error in
+            if let error = error {
+                print("[NOTIFICATIONS] Failed to schedule task reminder \(reminder.id): \(error)")
+            }
+        }
+    }
+
+    /// Cancel the pending local notification for a reminder. Called when the
+    /// user acknowledges or dismisses a reminder in-app so the push doesn't
+    /// fire after the fact.
+    @MainActor
+    func cancelTaskReminder(_ reminderId: String) {
+        notificationCenter.removePendingNotificationRequests(
+            withIdentifiers: [taskReminderIdentifier(reminderId)]
+        )
+    }
 }

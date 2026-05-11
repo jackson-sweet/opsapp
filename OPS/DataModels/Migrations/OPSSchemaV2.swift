@@ -14,6 +14,8 @@ enum OPSSchemaV2: VersionedSchema {
     static var versionIdentifier: Schema.Version { Schema.Version(2, 0, 0) }
 
     static var models: [any PersistentModel.Type] {
-        OPSSchemaCommon.unchangedModels + [WizardState.self]
+        OPSSchemaCommon.unchangedModels
+            + OPSSchemaCommon.v2InventoryModels
+            + [WizardState.self]
     }
 }

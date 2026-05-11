@@ -103,10 +103,24 @@ class EstimateViewModel: ObservableObject {
         }
     }
 
-    func addLineItem(estimateId: String, description: String, type: LineItemType, quantity: Double, unitPrice: Double, isOptional: Bool, productId: String? = nil, taskTypeId: String? = nil) async {
+    func addLineItem(
+        estimateId: String,
+        description: String,
+        type: LineItemType,
+        quantity: Double,
+        unitPrice: Double,
+        isOptional: Bool,
+        productId: String? = nil,
+        taskTypeId: String? = nil,
+        unit: String? = nil,
+        configuredOptionsJSON: String? = nil,
+        resolvedUnitPrice: Double? = nil,
+        resolvedOptionsLabel: String? = nil
+    ) async {
         guard let repo = repository else { return }
         let existing = lineItems(for: estimateId)
         let sortOrder = existing.count
+        let configuredOptions = configuredOptionsJSON.map { RawJSONColumn(rawJSONString: $0) }
         let dto = CreateLineItemDTO(
             estimateId: estimateId,
             productId: productId,
@@ -114,13 +128,16 @@ class EstimateViewModel: ObservableObject {
             description: description,
             quantity: quantity,
             unitPrice: unitPrice,
-            unit: nil,
+            unit: unit,
             sortOrder: sortOrder,
             isOptional: isOptional,
             taskTypeId: taskTypeId,
             type: type.rawValue,
             category: nil,
-            parentLineItemId: nil
+            parentLineItemId: nil,
+            configuredOptions: configuredOptions,
+            resolvedUnitPrice: resolvedUnitPrice,
+            resolvedOptionsLabel: resolvedOptionsLabel
         )
         do {
             _ = try await repo.addLineItem(dto)

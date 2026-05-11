@@ -98,6 +98,9 @@ struct EstimateLineItemDTO: Codable, Identifiable {
     let type: String?
     let category: String?
     let parentLineItemId: String?
+    let configuredOptions: RawJSONColumn?
+    let resolvedUnitPrice: Double?
+    let resolvedOptionsLabel: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -114,7 +117,10 @@ struct EstimateLineItemDTO: Codable, Identifiable {
         case taskTypeId  = "task_type_id"
         case type
         case category
-        case parentLineItemId = "parent_line_item_id"
+        case parentLineItemId    = "parent_line_item_id"
+        case configuredOptions   = "configured_options"
+        case resolvedUnitPrice   = "resolved_unit_price"
+        case resolvedOptionsLabel = "resolved_options_label"
     }
 
     func toModel() -> EstimateLineItem {
@@ -134,6 +140,9 @@ struct EstimateLineItemDTO: Codable, Identifiable {
         item.lineTotal = lineTotal ?? (quantity * unitPrice)
         item.taskTypeId = taskTypeId
         item.parentLineItemId = parentLineItemId
+        item.configuredOptionsJSON = configuredOptions?.rawJSONString
+        item.resolvedUnitPrice = resolvedUnitPrice
+        item.resolvedOptionsLabel = resolvedOptionsLabel
         return item
     }
 }
@@ -179,6 +188,9 @@ struct CreateLineItemDTO: Codable {
     let type: String?
     let category: String?
     let parentLineItemId: String?
+    let configuredOptions: RawJSONColumn?
+    let resolvedUnitPrice: Double?
+    let resolvedOptionsLabel: String?
 
     enum CodingKeys: String, CodingKey {
         case estimateId  = "estimate_id"
@@ -193,7 +205,46 @@ struct CreateLineItemDTO: Codable {
         case taskTypeId  = "task_type_id"
         case type
         case category
-        case parentLineItemId = "parent_line_item_id"
+        case parentLineItemId    = "parent_line_item_id"
+        case configuredOptions   = "configured_options"
+        case resolvedUnitPrice   = "resolved_unit_price"
+        case resolvedOptionsLabel = "resolved_options_label"
+    }
+
+    init(
+        estimateId: String,
+        productId: String?,
+        name: String?,
+        description: String,
+        quantity: Double,
+        unitPrice: Double,
+        unit: String?,
+        sortOrder: Int,
+        isOptional: Bool?,
+        taskTypeId: String?,
+        type: String?,
+        category: String?,
+        parentLineItemId: String?,
+        configuredOptions: RawJSONColumn? = nil,
+        resolvedUnitPrice: Double? = nil,
+        resolvedOptionsLabel: String? = nil
+    ) {
+        self.estimateId = estimateId
+        self.productId = productId
+        self.name = name
+        self.description = description
+        self.quantity = quantity
+        self.unitPrice = unitPrice
+        self.unit = unit
+        self.sortOrder = sortOrder
+        self.isOptional = isOptional
+        self.taskTypeId = taskTypeId
+        self.type = type
+        self.category = category
+        self.parentLineItemId = parentLineItemId
+        self.configuredOptions = configuredOptions
+        self.resolvedUnitPrice = resolvedUnitPrice
+        self.resolvedOptionsLabel = resolvedOptionsLabel
     }
 }
 
@@ -204,6 +255,9 @@ struct UpdateLineItemDTO: Codable {
     var sortOrder: Int?
     var isOptional: Bool?
     var parentLineItemId: String?
+    var configuredOptions: RawJSONColumn?
+    var resolvedUnitPrice: Double?
+    var resolvedOptionsLabel: String?
 
     enum CodingKeys: String, CodingKey {
         case description
@@ -211,6 +265,9 @@ struct UpdateLineItemDTO: Codable {
         case unitPrice  = "unit_price"
         case sortOrder  = "sort_order"
         case isOptional = "is_optional"
-        case parentLineItemId = "parent_line_item_id"
+        case parentLineItemId    = "parent_line_item_id"
+        case configuredOptions   = "configured_options"
+        case resolvedUnitPrice   = "resolved_unit_price"
+        case resolvedOptionsLabel = "resolved_options_label"
     }
 }

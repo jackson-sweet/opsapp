@@ -365,54 +365,51 @@ struct InvoiceDetailView: View {
     // MARK: - Sticky Footer
 
     private var stickyFooter: some View {
-        HStack(spacing: OPSStyle.Layout.spacing3) {
-            switch invoice.status {
-            case .draft:
-                Button("SEND INVOICE") {
-                    Task { await viewModel.sendInvoice(invoice) }
-                }
-                .opsPrimaryButtonStyle()
-
-            case .awaitingPayment, .partiallyPaid, .sent, .pastDue:
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("BALANCE DUE")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Text(invoice.balanceDue, format: .currency(code: "USD").precision(.fractionLength(0)))
-                        .font(OPSStyle.Typography.subtitle)
-                        .foregroundColor(invoice.isOverdue ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryText)
-                }
-                Spacer()
-                Button("RECORD PAYMENT") { showPaymentSheet = true }
+        OPSFloatingButtonBar(horizontalPadding: OPSStyle.Layout.spacing3, verticalPadding: OPSStyle.Layout.spacing2) {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
+                switch invoice.status {
+                case .draft:
+                    Button("SEND INVOICE") {
+                        Task { await viewModel.sendInvoice(invoice) }
+                    }
                     .opsPrimaryButtonStyle()
 
-            case .paid:
-                Text("PAID IN FULL")
-                    .font(OPSStyle.Typography.body)
-                    .fontWeight(.semibold)
-                    .foregroundColor(OPSStyle.Colors.successStatus)
-                Spacer()
+                case .awaitingPayment, .partiallyPaid, .sent, .pastDue:
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("BALANCE DUE")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        Text(invoice.balanceDue, format: .currency(code: "USD").precision(.fractionLength(0)))
+                            .font(OPSStyle.Typography.subtitle)
+                            .foregroundColor(invoice.isOverdue ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryText)
+                    }
+                    Spacer()
+                    Button("RECORD PAYMENT") { showPaymentSheet = true }
+                        .opsPrimaryButtonStyle()
 
-            case .void:
-                Text("VOIDED")
-                    .font(OPSStyle.Typography.body)
-                    .fontWeight(.semibold)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Spacer()
+                case .paid:
+                    Text("PAID IN FULL")
+                        .font(OPSStyle.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundColor(OPSStyle.Colors.successStatus)
+                    Spacer()
 
-            case .writtenOff:
-                Text("WRITTEN OFF")
-                    .font(OPSStyle.Typography.body)
-                    .fontWeight(.semibold)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Spacer()
+                case .void:
+                    Text("VOIDED")
+                        .font(OPSStyle.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Spacer()
+
+                case .writtenOff:
+                    Text("WRITTEN OFF")
+                        .font(OPSStyle.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Spacer()
+                }
             }
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(
-            OPSStyle.Colors.background
-        )
     }
 }
 

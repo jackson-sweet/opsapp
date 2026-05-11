@@ -377,7 +377,8 @@ struct QuantityAdjustmentSheet: View {
                     dismiss()
                 }
 
-                // Check if quantity crossed a threshold and notify inventory managers
+                // Check if quantity crossed a threshold and notify holders
+                // of inventory.manage. Permission-gated, never role.
                 let status = item.thresholdStatus
                 if status == .warning || status == .critical {
                     if let companyId = dataController.currentUser?.companyId {
@@ -385,20 +386,18 @@ struct QuantityAdjustmentSheet: View {
                         let alertBody = "\(item.name) is \(status == .critical ? "critically low" : "running low") (\(Int(item.quantity)) remaining)"
                         let alertType = status == .critical ? "inventory_critical" : "inventory_warning"
 
-                        // Find users with inventory.manage permission (admin/office roles)
-                        struct UserIdRow: Codable { let id: String }
-                        if let managers = try? await SupabaseService.shared.client
-                            .from("users")
-                            .select("id")
-                            .eq("company_id", value: companyId)
-                            .in("role", values: ["admin", "owner", "office"])
-                            .execute()
-                            .value as [UserIdRow] {
+                        let managerIds = (try? await RecipientLookupService.usersWithPermission(
+                            companyId: companyId,
+                            permission: "inventory.manage"
+                        )) ?? []
+                        let currentId = UserDefaults.standard.string(forKey: "currentUserId")
+                        let recipients = managerIds.filter { $0 != currentId }
+
+                        if !recipients.isEmpty {
                             let notifRepo = NotificationRepository()
-                            let currentId = UserDefaults.standard.string(forKey: "currentUserId")
-                            for manager in managers where manager.id != currentId {
+                            for recipient in recipients {
                                 let dto = NotificationRepository.CreateNotificationDTO(
-                                    userId: manager.id,
+                                    userId: recipient,
                                     companyId: companyId,
                                     type: alertType,
                                     title: alertTitle,
@@ -411,17 +410,13 @@ struct QuantityAdjustmentSheet: View {
                                 )
                                 try? await notifRepo.createNotification(dto)
                             }
-                            // Send push
-                            let managerIds = managers.map(\.id).filter { $0 != currentId }
-                            if !managerIds.isEmpty {
-                                try? await OneSignalService.shared.sendToUsers(
-                                    userIds: managerIds,
-                                    title: alertTitle,
-                                    body: alertBody,
-                                    data: ["type": alertType, "screen": "inventory"]
-                                )
-                            }
-                            print("[QUANTITY_ADJUST] 📬 \(alertType) notification sent to \(managers.count) managers")
+                            try? await OneSignalService.shared.sendToUsers(
+                                userIds: recipients,
+                                title: alertTitle,
+                                body: alertBody,
+                                data: ["type": alertType, "screen": "inventory"]
+                            )
+                            print("[QUANTITY_ADJUST] 📬 \(alertType) notification sent to \(recipients.count) recipients")
                         }
                     }
                 }

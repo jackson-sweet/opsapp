@@ -38,8 +38,15 @@ enum PermissionRegistry {
         PermissionDefinition(id: "pipeline.manage", label: "Manage Pipeline", category: "Pipeline"),
         // Calendar
         PermissionDefinition(id: "calendar.edit", label: "Edit Calendar", category: "Calendar"),
-        // Inventory
-        PermissionDefinition(id: "inventory.view", label: "View Inventory", category: "Inventory"),
+        // Catalog
+        PermissionDefinition(id: "catalog.view", label: "View Catalog", category: "Catalog"),
+        PermissionDefinition(id: "catalog.stock.adjust", label: "Adjust Stock Quantity", category: "Catalog"),
+        PermissionDefinition(id: "catalog.manage", label: "Manage Catalog", category: "Catalog"),
+        PermissionDefinition(id: "catalog.import", label: "Import Catalog", category: "Catalog"),
+        PermissionDefinition(id: "catalog.products.view", label: "View Products", category: "Catalog"),
+        PermissionDefinition(id: "catalog.products.manage", label: "Manage Products", category: "Catalog"),
+        PermissionDefinition(id: "catalog.orders.view", label: "View Orders", category: "Catalog"),
+        PermissionDefinition(id: "catalog.orders.manage", label: "Manage Orders", category: "Catalog"),
         // Team
         PermissionDefinition(id: "team.view", label: "View Team", category: "Team"),
         PermissionDefinition(id: "team.manage", label: "Manage Team", category: "Team"),
@@ -83,13 +90,13 @@ enum PermissionRegistry {
 
     static func iconForRole(_ roleName: String) -> String {
         switch roleName.lowercased() {
-        case "admin": return "shield.checkered"
-        case "owner": return "crown.fill"
-        case "office": return "desktopcomputer"
-        case "operator": return "wrench.and.screwdriver.fill"
-        case "crew": return "hammer.fill"
-        case "unassigned": return "person.fill.questionmark"
-        default: return "person.fill"
+        case "admin": return "shield"
+        case "owner": return "star"
+        case "office": return "building.2"
+        case "operator": return "wrench.adjustable"
+        case "crew": return "hammer"
+        case "unassigned": return "questionmark.circle"
+        default: return "person"
         }
     }
 
@@ -157,7 +164,10 @@ private let permissionSearchTags: [String: [String]] = [
     "pipeline.view":                ["funnel", "leads", "opportunity"],
     "pipeline.manage":              ["funnel", "leads", "opportunity"],
     "calendar.edit":                ["reschedule", "scheduling", "shift", "move event", "calendar change"],
-    "inventory.view":               ["stock", "materials", "supplies", "parts"],
+    "catalog.view":                 ["stock", "materials", "supplies", "parts", "inventory", "catalog", "products"],
+    "catalog.manage":               ["edit stock", "manage stock", "adjust quantity"],
+    "catalog.products.manage":      ["edit product", "edit price", "options", "modifiers", "recipe"],
+    "catalog.orders.manage":        ["draft order", "send order", "fulfill order", "supplier"],
     "team.view":                    ["crew", "staff", "members"],
     "team.manage":                  ["crew", "staff", "members", "hire", "manage people"],
     "settings.company":             ["company settings", "business", "org"],
@@ -262,15 +272,9 @@ struct RoleDetailView: View {
                                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(PermissionRegistry.displayName(for: role.name).uppercased())
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                                    Text("Hierarchy level: \(role.hierarchy)")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                }
+                                Text(PermissionRegistry.displayName(for: role.name).uppercased())
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                             }
                             .padding(.horizontal, 20)
 

@@ -25,6 +25,8 @@ class ExpenseViewModel: ObservableObject {
 
     private var repository: ExpenseRepository?
     private var storedCompanyId: String?
+    private var storedUserId: String?
+    private var storedUserName: String?
     private let ocrService: ExpenseOCRServiceProtocol = AppleVisionOCRService()
     private let notificationRepo = NotificationRepository()
 
@@ -124,9 +126,19 @@ class ExpenseViewModel: ObservableObject {
         }
     }
 
-    func setup(companyId: String) {
+    func setup(companyId: String, currentUserId: String? = nil, currentUserName: String? = nil) {
         storedCompanyId = companyId
+        storedUserId = currentUserId
+        storedUserName = currentUserName
         repository = ExpenseRepository(companyId: companyId)
+    }
+
+    /// Update the cached current-user context (used for notification dispatch
+    /// — submitter name in body, exclude-self in recipients). Safe to call
+    /// after setup once the DataController has loaded the user.
+    func setCurrentUser(id: String?, name: String?) {
+        storedUserId = id
+        storedUserName = name
     }
 
     // MARK: - Load Data
@@ -203,6 +215,7 @@ class ExpenseViewModel: ObservableObject {
         description: String?,
         amount: Double,
         taxAmount: Double?,
+        currency: String?,
         expenseDate: String?,
         paymentMethod: String?,
         receiptImageUrl: String?,
@@ -220,6 +233,7 @@ class ExpenseViewModel: ObservableObject {
             description: description,
             amount: amount,
             taxAmount: taxAmount,
+            currency: currency,
             expenseDate: expenseDate,
             paymentMethod: paymentMethod,
             receiptImageUrl: receiptImageUrl,
@@ -287,30 +301,132 @@ class ExpenseViewModel: ObservableObject {
 
     // MARK: - Status Actions
 
+    /// Submit a single expense for review.
+    ///
+    /// - If the expense's amount is below `expense_settings.auto_approve_threshold`,
+    ///   it auto-approves on the spot (status -> approved, accounting sync fires).
+    ///   No batch is attached and no review notification is sent — matches the
+    ///   pre-existing per-expense auto-approve semantics.
+    /// - Otherwise: the expense is attached to the user's open batch for the
+    ///   appropriate scope (per `review_frequency`), status -> submitted, batch
+    ///   total recalculated, and approvers (anyone with `expenses.approve`) are
+    ///   notified. Always-bundle: every above-threshold submission ends up in
+    ///   a batch — no orphans.
     func submitExpense(_ expenseId: String) async {
-        guard let repo = repository else { return }
-        do {
-            // Check auto-approve threshold
-            if let settings = settings,
-               let threshold = settings.autoApproveThreshold,
-               let expense = expenses.first(where: { $0.id == expenseId }),
-               expense.amount < threshold {
-                // Auto-approve
+        guard let repo = repository,
+              let companyId = storedCompanyId,
+              let expense = expenses.first(where: { $0.id == expenseId }) else { return }
+
+        // Auto-approve path (per-expense, threshold-based) — preserved.
+        if let threshold = settings?.autoApproveThreshold,
+           expense.amount < threshold {
+            do {
                 let updated = try await repo.approve(expenseId, approvedBy: "auto")
                 if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
                     expenses[idx] = updated
                 }
-                // Fire-and-forget: trigger accounting sync for auto-approved expense
                 Task { await repo.triggerAccountingSync(expenseId: expenseId) }
-            } else {
-                let updated = try await repo.updateStatus(expenseId, status: .submitted)
-                if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
-                    expenses[idx] = updated
-                }
+            } catch {
+                self.error = error.localizedDescription
+            }
+            return
+        }
+
+        // Always-bundle path.
+        do {
+            let frequency = settings?.reviewFrequency ?? "monthly"
+            let scopeProjectId: String? = (frequency == "per_job")
+                ? expense.allocations?.first?.projectId
+                : nil
+
+            let period = ExpenseBatchPeriod.forExpense(
+                expenseDate: expense.expenseDate,
+                createdAt: expense.createdAt,
+                reviewFrequency: frequency
+            )
+
+            let batch = try await repo.getOrCreateOpenBatch(
+                submittedBy: expense.submittedBy,
+                periodStart: period.start,
+                periodEnd: period.end,
+                scopeProjectId: scopeProjectId
+            )
+
+            try await repo.assignExpensesToBatch([expenseId], batchId: batch.id)
+            let updated = try await repo.updateStatus(expenseId, status: .submitted)
+            if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
+                expenses[idx] = updated
+            }
+
+            try? await repo.recalculateBatchTotal(batch.id)
+
+            // Fire-and-forget: notify approvers via permission lookup.
+            let capturedCompanyId = companyId
+            let capturedBatch = batch
+            let capturedExpense = updated
+            let capturedSubmitterId = storedUserId ?? expense.submittedBy
+            let capturedSubmitterName = storedUserName ?? "A crew member"
+            let capturedNotificationRepo = notificationRepo
+            Task {
+                await Self.dispatchExpenseSubmittedNotifications(
+                    companyId: capturedCompanyId,
+                    submitterId: capturedSubmitterId,
+                    submitterName: capturedSubmitterName,
+                    batch: capturedBatch,
+                    expense: capturedExpense,
+                    notificationRepo: capturedNotificationRepo
+                )
             }
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    /// Static helper: posts in-app + push notifications to everyone in the
+    /// company with `expenses.approve`, excluding the submitter. Fire-and-forget
+    /// at the call site; failures are logged but don't propagate.
+    private static func dispatchExpenseSubmittedNotifications(
+        companyId: String,
+        submitterId: String,
+        submitterName: String,
+        batch: ExpenseBatchDTO,
+        expense: ExpenseDTO,
+        notificationRepo: NotificationRepository
+    ) async {
+        let approverIds = (try? await RecipientLookupService.usersWithPermission(
+            companyId: companyId,
+            permission: "expenses.approve"
+        )) ?? []
+        let recipients = approverIds.filter { $0 != submitterId.lowercased() }
+        guard !recipients.isEmpty else { return }
+
+        let merchant = expense.merchantName?.isEmpty == false ? expense.merchantName! : "Expense"
+        let amountStr = String(format: "$%.2f", expense.amount)
+        let title = "Expense Submitted"
+        let body = "\(submitterName) submitted \(merchant) (\(amountStr)) for review"
+
+        for recipient in recipients {
+            let dto = NotificationRepository.CreateNotificationDTO(
+                userId: recipient,
+                companyId: companyId,
+                type: "expense_submitted",
+                title: title,
+                body: body,
+                projectId: nil,
+                noteId: nil,
+                expenseId: expense.id,
+                batchId: batch.id,
+                deepLinkType: "expense"
+            )
+            try? await notificationRepo.createNotification(dto)
+        }
+
+        try? await OneSignalService.shared.notifyExpenseSubmitted(
+            adminUserIds: recipients,
+            submitterName: submitterName,
+            batchNumber: batch.batchNumber,
+            batchId: batch.id
+        )
     }
 
     func approveExpense(_ expenseId: String, approvedBy: String) async {
@@ -473,27 +589,25 @@ class ExpenseViewModel: ObservableObject {
             }
         }
 
-        // Fire-and-forget: create in-app notification + push for admin/office users
+        // Fire-and-forget: notify everyone with expenses.approve permission.
+        // NEVER filter by users.role — gate by granular permission so custom
+        // roles and per-user overrides are honored.
         let capturedCompanyId = unbatched[0].companyId
         let capturedBatchId = batch.id
         let capturedBatchNumber = batchNumber
         let capturedUserName = userName
+        let capturedSubmitterId = userId
         let capturedNotificationRepo = notificationRepo
         Task {
-            // Find admin/office users to notify
-            struct UserIdRow: Codable { let id: String }
-            let admins = (try? await SupabaseService.shared.client
-                .from("users")
-                .select("id")
-                .eq("company_id", value: capturedCompanyId)
-                .in("role", values: ["admin", "owner", "office"])
-                .execute()
-                .value as [UserIdRow]) ?? []
+            let approverIds = (try? await RecipientLookupService.usersWithPermission(
+                companyId: capturedCompanyId,
+                permission: "expenses.approve"
+            )) ?? []
+            let recipients = approverIds.filter { $0 != capturedSubmitterId }
 
-            // Create in-app notification for each admin
-            for admin in admins {
+            for recipient in recipients {
                 let dto = NotificationRepository.CreateNotificationDTO(
-                    userId: admin.id,
+                    userId: recipient,
                     companyId: capturedCompanyId,
                     type: "expense_submitted",
                     title: "Invoice Submitted",
@@ -507,11 +621,9 @@ class ExpenseViewModel: ObservableObject {
                 try? await capturedNotificationRepo.createNotification(dto)
             }
 
-            // Send push to admins
-            let adminIds = admins.map(\.id)
-            if !adminIds.isEmpty {
+            if !recipients.isEmpty {
                 try? await OneSignalService.shared.notifyExpenseSubmitted(
-                    adminUserIds: adminIds,
+                    adminUserIds: recipients,
                     submitterName: capturedUserName,
                     batchNumber: capturedBatchNumber,
                     batchId: capturedBatchId
@@ -521,6 +633,103 @@ class ExpenseViewModel: ObservableObject {
 
         await loadBatches()
         await loadExpenses()
+    }
+
+    // MARK: - Orphan Recovery
+
+    /// Count of expenses stuck in the orphan state for this company.
+    /// Drives the orphan-recovery banner in ExpensesListView.
+    @Published var orphanCount: Int = 0
+
+    func loadOrphanCount() async {
+        guard let repo = repository else { return }
+        do {
+            let orphans = try await repo.fetchOrphanExpenses()
+            orphanCount = orphans.count
+        } catch {
+            // Silently swallow — this is observability, not a user action.
+            // Refreshing the screen will retry.
+            orphanCount = 0
+        }
+    }
+
+    /// Re-bundle every orphan expense into the appropriate open batch and
+    /// notify approvers once per resulting batch. Idempotent: re-running is
+    /// safe; already-bundled expenses are filtered out by fetchOrphanExpenses.
+    func recoverOrphans() async {
+        guard let repo = repository,
+              let companyId = storedCompanyId else { return }
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let orphans = try await repo.fetchOrphanExpenses()
+            guard !orphans.isEmpty else {
+                orphanCount = 0
+                return
+            }
+
+            let frequency = settings?.reviewFrequency ?? "monthly"
+
+            // Resolve batches per orphan, group expense IDs by batch so we
+            // assign + recompute once per batch.
+            var attachmentsByBatch: [String: (batch: ExpenseBatchDTO, expenses: [ExpenseDTO])] = [:]
+            for expense in orphans {
+                let scopeProjectId: String? = (frequency == "per_job")
+                    ? expense.allocations?.first?.projectId
+                    : nil
+                let period = ExpenseBatchPeriod.forExpense(
+                    expenseDate: expense.expenseDate,
+                    createdAt: expense.createdAt,
+                    reviewFrequency: frequency
+                )
+                let batch = try await repo.getOrCreateOpenBatch(
+                    submittedBy: expense.submittedBy,
+                    periodStart: period.start,
+                    periodEnd: period.end,
+                    scopeProjectId: scopeProjectId
+                )
+                var bucket = attachmentsByBatch[batch.id] ?? (batch: batch, expenses: [])
+                bucket.expenses.append(expense)
+                attachmentsByBatch[batch.id] = bucket
+            }
+
+            for (_, bucket) in attachmentsByBatch {
+                let ids = bucket.expenses.map { $0.id }
+                try await repo.assignExpensesToBatch(ids, batchId: bucket.batch.id)
+                try? await repo.recalculateBatchTotal(bucket.batch.id)
+
+                // One in-app + push notification per batch (not per expense)
+                // so admins aren't spammed during recovery.
+                let firstExpense = bucket.expenses.first!
+                let submitterId = firstExpense.submittedBy.lowercased()
+                let submitterName = storedUserName ?? "A crew member"
+                let captured = (
+                    cid: companyId,
+                    sid: submitterId,
+                    sname: submitterName,
+                    batch: bucket.batch,
+                    expense: firstExpense
+                )
+                let capturedNotificationRepo = notificationRepo
+                Task {
+                    await Self.dispatchExpenseSubmittedNotifications(
+                        companyId: captured.cid,
+                        submitterId: captured.sid,
+                        submitterName: captured.sname,
+                        batch: captured.batch,
+                        expense: captured.expense,
+                        notificationRepo: capturedNotificationRepo
+                    )
+                }
+            }
+
+            await loadOrphanCount()
+            await loadBatchesForReview()
+            await loadExpenses()
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     // MARK: - Invoice Review

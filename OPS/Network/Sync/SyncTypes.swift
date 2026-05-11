@@ -166,17 +166,44 @@ enum SyncEntityType: String, CaseIterable {
     case projectNote
     case photoAnnotation
     case calendarUserEvent
-    case inventoryItem
-    case inventoryUnit
-    case inventoryTag
-    case inventorySnapshot
-    case inventorySnapshotItem
+    case catalogCategory
+    case catalogUnit
+    case catalogTag
+    case catalogItem
+    case catalogVariant
+    case catalogOption
+    case catalogOptionValue
+    case catalogVariantOptionValue
+    case catalogItemTag
+    case catalogSnapshot
+    case catalogSnapshotItem
+    case catalogOrder
+    case catalogOrderItem
+    case companyDefaultProduct
+    case productOption
+    case productOptionValue
+    case productPricingModifier
+    case productMaterial
+    /// Bundle composition rows — a bundle product (kind='package') with its
+    /// children + quantities. See product_bundle_items table.
+    case productBundleItem
     case timeEntry
     case signatureCapture
     case formSubmission
     case localPhoto
     case deckDesign
     case wizardState
+    // Legacy inventory_* tables — distinct from catalog_* and still the
+    // tables backing the Inventory tab on iOS + Web (bug 2837ddae).
+    case inventoryItem
+    case inventoryUnit
+    case inventoryTag
+    case inventoryItemTag
+    case inventorySnapshot
+    case inventorySnapshotItem
+    // Task reminder templates + per-task instances (bug 4f00c2d7).
+    case taskTypeReminder
+    case taskReminder
 
     /// The corresponding Supabase table name for this entity type.
     var supabaseTable: String {
@@ -198,17 +225,39 @@ enum SyncEntityType: String, CaseIterable {
         case .projectNote:           return "project_notes"
         case .photoAnnotation:       return "project_photo_annotations"
         case .calendarUserEvent:     return "calendar_user_events"
-        case .inventoryItem:         return "inventory_items"
-        case .inventoryUnit:         return "inventory_units"
-        case .inventoryTag:          return "inventory_tags"
-        case .inventorySnapshot:     return "inventory_snapshots"
-        case .inventorySnapshotItem: return "inventory_snapshot_items"
+        case .catalogCategory:              return "catalog_categories"
+        case .catalogUnit:                  return "catalog_units"
+        case .catalogTag:                   return "catalog_tags"
+        case .catalogItem:                  return "catalog_items"
+        case .catalogVariant:               return "catalog_variants"
+        case .catalogOption:                return "catalog_options"
+        case .catalogOptionValue:           return "catalog_option_values"
+        case .catalogVariantOptionValue:    return "catalog_variant_option_values"
+        case .catalogItemTag:               return "catalog_item_tags"
+        case .catalogSnapshot:              return "catalog_snapshots"
+        case .catalogSnapshotItem:          return "catalog_snapshot_items"
+        case .catalogOrder:                 return "catalog_orders"
+        case .catalogOrderItem:             return "catalog_order_items"
+        case .companyDefaultProduct:        return "company_default_products"
+        case .productOption:                return "product_options"
+        case .productOptionValue:           return "product_option_values"
+        case .productPricingModifier:       return "product_pricing_modifiers"
+        case .productMaterial:              return "product_materials"
+        case .productBundleItem:            return "product_bundle_items"
         case .timeEntry:             return "time_entries"
         case .signatureCapture:      return "signature_captures"
         case .formSubmission:        return "form_submissions"
         case .localPhoto:            return "local_photos"
         case .deckDesign:            return "deck_designs"
         case .wizardState:           return "wizard_states"
+        case .inventoryItem:         return "inventory_items"
+        case .inventoryUnit:         return "inventory_units"
+        case .inventoryTag:          return "inventory_tags"
+        case .inventoryItemTag:      return "inventory_item_tags"
+        case .inventorySnapshot:     return "inventory_snapshots"
+        case .inventorySnapshotItem: return "inventory_snapshot_items"
+        case .taskTypeReminder:      return "task_type_reminders"
+        case .taskReminder:          return "task_reminders"
         }
     }
 
@@ -227,14 +276,30 @@ enum SyncEntityType: String, CaseIterable {
              .calendarUserEvent:                            return 7
         case .expense, .estimate, .invoice:                 return 8
         case .lineItem, .payment:                           return 9
-        case .inventoryItem, .inventoryUnit,
-             .inventoryTag:                                 return 10
-        case .inventorySnapshot, .inventorySnapshotItem:    return 11
+        case .catalogCategory, .catalogUnit,
+             .catalogTag, .catalogItem:                     return 10
+        case .catalogOption, .catalogOptionValue,
+             .catalogVariant, .catalogVariantOptionValue,
+             .catalogItemTag:                               return 11
+        case .catalogSnapshot, .catalogSnapshotItem:        return 12
+        case .productOption, .productOptionValue,
+             .productPricingModifier, .productMaterial,
+             .productBundleItem:                            return 13
+        case .companyDefaultProduct,
+             .catalogOrder, .catalogOrderItem:              return 14
         case .timeEntry, .signatureCapture,
-             .formSubmission:                               return 12
-        case .localPhoto:                                   return 13
+             .formSubmission:                               return 15
+        case .localPhoto:                                   return 16
         case .deckDesign:                                   return 7
         case .wizardState:                                  return 7
+        case .inventoryUnit, .inventoryTag,
+             .inventoryItem:                                return 10
+        case .inventoryItemTag:                             return 11
+        case .inventorySnapshot, .inventorySnapshotItem:    return 12
+        // Reminder templates depend on task_types (priority 4); instances
+        // depend on project_tasks (priority 6).
+        case .taskTypeReminder:                              return 5
+        case .taskReminder:                                  return 7
         }
     }
 }
@@ -269,6 +334,32 @@ func classifySyncError(_ error: Error) -> SyncError {
     }
 
     return .unknown(underlying: error)
+}
+
+// MARK: - Idempotency Helpers
+
+/// Returns `true` if the underlying error indicates a Postgres primary-key
+/// unique-constraint violation. Used during outbound `create` retries to
+/// recognize that a previous push already inserted the row server-side
+/// (response was lost — network blip, app killed mid-flight, etc.) and
+/// avoid retrying the INSERT forever against a server that already has it.
+///
+/// Detection is intentionally narrow:
+/// - Requires the canonical PostgREST/Postgres phrase
+///   `duplicate key value violates unique constraint`.
+/// - Requires the constraint name to end in `_pkey` so non-PK unique
+///   violations (e.g. unique email columns) are NOT swallowed — those are
+///   genuine create failures and must continue to surface to the retry path.
+///
+/// SQLSTATE for unique-violation is `23505`; we match on the message text
+/// because Supabase's Swift client surfaces the PG error string via
+/// `localizedDescription` rather than exposing the SQLSTATE directly.
+func errorIndicatesPrimaryKeyViolation(_ error: Error) -> Bool {
+    let description = error.localizedDescription
+    guard description.contains("duplicate key value violates unique constraint") else {
+        return false
+    }
+    return description.contains("_pkey")
 }
 
 // MARK: - Notification Names

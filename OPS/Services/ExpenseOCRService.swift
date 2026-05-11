@@ -105,7 +105,13 @@ class AppleVisionOCRService: ExpenseOCRServiceProtocol {
             throw OCRError.invalidImage
         }
 
-        // Step 1: Preprocess image for optimal OCR
+        // Step 1: Preprocess image for optimal OCR.
+        //
+        // VNDocumentCameraViewController already perspective-corrects, deskews,
+        // and enhances contrast on the scanned page — running aggressive filters
+        // on top can blow out faded thermal print and degrade Vision's accuracy.
+        // We apply only a light grayscale + sharpen pass which empirically helps
+        // worn receipts without hurting clean ones.
         let preprocessed = preprocessImage(cgImage)
         print("[OCR] Image preprocessed: \(cgImage.width)x\(cgImage.height) → \(preprocessed.width)x\(preprocessed.height)")
 
@@ -136,22 +142,30 @@ class AppleVisionOCRService: ExpenseOCRServiceProtocol {
 
     // MARK: - Image Preprocessing
 
-    /// Applies a CIFilter pipeline to enhance receipt text for OCR.
+    /// Applies a light CIFilter pass to enhance receipt text for OCR.
     ///
-    /// Uses moderate adjustments only — Vision's neural network was trained on
-    /// natural images, so aggressive binarization hurts more than it helps.
-    /// Pipeline: Grayscale → Contrast Boost → Sharpen → Exposure Lift
+    /// VisionKit's document scanner already does heavy lifting (perspective
+    /// correction, deskew, auto-contrast). Layering aggressive contrast +
+    /// exposure + brightness on top of that empirically degrades accuracy on
+    /// faded thermal print — bright stretches get pushed out of range and
+    /// finer characters disappear. We keep only a small contrast bump and
+    /// edge sharpen, which helped library-imported (non-VisionKit) photos
+    /// without hurting clean scans.
+    ///
+    /// Pipeline: Grayscale (no brightness lift) → Mild contrast → Sharpen
     private func preprocessImage(_ cgImage: CGImage) -> CGImage {
         var ciImage = CIImage(cgImage: cgImage)
 
-        // 1. Grayscale + contrast boost
+        // 1. Grayscale + mild contrast.
         //    Removes color noise (colored receipt paper, tinted lighting).
-        //    Contrast boost makes text stand out from background.
+        //    Contrast bump is intentionally smaller (1.10 vs 1.20) and we no
+        //    longer push brightness — both pushed faded thermal text outside
+        //    the recognizer's preferred range on real receipts.
         if let colorControls = CIFilter(name: "CIColorControls") {
             colorControls.setValue(ciImage, forKey: kCIInputImageKey)
-            colorControls.setValue(0.0, forKey: kCIInputSaturationKey)   // Full grayscale
-            colorControls.setValue(1.2, forKey: kCIInputContrastKey)     // 20% contrast boost
-            colorControls.setValue(0.05, forKey: kCIInputBrightnessKey)  // Slight brightness lift
+            colorControls.setValue(0.0, forKey: kCIInputSaturationKey)
+            colorControls.setValue(1.10, forKey: kCIInputContrastKey)
+            colorControls.setValue(0.0, forKey: kCIInputBrightnessKey)
             if let output = colorControls.outputImage {
                 ciImage = output
             }
@@ -161,22 +175,15 @@ class AppleVisionOCRService: ExpenseOCRServiceProtocol {
         //    Critical for slightly blurry phone photos taken at arm's length.
         if let sharpen = CIFilter(name: "CISharpenLuminance") {
             sharpen.setValue(ciImage, forKey: kCIInputImageKey)
-            sharpen.setValue(0.5, forKey: kCIInputSharpnessKey)
+            sharpen.setValue(0.45, forKey: kCIInputSharpnessKey)
             if let output = sharpen.outputImage {
                 ciImage = output
             }
         }
 
-        // 3. Exposure adjustment for underexposed receipts.
-        //    Subtle lift to ensure faded thermal print is readable.
-        //    +0.3 EV is conservative — won't blow out well-lit receipts.
-        if let exposure = CIFilter(name: "CIExposureAdjust") {
-            exposure.setValue(ciImage, forKey: kCIInputImageKey)
-            exposure.setValue(0.3, forKey: kCIInputEVKey)
-            if let output = exposure.outputImage {
-                ciImage = output
-            }
-        }
+        // (Removed) Exposure adjust — when stacked on VisionKit's auto-enhanced
+        // output it tended to clip dark serif glyphs and merge adjacent line
+        // items on dot-matrix print. Vision handles natural lighting variance.
 
         // Render back to CGImage
         if let outputCG = ciContext.createCGImage(ciImage, from: ciImage.extent) {
@@ -198,22 +205,38 @@ class AppleVisionOCRService: ExpenseOCRServiceProtocol {
                 continuation.resume(returning: observations)
             }
 
-            // Accuracy: use the most accurate (slower) recognition level
+            // Pin to the newest text-recognition revision the host iOS supports.
+            // Higher revisions consistently outperform older ones on faded
+            // thermal print and tightly spaced receipt rows. We deliberately
+            // do NOT hardcode a revision constant so the app picks up future
+            // model bumps automatically as users upgrade iOS.
+            if let latest = type(of: request).supportedRevisions.max() {
+                request.revision = latest
+            }
+
+            // Accuracy: use the most accurate (slower) recognition level.
             request.recognitionLevel = .accurate
 
-            // Language correction: improves word recognition using language model
+            // Language correction: improves word recognition using language model.
             request.usesLanguageCorrection = true
 
-            // Language: restrict to English for better accuracy on English receipts
+            // Language: restrict to English so the recognizer doesn't waste
+            // capacity guessing alternate scripts. Auto-detect adds latency
+            // for receipts that are reliably one of en-US/en-CA/en-GB.
             request.recognitionLanguages = ["en-US"]
+            request.automaticallyDetectsLanguage = false
 
-            // Custom vocabulary: receipt-specific terms Vision should prefer
+            // Custom vocabulary: receipt-specific terms Vision should prefer.
             request.customWords = Self.receiptVocabulary
 
-            // Minimum text height: filter out noise (barcodes, ultra-fine print).
-            // 0.01 = 1% of image height ≈ 30px on a 3000px image.
-            // Conservative enough to keep all receipt text while filtering barcode noise.
-            request.minimumTextHeight = 0.01
+            // Minimum text height — lowered from 0.01 to 0.006. Real receipts
+            // pack 40+ lines into a tall narrow image; line items can be 0.7%
+            // of image height. The previous 1% threshold dropped legitimate
+            // line items without removing all barcode noise. The parser
+            // already filters lines that look like serial/auth numbers, so
+            // letting smaller text through nets more useful tokens than it
+            // adds noise.
+            request.minimumTextHeight = 0.006
 
             let handler = VNImageRequestHandler(cgImage: image, options: [:])
             do {
@@ -322,21 +345,59 @@ struct ReceiptParser {
 
     // MARK: - Date Extraction
 
+    /// True when the user's current locale formats dates day-first (e.g. en-CA,
+    /// en-GB, most of Europe). Used to disambiguate numeric dates like
+    /// `03/05/2026` — in en-US that's March 5; in en-CA/en-GB it's May 3.
+    private static func preferDayFirstForCurrentLocale() -> Bool {
+        let template = "MMddy"
+        guard let pattern = DateFormatter.dateFormat(fromTemplate: template, options: 0, locale: Locale.current) else {
+            return false
+        }
+        // The first `M` or `d` token wins. If `d` appears before `M`, the
+        // locale formats day-first.
+        let firstD = pattern.firstIndex(of: "d")
+        let firstM = pattern.firstIndex(of: "M")
+        switch (firstD, firstM) {
+        case let (d?, m?): return d < m
+        case (.some, nil): return true
+        default:           return false
+        }
+    }
+
     private static func extractDate(from text: String) -> (Date?, Float) {
-        // Formatters ordered by specificity — try 4-digit year first, then 2-digit, then European
+        // Formatters ordered by likelihood for the user's locale. The same
+        // numeric date — say 03/05/2026 — parses as March 5 in US-style
+        // locales and May 3 in day-first locales (CA-EN, en-GB, most of EU).
+        // Trying the locale's preferred ordering first prevents systematically
+        // mis-reading non-US receipts as US dates.
         let formatters: [DateFormatter] = {
-            let f1 = DateFormatter(); f1.dateFormat = "MM/dd/yyyy"
-            let f2 = DateFormatter(); f2.dateFormat = "M/d/yyyy"
-            let f3 = DateFormatter(); f3.dateFormat = "dd/MM/yyyy"   // European: 25/09/2024
-            let f4 = DateFormatter(); f4.dateFormat = "MM/dd/yy"
-            let f5 = DateFormatter(); f5.dateFormat = "M/d/yy"
-            let f6 = DateFormatter(); f6.dateFormat = "dd/MM/yy"    // European: 25/09/24
-            let f7 = DateFormatter(); f7.dateFormat = "MM-dd-yyyy"
-            let f8 = DateFormatter(); f8.dateFormat = "dd-MM-yyyy"  // European with dash
-            let f9 = DateFormatter(); f9.dateFormat = "yyyy-MM-dd"
-            let f10 = DateFormatter(); f10.dateFormat = "MMMM d, yyyy"
-            let f11 = DateFormatter(); f11.dateFormat = "MMM d, yyyy"
-            return [f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11]
+            let dayFirst: [DateFormatter] = {
+                let a = DateFormatter(); a.dateFormat = "dd/MM/yyyy"
+                let b = DateFormatter(); b.dateFormat = "d/M/yyyy"
+                let c = DateFormatter(); c.dateFormat = "dd/MM/yy"
+                let d = DateFormatter(); d.dateFormat = "d/M/yy"
+                let e = DateFormatter(); e.dateFormat = "dd-MM-yyyy"
+                return [a, b, c, d, e]
+            }()
+            let monthFirst: [DateFormatter] = {
+                let a = DateFormatter(); a.dateFormat = "MM/dd/yyyy"
+                let b = DateFormatter(); b.dateFormat = "M/d/yyyy"
+                let c = DateFormatter(); c.dateFormat = "MM/dd/yy"
+                let d = DateFormatter(); d.dateFormat = "M/d/yy"
+                let e = DateFormatter(); e.dateFormat = "MM-dd-yyyy"
+                return [a, b, c, d, e]
+            }()
+            let unambiguous: [DateFormatter] = {
+                let a = DateFormatter(); a.dateFormat = "yyyy-MM-dd"
+                let b = DateFormatter(); b.dateFormat = "MMMM d, yyyy"
+                let c = DateFormatter(); c.dateFormat = "MMM d, yyyy"
+                return [a, b, c]
+            }()
+
+            let ordered = preferDayFirstForCurrentLocale()
+                ? dayFirst + monthFirst
+                : monthFirst + dayFirst
+            return ordered + unambiguous
         }()
 
         let calendar = Calendar.current

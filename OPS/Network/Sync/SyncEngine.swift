@@ -40,6 +40,11 @@ final class SyncEngine {
     /// Retry interval in seconds for the periodic sync timer.
     private let retryInterval: TimeInterval = 180
 
+    /// Delta pulls intentionally overlap the previous cursor. A row can update
+    /// while a device is mid-sync; without overlap, setting the cursor to the
+    /// sync completion time can skip that row forever.
+    private let deltaOverlapWindow: TimeInterval = 300
+
     // MARK: - Processors
 
     private var outboundProcessor: OutboundProcessor?
@@ -512,6 +517,7 @@ final class SyncEngine {
 
         // Pull all entities via DataActor (flag-on) or InboundProcessor (legacy).
         guard let ctx = modelContext else { return }
+        let syncStartedAt = Date()
         do {
             if FeatureFlags.useDataActor, let actor = dataActor {
                 let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
@@ -555,9 +561,8 @@ final class SyncEngine {
 
         // Update timestamps only for entity types that were actually synced
         if !hasError {
-            let now = Date()
             for entityType in InboundProcessor.syncOrder {
-                setLastSyncTimestamp(now, for: entityType)
+                setLastSyncTimestamp(syncStartedAt, for: entityType)
             }
         }
 
@@ -624,12 +629,18 @@ final class SyncEngine {
         print("[SYNC_ENGINE] pullDelta — checking for server changes")
         statusText = "Checking for updates…"
 
-        // Build timestamps dictionary from stored values
+        // Build timestamps dictionary from stored values. For entity types
+        // that have never synced on this install (no stored timestamp), pass
+        // epoch so the entity is pulled fully on first encounter — otherwise
+        // newly-added entity types (e.g. the catalog_* set landed after the
+        // user's first sync) silently skip pullDelta forever.
+        let firstSyncSentinel = Date(timeIntervalSince1970: 0)
+        let syncStartedAt = Date()
         var sinceTimestamps: [SyncEntityType: Date] = [:]
         for entityType in SyncEntityType.allCases {
-            if let ts = lastSyncTimestamp(for: entityType) {
-                sinceTimestamps[entityType] = ts
-            }
+            sinceTimestamps[entityType] = overlappedTimestamp(
+                lastSyncTimestamp(for: entityType) ?? firstSyncSentinel
+            )
         }
 
         do {
@@ -644,12 +655,9 @@ final class SyncEngine {
                 )
             }
 
-            // Update all timestamps on success
-            let now = Date()
+            // Update all timestamps on success.
             for entityType in SyncEntityType.allCases {
-                if sinceTimestamps[entityType] != nil {
-                    setLastSyncTimestamp(now, for: entityType)
-                }
+                setLastSyncTimestamp(syncStartedAt, for: entityType)
             }
         } catch {
             print("[SYNC_ENGINE] pullDelta error: \(error)")
@@ -681,9 +689,11 @@ final class SyncEngine {
         statusText = "Catching up…"
 
         // Build timestamps dictionary with the same date for all entity types
+        let syncStartedAt = Date()
+        let catchUpSince = overlappedTimestamp(date)
         var sinceTimestamps: [SyncEntityType: Date] = [:]
         for entityType in SyncEntityType.allCases {
-            sinceTimestamps[entityType] = date
+            sinceTimestamps[entityType] = catchUpSince
         }
 
         do {
@@ -699,9 +709,8 @@ final class SyncEngine {
             }
 
             // Update timestamps
-            let now = Date()
             for entityType in SyncEntityType.allCases {
-                setLastSyncTimestamp(now, for: entityType)
+                setLastSyncTimestamp(syncStartedAt, for: entityType)
             }
             statusText = "Synced"
             kickoffPhotoPrefetch()
@@ -749,6 +758,10 @@ final class SyncEngine {
     func setLastSyncTimestamp(_ date: Date, for entityType: SyncEntityType) {
         let key = "sync.lastPull.\(entityType.rawValue)"
         UserDefaults.standard.set(date, forKey: key)
+    }
+
+    private func overlappedTimestamp(_ date: Date) -> Date {
+        date.addingTimeInterval(-deltaOverlapWindow)
     }
 
     /// Clears all stored sync timestamps. Used on logout or full reset.

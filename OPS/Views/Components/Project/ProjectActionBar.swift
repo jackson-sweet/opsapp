@@ -36,9 +36,61 @@ struct ProjectActionBar: View {
     @State private var selectedImages: [UIImage] = []
     @State private var processingImage = false
     @State private var isAddingPhotos = false // Prevent duplicate additions
-    
+
     @StateObject private var expenseViewModel = ExpenseViewModel()
-    
+
+    /// Bug aa3ec6d7 — when a task is active for this project, surface
+    /// the Complete action first and re-label it "Complete [TaskType]"
+    /// so a tap completes the selected task, not the parent project.
+    private var activeTask: ProjectTask? {
+        guard let activeTaskID = appState.activeTaskID else { return nil }
+        return project.tasks.first(where: { $0.id == activeTaskID })
+    }
+
+    private var orderedActions: [ProjectAction] {
+        let base = ProjectAction.allCases
+        guard activeTask != nil else { return base }
+        // Move Complete to the front; preserve relative order of the rest.
+        return [.complete] + base.filter { $0 != .complete }
+    }
+
+    private var completeLabel: String {
+        if let task = activeTask {
+            // taskType.display is the bare type name ("Demo", "Punchlist"); we
+            // prefix with "Complete" to match the bug ask.
+            let typeName = task.taskType?.display ?? "Task"
+            return "Complete \(typeName)"
+        }
+        return "Complete"
+    }
+
+    private var completeAlert: Alert {
+        if let task = activeTask {
+            let typeName = task.taskType?.display ?? "Task"
+            return Alert(
+                title: Text("Complete \(typeName)"),
+                message: Text("Mark this \(typeName.lowercased()) as complete?"),
+                primaryButton: .default(Text("Complete")) {
+                    completeActiveTask(task)
+                },
+                secondaryButton: .cancel()
+            )
+        }
+        return Alert(
+            title: Text("Complete Project"),
+            message: Text("Are you sure you want to mark this project as complete?"),
+            primaryButton: .default(Text("Complete")) {
+                // CENTRALIZED COMPLETION CHECK: If completing project, check for incomplete tasks first
+                if appState.requestProjectCompletion(project) {
+                    // No incomplete tasks - proceed with completion
+                    updateProjectStatus(.completed)
+                }
+                // If false, the global checklist sheet will be shown via AppState
+            },
+            secondaryButton: .cancel()
+        )
+    }
+
     var body: some View {
         // horizontalPadding: 4 gives each button more allocated width, which
         // pulls the first/last button icons closer to the card edge AND
@@ -46,10 +98,12 @@ struct ProjectActionBar: View {
         // icons toward the centre.
         OPSActionBar(horizontalPadding: 4) {
             HStack(spacing: 0) {
-                ForEach(Array(ProjectAction.allCases.enumerated()), id: \.element) { index, action in
+                ForEach(Array(orderedActions.enumerated()), id: \.element) { index, action in
                     OPSActionBarButton(
                         icon: action.iconName(isRouting: inProgressManager.isRouting),
-                        label: action.label(isRouting: inProgressManager.isRouting)
+                        label: action == .complete
+                            ? completeLabel
+                            : action.label(isRouting: inProgressManager.isRouting)
                     ) {
                         handleAction(action)
                     }
@@ -57,7 +111,7 @@ struct ProjectActionBar: View {
                     .modifier(ActionButtonHighlightModifier(action: action))
 
                     // Vertical divider between buttons (not after last one)
-                    if index < ProjectAction.allCases.count - 1 {
+                    if index < orderedActions.count - 1 {
                         Rectangle()
                             .fill(OPSStyle.Colors.cardBorderSubtle)
                             .frame(width: 1, height: 32)
@@ -71,22 +125,11 @@ struct ProjectActionBar: View {
         // vertical gutter on both edges of the screen.
         .padding(.horizontal, 16)
         .contentMargins(.bottom, 90)
-        // Complete Project Confirmation
-        .alert(isPresented: $showCompleteConfirmation) {
-            Alert(
-                title: Text("Complete Project"),
-                message: Text("Are you sure you want to mark this project as complete?"),
-                primaryButton: .default(Text("Complete")) {
-                    // CENTRALIZED COMPLETION CHECK: If completing project, check for incomplete tasks first
-                    if appState.requestProjectCompletion(project) {
-                        // No incomplete tasks - proceed with completion
-                        updateProjectStatus(.completed)
-                    }
-                    // If false, the global checklist sheet will be shown via AppState
-                },
-                secondaryButton: .cancel()
-            )
-        }
+        // Bug aa3ec6d7 — confirmation copy + action follow whichever entity
+        // (project or active task) the Complete button currently targets.
+        // The alert content is computed once per render via `completeAlert`
+        // so we can branch on `activeTask` cleanly.
+        .alert(isPresented: $showCompleteConfirmation) { completeAlert }
         // Expense Form Sheet
         .sheet(isPresented: $showExpenseForm) {
             ExpenseFormSheet(viewModel: expenseViewModel, prefilledProjectId: project.id)
@@ -215,8 +258,12 @@ struct ProjectActionBar: View {
                 }
             }
         case .complete:
-            // Directly mark the project as completed
-            markProjectComplete()
+            // Bug aa3ec6d7 — when an active task is selected for this
+            // project, the same shared confirmation dialog now branches on
+            // `activeTask` to confirm the task instead of the project.
+            // Surface the dialog regardless; the alert closure picks the
+            // right copy + action.
+            showCompleteConfirmation = true
         case .receipt:
             if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
                 expenseViewModel.setup(companyId: companyId)
@@ -264,6 +311,32 @@ struct ProjectActionBar: View {
     private func markProjectComplete() {
         // Show a simple confirmation dialog
         showCompleteConfirmation = true
+    }
+
+    /// Bug aa3ec6d7 — flip the active task to completed using the same
+    /// centralised path TaskDetailsView uses, keeping local + remote state
+    /// aligned. Clearing the active task ID after success collapses the
+    /// action bar back to its default project-completion shape on the next
+    /// render, so the UI doesn't leave a stale "Complete [Type]" button
+    /// pointing at a finished task.
+    private func completeActiveTask(_ task: ProjectTask) {
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+
+        Task {
+            do {
+                try await dataController.updateTaskStatus(task: task, to: .completed)
+                await MainActor.run {
+                    if appState.activeTaskID == task.id {
+                        appState.activeTaskID = nil
+                    }
+                    let success = UINotificationFeedbackGenerator()
+                    success.notificationOccurred(.success)
+                }
+            } catch {
+                print("[PROJECT_ACTION_BAR] ❌ Failed to complete task \(task.id): \(error)")
+            }
+        }
     }
     
     private func updateProjectStatus(_ status: Status) {

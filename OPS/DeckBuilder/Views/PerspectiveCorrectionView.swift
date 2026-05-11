@@ -16,10 +16,39 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import UIKit
 
+// Orientation normalizer used at every entry into the scan pipeline so downstream
+// code can assume image.size and cgImage.width/height describe the same visual
+// rectangle (bug 46751f7f). Camera and PHPicker images often arrive with
+// imageOrientation = .right (raw sensor landscape rotated to visual portrait).
+// Vision and CoreImage operate in CGImage pixel space, so without redrawing
+// the corner coordinates the user dragged on the visual portrait get applied
+// to the raw landscape — the imported region ends up nowhere near the deck.
+extension UIImage {
+    func normalizedOrientation() -> UIImage {
+        guard imageOrientation != .up else { return self }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = scale
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        return renderer.image { _ in
+            draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+}
+
 struct PerspectiveCorrectionView: View {
+    /// Source image, always normalized to .up orientation in init. Without this,
+    /// the user drags handles in visual portrait but CIPerspectiveCorrection
+    /// reads pixels from raw landscape — imported quad lands far off the deck.
     let image: UIImage
     let onApply: (UIImage) -> Void
     let onCancel: () -> Void
+
+    init(image: UIImage, onApply: @escaping (UIImage) -> Void, onCancel: @escaping () -> Void) {
+        self.image = image.normalizedOrientation()
+        self.onApply = onApply
+        self.onCancel = onCancel
+    }
 
     /// Corners in NORMALIZED image coordinates (0...1, origin top-left). We
     /// store normalized so the handles stay anchored to the same point on
@@ -98,7 +127,10 @@ struct PerspectiveCorrectionView: View {
 
                     // Draggable handles — separate from the outline so each
                     // handle hit area is generous (44pt) without obscuring
-                    // adjacent corners.
+                    // adjacent corners. The named coordinateSpace on this ZStack
+                    // ensures DragGesture reports in the ZStack's local frame
+                    // (same space as imageRect), so normalizedPoint converts
+                    // correctly. Bug 12.
                     cornerHandle(position: cornerInView(topLeft, imageRect: imageRect)) { newPos in
                         topLeft = normalizedPoint(newPos, imageRect: imageRect)
                     }
@@ -126,6 +158,7 @@ struct PerspectiveCorrectionView: View {
                             )
                     }
                 }
+                .coordinateSpace(name: "perspectiveEditor")
             }
             .padding(.horizontal, OPSStyle.Layout.spacing4)
 
@@ -177,7 +210,12 @@ struct PerspectiveCorrectionView: View {
             .contentShape(Rectangle())
             .position(position)
             .gesture(
-                DragGesture(minimumDistance: 0)
+                // Use the named coordinateSpace declared on the parent ZStack so
+                // value.location is in ZStack-local space (the same space as
+                // imageRect). Without this, SwiftUI reports location in the
+                // view's local 44×44 frame, making corner mapping incorrect.
+                // Bug 12.
+                DragGesture(minimumDistance: 0, coordinateSpace: .named("perspectiveEditor"))
                     .onChanged { value in
                         onChange(value.location)
                     }
@@ -274,12 +312,21 @@ struct PerspectiveCorrectionView: View {
 
     private func applyCorrection() {
         isApplying = true
-        let imgW = image.size.width
-        let imgH = image.size.height
+
+        // CIImage extent is in CGImage pixel space, so the normalized handles
+        // must convert against cgImage.width/height — not image.size, which is
+        // in points and gets divided by scale on retina photos. Multiplying by
+        // points instead of pixels was producing a quad scaled by 1/scale and
+        // landing well outside the deck region (bug 46751f7f).
+        guard let cgImage = image.cgImage else {
+            isApplying = false
+            onApply(image)
+            return
+        }
+        let imgW = CGFloat(cgImage.width)
+        let imgH = CGFloat(cgImage.height)
 
         // Convert normalized (top-left origin) to CIImage pixel space (bottom-left origin).
-        // CIImage extent.height equals the image pixel height when constructed
-        // from cgImage, so multiply by image dimensions and flip Y.
         let pixelTL = CGPoint(x: topLeft.x * imgW, y: (1 - topLeft.y) * imgH)
         let pixelTR = CGPoint(x: topRight.x * imgW, y: (1 - topRight.y) * imgH)
         let pixelBL = CGPoint(x: bottomLeft.x * imgW, y: (1 - bottomLeft.y) * imgH)

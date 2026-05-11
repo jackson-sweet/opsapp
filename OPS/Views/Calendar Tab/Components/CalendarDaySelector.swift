@@ -66,7 +66,11 @@ struct CalendarDaySelector: View {
                         // Spanning event bars overlay
                         weekBarsOverlay(weekDays: weekDays)
                     }
-                    .padding(.vertical, 12)
+                    // Bug 2b61daa0 — bumped vertical padding from 12 → 16 so
+                    // the day labels and bottom event-bars overlay get real
+                    // breathing room from the card border instead of butting
+                    // up against it.
+                    .padding(.vertical, 16)
                     .padding(.horizontal, 6)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -107,7 +111,11 @@ struct CalendarDaySelector: View {
                 )
             }
         }
-        .frame(height: 86)
+        // Bug 2b61daa0 — bumped from 86 → 118 to honor the internal vertical
+        // padding (16 top + 16 bottom = 32) plus the 86pt WeekDayCell. The
+        // old 86pt outer frame compressed the cell and ate the padding,
+        // leaving the cards visually cramped against the card border.
+        .frame(height: 118)
         .wizardTarget("scroll_week")
         .onAppear {
             lastWeekStart = currentWeekStart()
@@ -128,6 +136,16 @@ struct CalendarDaySelector: View {
             DispatchQueue.main.async {
                 viewModel.objectWillChange.send()
             }
+        }
+        // Bug 1 — Refresh week strip when user events change locally or sync
+        // from the server.
+        .onChange(of: viewModel.userEventsForCurrentPeriod.count) { _, _ in
+            DispatchQueue.main.async {
+                viewModel.objectWillChange.send()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarUserEventsDidChange"))) { _ in
+            viewModel.loadUserEvents()
         }
     }
 
@@ -204,6 +222,43 @@ struct CalendarDaySelector: View {
             }
         }
 
+        // Bug 1 — Include user events (time off + personal) so the week strip
+        // shows their span bars alongside project tasks.
+        let timeOffColor = Color(red: 196/255, green: 168/255, blue: 104/255)
+        let personalColor = Color(white: 0.55)
+        var processedUserEventIds = Set<String>()
+        for dayIndex in 0..<weekDays.count {
+            let events = viewModel.userEvents(for: weekDays[dayIndex])
+            for event in events {
+                guard !processedUserEventIds.contains(event.id) else { continue }
+                processedUserEventIds.insert(event.id)
+
+                let evStart = cal.startOfDay(for: event.startDate)
+                let evEnd = cal.startOfDay(for: event.endDate)
+                var startIdx = dayIndex
+                var endIdx = dayIndex
+                for i in 0..<weekDays.count {
+                    let dayStart = cal.startOfDay(for: weekDays[i])
+                    if dayStart >= evStart && dayStart <= evEnd {
+                        if i < startIdx { startIdx = i }
+                        if i > endIdx { endIdx = i }
+                    }
+                }
+
+                let isFirst = cal.startOfDay(for: weekDays[startIdx]) == evStart
+                let isLast = cal.startOfDay(for: weekDays[endIdx]) == evEnd
+
+                rawSpans.append(RawSpan(
+                    taskId: "userevent:\(event.id)",
+                    color: event.isTimeOff ? timeOffColor : personalColor,
+                    startIdx: startIdx,
+                    endIdx: endIdx,
+                    isFirstSegment: isFirst,
+                    isLastSegment: isLast
+                ))
+            }
+        }
+
         // Sort: multi-day first (wider spans first), then by start index
         rawSpans.sort { a, b in
             let aSpan = a.endIdx - a.startIdx
@@ -254,12 +309,16 @@ struct CalendarDaySelector: View {
         // Compute per-day overflow: tasks on that day that didn't get a bar
         var overflowPerDay = Array(repeating: 0, count: weekDays.count)
         for dayIdx in 0..<weekDays.count {
-            var uniqueTaskIds = Set<String>()
+            var uniqueIds = Set<String>()
             for task in tasksByDay[dayIdx] {
-                uniqueTaskIds.insert(task.id)
+                uniqueIds.insert(task.id)
             }
-            let displayedOnDay = uniqueTaskIds.intersection(assignedTaskIds).count
-            overflowPerDay[dayIdx] = max(0, uniqueTaskIds.count - displayedOnDay)
+            // Include user events in overflow accounting (Bug 1)
+            for event in viewModel.userEvents(for: weekDays[dayIdx]) {
+                uniqueIds.insert("userevent:\(event.id)")
+            }
+            let displayedOnDay = uniqueIds.intersection(assignedTaskIds).count
+            overflowPerDay[dayIdx] = max(0, uniqueIds.count - displayedOnDay)
         }
 
         return WeekBarLayout(spans: result, overflowPerDay: overflowPerDay)

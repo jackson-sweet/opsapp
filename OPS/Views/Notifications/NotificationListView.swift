@@ -234,10 +234,17 @@ struct NotificationListView: View {
     // MARK: - Notification List (Sectioned)
 
     /// Notifications after applying the current filter (All / Unread).
+    /// Bug 5a19b120 — when a row is expanded we mark it read locally so the
+    /// unread dot/badge update, but the row must stay visible until the user
+    /// collapses it. Otherwise the moment they tap to expand, the notification
+    /// disappears from the Unread list before they can read its body.
+    /// Allowing the currently-expanded id to bypass the unread filter keeps
+    /// the row anchored while the user reads it; it falls out only after
+    /// they collapse the row (or the next list reload).
     private var filteredNotifications: [NotificationDTO] {
         switch filter {
         case .all:    return notifications
-        case .unread: return notifications.filter { !$0.isRead }
+        case .unread: return notifications.filter { !$0.isRead || $0.id == expandedId }
         }
     }
 
@@ -538,21 +545,54 @@ struct NotificationListView: View {
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .padding(.top, OPSStyle.Layout.spacing2)
 
-                    // Deep-link action if applicable
+                    // Deep-link action if applicable. Expense / invoice
+                    // notifications with no explicit deep_link_type still
+                    // route by `notification.type` (Bug bb63c37e fallback)
+                    // so we surface the button for those legacy rows too.
+                    let typeImpliesDeepLink: Bool = {
+                        switch notification.type {
+                        case "expense_submitted", "expense_approved", "expense_rejected",
+                             "invoice_approved", "invoice_revisions", "invoice_overdue":
+                            return true
+                        default: return false
+                        }
+                    }()
                     let hasDeepLink = (notification.projectId != nil && !(notification.projectId?.isEmpty ?? true))
                         || (notification.deepLinkType != nil && !(notification.deepLinkType?.isEmpty ?? true))
+                        || typeImpliesDeepLink
                     if hasDeepLink {
                         let actionLabel: String = {
-                            if let projectId = notification.projectId, !projectId.isEmpty {
+                            // When deep_link_type is set, use the type-specific
+                            // label (handled below). Project-id-only rows show
+                            // VIEW PROJECT.
+                            if (notification.deepLinkType ?? "").isEmpty,
+                               let projectId = notification.projectId, !projectId.isEmpty {
                                 return "VIEW PROJECT"
                             }
+                            // Legacy type-based fallback labels.
+                            if (notification.deepLinkType ?? "").isEmpty {
+                                switch notification.type {
+                                case "expense_submitted", "expense_approved", "expense_rejected":
+                                    return "VIEW EXPENSES"
+                                case "invoice_approved", "invoice_revisions", "invoice_overdue":
+                                    return "VIEW INVOICES"
+                                default:
+                                    return "OPEN"
+                                }
+                            }
                             switch notification.deepLinkType ?? "" {
-                            case "subscription", "trial_expiry": return "VIEW PLAN"
-                            case "paymentReview":                return "REVIEW PAYMENTS"
-                            case "taskReview":                   return "REVIEW TASKS"
-                            case "unscheduledReview":            return "REVIEW SCHEDULE"
-                            case "photoStorage":                 return "MANAGE PHOTOS"
-                            default:                             return "OPEN"
+                            case "subscription", "trial_expiry":   return "VIEW PLAN"
+                            case "paymentReview":                  return "REVIEW PAYMENTS"
+                            case "taskReview":                     return "REVIEW TASKS"
+                            case "unscheduledReview":              return "REVIEW SCHEDULE"
+                            case "photoStorage":                   return "MANAGE PHOTOS"
+                            case "catalogOrders":                  return notification.actionLabel ?? "REVIEW"
+                            case "expense", "expenses",
+                                 "expenseReview", "invoice_detail": return "VIEW EXPENSES"
+                            case "invoice", "invoices":            return "VIEW INVOICES"
+                            case "projectsNeedingTasks":           return "PLAN THE WORK"
+                            case "inbox", "email_sync_complete":   return "VIEW DETAILS"
+                            default:                               return notification.actionLabel ?? "OPEN"
                             }
                         }()
 
@@ -639,6 +679,8 @@ struct NotificationListView: View {
                 return ("shippingbox", OPSStyle.Colors.warningStatus)
             case "inventory_critical":
                 return ("shippingbox.fill", OPSStyle.Colors.errorStatus)
+            case "threshold_alert":
+                return ("exclamationmark.triangle.fill", OPSStyle.Colors.warningStatus)
             case "time_off_requested":
                 return ("calendar.badge.clock", OPSStyle.Colors.warningStatus)
             case "time_off_approved":
@@ -655,6 +697,16 @@ struct NotificationListView: View {
                 return ("calendar.badge.exclamationmark", OPSStyle.Colors.warningStatus)
             case "photo_storage_limit":
                 return ("externaldrive.fill.badge.exclamationmark", OPSStyle.Colors.warningStatus)
+            case "projects_needing_tasks":
+                return ("folder.badge.plus", OPSStyle.Colors.warningStatus)
+            case "email_sync_complete":
+                return ("envelope.badge", OPSStyle.Colors.primaryAccent)
+            case "stale_estimate_review":
+                return ("clock.arrow.circlepath", OPSStyle.Colors.warningStatus)
+            case "expense_approved":
+                return ("checkmark.seal", OPSStyle.Colors.successStatus)
+            case "expense_rejected":
+                return ("xmark.seal", OPSStyle.Colors.errorStatus)
             case "update":
                 return (OPSStyle.Icons.sync, OPSStyle.Colors.secondaryText)
             default:
@@ -756,12 +808,99 @@ struct NotificationListView: View {
             // gone — avoids sheet-on-sheet deadlock.
             appState.pendingRailDeepLink = "photoStorage"
             dismiss()
-        default:
-            // Deep link to project if applicable
+        case "catalogOrders":
+            // Threshold rail entry. Switch to the catalog tab, then ask
+            // CatalogView to present OrdersSheet at the right sub-segment.
+            // The query string on `actionUrl` carries the tab name so the
+            // same notification can land on suggested / draft / sent.
+            let subSegment = subSegmentFromActionUrl(notification.actionUrl) ?? "SUGGESTED"
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("OpenCatalog"), object: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("OpenCatalogOrders"),
+                        object: nil,
+                        userInfo: ["subSegment": subSegment]
+                    )
+                }
+            }
+        case "expense", "expenses", "expenseReview":
+            // Bug 8ed0d2ed — expense notifications previously fell through to
+            // `default` which only handled projectId, leaving the deep link
+            // dead. Route to the Expenses list (admin) or My Expenses (crew)
+            // via OpenExpenses; MainTabView handles the permission split and
+            // tab switch.
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("OpenExpenses"), object: nil)
+            }
+        case "invoice", "invoices":
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("OpenInvoices"), object: nil)
+            }
+        case "projectsNeedingTasks":
+            // Bug 78309d78 — rail notification for accepted projects with
+            // zero tasks. Mounted as a sheet at MainTabView so it survives
+            // the notification rail dismissal.
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                appState.showProjectsNeedingTasksReview = true
+            }
+        case "inbox", "email_sync_complete":
+            // Email-sync notifications come from the web sync engine. iOS
+            // has no inbox surface yet — route to the project if the matched
+            // email was attached to one (`projectId` set). Otherwise fall
+            // back to JobBoard so the user lands on actionable surface
+            // rather than a dead tap.
             if let projectId = notification.projectId, !projectId.isEmpty {
                 dismiss()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     appState.viewProjectDetailsById(projectId)
+                }
+            } else {
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    NotificationCenter.default.post(name: Notification.Name("OpenJobBoard"), object: nil)
+                }
+            }
+        case "invoice_detail":
+            // Legacy alias — old expense_submitted rows landed here by mistake.
+            // Treated identically to "expense" so existing rail entries route
+            // correctly without backfill.
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("OpenExpenses"), object: nil)
+            }
+        default:
+            // Bug bb63c37e — when deep_link_type is missing, fall back to the
+            // notification's `type` so legacy rows still route correctly. Old
+            // expense_submitted / invoice_* notifications were inserted before
+            // the deep_link_type column existed, so the only routing signal
+            // they carry is their `type`.
+            switch notification.type {
+            case "expense_submitted",
+                 "expense_approved",
+                 "expense_rejected":
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    NotificationCenter.default.post(name: Notification.Name("OpenExpenses"), object: nil)
+                }
+            case "invoice_approved",
+                 "invoice_revisions",
+                 "invoice_overdue":
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    NotificationCenter.default.post(name: Notification.Name("OpenInvoices"), object: nil)
+                }
+            default:
+                // Final fallback — deep link to project if available.
+                if let projectId = notification.projectId, !projectId.isEmpty {
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        appState.viewProjectDetailsById(projectId)
+                    }
                 }
             }
         }
@@ -799,5 +938,23 @@ struct NotificationListView: View {
         let relFormatter = RelativeDateTimeFormatter()
         relFormatter.unitsStyle = .abbreviated
         return relFormatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    /// Parses the `tab=<value>` query parameter from `ops://catalog/orders?tab=...`
+    /// and maps it to the OrdersSubSegment rawValue used by OrdersSheet.
+    /// Returns nil when the URL is missing, malformed, or carries an unknown
+    /// tab value — caller defaults to SUGGESTED in that case.
+    private func subSegmentFromActionUrl(_ urlString: String?) -> String? {
+        guard let urlString = urlString,
+              let comps = URLComponents(string: urlString),
+              let tab = comps.queryItems?.first(where: { $0.name == "tab" })?.value else {
+            return nil
+        }
+        switch tab.lowercased() {
+        case "suggested": return "SUGGESTED"
+        case "draft":     return "DRAFT"
+        case "sent":      return "SENT"
+        default:          return nil
+        }
     }
 }

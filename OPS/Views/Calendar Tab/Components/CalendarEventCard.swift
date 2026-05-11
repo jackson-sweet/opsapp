@@ -246,19 +246,28 @@ struct CalendarEventCard: View {
                     .padding(.trailing, 34)
             }
         }
-        // Status badge — bottom-right, shown on ALL days for completed/cancelled
+        // Status badge — bottom-right, shown on ALL days for completed/cancelled.
+        // Bug 3685b6e8 — moved from solid fill to the same border + 0.12 fill
+        // pattern as the task-type badge above so calendar badges read as a
+        // consistent family at every size.
         .overlay(alignment: .bottomTrailing) {
             if showLabels && (task.status == .completed || task.status == .cancelled) {
+                let statusColor: Color = task.status == .completed
+                    ? OPSStyle.Colors.statusColor(for: .completed)
+                    : OPSStyle.Colors.inactiveStatus
+
                 Text(task.status == .completed ? "COMPLETED" : "CANCELLED")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .font(OPSStyle.Typography.miniLabel)
+                    .foregroundColor(statusColor)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
                     .background(
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(task.status == .completed ?
-                                OPSStyle.Colors.statusColor(for: .completed) :
-                                OPSStyle.Colors.inactiveStatus)
+                            .fill(statusColor.opacity(0.12))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 2)
+                            .stroke(statusColor.opacity(0.45), lineWidth: 0.5)
                     )
                     .padding(.bottom, 4 + 8) // 4pt vertical padding + 8pt card inset
                     .padding(.trailing, 34)

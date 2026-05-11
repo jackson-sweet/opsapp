@@ -34,11 +34,12 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var selection: SelectionState = SelectionState()
     @Published var alignmentGuides: [AlignmentGuide] = []
     @Published var tapSelectFilter: Set<SelectableElementType> = Set(SelectableElementType.allCases)
+    /// Drag-shape sub-mode while `activeTool == .tapSelect`. DECK-NEW-4.
+    @Published var marqueeShape: MarqueeShape = .rect
 
     // MARK: - UI State
 
     @Published var showingDimensionInput: Bool = false
-    @Published var showingPropertySheet: Bool = false
     @Published var showingElevationInput: Bool = false
     @Published var showingStairConfig: Bool = false
     @Published var showingAssignmentWheel: Bool = false
@@ -210,6 +211,104 @@ class DeckBuilderViewModel: ObservableObject {
         }
     }
 
+    /// Persisted per-surface assignments for the currently active drawing
+    /// context. Mirrors `activeFootprint` but for the multi-surface model
+    /// (DECK-NEW-1 follow-up).
+    var activePersistedSurfaces: [DeckSurface] {
+        get {
+            if isMultiLevel, let level = activeLevel { return level.surfaces }
+            return drawingData.surfaces
+        }
+        set {
+            if isMultiLevel, activeLevelIndex < drawingData.levels.count {
+                drawingData.levels[activeLevelIndex].surfaces = newValue
+            } else {
+                drawingData.surfaces = newValue
+            }
+        }
+    }
+
+    /// Returns the persisted DeckSurface ID matching a given detected
+    /// surface — by exact vertex set first, then by maximum Jaccard. If
+    /// no acceptable match exists, runs a reconcile pass so the caller
+    /// gets a stable ID to operate on.
+    func persistedSurfaceId(for detected: DetectedSurface) -> String {
+        let dSet = Set(detected.vertexIds)
+        if let exact = activePersistedSurfaces.first(where: { $0.vertexIds == dSet }) {
+            return exact.id
+        }
+        // Best-effort match before reconciliation; falls back to reconcile.
+        var best: (id: String, jaccard: Double)? = nil
+        for p in activePersistedSurfaces {
+            let intersection = dSet.intersection(p.vertexIds).count
+            let union = dSet.union(p.vertexIds).count
+            guard union > 0 else { continue }
+            let jaccard = Double(intersection) / Double(union)
+            if jaccard > (best?.jaccard ?? -1) {
+                best = (p.id, jaccard)
+            }
+        }
+        if let match = best, match.jaccard >= SurfaceReconciler.rebindThreshold {
+            return match.id
+        }
+        // Force a reconcile so a brand-new persisted entry exists for this face.
+        reconcileSurfaces()
+        if let now = activePersistedSurfaces.first(where: { $0.vertexIds == dSet }) {
+            return now.id
+        }
+        return UUID().uuidString // pathological fallback
+    }
+
+    /// Reconciles persisted surfaces against the currently detected ones.
+    /// Idempotent: safe to call after any geometry mutation (and from
+    /// `save()` so persistence captures the latest reconciled state).
+    func reconcileSurfaces() {
+        if isMultiLevel {
+            for i in drawingData.levels.indices {
+                let detected = drawingData.levels[i].detectedSurfaces
+                let persisted = drawingData.levels[i].surfaces
+                let legacy = drawingData.levels[i].footprint
+                let reconciled: [DeckSurface]
+                if persisted.isEmpty && (!legacy.assignedItems.isEmpty || legacy.label != nil) {
+                    reconciled = SurfaceReconciler.migratedFromLegacy(detected: detected, legacyFootprint: legacy)
+                    if !reconciled.isEmpty {
+                        drawingData.levels[i].footprint.assignedItems.removeAll()
+                        drawingData.levels[i].footprint.label = nil
+                    }
+                } else {
+                    reconciled = SurfaceReconciler.reconcile(detected: detected, persisted: persisted)
+                }
+                drawingData.levels[i].surfaces = reconciled
+            }
+        } else {
+            let detected = drawingData.detectedSurfaces
+            let persisted = drawingData.surfaces
+            let legacy = drawingData.footprint
+            let reconciled: [DeckSurface]
+            if persisted.isEmpty && (!legacy.assignedItems.isEmpty || legacy.label != nil) {
+                reconciled = SurfaceReconciler.migratedFromLegacy(detected: detected, legacyFootprint: legacy)
+                if !reconciled.isEmpty {
+                    drawingData.footprint.assignedItems.removeAll()
+                    drawingData.footprint.label = nil
+                }
+            } else {
+                reconciled = SurfaceReconciler.reconcile(detected: detected, persisted: persisted)
+            }
+            drawingData.surfaces = reconciled
+        }
+
+        // Drop selection IDs that no longer correspond to any persisted surface.
+        let liveIds: Set<String>
+        if isMultiLevel {
+            liveIds = Set(drawingData.levels.flatMap { $0.surfaces.map { $0.id } })
+        } else {
+            liveIds = Set(drawingData.surfaces.map { $0.id })
+        }
+        if !liveIds.isEmpty {
+            selection.selectedSurfaceIds = selection.selectedSurfaceIds.intersection(liveIds)
+        }
+    }
+
     /// Look up a vertex in the active context
     private func activeVertex(byId id: String) -> DeckVertex? {
         if isMultiLevel, let level = activeLevel { return level.vertex(byId: id) }
@@ -252,6 +351,14 @@ class DeckBuilderViewModel: ObservableObject {
         return drawingData.isClosed
     }
 
+    /// Every detected closed face in the active context. Used by the face
+    /// hit-test so a tap inside ANY surface (not just a Hamiltonian cycle of
+    /// every vertex) selects it. DECK-NEW-1.
+    private var activeSurfaces: [DetectedSurface] {
+        if isMultiLevel, let level = activeLevel { return level.detectedSurfaces }
+        return drawingData.detectedSurfaces
+    }
+
     // MARK: - Undo/Redo
 
     private var undoStack: [DrawingSnapshot] = []
@@ -282,21 +389,37 @@ class DeckBuilderViewModel: ObservableObject {
     var totalArea: Double? {
         guard let scale = drawingData.scaleFactor, scale > 0 else { return nil }
         if isMultiLevel {
-            // Skip self-intersecting levels — their shoelace value is the signed
-            // sum of cancelling regions, not a usable area. Returning nil for the
-            // whole drawing forces the user to fix the geometry before they can
-            // chase a number that wasn't real.
-            let validLevels = drawingData.levels.filter { level in
-                level.isClosed &&
-                !PolygonMath.isSelfIntersecting(vertices: level.orderedPositions)
+            // DECK-NEW-1 — sum every detected face on every level, not the
+            // single all-vertices polygon. Falls back to the legacy
+            // perimeter calculation for levels that are simple closed
+            // polygons but produce no detected surfaces (degenerate edge
+            // cases). Self-intersecting faces are excluded since their
+            // shoelace area is not a usable measurement.
+            var total: Double = 0
+            for level in drawingData.levels {
+                let surfaces = level.detectedSurfaces
+                if surfaces.isEmpty {
+                    guard level.isClosed,
+                          !PolygonMath.isSelfIntersecting(vertices: level.orderedPositions) else { continue }
+                    total += PolygonMath.realWorldArea(vertices: level.orderedPositions, scaleFactor: scale)
+                } else {
+                    for surface in surfaces {
+                        guard !PolygonMath.isSelfIntersecting(vertices: surface.positions) else { continue }
+                        total += PolygonMath.realWorldArea(vertices: surface.positions, scaleFactor: scale)
+                    }
+                }
             }
-            guard !validLevels.isEmpty else { return nil }
-            // If at least one level is invalid we still return nil — partial sums
-            // would mislead the user into thinking the deck is priceable.
-            guard validLevels.count == drawingData.levels.filter({ $0.isClosed }).count else { return nil }
-            return validLevels.reduce(0) { total, level in
-                total + PolygonMath.realWorldArea(vertices: level.orderedPositions, scaleFactor: scale)
+            return total > 0 ? total : nil
+        }
+        // Single-level — sum across all detected surfaces.
+        let surfaces = drawingData.detectedSurfaces
+        if !surfaces.isEmpty {
+            var total: Double = 0
+            for surface in surfaces {
+                guard !PolygonMath.isSelfIntersecting(vertices: surface.positions) else { continue }
+                total += PolygonMath.realWorldArea(vertices: surface.positions, scaleFactor: scale)
             }
+            return total > 0 ? total : nil
         }
         guard isClosed else { return nil }
         let positions = drawingData.orderedPositions
@@ -317,13 +440,69 @@ class DeckBuilderViewModel: ObservableObject {
         return PolygonMath.perimeter(vertices: drawingData.orderedPositions) / scale
     }
 
+    /// Live "12' 6\"  90°" string for the in-progress draw. Returned as a
+    /// pre-formatted label so the floating header HUD can render it without
+    /// duplicating the formatting/snap math. Nil when no draw is in flight.
+    /// DECK-NEW-3 — moved out of DeckCanvasView so the HUD pill can live in
+    /// the same VStack as the title pill (shared gridlines).
+    var liveDimensionLabel: String? {
+        guard case .drawing(let fromId, let startPosition, let currentEnd) = drawingMode else { return nil }
+        let distance = SnapEngine.distance(startPosition, currentEnd)
+        guard distance > 1 else { return nil }
+
+        let dimText: String
+        if let scale = drawingData.scaleFactor, scale > 0.001 {
+            let inches = distance / scale
+            dimText = DimensionEngine.format(inches, system: drawingData.config.measurementSystem)
+        } else {
+            let inches = distance / DeckBuilderViewModel.prescaleFallbackScale
+            dimText = "~" + DimensionEngine.format(inches, system: drawingData.config.measurementSystem)
+        }
+
+        let angleText: String
+        if let fromVertexId = fromId {
+            let edges = isMultiLevel ? (activeLevel?.edges ?? []) : drawingData.edges
+            let connected = edges.filter { $0.startVertexId == fromVertexId || $0.endVertexId == fromVertexId }
+            if let prev = connected.last {
+                let otherId = prev.startVertexId == fromVertexId ? prev.endVertexId : prev.startVertexId
+                let lookupVertices = isMultiLevel ? (activeLevel?.vertices ?? []) : drawingData.vertices
+                if let other = lookupVertices.first(where: { $0.id == otherId }) {
+                    let prevA = SnapEngine.lineAngle(from: startPosition, to: other.position)
+                    let newA = SnapEngine.lineAngle(from: startPosition, to: currentEnd)
+                    var rel = newA - prevA; if rel < 0 { rel += 360 }; if rel > 180 { rel = 360 - rel }
+                    angleText = String(format: "%.0f°", rel)
+                } else {
+                    angleText = String(format: "%.0f°", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
+                }
+            } else {
+                angleText = String(format: "%.0f°", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
+            }
+        } else {
+            angleText = String(format: "%.0f°", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
+        }
+
+        return "\(dimText)  \(angleText)"
+    }
+
     // MARK: - Init
 
     init(deckDesign: DeckDesign, modelContext: ModelContext? = nil, syncEngine: SyncEngine? = nil) {
         self.deckDesign = deckDesign
         self.modelContext = modelContext
         self.syncEngine = syncEngine
-        self.drawingData = deckDesign.drawingData
+        var loaded = deckDesign.drawingData
+        // Backfill the catalog-facing `components` projection on legacy
+        // designs that were saved before the deck-catalog vocabulary
+        // landed. The projection is derived, not stored — recomputing it
+        // here costs sub-millisecond on a typical deck and lets the
+        // adapter consume the in-memory state without going through a
+        // round-trip save first. The next save persists the projection;
+        // designs the user never reopens stay legacy on disk forever and
+        // the adapter no-ops on them, which is fine.
+        if loaded.components == nil {
+            loaded.components = ComponentEmitter.emit(loaded)
+        }
+        self.drawingData = loaded
         // If the model has already been pushed to Supabase at least once,
         // future saves enqueue updates rather than creates. Bug ab554b5f.
         self.hasEnqueuedCreate = deckDesign.lastSyncedAt != nil
@@ -342,6 +521,13 @@ class DeckBuilderViewModel: ObservableObject {
             self.autosaveEnabled = true
             startAutosaveTimer()
         }
+
+        // DECK-NEW-1 follow-up — migrate legacy single-`footprint` payloads
+        // to the per-surface store on first load. Reconciler is idempotent
+        // and safe to run on already-migrated drawings; this just ensures
+        // a user who opens an OLD drawing without editing still sees the
+        // correct per-surface materials in 2D and 3D.
+        reconcileSurfaces()
 
         // Bug ab554b5f — designs that arrive in the builder with geometry but
         // have NEVER been synced (template / sketch / AR creation paths)
@@ -374,14 +560,33 @@ class DeckBuilderViewModel: ObservableObject {
     /// Start the 2-minute autosave loop. Each tick runs `save()` so the
     /// user can recover their work from a crash without having to manually
     /// commit. No-op if a timer is already running.
+    ///
+    /// Bug 14555d2c — gate the tick on `hasAnyCommittedGeometry` so a
+    /// blank-canvas builder that's left open never persists an empty
+    /// orphan deck design row (or enqueues an empty create op against
+    /// Supabase). The autosave loop only persists once the user has
+    /// actually drawn something.
     private func startAutosaveTimer() {
         guard autosaveTimer == nil else { return }
         autosaveTimer = Timer.scheduledTimer(withTimeInterval: Self.autosaveInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self, self.autosaveEnabled else { return }
+                guard self.hasAnyCommittedGeometry else { return }
                 self.save()
             }
         }
+    }
+
+    /// True when the design has at least one vertex or edge in either the
+    /// single-level or any multi-level form. Used as the gate for autosave
+    /// ticks and the close-button render-and-upload path so we never
+    /// persist or upload thumbnails for genuinely empty drawings.
+    /// Bug 14555d2c.
+    private var hasAnyCommittedGeometry: Bool {
+        if !drawingData.vertices.isEmpty || !drawingData.edges.isEmpty {
+            return true
+        }
+        return drawingData.levels.contains { !$0.vertices.isEmpty || !$0.edges.isEmpty }
     }
 
     private func stopAutosaveTimer() {
@@ -491,7 +696,6 @@ class DeckBuilderViewModel: ObservableObject {
     func switchToLevel(_ index: Int) {
         guard index < drawingData.levels.count else { return }
         drawingMode = .idle // Cancel any in-progress drawing to prevent cross-level edges
-        showingPropertySheet = false
         activeLevelIndex = index
         selection.clear()
         editingEdgeId = nil
@@ -757,6 +961,81 @@ class DeckBuilderViewModel: ObservableObject {
         save()
     }
 
+    // MARK: - Stair Hit Test (DECK-NEW-6)
+
+    /// Returns the edge id whose stair rectangle contains `point` in canvas
+    /// space. Mirrors the geometry built by `DeckCanvasView.drawStairIndicator`
+    /// so the tap target matches the rendered stair shape exactly: outward
+    /// perpendicular from the deck fill, alignment + offset along the edge,
+    /// width clamped to edge length. Returns nil when the tap is outside
+    /// every stair (or no edges have stairs).
+    private func findStairEdgeAtPoint(_ point: CGPoint) -> String? {
+        let edges = activeEdges
+        let vertices = activeVertices
+        let polygon = activeOrderedPositions
+        let scale: Double
+        if let s = drawingData.scaleFactor, s > 0 {
+            scale = s
+        } else {
+            scale = DeckBuilderViewModel.prescaleFallbackScale
+        }
+
+        for edge in edges {
+            guard let config = edge.stairConfig,
+                  let tc = config.treadCount, tc > 0,
+                  let start = vertices.first(where: { $0.id == edge.startVertexId }),
+                  let end = vertices.first(where: { $0.id == edge.endVertexId }) else { continue }
+
+            let s = start.position
+            let e = end.position
+            let dx = e.x - s.x
+            let dy = e.y - s.y
+            let edgeLen = sqrt(dx * dx + dy * dy)
+            guard edgeLen > 0 else { continue }
+            let edgeNx = dx / edgeLen
+            let edgeNy = dy / edgeLen
+
+            let outward = PolygonMath.outwardPerpendicular(
+                edgeStart: s, edgeEnd: e, polygonVertices: polygon
+            )
+            let perpX = config.flipDirection ? -outward.x : outward.x
+            let perpY = config.flipDirection ? -outward.y : outward.y
+
+            let stairWidth = min(CGFloat(config.width) * CGFloat(scale), edgeLen)
+            let totalRunInches = Double(tc) * config.runPerTread
+            let stairDepth = CGFloat(totalRunInches) * CGFloat(scale)
+            let offsetCanvas = CGFloat(config.offset) * CGFloat(scale)
+            let gapTotal = edgeLen - stairWidth
+            let stairStartT: CGFloat
+            switch config.alignment {
+            case .left:   stairStartT = offsetCanvas / edgeLen
+            case .center: stairStartT = (gapTotal / 2 + offsetCanvas) / edgeLen
+            case .right:  stairStartT = (gapTotal - offsetCanvas) / edgeLen
+            }
+
+            let baseStart = CGPoint(
+                x: s.x + edgeNx * edgeLen * stairStartT,
+                y: s.y + edgeNy * edgeLen * stairStartT
+            )
+            let baseEnd = CGPoint(
+                x: baseStart.x + edgeNx * stairWidth,
+                y: baseStart.y + edgeNy * stairWidth
+            )
+            let farStart = CGPoint(
+                x: baseStart.x + CGFloat(perpX) * stairDepth,
+                y: baseStart.y + CGFloat(perpY) * stairDepth
+            )
+            let farEnd = CGPoint(
+                x: baseEnd.x + CGFloat(perpX) * stairDepth,
+                y: baseEnd.y + CGFloat(perpY) * stairDepth
+            )
+            if PolygonMath.pointInPolygon(point, vertices: [baseStart, baseEnd, farEnd, farStart]) {
+                return edge.id
+            }
+        }
+        return nil
+    }
+
     // MARK: - Selection
 
     func handleTap(at point: CGPoint, hitThreshold: Double = 25.0) {
@@ -771,6 +1050,23 @@ class DeckBuilderViewModel: ObservableObject {
             return
         }
 
+        // DECK-NEW-6 — stairs are tap-selectable. Hit-test the stair rectangle
+        // for any edge with a stairConfig BEFORE the regular edge check so a
+        // tap inside the stair geometry counts as "select that edge + edit
+        // its stair" instead of "miss" (the stair lives outside the edge
+        // line itself, so without this it was unreachable by tap).
+        if tapSelectFilter.contains(.edge),
+           let stairEdgeId = findStairEdgeAtPoint(point) {
+            if !additive { selection.clear() }
+            selection.selectedEdgeIds = [stairEdgeId]
+            editingEdgeId = stairEdgeId
+            hapticMedium()
+            // Auto-open the stair editor — single tap = edit. Field users
+            // expect the stair to behave like any other selectable thing.
+            showingStairConfig = true
+            return
+        }
+
         if tapSelectFilter.contains(.edge),
            let edgeId = PolygonMath.findEdgeAtPoint(point, edges: activeEdges, vertices: activeVertices, hitThreshold: hitThreshold * 0.8) {
             if !additive { selection.clear() }
@@ -781,18 +1077,25 @@ class DeckBuilderViewModel: ObservableObject {
             return
         }
 
-        if tapSelectFilter.contains(.face),
-           activeIsClosed,
-           // Block face-selection on self-intersecting shapes: the renderer
-           // fills via non-zero while pointInPolygon uses even-odd, so the
-           // visible fill region and tap-targetable region disagree. Force the
-           // user to fix the shape (the EDGES CROSS warning is already on screen).
-           !PolygonMath.isSelfIntersecting(vertices: activeOrderedPositions),
-           PolygonMath.pointInPolygon(point, vertices: activeOrderedPositions) {
-            if !additive { selection.clear() }
-            selection.selectedFootprint.toggle()
-            hapticLight()
-            return
+        // DECK-NEW-1 — face hit-test against EVERY detected surface, not
+        // just the all-vertices polygon. Surfaces are tested smallest-first
+        // so a tap inside a small inner surface selects it instead of the
+        // larger outer one that contains it. Toggles the matching persisted
+        // DeckSurface in `selection.selectedSurfaceIds` (per-surface
+        // selection — DECK-NEW-1 follow-up).
+        if tapSelectFilter.contains(.face) {
+            let surfaces = activeSurfaces
+            let ordered = surfaces.sorted { abs(PolygonMath.signedArea(vertices: $0.positions)) < abs(PolygonMath.signedArea(vertices: $1.positions)) }
+            for detected in ordered {
+                guard !PolygonMath.isSelfIntersecting(vertices: detected.positions) else { continue }
+                if PolygonMath.pointInPolygon(point, vertices: detected.positions) {
+                    if !additive { selection.clear() }
+                    let persistedId = persistedSurfaceId(for: detected)
+                    selection.toggleSurface(persistedId)
+                    hapticLight()
+                    return
+                }
+            }
         }
 
         if !additive {
@@ -820,11 +1123,12 @@ class DeckBuilderViewModel: ObservableObject {
                 exitMultiSelect()
                 return
             }
-            // Long-pressed a selected element → open properties like any other mode
+            // Long-press just selects the element. Properties sheet was removed
+            // (deck-new-7) — long-press on something already selected is now a no-op
+            // beyond the haptic confirm.
             handleTap(at: point, hitThreshold: hitThreshold)
             if !selection.isEmpty {
                 hapticMedium()
-                showingPropertySheet = true
             }
             return
         }
@@ -846,11 +1150,10 @@ class DeckBuilderViewModel: ObservableObject {
             && PolygonMath.pointInPolygon(point, vertices: activeOrderedPositions)
         guard hitsVertex || hitsEdge || hitsFootprint else { return }
 
-        // Same hit detection as tap, but always shows property sheet
+        // Same hit detection as tap; property sheet removed (deck-new-7)
         handleTap(at: point, hitThreshold: hitThreshold)
         if !selection.isEmpty {
             hapticMedium()
-            showingPropertySheet = true
         }
     }
 
@@ -1112,6 +1415,21 @@ class DeckBuilderViewModel: ObservableObject {
         guard var edge = activeEdge(byId: edgeId) else { return }
         pushUndo("set edge type")
         edge.edgeType = type
+        // Clearing the house cladding when an edge is demoted back to a
+        // regular deck edge keeps the stored material from leaking back into
+        // the renderer if the user flips the toggle a second time. Bug 3d72ce0b.
+        if type != .houseEdge { edge.houseEdgeMaterial = nil }
+        activeUpdateEdge(edge)
+        save()
+    }
+
+    /// Set the cladding material on a house edge. Bug 3d72ce0b — drives the
+    /// 2D hatch color, 3D wall fill, and house-edge label. No-op when the
+    /// edge is not a house edge.
+    func setHouseEdgeMaterial(_ edgeId: String, material: HouseEdgeMaterial?) {
+        guard var edge = activeEdge(byId: edgeId), edge.edgeType == .houseEdge else { return }
+        pushUndo("set house cladding")
+        edge.houseEdgeMaterial = material
         activeUpdateEdge(edge)
         save()
     }
@@ -1130,6 +1448,101 @@ class DeckBuilderViewModel: ObservableObject {
         edge.stairConfig = config
         activeUpdateEdge(edge)
         save()
+    }
+
+    // MARK: - Catalog metadata (deck-catalog integration spec § 4.3)
+
+    /// Updates the catalog metadata vocabulary fields on a railing config
+    /// without touching the rest of it. Each parameter is optional so the
+    /// caller can change a single field without re-supplying the others.
+    /// No-op when the edge has no railing config.
+    func setRailingMetadata(
+        edgeId: String,
+        color: String? = nil,
+        mountType: String? = nil,
+        mountSurface: String? = nil,
+        postHeight: Double? = nil
+    ) {
+        guard var edge = activeEdge(byId: edgeId), var railing = edge.railingConfig else { return }
+        pushUndo("set railing metadata")
+        if let color { railing.color = color }
+        if let mountType { railing.mountType = mountType }
+        if let mountSurface { railing.mountSurface = mountSurface }
+        if let postHeight { railing.postHeight = postHeight }
+        edge.railingConfig = railing
+        activeUpdateEdge(edge)
+        save()
+    }
+
+    /// Updates the catalog metadata vocabulary fields on a stair config.
+    /// No-op when the edge has no stair config.
+    func setStairMetadata(
+        edgeId: String,
+        color: String? = nil,
+        mountType: String? = nil
+    ) {
+        guard var edge = activeEdge(byId: edgeId), var stair = edge.stairConfig else { return }
+        pushUndo("set stair metadata")
+        if let color { stair.color = color }
+        if let mountType { stair.mountType = mountType }
+        edge.stairConfig = stair
+        activeUpdateEdge(edge)
+        save()
+    }
+
+    /// Sets `color` on every currently-selected surface. Falls back to
+    /// the active footprint when no surface is selected (mirrors
+    /// `assignItemToFootprint`'s legacy fallback). DEC-CAT-1.
+    func setColorOnSelectedSurfaces(_ color: String) {
+        let targetIds = selection.selectedSurfaceIds
+        guard !targetIds.isEmpty else { return }
+        pushUndo("set surface color")
+        var surfaces = activePersistedSurfaces
+        for i in surfaces.indices where targetIds.contains(surfaces[i].id) {
+            surfaces[i].color = color
+        }
+        activePersistedSurfaces = surfaces
+        save()
+    }
+
+    /// Sets `boardMaterial` on every currently-selected surface.
+    func setMaterialOnSelectedSurfaces(_ material: String) {
+        let targetIds = selection.selectedSurfaceIds
+        guard !targetIds.isEmpty else { return }
+        pushUndo("set surface material")
+        var surfaces = activePersistedSurfaces
+        for i in surfaces.indices where targetIds.contains(surfaces[i].id) {
+            surfaces[i].boardMaterial = material
+        }
+        activePersistedSurfaces = surfaces
+        save()
+    }
+
+    /// Public, multi-level-aware accessor for an edge by id. Used by views
+    /// that render details about a selected edge regardless of which level
+    /// it lives on. Returns nil when the id can't be located in any
+    /// active context.
+    func findEdge(byId id: String) -> DeckEdge? {
+        if isMultiLevel {
+            if let active = activeLevel, let e = active.edge(byId: id) { return e }
+            for level in drawingData.levels {
+                if let e = level.edge(byId: id) { return e }
+            }
+            return nil
+        }
+        return drawingData.edge(byId: id)
+    }
+
+    /// Public, multi-level-aware accessor for a persisted surface by id.
+    func findSurface(byId id: String) -> DeckSurface? {
+        if isMultiLevel {
+            if let active = activeLevel, let s = active.surfaces.first(where: { $0.id == id }) { return s }
+            for level in drawingData.levels {
+                if let s = level.surfaces.first(where: { $0.id == id }) { return s }
+            }
+            return nil
+        }
+        return drawingData.surfaces.first(where: { $0.id == id })
     }
 
     // MARK: - Vertex Properties
@@ -1155,23 +1568,123 @@ class DeckBuilderViewModel: ObservableObject {
         save()
     }
 
-    // MARK: - Footprint Properties
+    // MARK: - Footprint / Surface Properties
 
+    /// Assigns an item to every currently-selected surface. Falls back to
+    /// the legacy single-footprint store only if no surface is selected
+    /// (covers callers that haven't migrated yet — should be unreachable
+    /// in normal flows since the picker only opens when a surface or edge
+    /// is selected). DECK-NEW-1 follow-up.
     func assignItemToFootprint(_ item: AssignedItem) {
-        pushUndo("assign footprint item")
-        var fp = activeFootprint
-        fp.assignedItems.append(item)
-        activeFootprint = fp
+        pushUndo("assign surface item")
+        let targetIds = selection.selectedSurfaceIds
+        if targetIds.isEmpty {
+            var fp = activeFootprint
+            fp.assignedItems.append(item)
+            activeFootprint = fp
+        } else {
+            var surfaces = activePersistedSurfaces
+            for i in surfaces.indices where targetIds.contains(surfaces[i].id) {
+                surfaces[i].assignedItems.append(item)
+            }
+            activePersistedSurfaces = surfaces
+        }
         hapticLight()
-        showAssignmentConfirmation("Surface: \(item.name)")
+        let count = max(targetIds.count, 1)
+        let suffix = count == 1 ? "" : " ×\(count)"
+        showAssignmentConfirmation("Surface: \(item.name)\(suffix)")
         save()
     }
 
+    /// Removes an item from every selected surface and from the legacy
+    /// footprint store (so an item that survived from a pre-migration
+    /// drawing also clears).
     func removeFootprintItem(_ itemId: String) {
-        pushUndo("remove footprint item")
+        pushUndo("remove surface item")
+        let targetIds = selection.selectedSurfaceIds
+        if !targetIds.isEmpty {
+            var surfaces = activePersistedSurfaces
+            for i in surfaces.indices where targetIds.contains(surfaces[i].id) {
+                surfaces[i].assignedItems.removeAll { $0.id == itemId }
+            }
+            activePersistedSurfaces = surfaces
+        }
         var fp = activeFootprint
         fp.assignedItems.removeAll { $0.id == itemId }
         activeFootprint = fp
+        save()
+    }
+
+    /// Sets a label on every currently-selected surface. Pass `nil` or
+    /// empty to clear. DECK-NEW-1 follow-up.
+    func setLabelOnSelectedSurfaces(_ raw: String?) {
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value: String? = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        let targetIds = selection.selectedSurfaceIds
+        guard !targetIds.isEmpty else { return }
+        pushUndo("label surface")
+        var surfaces = activePersistedSurfaces
+        for i in surfaces.indices where targetIds.contains(surfaces[i].id) {
+            surfaces[i].label = value
+        }
+        activePersistedSurfaces = surfaces
+        save()
+    }
+
+    /// Sets the legacy footprint label — used from the property sheet so the
+    /// user can name the active deck surface ("BBQ pad", "Hot tub deck") when
+    /// no per-surface ids are selected (single closed shape). Bug 4a03f507.
+    func setLabelOnActiveFootprint(_ raw: String?) {
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value: String? = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        pushUndo("label footprint")
+        var fp = activeFootprint
+        fp.label = value
+        activeFootprint = fp
+        save()
+    }
+
+    /// Optional per-edge label. The model stores it on `DeckEdge.label`
+    /// — pre-existing — but there was no setter that re-routes through
+    /// `activeUpdateEdge` + undo/save. Bug 4a03f507.
+    func setEdgeLabel(_ edgeId: String, label raw: String?) {
+        guard var edge = activeEdge(byId: edgeId) else { return }
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value: String? = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        pushUndo("label edge")
+        edge.label = value
+        activeUpdateEdge(edge)
+        save()
+    }
+
+    /// Reassigns every currently-selected surface to a different level.
+    /// Used by DECK-NEW-4 (selection overhaul). Detected surfaces are
+    /// identified by their stable persisted id; the persisted record is
+    /// removed from the source level and inserted on the destination.
+    /// Geometry (vertices/edges) does NOT move — only the per-surface
+    /// payload (assigned items + label).
+    func moveSelectedSurfacesToLevel(at destinationIndex: Int) {
+        guard isMultiLevel,
+              destinationIndex >= 0,
+              destinationIndex < drawingData.levels.count else { return }
+        let targetIds = selection.selectedSurfaceIds
+        guard !targetIds.isEmpty else { return }
+        pushUndo("move surface to level")
+
+        var moved: [DeckSurface] = []
+        for li in drawingData.levels.indices where li != destinationIndex {
+            var surfaces = drawingData.levels[li].surfaces
+            let migrated = surfaces.filter { targetIds.contains($0.id) }
+            if !migrated.isEmpty {
+                surfaces.removeAll { targetIds.contains($0.id) }
+                drawingData.levels[li].surfaces = surfaces
+                moved.append(contentsOf: migrated)
+            }
+        }
+        if !moved.isEmpty {
+            drawingData.levels[destinationIndex].surfaces.append(contentsOf: moved)
+        }
+        hapticMedium()
         save()
     }
 
@@ -1258,7 +1771,7 @@ class DeckBuilderViewModel: ObservableObject {
         // selection.clear() above resets selectedFootprint to false; calling
         // out the dependency explicitly so the rule survives any future
         // refactor that uses a partial-clear instead of full clear.
-        if !activeIsClosed { selection.selectedFootprint = false }
+        if !activeIsClosed { selection.selectedSurfaceIds.removeAll() }
         hapticMedium()
         save()
     }
@@ -1279,7 +1792,7 @@ class DeckBuilderViewModel: ObservableObject {
         activeFootprint = fp
         pruneOrphanedLevelConnections()
         selection.clear()
-        if !activeIsClosed { selection.selectedFootprint = false }
+        if !activeIsClosed { selection.selectedSurfaceIds.removeAll() }
         hapticMedium()
         save()
     }
@@ -1311,11 +1824,19 @@ class DeckBuilderViewModel: ObservableObject {
         activeEdges = edges
         activeVertices = verts
 
-        var fp = activeFootprint
-        if selection.selectedFootprint {
-            // User asked to clear the surface assignment, not the geometry
-            fp.assignedItems.removeAll()
+        // Clear per-surface assignments for any selected surfaces. The
+        // surface geometry stays intact (it's defined by the edges), only
+        // the materials/label payload is reset.
+        if !selection.selectedSurfaceIds.isEmpty {
+            var surfaces = activePersistedSurfaces
+            for i in surfaces.indices where selection.selectedSurfaceIds.contains(surfaces[i].id) {
+                surfaces[i].assignedItems.removeAll()
+                surfaces[i].label = nil
+            }
+            activePersistedSurfaces = surfaces
         }
+
+        var fp = activeFootprint
         fp.isClosed = activeIsClosed
         activeFootprint = fp
 
@@ -1366,14 +1887,14 @@ class DeckBuilderViewModel: ObservableObject {
     /// Drop everything except edges from the selection.
     func selectOnlyEdges() {
         selection.selectedVertexIds.removeAll()
-        selection.selectedFootprint = false
+        selection.selectedSurfaceIds.removeAll()
         hapticLight()
     }
 
     /// Drop everything except vertices from the selection.
     func selectOnlyVertices() {
         selection.selectedEdgeIds.removeAll()
-        selection.selectedFootprint = false
+        selection.selectedSurfaceIds.removeAll()
         hapticLight()
     }
 
@@ -1394,13 +1915,18 @@ class DeckBuilderViewModel: ObservableObject {
             return predicate(edge)
         }
         selection.selectedVertexIds.removeAll()
-        selection.selectedFootprint = false
+        selection.selectedSurfaceIds.removeAll()
         hapticLight()
     }
 
     // MARK: - Persistence
 
     func save() {
+        // Reconcile the per-surface assignment store against current
+        // geometry before persisting. Idempotent — surfaces with stable
+        // vertex membership pass through unchanged. DECK-NEW-1 follow-up.
+        reconcileSurfaces()
+
         isLocallySaved = false
         deckDesign.drawingData = drawingData  // triggers needsSync via setter
         // Insert on first save if the design was created via the blank-canvas
@@ -1544,6 +2070,22 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Render + Save Thumbnail
 
     func renderAndSave() async {
+        // Bug 14555d2c — short-circuit when the user is exiting a drawing
+        // with no committed geometry. The previous flow always called
+        // `save()` (which inserts the deckDesign + enqueues a Supabase
+        // create op for an empty record) and then ran the renderer + S3
+        // upload (which produces a blank 1024×1024 white PNG and hangs
+        // the close-button spinner on the network upload, reading as a
+        // crash to the user). For a transient blank canvas there is
+        // genuinely nothing to persist or upload — drop everything and
+        // return so the dismiss happens immediately.
+        let hasGeometry = hasAnyCommittedGeometry
+        let isPersisted = deckDesign.modelContext != nil
+
+        if !hasGeometry && !isPersisted {
+            return
+        }
+
         // Bug a34a2fbe — persist the drawing FIRST, unconditionally. The
         // previous version gated `save()` behind a successful PNG render +
         // S3 thumbnail upload; if either step failed (renderToPNG returns
@@ -1559,6 +2101,15 @@ class DeckBuilderViewModel: ObservableObject {
         // best-effort enhancement; thumbnail failure must not block the
         // primary save.
         save()
+
+        // Bug 14555d2c — skip the thumbnail render + S3 upload when the
+        // drawing has no geometry. The renderer returns a blank white PNG
+        // for empty drawings (its inner draw block early-returns but the
+        // outer image renderer always emits a buffer), and shipping that
+        // to S3 costs a slow network round-trip on the close-button
+        // spinner for no user-facing benefit. The persisted record above
+        // still captures the cleared state so the deck tab updates.
+        guard hasGeometry else { return }
 
         guard let image = DeckRenderer.renderToPNG(drawingData: drawingData) else {
             print("[DeckBuilder] Thumbnail render returned nil — drawing already saved, skipping S3 upload")
@@ -1764,6 +2315,96 @@ class DeckBuilderViewModel: ObservableObject {
             drawingData.allEdges.contains(where: { $0.dimension != nil })
     }
 
+    // MARK: - Catalog merge (deck-catalog spec § 4.5)
+
+    /// Builds the merged line item list for the current design — adapter
+    /// pass + legacy pass + de-dupe per spec § 4.5.1. Companies that
+    /// haven't configured any `CompanyDefaultProduct` rows fall through
+    /// to the legacy path unchanged (adapter returns []; merge passes
+    /// legacy through). The result is what the persistence loop in
+    /// `generateEstimate()` writes — and what `EstimatePreviewSheet`
+    /// renders as the user-facing summary.
+    func mergedCatalogLineItems() -> [CatalogEstimateMerger.LineItem] {
+        let legacy = EstimateGeneratorService.generateLineItems(from: drawingData)
+
+        guard let context = modelContext else {
+            // Without SwiftData (preview / test paths) the adapter can't
+            // resolve defaults — fall through to legacy as if no
+            // defaults exist.
+            return CatalogEstimateMerger.merge(
+                adapterItems: [],
+                legacyItems: legacy,
+                defaultsCovered: []
+            )
+        }
+
+        let adapter = DesignToEstimateAdapter()
+        let raw = adapter.generate(
+            design: deckDesign,
+            companyId: deckDesign.companyId,
+            modelContext: context
+        )
+
+        let enriched: [CatalogEstimateMerger.EnrichedAdapterItem] = raw.compactMap { item in
+            guard let product = lookupProduct(id: item.productId, in: context) else { return nil }
+            return CatalogEstimateMerger.EnrichedAdapterItem(
+                raw: item,
+                productName: product.name,
+                productDescription: product.productDescription,
+                unit: legacyUnit(for: product.pricingUnit),
+                category: legacyCategory(for: item.componentType),
+                taskTypeId: product.taskTypeId
+            )
+        }
+
+        let defaultsCovered: Set<DesignComponentType> = Set(raw.map { $0.componentType })
+
+        return CatalogEstimateMerger.merge(
+            adapterItems: enriched,
+            legacyItems: legacy,
+            defaultsCovered: defaultsCovered
+        )
+    }
+
+    /// Resolves a Product by id from SwiftData. Returns nil when the
+    /// adapter references a product that's no longer in the local
+    /// catalog (rare, but possible if the company deleted it between
+    /// the design saving and estimate generation).
+    private func lookupProduct(id: String, in context: ModelContext) -> Product? {
+        let descriptor = FetchDescriptor<Product>(
+            predicate: #Predicate { $0.id == id }
+        )
+        return (try? context.fetch(descriptor))?.first
+    }
+
+    /// Maps a Product.pricingUnit to the legacy `unit` string the
+    /// estimate persistence path uses on `EstimateLineItem.unit`. Stays
+    /// in sync with EstimateGeneratorService's unit vocabulary so the
+    /// adapter and legacy paths produce homogeneous-looking line items.
+    private func legacyUnit(for pricingUnit: ProductPricingUnit) -> String {
+        switch pricingUnit {
+        case .each:       return "each"
+        case .flatRate:   return "flat"
+        case .linearFoot: return "linear ft"
+        case .sqft:       return "sq ft"
+        case .hour:       return "hour"
+        case .day:        return "day"
+        }
+    }
+
+    /// Maps a `DesignComponentType` to the legacy category bucket the
+    /// estimate UI groups by — keeps adapter rows showing up in the
+    /// expected category band on the preview / printed estimate.
+    private func legacyCategory(for componentType: DesignComponentType) -> String {
+        switch componentType {
+        case .railing:    return "Railing"
+        case .deckBoard:  return "Surface"
+        case .stairSet:   return "Stairs"
+        case .gate:       return "Other"
+        case .postSet:    return "Railing"
+        }
+    }
+
     /// Check if an estimate already exists for this deck design
     func checkForDuplicateEstimate() async -> Estimate? {
         guard let projectId = deckDesign.projectId else { return nil }
@@ -1805,8 +2446,19 @@ class DeckBuilderViewModel: ObservableObject {
         isGeneratingEstimate = true
         defer { isGeneratingEstimate = false }
 
-        let lineItems = EstimateGeneratorService.generateLineItems(from: drawingData)
-        guard !lineItems.isEmpty else { return }
+        // Force a save first so drawingDataJSON carries an up-to-date
+        // components projection — the adapter parses that JSON to find
+        // the components it should bill against. Deck-catalog spec § 4.5.
+        save()
+
+        // Catalog adapter pass + legacy pass + merge per spec § 4.5.1.
+        // Companies without `CompanyDefaultProduct` rows fall through to
+        // the legacy path unchanged (adapter returns []; merge passes
+        // legacy through). Companies with defaults get adapter-driven
+        // line items snapshotted with `configured_options` ready for the
+        // CutListMaterializer to resolve at install time.
+        let mergedItems = mergedCatalogLineItems()
+        guard !mergedItems.isEmpty else { return }
 
         let repo = EstimateRepository(companyId: deckDesign.companyId)
 
@@ -1833,8 +2485,12 @@ class DeckBuilderViewModel: ObservableObject {
         do {
             let created = try await repo.create(dto)
 
-            // Group line items by task type and create parent-child structure
-            let groups = EstimateGeneratorService.groupByTaskType(lineItems, taskTypes: taskTypes)
+            // Group merged line items by task type and create parent-child
+            // structure. Adapter rows in the merged result carry the
+            // configured_options + resolved_unit_price + resolved_options_label
+            // snapshot the CutListMaterializer needs at install time;
+            // legacy rows leave those fields nil.
+            let groups = CatalogEstimateMerger.groupByTaskType(mergedItems, taskTypes: taskTypes)
             var sortOrder = 0
 
             for group in groups {
@@ -1859,6 +2515,8 @@ class DeckBuilderViewModel: ObservableObject {
 
                 // Create child line items (material breakdown)
                 for child in group.children {
+                    let configuredOptionsRaw = child.configuredOptions
+                        .flatMap { CatalogEstimateMerger.encodeConfiguredOptions($0) }
                     let childDTO = CreateLineItemDTO(
                         estimateId: created.id,
                         productId: child.productId,
@@ -1872,7 +2530,10 @@ class DeckBuilderViewModel: ObservableObject {
                         taskTypeId: group.taskTypeId,
                         type: LineItemType.material.rawValue,
                         category: child.category,
-                        parentLineItemId: parentItem.id
+                        parentLineItemId: parentItem.id,
+                        configuredOptions: configuredOptionsRaw,
+                        resolvedUnitPrice: child.resolvedUnitPrice,
+                        resolvedOptionsLabel: child.resolvedOptionsLabel
                     )
                     _ = try await repo.addLineItem(childDTO)
                     sortOrder += 1

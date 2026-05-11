@@ -35,6 +35,21 @@ extension EnvironmentValues {
     }
 }
 
+/// Bug 706a4d32 — when true, AppHeader omits the universal search button
+/// because the root tab container hosts a single persistent search button
+/// overlay outside the sliding container. That overlay does not animate
+/// during tab swaps, so items that remain between tabs stay visually still.
+private struct HostsPersistentSearchButtonKey: EnvironmentKey {
+    static let defaultValue: Bool = false
+}
+
+extension EnvironmentValues {
+    var hostsPersistentSearchButton: Bool {
+        get { self[HostsPersistentSearchButtonKey.self] }
+        set { self[HostsPersistentSearchButtonKey.self] = newValue }
+    }
+}
+
 private extension View {
     /// Anchors a persistent header element so it stays visually still while
     /// the rest of the tab content slides during a tab switch. No-op when no
@@ -62,6 +77,7 @@ struct AppHeader: View {
         case jobBoard
         case inventory
         case pipeline
+        case books
     }
 
     @EnvironmentObject private var dataController: DataController
@@ -71,6 +87,10 @@ struct AppHeader: View {
     // buttons (search, filter, scope, review) match-geometry across tab
     // swaps and remain visually still while the body slides.
     @Environment(\.persistentHeaderNamespace) private var persistentHeaderNS
+    // Bug 706a4d32 — when the parent tab container hosts a persistent
+    // search button overlay, skip rendering ours so the only visible
+    // search button lives outside the sliding tab content.
+    @Environment(\.hostsPersistentSearchButton) private var hostsPersistentSearchButton
     @State private var showLockedMessage: String? = nil
     @State private var showLockedAlert: Bool = false
     // Bug 5d66ee80: avatar dimming during sync used to be wired via nested
@@ -122,6 +142,8 @@ struct AppHeader: View {
             return "INVENTORY"
         case .pipeline:
             return "PIPELINE"
+        case .books:
+            return "BOOKS"
         }
     }
     
@@ -515,30 +537,40 @@ struct AppHeader: View {
                     // tapping the icon flips appState.isSettingsSearchActive
                     // so the header re-renders as the full-width input (see
                     // the `.settings && isSettingsSearchActive` branch above).
-                    Button(action: {
-                        if headerType == .settings {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            withAnimation(OPSStyle.Animation.spring) {
-                                appState.isSettingsSearchActive = true
-                            }
-                            // Focus on the next tick so the focus state binds
-                            // after the field exists in the hierarchy.
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                settingsSearchFocused = true
-                            }
-                        } else {
-                            appState.showingUniversalSearch = true
-                        }
-                    }) {
-                        Image(systemName: "magnifyingglass")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    //
+                    // Bug 706a4d32 — when the root tab container hosts a
+                    // persistent overlay, skip rendering this so the only
+                    // visible search button is the one outside the sliding
+                    // container. We still reserve the 44×44 layout slot
+                    // (via a clear placeholder) so other tab-specific
+                    // buttons keep their horizontal position.
+                    if hostsPersistentSearchButton {
+                        Color.clear
                             .frame(width: 44, height: 44)
-                            .background(OPSStyle.Colors.cardBackground)
-                            .clipShape(Circle())
+                    } else {
+                        Button(action: {
+                            if headerType == .settings {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(OPSStyle.Animation.spring) {
+                                    appState.isSettingsSearchActive = true
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                    settingsSearchFocused = true
+                                }
+                            } else {
+                                appState.showingUniversalSearch = true
+                            }
+                        }) {
+                            Image(systemName: "magnifyingglass")
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .frame(width: 44, height: 44)
+                                .background(OPSStyle.Colors.cardBackground)
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .persistentHeaderMatch(id: "header.search", namespace: persistentHeaderNS)
                     }
-                    .buttonStyle(PlainButtonStyle())
-                    .persistentHeaderMatch(id: "header.search", namespace: persistentHeaderNS)
                 }
 
             }

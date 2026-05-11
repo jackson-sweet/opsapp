@@ -17,10 +17,16 @@ struct SmartStatCarousel: View {
     let expensesTrend: Double
     let topUnpaid: [(clientName: String, amount: Double, daysOverdue: Int)]
 
+    var activeLeadCount: Int = 0
+    var weightedForecastValue: Double = 0
+    var staleLeadsCount: Int = 0
+    var nextFollowUpDue: Date? = nil
+
     var onStatTap: ((StatType) -> Void)?
 
     enum StatType {
         case overdue, pendingEstimates, closeRate, avgPayment, expensesTrend, topUnpaid
+        case activeLeads, staleLeads, nextFollowUp
     }
 
     private var orderedCards: [CardData] {
@@ -45,6 +51,37 @@ struct SmartStatCarousel: View {
             detail: formatCurrency(pendingEstimatesValue),
             accentColor: OPSStyle.Colors.accountingReceivables
         ))
+
+        // Pipeline stats — financial first, pipeline second per spec §5
+        if activeLeadCount > 0 {
+            cards.append(CardData(
+                type: .activeLeads,
+                value: "\(activeLeadCount)",
+                label: "ACTIVE LEADS",
+                detail: formatCurrency(weightedForecastValue),
+                accentColor: OPSStyle.Colors.accountingProfit
+            ))
+        }
+
+        if staleLeadsCount > 0 {
+            cards.append(CardData(
+                type: .staleLeads,
+                value: "\(staleLeadsCount)",
+                label: "STALE LEADS",
+                detail: nil,
+                accentColor: OPSStyle.Colors.accountingOverdue
+            ))
+        }
+
+        if let next = nextFollowUpDue {
+            cards.append(CardData(
+                type: .nextFollowUp,
+                value: shortDate(next),
+                label: "NEXT FOLLOW-UP",
+                detail: nil,
+                accentColor: OPSStyle.Colors.accountingReceivables
+            ))
+        }
 
         // Top unpaid if exists
         if let top = topUnpaid.first {
@@ -98,6 +135,12 @@ struct SmartStatCarousel: View {
             return String(format: "$%.1fK", absValue / 1000)
         }
         return String(format: "$%.0f", absValue)
+    }
+
+    private func shortDate(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f.string(from: d)
     }
 }
 

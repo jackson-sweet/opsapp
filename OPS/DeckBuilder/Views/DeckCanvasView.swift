@@ -94,11 +94,10 @@ struct DeckCanvasView: View {
                 // Selection overlays (screen space)
                 selectionOverlay
 
-                // Live dimension HUD — top-right of canvas while drawing.
-                // Bug 9c2b8866 — finger blocks the mid-line label, so the
-                // user couldn't read the live measurement. This pins the
-                // pill to a screen-space corner where it's always visible.
-                liveDimensionHUD
+                // Live dimension HUD now renders in DeckBuilderView's
+                // floating header so it shares a gridline with the title
+                // pill (DECK-NEW-3). Removed from here so the canvas no
+                // longer needs the fragile +160pt clearance hack.
             }
             .clipped()
             .contentShape(Rectangle())
@@ -199,7 +198,15 @@ struct DeckCanvasView: View {
                     drawLevelConnection(context: context, connection: connection)
                 }
                 if let activeLevel = viewModel.activeLevel {
-                    drawLevelFootprint(context: context, level: activeLevel)
+                    // DECK-NEW-1 — render every detected closed face on the
+                    // active level so multi-loop / shared-edge designs show
+                    // fill instead of disappearing.
+                    let surfaces = activeLevel.detectedSurfaces
+                    if !surfaces.isEmpty {
+                        drawDetectedLevelSurfaces(context: context, level: activeLevel, surfaces: surfaces)
+                    } else {
+                        drawLevelFootprint(context: context, level: activeLevel)
+                    }
                     for edge in activeLevel.edges {
                         drawEdge(context: context, edge: edge, vertexLookup: activeLevel.vertex(byId:))
                     }
@@ -215,7 +222,19 @@ struct DeckCanvasView: View {
                     }
                 }
             } else {
-                if viewModel.isClosed { drawFootprint(context: context) }
+                // DECK-NEW-1 — render every detected closed face, not just
+                // a single all-vertices polygon. Adjacent loops sharing an
+                // edge become two surfaces; dangling lines are pruned and
+                // ignored. Falls through to the legacy single-polygon path
+                // when the surface detector finds nothing but the simple
+                // isClosed test does (back-compat for shapes that happen to
+                // be a Hamiltonian cycle).
+                let surfaces = viewModel.drawingData.detectedSurfaces
+                if !surfaces.isEmpty {
+                    drawDetectedSurfaces(context: context, surfaces: surfaces)
+                } else if viewModel.isClosed {
+                    drawFootprint(context: context)
+                }
                 if let poolDiameter = viewModel.drawingData.poolDiameter,
                    let scale = viewModel.drawingData.scaleFactor, scale > 0 {
                     drawPoolOverlay(context: context, diameterInches: poolDiameter, scaleFactor: scale)
@@ -350,6 +369,155 @@ struct DeckCanvasView: View {
         }
     }
 
+    // MARK: - Multi-Surface Rendering (DECK-NEW-1)
+
+    /// Render every detected closed face. Per-surface materials and labels
+    /// come from the persisted `DeckSurface` array on the drawing
+    /// (DECK-NEW-1 follow-up). Selection state is also per-surface.
+    private func drawDetectedSurfaces(context: GraphicsContext, surfaces: [DetectedSurface]) {
+        let persisted = viewModel.drawingData.surfaces
+        let legacyFootprint = viewModel.drawingData.footprint
+        let selectedIds = viewModel.selection.selectedSurfaceIds
+        let primaryId = primarySurfaceId(among: surfaces)
+        for detected in surfaces {
+            let resolved = resolveSurface(
+                detected: detected,
+                persisted: persisted,
+                legacyFootprint: legacyFootprint,
+                isLegacyPrimary: detected.id == primaryId
+            )
+            drawOneSurface(
+                context: context,
+                positions: detected.positions,
+                isSelected: resolved.persistedId.map { selectedIds.contains($0) } ?? false,
+                assignedItems: resolved.assignedItems,
+                label: resolved.label
+            )
+        }
+    }
+
+    /// Same as `drawDetectedSurfaces` but for an active level — pulls
+    /// material/label from the level's own per-surface store.
+    private func drawDetectedLevelSurfaces(context: GraphicsContext, level: DeckLevel, surfaces: [DetectedSurface]) {
+        let persisted = level.surfaces
+        let legacyFootprint = level.footprint
+        let selectedIds = viewModel.selection.selectedSurfaceIds
+        let primaryId = primarySurfaceId(among: surfaces)
+        for detected in surfaces {
+            let resolved = resolveSurface(
+                detected: detected,
+                persisted: persisted,
+                legacyFootprint: legacyFootprint,
+                isLegacyPrimary: detected.id == primaryId
+            )
+            drawOneSurface(
+                context: context,
+                positions: detected.positions,
+                isSelected: resolved.persistedId.map { selectedIds.contains($0) } ?? false,
+                assignedItems: resolved.assignedItems,
+                label: resolved.label
+            )
+        }
+    }
+
+    private struct ResolvedSurface {
+        let persistedId: String?
+        let assignedItems: [AssignedItem]
+        let label: String?
+    }
+
+    /// Looks up the persisted `DeckSurface` payload for a detected face.
+    /// Falls back to the legacy footprint store (only on the primary face)
+    /// while a drawing predates DECK-NEW-1's reconciliation pass — that
+    /// state should resolve itself the next time `save()` runs.
+    private func resolveSurface(
+        detected: DetectedSurface,
+        persisted: [DeckSurface],
+        legacyFootprint: DeckFootprint,
+        isLegacyPrimary: Bool
+    ) -> ResolvedSurface {
+        let dSet = Set(detected.vertexIds)
+        if let exact = persisted.first(where: { $0.vertexIds == dSet }) {
+            return ResolvedSurface(persistedId: exact.id, assignedItems: exact.assignedItems, label: exact.label)
+        }
+
+        var best: (surface: DeckSurface, jaccard: Double)? = nil
+        for p in persisted {
+            let intersection = dSet.intersection(p.vertexIds).count
+            let union = dSet.union(p.vertexIds).count
+            guard union > 0 else { continue }
+            let jaccard = Double(intersection) / Double(union)
+            if jaccard > (best?.jaccard ?? -1) {
+                best = (p, jaccard)
+            }
+        }
+        if let match = best, match.jaccard >= SurfaceReconciler.rebindThreshold {
+            return ResolvedSurface(
+                persistedId: match.surface.id,
+                assignedItems: match.surface.assignedItems,
+                label: match.surface.label
+            )
+        }
+
+        // Pre-reconciliation fallback: legacy footprint payload applies to
+        // whichever face is the primary (largest), nothing on the others.
+        if isLegacyPrimary {
+            return ResolvedSurface(
+                persistedId: nil,
+                assignedItems: legacyFootprint.assignedItems,
+                label: legacyFootprint.label
+            )
+        }
+        return ResolvedSurface(persistedId: nil, assignedItems: [], label: nil)
+    }
+
+    /// Largest surface by signed area magnitude.
+    private func primarySurfaceId(among surfaces: [DetectedSurface]) -> String? {
+        surfaces.max(by: { abs(PolygonMath.signedArea(vertices: $0.positions)) < abs(PolygonMath.signedArea(vertices: $1.positions)) })?.id
+    }
+
+    private func drawOneSurface(
+        context: GraphicsContext,
+        positions: [CGPoint],
+        isSelected: Bool,
+        assignedItems: [AssignedItem],
+        label: String?
+    ) {
+        guard positions.count >= 3 else { return }
+        var path = Path()
+        path.move(to: positions[0])
+        for i in 1..<positions.count { path.addLine(to: positions[i]) }
+        path.closeSubpath()
+
+        if PolygonMath.isSelfIntersecting(vertices: positions) {
+            drawSelfIntersectingWarningFill(context: context, path: path, positions: positions)
+            return
+        }
+
+        let fillStyle = FillStyle(eoFill: false)
+        let hasAssignment = !assignedItems.isEmpty
+        if hasAssignment {
+            let fillColor: Color = {
+                if let hex = assignedItems.first?.taskTypeColor, !hex.isEmpty,
+                   let c = Color(hex: hex) { return c }
+                return OPSStyle.Colors.primaryAccent
+            }()
+            context.fill(path, with: .color(fillColor.opacity(isSelected ? 0.15 : 0.08)), style: fillStyle)
+        } else {
+            context.fill(path, with: .color(Color.white.opacity(isSelected ? 0.08 : 0.03)), style: fillStyle)
+        }
+
+        let surfaceLabel: String? = {
+            if let user = label?.trimmingCharacters(in: .whitespacesAndNewlines), !user.isEmpty {
+                return user
+            }
+            return assignedItems.first?.name
+        }()
+        if let l = surfaceLabel {
+            drawSurfaceLabel(context: context, positions: positions, label: l)
+        }
+    }
+
     /// Draw a clear visual warning when the polygon crosses itself — field workers need
     /// to SEE the problem, not read a small toast. Uses warningStatus + 45° hash so it
     /// reads as "broken" even in sunlight / on greyscale.
@@ -430,14 +598,29 @@ struct DeckCanvasView: View {
     // MARK: - Multi-Level Inactive
 
     private func drawInactiveLevel(context: GraphicsContext, level: DeckLevel) {
-        let positions = level.orderedPositions
-        guard positions.count >= 3 else { return }
-        if level.isClosed {
+        // DECK-NEW-1 — fill every detected face on the inactive level, not
+        // a single all-vertex polygon.
+        let surfaces = level.detectedSurfaces
+        let dimColor = level.displayColor.swiftUIColor.opacity(0.08)
+        if !surfaces.isEmpty {
+            for surface in surfaces {
+                guard surface.positions.count >= 3 else { continue }
+                var p = Path(); p.move(to: surface.positions[0])
+                for i in 1..<surface.positions.count { p.addLine(to: surface.positions[i]) }
+                p.closeSubpath()
+                context.fill(p, with: .color(dimColor), style: FillStyle(eoFill: false))
+            }
+        } else if level.isClosed {
+            let positions = level.orderedPositions
+            guard positions.count >= 3 else { return }
             var p = Path(); p.move(to: positions[0])
             for i in 1..<positions.count { p.addLine(to: positions[i]) }
             p.closeSubpath()
-            context.fill(p, with: .color(level.displayColor.swiftUIColor.opacity(0.08)), style: FillStyle(eoFill: false))
+            context.fill(p, with: .color(dimColor), style: FillStyle(eoFill: false))
         }
+
+        let positions = level.orderedPositions
+        guard positions.count >= 3 else { return }
         let inactiveStroke = scaledSize(1.5, min: 1, max: 3)
         for edge in level.edges {
             guard let s = level.vertex(byId: edge.startVertexId),
@@ -578,7 +761,11 @@ struct DeckCanvasView: View {
         }
     }
 
-    /// Architectural wall hatch: short 45° lines on the interior side of a house edge + "HOUSE" label
+    /// Architectural wall hatch: short 45° lines on the interior side of a
+    /// house edge. The hatch alone reads as a wall in architectural drawings;
+    /// the redundant "HOUSE" caption that used to render here was sitting
+    /// behind the title badge / cladding pill (bug d10e8f5e). Cladding
+    /// material is communicated via the dimension-label pill instead.
     private func drawHouseHatch(context: GraphicsContext, start: CGPoint, end: CGPoint) {
         let dx = end.x - start.x, dy = end.y - start.y
         let len = sqrt(dx * dx + dy * dy)
@@ -601,19 +788,6 @@ struct DeckCanvasView: View {
         }
         let hatchStroke = scaledSize(1, min: 0.75, max: 2)
         context.stroke(hatchPath, with: .color(OPSStyle.Colors.secondaryText.opacity(0.35)), lineWidth: hatchStroke)
-
-        if len > 40 {
-            let labelOffset: CGFloat = scaledSize(12, min: 9, max: 20)
-            let midX = (start.x + end.x) / 2 + perpX * labelOffset
-            let midY = (start.y + end.y) / 2 + perpY * labelOffset
-            let fontSize = scaledSize(9, min: 7, max: 15)
-            context.draw(
-                Text("HOUSE")
-                    .font(.system(size: fontSize, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Color.white.opacity(0.7)),
-                at: CGPoint(x: midX, y: midY)
-            )
-        }
     }
 
     /// Draw stairs extending PERPENDICULAR from the edge, to scale.
@@ -893,14 +1067,20 @@ struct DeckCanvasView: View {
         let pillH = scaledSize(20, min: 14, max: 28)
         let cr = scaledSize(4, min: 2, max: 6)
 
-        // Clamp horizontally so labels at edge-of-canvas vertices don't bleed
-        // into the rounded screen corners — canvas runs full-bleed (top +
-        // horizontal safe area ignored), so without this any vertex placed
-        // near the screen edge produces a label that sits half off-screen.
-        let edgeBuffer: CGFloat = 16
+        // Clamp label into the visible canvas region (in canvas/world space).
+        // The previous code compared canvas-space label positions against
+        // viewport-space bounds (canvasSize.width is viewport width, e.g.
+        // 390pt, while rawLabelX is in world coords, e.g. 2400pt). That
+        // caused every label to be pinned near the left edge of the canvas,
+        // making them invisible when the viewport was centered on the canvas.
+        // Fix: convert the viewport edges to canvas/world space using the
+        // current pan/scale, then clamp there. Bug 3.
         let halfPill = pillW / 2
-        let minX = halfPill + edgeBuffer
-        let maxX = max(minX, canvasSize.width - halfPill - edgeBuffer)
+        let edgeBuffer: CGFloat = 16 / canvasScale   // viewport px → canvas units
+        let canvasVisMinX = max(0, -canvasOffset.width / canvasScale)
+        let canvasVisMaxX = (canvasSize.width - canvasOffset.width) / canvasScale
+        let minX = canvasVisMinX + halfPill + edgeBuffer
+        let maxX = max(minX, canvasVisMaxX - halfPill - edgeBuffer)
         let labelX = min(max(rawLabelX, minX), maxX)
 
         let pillRect = CGRect(x: labelX - pillW / 2, y: labelY - pillH / 2, width: pillW, height: pillH)
@@ -939,13 +1119,12 @@ struct DeckCanvasView: View {
             secondaryColor = OPSStyle.Colors.primaryAccent
         } else if let railing = edge.railingConfig {
             secondaryLabel = railing.railingType.displayName.uppercased()
-        } else if edge.edgeType == .houseEdge {
-            // Show cladding material if set, else "HOUSE". Bug 3d72ce0b.
-            if let mat = edge.houseEdgeMaterial {
-                secondaryLabel = mat.displayName.uppercased()
-            } else {
-                secondaryLabel = "HOUSE"
-            }
+        } else if edge.edgeType == .houseEdge, let mat = edge.houseEdgeMaterial {
+            // Cladding material identifies a house edge once the user picks
+            // one. Without a material the 45° hatch + edge styling already
+            // communicate "house" on its own — the redundant "HOUSE" caption
+            // was overlapping the title badge (bug d10e8f5e).
+            secondaryLabel = mat.displayName.uppercased()
         } else if let item = edge.assignedItems.first {
             secondaryLabel = item.name.uppercased()
         } else if edge.dimensionSource == .ar {
@@ -1033,12 +1212,12 @@ struct DeckCanvasView: View {
     private var selectionSummaryContent: some View {
         let vCount = viewModel.selection.selectedVertexIds.count
         let eCount = viewModel.selection.selectedEdgeIds.count
-        let fCount = viewModel.selection.selectedFootprint ? 1 : 0
+        let fCount = viewModel.selection.selectedSurfaceIds.count
         if vCount + eCount + fCount > 0 {
             let parts = [
                 vCount > 0 ? "\(vCount) vert\(vCount == 1 ? "ex" : "ices")" : nil,
                 eCount > 0 ? "\(eCount) edge\(eCount == 1 ? "" : "s")" : nil,
-                fCount > 0 ? "1 surface" : nil
+                fCount > 0 ? "\(fCount) surface\(fCount == 1 ? "" : "s")" : nil
             ].compactMap { $0 }
             Text(parts.joined(separator: ", "))
                 .font(OPSStyle.Typography.smallCaption)
@@ -1047,88 +1226,6 @@ struct DeckCanvasView: View {
                 .padding(.vertical, 6)
                 .background(OPSStyle.Colors.cardBackground.opacity(0.85))
                 .cornerRadius(6)
-        }
-    }
-
-    // MARK: - Live Dimension HUD (screen-space, top-right corner)
-
-    /// Pure computation of the live dimension + angle label without touching
-    /// the GraphicsContext. Used by the screen-space HUD so we can show the
-    /// pill in the top-right corner of the canvas regardless of where the
-    /// user's finger is. Returns nil when no draw is in progress or the
-    /// distance is sub-pixel. Bug 9c2b8866.
-    private func computeLiveDimensionLabel() -> String? {
-        guard case .drawing(let fromId, let startPosition, let currentEnd) = viewModel.drawingMode else {
-            return nil
-        }
-        let distance = SnapEngine.distance(startPosition, currentEnd)
-        guard distance > 1 else { return nil }
-
-        let dimText: String
-        if let scale = viewModel.drawingData.scaleFactor, scale > 0.001 {
-            let inches = distance / scale
-            dimText = DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
-        } else {
-            let inches = distance / DeckBuilderViewModel.prescaleFallbackScale
-            dimText = "~" + DimensionEngine.format(inches, system: viewModel.drawingData.config.measurementSystem)
-        }
-
-        let angleText: String
-        if let fromVertexId = fromId {
-            let edges = viewModel.isMultiLevel ? (viewModel.activeLevel?.edges ?? []) : viewModel.drawingData.edges
-            let connected = edges.filter { $0.startVertexId == fromVertexId || $0.endVertexId == fromVertexId }
-            if let prev = connected.last {
-                let otherId = prev.startVertexId == fromVertexId ? prev.endVertexId : prev.startVertexId
-                if let other = resolveVertex(byId: otherId) {
-                    let prevA = SnapEngine.lineAngle(from: startPosition, to: other.position)
-                    let newA = SnapEngine.lineAngle(from: startPosition, to: currentEnd)
-                    var rel = newA - prevA; if rel < 0 { rel += 360 }; if rel > 180 { rel = 360 - rel }
-                    angleText = String(format: "%.0f\u{00B0}", rel)
-                } else {
-                    angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
-                }
-            } else {
-                angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
-            }
-        } else {
-            angleText = String(format: "%.0f\u{00B0}", SnapEngine.lineAngle(from: startPosition, to: currentEnd))
-        }
-
-        return "\(dimText)  \(angleText)"
-    }
-
-    @ViewBuilder
-    private var liveDimensionHUD: some View {
-        if let label = computeLiveDimensionLabel() {
-            VStack {
-                HStack {
-                    Spacer()
-                    HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Image(systemName: "ruler")
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        Text(label)
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .padding(.vertical, OPSStyle.Layout.spacing2)
-                    .background(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(OPSStyle.Colors.cardBackground.opacity(0.96))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: 1)
-                            )
-                            .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
-                    )
-                }
-                Spacer()
-            }
-            .padding(.top, 12)
-            .padding(.trailing, 12)
-            .allowsHitTesting(false)
-            .transition(.opacity)
         }
     }
 
@@ -1282,9 +1379,11 @@ struct DeckCanvasView: View {
             .onChanged { value in
                 let point = canvasPoint(from: value.location, in: size)
                 let startPoint = canvasPoint(from: value.startLocation, in: size)
-                // In multi-select mode, marquee drag is the default (rectangular add).
-                // Lasso tool keeps its freeform behavior.
-                let useLasso = viewModel.activeTool == .lasso
+                // DECK-NEW-4 — in unified select mode, drag-shape comes from
+                // the marqueeShape toggle. Legacy `.lasso` tool keeps its
+                // freeform behavior so any external entry points still work.
+                let useLasso = (viewModel.activeTool == .lasso)
+                    || (viewModel.activeTool == .tapSelect && viewModel.marqueeShape == .lasso)
                 if !drawingStarted {
                     drawingStarted = true
                     if useLasso {
@@ -1302,7 +1401,9 @@ struct DeckCanvasView: View {
                 edgePan.updateLocation(value.location)
             }
             .onEnded { _ in
-                if viewModel.activeTool == .lasso {
+                let useLasso = (viewModel.activeTool == .lasso)
+                    || (viewModel.activeTool == .tapSelect && viewModel.marqueeShape == .lasso)
+                if useLasso {
                     viewModel.endLasso()
                 } else {
                     viewModel.endMarquee()

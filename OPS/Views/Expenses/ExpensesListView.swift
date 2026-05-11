@@ -88,6 +88,7 @@ struct ExpensesListView: View {
             VStack(spacing: 0) {
                 if !embedded { header }
                 periodFilterPills
+                orphanRecoveryBanner
                 heroSummaryCard
                 tabToggle
                 batchList
@@ -116,11 +117,74 @@ struct ExpensesListView: View {
         }
         .task {
             if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
-                viewModel.setup(companyId: companyId)
+                let user = dataController.currentUser
+                let userName = [user?.firstName, user?.lastName]
+                    .compactMap { $0 }
+                    .joined(separator: " ")
+                    .trimmingCharacters(in: .whitespaces)
+                viewModel.setup(
+                    companyId: companyId,
+                    currentUserId: user?.id,
+                    currentUserName: userName.isEmpty ? nil : userName
+                )
                 await viewModel.loadBatchesForReview()
+                await viewModel.loadOrphanCount()
                 computeAvailablePeriods()
                 hasAppeared = true
             }
+        }
+    }
+
+    // MARK: - Orphan Recovery Banner
+
+    /// Defense-in-depth: any expense in `submitted` status with no batch
+    /// (legacy clients, interrupted submissions) shows up here so admins
+    /// can recover with one tap. Hidden when there are no orphans.
+    @ViewBuilder
+    private var orphanRecoveryBanner: some View {
+        if viewModel.orphanCount > 0 {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(viewModel.orphanCount) UNBUNDLED EXPENSE\(viewModel.orphanCount == 1 ? "" : "S")")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    Text("Submitted but never batched. Tap to bundle now.")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+
+                Spacer()
+
+                Button {
+                    Task {
+                        await viewModel.recoverOrphans()
+                    }
+                } label: {
+                    Text("BUNDLE")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.invertedText)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
+                        .background(OPSStyle.Colors.warningStatus)
+                        .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(viewModel.isLoading)
+            }
+            .padding(OPSStyle.Layout.spacing3)
+            .background(OPSStyle.Colors.warningStatus.opacity(0.1))
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .stroke(OPSStyle.Colors.warningStatus.opacity(0.3),
+                            lineWidth: OPSStyle.Layout.Border.standard)
+            )
+            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.top, OPSStyle.Layout.spacing2)
         }
     }
 

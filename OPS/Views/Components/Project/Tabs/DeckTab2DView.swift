@@ -97,30 +97,64 @@ struct DeckTab2DView: View {
             drawMeasurement(context: context)
 
             if drawingData.isMultiLevel {
-                for (index, level) in drawingData.levels.enumerated() {
-                    if index != 0 {
-                        drawInactiveLevel(context: context, level: level)
-                    }
-                }
+                // DECK-NEW-8 — render every level so multi-level designs are
+                // fully visible in the project tab. Previously only level 0
+                // was drawn fully (others got the dim "inactive" footprint),
+                // which made the viewer claim levels existed but never show
+                // their edges, vertices, or dimensions.
                 for connection in drawingData.levelConnections {
                     drawLevelConnection(context: context, connection: connection)
                 }
-                if let firstLevel = drawingData.levels.first {
-                    if firstLevel.isClosed {
-                        drawLevelFootprint(context: context, level: firstLevel)
+                for level in drawingData.levels {
+                    // DECK-NEW-1 — fill every detected face in this level so
+                    // multi-surface levels render correctly. Material/label
+                    // pulled from per-surface persisted store so each face
+                    // shows its own assignment (DECK-NEW-1 follow-up).
+                    let levelSurfaces = level.detectedSurfaces
+                    if !levelSurfaces.isEmpty {
+                        let primary = primarySurfaceId(among: levelSurfaces)
+                        for face in levelSurfaces {
+                            let resolved = resolvedReadOnlySurface(
+                                detected: face,
+                                persisted: level.surfaces,
+                                legacy: level.footprint,
+                                isLegacyPrimary: face.id == primary
+                            )
+                            drawLevelSurfaceFill(
+                                context: context,
+                                level: level,
+                                positions: face.positions,
+                                assignedItems: resolved.assignedItems,
+                                label: resolved.label
+                            )
+                        }
+                    } else if level.isClosed {
+                        drawLevelFootprint(context: context, level: level)
                     }
-                    for edge in firstLevel.edges {
-                        drawEdge(context: context, edge: edge, vertexLookup: firstLevel.vertex(byId:))
+                    for edge in level.edges {
+                        drawEdge(context: context, edge: edge, vertexLookup: level.vertex(byId:))
                     }
-                    for vertex in firstLevel.vertices {
+                    for vertex in level.vertices {
                         drawVertex(context: context, vertex: vertex)
                     }
-                    for edge in firstLevel.edges {
-                        drawDimensionLabel(context: context, edge: edge, vertexLookup: firstLevel.vertex(byId:))
+                    for edge in level.edges {
+                        drawDimensionLabel(context: context, edge: edge, vertexLookup: level.vertex(byId:))
                     }
                 }
             } else {
-                if drawingData.isClosed { drawFootprint(context: context) }
+                // DECK-NEW-1 — fill every detected closed face. Falls back
+                // to the legacy single-polygon fill when nothing is detected
+                // (degenerate or scale-less data).
+                let surfaces = drawingData.detectedSurfaces
+                if !surfaces.isEmpty {
+                    let persisted = drawingData.surfaces
+                    for face in surfaces {
+                        let resolved = resolvedReadOnlySurface(detected: face, persisted: persisted, legacy: drawingData.footprint, isLegacyPrimary: face.id == primarySurfaceId(among: surfaces))
+                        drawSurfaceFill(context: context, positions: face.positions, assignedItems: resolved.assignedItems, label: resolved.label)
+                    }
+                } else if drawingData.isClosed {
+                    drawFootprint(context: context)
+                }
                 if let poolDiameter = drawingData.poolDiameter,
                    let scale = drawingData.scaleFactor, scale > 0 {
                     drawPoolOverlay(context: context, diameterInches: poolDiameter, scaleFactor: scale)
@@ -141,9 +175,15 @@ struct DeckTab2DView: View {
     // MARK: - Viewport Centering
 
     private func centerViewport(viewportSize: CGSize) {
-        let positions = drawingData.isMultiLevel
-            ? (drawingData.levels.first?.vertices.map(\.position) ?? [])
-            : drawingData.vertices.map(\.position)
+        // DECK-NEW-8 — frame the camera around ALL levels' bounds so every
+        // level is visible. Previously only level 0 informed the fit, which
+        // could push higher levels offscreen entirely.
+        let positions: [CGPoint]
+        if drawingData.isMultiLevel {
+            positions = drawingData.levels.flatMap { $0.vertices.map(\.position) }
+        } else {
+            positions = drawingData.vertices.map(\.position)
+        }
 
         guard !positions.isEmpty else {
             canvasOffset = CGSize(
@@ -213,17 +253,96 @@ struct DeckTab2DView: View {
 
     private func drawFootprint(context: GraphicsContext) {
         let positions = drawingData.orderedPositions
-        guard positions.count >= 3 else { return }
+        drawSurfaceFill(context: context, positions: positions, assignedItems: drawingData.footprint.assignedItems, label: drawingData.footprint.label)
+    }
 
+    /// Subtle fill + stroke for one detected surface in the read-only viewer.
+    /// Tinted by the surface's first assigned item color when present —
+    /// matches the in-builder look so per-surface materials read correctly
+    /// in the project tab. DECK-NEW-1 follow-up.
+    private func drawSurfaceFill(context: GraphicsContext, positions: [CGPoint], assignedItems: [AssignedItem] = [], label: String? = nil) {
+        guard positions.count >= 3 else { return }
         var path = Path()
         path.move(to: positions[0])
-        for i in 1..<positions.count {
-            path.addLine(to: positions[i])
-        }
+        for i in 1..<positions.count { path.addLine(to: positions[i]) }
         path.closeSubpath()
 
-        context.fill(path, with: .color(Color.white.opacity(0.04)))
-        context.stroke(path, with: .color(Color.white.opacity(0.08)), lineWidth: 1)
+        if !assignedItems.isEmpty,
+           let hex = assignedItems.first?.taskTypeColor,
+           !hex.isEmpty,
+           let tint = Color(hex: hex) {
+            context.fill(path, with: .color(tint.opacity(0.10)))
+            context.stroke(path, with: .color(tint.opacity(0.30)), lineWidth: 1)
+        } else {
+            context.fill(path, with: .color(Color.white.opacity(0.04)))
+            context.stroke(path, with: .color(Color.white.opacity(0.08)), lineWidth: 1)
+        }
+
+        let resolvedLabel: String? = {
+            if let l = label?.trimmingCharacters(in: .whitespacesAndNewlines), !l.isEmpty { return l }
+            return assignedItems.first?.name
+        }()
+        if let l = resolvedLabel {
+            drawSurfaceLabel(context: context, positions: positions, label: l)
+        }
+    }
+
+    /// Resolved per-surface payload for the read-only viewer. Mirrors
+    /// `DeckCanvasView.resolveSurface` — exact vertex-set first, then best
+    /// Jaccard, falling back to the legacy footprint payload only on the
+    /// primary face for unmigrated drawings. DECK-NEW-1 follow-up.
+    private struct ResolvedReadOnlySurface {
+        let assignedItems: [AssignedItem]
+        let label: String?
+    }
+
+    private func resolvedReadOnlySurface(
+        detected: DetectedSurface,
+        persisted: [DeckSurface],
+        legacy: DeckFootprint,
+        isLegacyPrimary: Bool
+    ) -> ResolvedReadOnlySurface {
+        let dSet = Set(detected.vertexIds)
+        if let exact = persisted.first(where: { $0.vertexIds == dSet }) {
+            return ResolvedReadOnlySurface(assignedItems: exact.assignedItems, label: exact.label)
+        }
+        var best: (s: DeckSurface, j: Double)? = nil
+        for p in persisted {
+            let inter = dSet.intersection(p.vertexIds).count
+            let union = dSet.union(p.vertexIds).count
+            guard union > 0 else { continue }
+            let j = Double(inter) / Double(union)
+            if j > (best?.j ?? -1) { best = (p, j) }
+        }
+        if let m = best, m.j >= SurfaceReconciler.rebindThreshold {
+            return ResolvedReadOnlySurface(assignedItems: m.s.assignedItems, label: m.s.label)
+        }
+        if isLegacyPrimary {
+            return ResolvedReadOnlySurface(assignedItems: legacy.assignedItems, label: legacy.label)
+        }
+        return ResolvedReadOnlySurface(assignedItems: [], label: nil)
+    }
+
+    /// Largest detected surface — used to attribute legacy footprint
+    /// payloads to a single face for unmigrated drawings.
+    private func primarySurfaceId(among surfaces: [DetectedSurface]) -> String? {
+        surfaces.max(by: { abs(PolygonMath.signedArea(vertices: $0.positions)) < abs(PolygonMath.signedArea(vertices: $1.positions)) })?.id
+    }
+
+    /// Surface label — small monochrome pill at the surface centroid.
+    private func drawSurfaceLabel(context: GraphicsContext, positions: [CGPoint], label: String) {
+        let cx = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
+        let cy = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
+        let pillH: CGFloat = 18
+        let charW: CGFloat = 6
+        let pillW = CGFloat(label.count) * charW + 12
+        let cr: CGFloat = 4
+        let pillRect = CGRect(x: cx - pillW / 2, y: cy - pillH / 2, width: pillW, height: pillH)
+        context.fill(Path(roundedRect: pillRect, cornerRadius: cr),
+                     with: .color(OPSStyle.Colors.cardBackground.opacity(0.85)))
+        context.draw(Text(label).font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .foregroundColor(Color.white.opacity(0.9)),
+                     at: CGPoint(x: cx, y: cy))
     }
 
     private func drawEdge(context: GraphicsContext, edge: DeckEdge, vertexLookup: (String) -> DeckVertex?) {
@@ -332,9 +451,17 @@ struct DeckTab2DView: View {
         let perpX = config.flipDirection ? -outward.x : outward.x
         let perpY = config.flipDirection ? -outward.y : outward.y
 
-        // Width / depth canvas math — fall back to 1 pt/inch when no scale
-        // (project viewer doesn't auto-fall-back to prescaleFallbackScale).
-        let scale: Double = (drawingData.scaleFactor ?? 1.0) > 0 ? (drawingData.scaleFactor ?? 1.0) : 1.0
+        // Width / depth canvas math — match the editor's prescale fallback so
+        // stairs render at a proportional canvas size when no scaleFactor is
+        // calibrated yet. Bug DECK-NEW-5 — using 1.0 made stairs render at
+        // the wrong (much smaller) width on uncalibrated drawings, since
+        // every other element on the canvas falls back to 2.0 pt/inch.
+        let scale: Double
+        if let s = drawingData.scaleFactor, s > 0 {
+            scale = s
+        } else {
+            scale = DeckBuilderViewModel.prescaleFallbackScale
+        }
         let stairWidthCanvas = min(CGFloat(config.width) * CGFloat(scale), edgeLen)
         let totalRunInches = Double(treadCount) * config.runPerTread
         let stairDepthCanvas = CGFloat(totalRunInches) * CGFloat(scale)
@@ -440,16 +567,38 @@ struct DeckTab2DView: View {
     }
 
     private func drawLevelFootprint(context: GraphicsContext, level: DeckLevel) {
-        let positions = level.orderedPositions
-        guard positions.count >= 3 else { return }
+        drawLevelSurfaceFill(context: context, level: level, positions: level.orderedPositions, assignedItems: level.footprint.assignedItems, label: level.footprint.label)
+    }
 
+    /// Fill + stroke for one detected surface within a multi-level design's
+    /// level. Tinted by per-surface material color when present, falling
+    /// back to the level's display color for the unassigned look.
+    /// DECK-NEW-1 follow-up.
+    private func drawLevelSurfaceFill(context: GraphicsContext, level: DeckLevel, positions: [CGPoint], assignedItems: [AssignedItem] = [], label: String? = nil) {
+        guard positions.count >= 3 else { return }
         var path = Path()
         path.move(to: positions[0])
         for i in 1..<positions.count { path.addLine(to: positions[i]) }
         path.closeSubpath()
 
-        context.fill(path, with: .color(level.displayColor.swiftUIColor.opacity(0.06)))
-        context.stroke(path, with: .color(level.displayColor.swiftUIColor.opacity(0.15)), lineWidth: 1)
+        if !assignedItems.isEmpty,
+           let hex = assignedItems.first?.taskTypeColor,
+           !hex.isEmpty,
+           let tint = Color(hex: hex) {
+            context.fill(path, with: .color(tint.opacity(0.10)))
+            context.stroke(path, with: .color(tint.opacity(0.30)), lineWidth: 1)
+        } else {
+            context.fill(path, with: .color(level.displayColor.swiftUIColor.opacity(0.06)))
+            context.stroke(path, with: .color(level.displayColor.swiftUIColor.opacity(0.15)), lineWidth: 1)
+        }
+
+        let resolvedLabel: String? = {
+            if let l = label?.trimmingCharacters(in: .whitespacesAndNewlines), !l.isEmpty { return l }
+            return assignedItems.first?.name
+        }()
+        if let l = resolvedLabel {
+            drawSurfaceLabel(context: context, positions: positions, label: l)
+        }
     }
 
     private func drawInactiveLevel(context: GraphicsContext, level: DeckLevel) {
@@ -507,17 +656,136 @@ struct DeckTab2DView: View {
 
     /// Measurement-mode tap state machine: first tap sets start, second tap
     /// closes the measurement, third tap resets and starts a new one.
+    /// DECK-NEW-9 — taps now snap to nearest vertex / edge projection
+    /// before being recorded, and the second tap also snaps the LINE
+    /// angle to perpendicular / parallel of nearby edges.
     private func recordMeasurementTap(at location: CGPoint, in viewportSize: CGSize) {
-        let canvasLoc = canvasPoint(from: location, viewportSize: viewportSize)
+        let rawCanvasLoc = canvasPoint(from: location, viewportSize: viewportSize)
+        let snappedLoc = snapToGeometry(rawCanvasLoc)
+
         if measurementStart == nil {
-            measurementStart = canvasLoc
+            measurementStart = snappedLoc
             measurementEnd = nil
         } else if measurementEnd == nil {
-            measurementEnd = canvasLoc
+            // Second tap: snap angle relative to existing edges so the
+            // measurement reads true perpendicular / parallel when the
+            // user is close to that intent.
+            measurementEnd = snapAngleToEdges(from: measurementStart!, candidate: snappedLoc)
         } else {
-            measurementStart = canvasLoc
+            measurementStart = snappedLoc
             measurementEnd = nil
         }
+    }
+
+    /// Snap a canvas-space point to the nearest vertex (within hit threshold),
+    /// or to the closest projection on the nearest edge (slightly larger
+    /// threshold). Falls back to the raw point when nothing is in range.
+    /// Threshold is scaled by the inverse of canvasScale so it stays
+    /// roughly 14pt / 24pt of *finger* slop regardless of zoom.
+    private func snapToGeometry(_ point: CGPoint) -> CGPoint {
+        let vertexThreshold: Double = max(8, 14 / Double(canvasScale))
+        let edgeThreshold: Double = max(12, 24 / Double(canvasScale))
+
+        let vertices = drawingData.isMultiLevel
+            ? drawingData.levels.flatMap { $0.vertices }
+            : drawingData.vertices
+        let edges = drawingData.isMultiLevel
+            ? drawingData.levels.flatMap { $0.edges }
+            : drawingData.edges
+
+        // 1. Vertex snap takes priority — a clear visual target.
+        var bestVertexDist = Double.infinity
+        var bestVertexPoint: CGPoint?
+        for v in vertices {
+            let d = SnapEngine.distance(point, v.position)
+            if d < vertexThreshold && d < bestVertexDist {
+                bestVertexDist = d
+                bestVertexPoint = v.position
+            }
+        }
+        if let p = bestVertexPoint { return p }
+
+        // 2. Edge snap — perpendicular projection onto the nearest segment.
+        var bestEdgeDist = Double.infinity
+        var bestEdgePoint: CGPoint?
+        for edge in edges {
+            guard let start = vertices.first(where: { $0.id == edge.startVertexId }),
+                  let end = vertices.first(where: { $0.id == edge.endVertexId }) else { continue }
+            let (closest, d) = PolygonMath.closestPointOnSegment(point: point, segStart: start.position, segEnd: end.position)
+            if d < edgeThreshold && d < bestEdgeDist {
+                bestEdgeDist = d
+                bestEdgePoint = closest
+            }
+        }
+        if let p = bestEdgePoint { return p }
+
+        return point
+    }
+
+    /// Adjust the second-tap location so the measurement line lands exactly
+    /// perpendicular or parallel to the closest edge if the user's pick is
+    /// already within ±5°. The line LENGTH stays the same; only the angle
+    /// is rotated. Returns the original candidate when no edge is nearby.
+    private func snapAngleToEdges(from start: CGPoint, candidate: CGPoint) -> CGPoint {
+        let vertices = drawingData.isMultiLevel
+            ? drawingData.levels.flatMap { $0.vertices }
+            : drawingData.vertices
+        let edges = drawingData.isMultiLevel
+            ? drawingData.levels.flatMap { $0.edges }
+            : drawingData.edges
+        guard !edges.isEmpty else { return candidate }
+
+        // Find the edge whose midpoint is closest to the measurement line —
+        // a rough "which edge is the user near" heuristic that avoids
+        // anchoring snap to a faraway edge.
+        let midM = CGPoint(x: (start.x + candidate.x) / 2, y: (start.y + candidate.y) / 2)
+        var bestEdgeAngle: Double?
+        var bestDist = Double.infinity
+        for edge in edges {
+            guard let s = vertices.first(where: { $0.id == edge.startVertexId }),
+                  let e = vertices.first(where: { $0.id == edge.endVertexId }) else { continue }
+            let edgeMid = CGPoint(x: (s.position.x + e.position.x) / 2, y: (s.position.y + e.position.y) / 2)
+            let d = SnapEngine.distance(midM, edgeMid)
+            if d < bestDist {
+                bestDist = d
+                bestEdgeAngle = SnapEngine.lineAngle(from: s.position, to: e.position)
+            }
+        }
+        guard let edgeAngle = bestEdgeAngle else { return candidate }
+
+        let lineAngle = SnapEngine.lineAngle(from: start, to: candidate)
+        let length = SnapEngine.distance(start, candidate)
+
+        // Candidate snap targets: parallel (edgeAngle, edgeAngle ± 180°) and
+        // perpendicular (edgeAngle ± 90°). Pick the one within ±5°.
+        let targets: [Double] = [
+            edgeAngle, edgeAngle + 180, edgeAngle - 180,
+            edgeAngle + 90, edgeAngle - 90,
+            edgeAngle + 270, edgeAngle - 270
+        ]
+        let tolerance: Double = 5.0
+        var snapAngle: Double?
+        for t in targets {
+            // Normalise both into [0, 360) before comparing.
+            let normLine = ((lineAngle.truncatingRemainder(dividingBy: 360)) + 360).truncatingRemainder(dividingBy: 360)
+            let normT = ((t.truncatingRemainder(dividingBy: 360)) + 360).truncatingRemainder(dividingBy: 360)
+            var diff = abs(normLine - normT)
+            if diff > 180 { diff = 360 - diff }
+            if diff <= tolerance {
+                snapAngle = t
+                break
+            }
+        }
+
+        guard let target = snapAngle else { return candidate }
+
+        // Rotate end point around start to land on the snapped angle while
+        // preserving the user's chosen length.
+        let rad = target * .pi / 180
+        return CGPoint(
+            x: start.x + CGFloat(length * cos(rad)),
+            y: start.y + CGFloat(length * sin(rad))
+        )
     }
 
     /// Render the in-progress measurement (anchor dots, dashed line, midpoint
@@ -638,8 +906,8 @@ struct DeckTab2DView: View {
     /// misread as a conditional view branch.
     private var measurementHintText: String? {
         guard measurementMode else { return nil }
-        if measurementStart == nil { return "TAP FIRST POINT" }
-        if measurementEnd == nil { return "TAP SECOND POINT" }
+        if measurementStart == nil { return "TAP — SNAPS TO POINTS" }
+        if measurementEnd == nil { return "TAP — SNAPS ⊥ ∥" }
         if drawingData.scaleFactor == nil { return "NO SCALE CALIBRATED" }
         return "TAP TO RESET"
     }

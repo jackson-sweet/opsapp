@@ -39,7 +39,10 @@ final class InboundProcessor {
     private var invoiceRepo: InvoiceRepository
     private var estimateRepo: EstimateRepository
     private var calendarUserEventRepo: CalendarUserEventRepository
-    private var inventoryRepo: InventoryRepository
+    private var catalogRepo: CatalogRepository
+    private var productRichnessRepo: ProductRichnessRepository
+    private var defaultProductRepo: CompanyDefaultProductRepository
+    private var orderRepo: CatalogOrderRepository
 
     /// Tracks entities touched during the current sync pass so Spotlight receives
     /// targeted, minimal updates after each sync instead of a full re-index.
@@ -70,7 +73,10 @@ final class InboundProcessor {
         self.invoiceRepo = InvoiceRepository(companyId: companyId)
         self.estimateRepo = EstimateRepository(companyId: companyId)
         self.calendarUserEventRepo = CalendarUserEventRepository(companyId: companyId)
-        self.inventoryRepo = InventoryRepository(companyId: companyId)
+        self.catalogRepo = CatalogRepository(companyId: companyId)
+        self.productRichnessRepo = ProductRichnessRepository(companyId: companyId)
+        self.defaultProductRepo = CompanyDefaultProductRepository(companyId: companyId)
+        self.orderRepo = CatalogOrderRepository(companyId: companyId)
     }
 
     // MARK: - Reconfigure
@@ -107,7 +113,10 @@ final class InboundProcessor {
         self.invoiceRepo = InvoiceRepository(companyId: newCompanyId)
         self.estimateRepo = EstimateRepository(companyId: newCompanyId)
         self.calendarUserEventRepo = CalendarUserEventRepository(companyId: newCompanyId)
-        self.inventoryRepo = InventoryRepository(companyId: newCompanyId)
+        self.catalogRepo = CatalogRepository(companyId: newCompanyId)
+        self.productRichnessRepo = ProductRichnessRepository(companyId: newCompanyId)
+        self.defaultProductRepo = CompanyDefaultProductRepository(companyId: newCompanyId)
+        self.orderRepo = CatalogOrderRepository(companyId: newCompanyId)
     }
 
     // MARK: - Sync Priority Order
@@ -129,11 +138,28 @@ final class InboundProcessor {
         .estimate,
         .invoice,
         .calendarUserEvent,   // Bug 1 — user-created time-off / personal events
-        .inventoryUnit,
-        .inventoryTag,
-        .inventoryItem,
-        .inventorySnapshot,
-        .inventorySnapshotItem
+        // Catalog backbone — units/tags/categories before items, items before
+        // their option/value/variant/junction children.
+        .catalogCategory,
+        .catalogUnit,
+        .catalogTag,
+        .catalogItem,
+        .catalogOption,
+        .catalogOptionValue,
+        .catalogVariant,
+        .catalogVariantOptionValue,
+        .catalogItemTag,
+        .catalogSnapshot,
+        .catalogSnapshotItem,
+        // Product configurability layers
+        .productOption,
+        .productOptionValue,
+        .productPricingModifier,
+        .productMaterial,
+        // Adapter + restock orders (depend on Products / catalog variants).
+        .companyDefaultProduct,
+        .catalogOrder,
+        .catalogOrderItem
     ]
 
     // MARK: - Full Sync
@@ -161,13 +187,31 @@ final class InboundProcessor {
             onProgress?(entityType, stepProgress)
 
             print("[InboundProcessor] Syncing \(entityType.rawValue)...")
-            try await syncEntityType(entityType, since: nil, context: context)
-            print("[InboundProcessor] \(entityType.rawValue) complete")
+            do {
+                try await syncEntityType(entityType, since: nil, context: context)
+                print("[InboundProcessor] \(entityType.rawValue) complete")
+            } catch {
+                // Bug 2837ddae fix: isolate failures to one entity type so a
+                // single bad row doesn't abort the entire sync. Telemetry
+                // captures the failure for offline diagnosis.
+                print("[InboundProcessor] FAILED \(entityType.rawValue): \(error)")
+                SyncTelemetry.logError(
+                    entityType: entityType.rawValue,
+                    error: error,
+                    isFullSync: true,
+                    companyId: companyId,
+                    userId: SupabaseService.shared.currentUserId
+                )
+            }
         }
 
         // Link relationships after all entities are pulled
         print("[InboundProcessor] Linking relationships...")
         linkAllRelationships(context: context)
+
+        // Reconcile threshold rail notification (Phase 9). Wrapped in its
+        // own try-island so a notification failure can never break sync.
+        await reconcileThresholdNotifications(context: context)
 
         // Dispatch targeted Spotlight index updates based on what this sync touched.
         // Only runs after initial backfill — first-run indexing is coordinated by
@@ -204,11 +248,26 @@ final class InboundProcessor {
             guard sinceDate != nil else { continue }
 
             print("[InboundProcessor] Delta syncing \(entityType.rawValue) since \(sinceDate!)")
-            try await syncEntityType(entityType, since: sinceDate, context: context)
+            do {
+                try await syncEntityType(entityType, since: sinceDate, context: context)
+            } catch {
+                print("[InboundProcessor] FAILED delta \(entityType.rawValue): \(error)")
+                SyncTelemetry.logError(
+                    entityType: entityType.rawValue,
+                    error: error,
+                    isFullSync: false,
+                    companyId: companyId,
+                    userId: SupabaseService.shared.currentUserId
+                )
+            }
         }
 
         // Re-link relationships after pulling updates
         linkAllRelationships(context: context)
+
+        // Reconcile threshold rail notification (Phase 9). Wrapped in its
+        // own try-island so a notification failure can never break sync.
+        await reconcileThresholdNotifications(context: context)
 
         // Dispatch targeted Spotlight index updates for the delta
         if SpotlightIndexManager.shared.hasCompletedInitialBackfill {
@@ -216,6 +275,74 @@ final class InboundProcessor {
         }
 
         print("[InboundProcessor] ======== DELTA SYNC COMPLETED ========")
+    }
+
+    // MARK: - Threshold Notifications (Phase 9)
+
+    /// Recompute the order suggestion list at end-of-sync and ensure the
+    /// notification rail reflects current state:
+    ///   - count == 0 → mark all unread `threshold_alert` entries as read
+    ///     so the rail clears once stock is restored.
+    ///   - count > 0 → ensure exactly one unread `threshold_alert` exists.
+    ///
+    /// Wrapped in a single do/catch — a failure here never breaks sync.
+    /// The notification table mutation is idempotent (`hasUnreadOfType`
+    /// gate) so retries on next sync are safe.
+    private func reconcileThresholdNotifications(context: ModelContext) async {
+        guard let userId = SupabaseService.shared.currentUserId, !userId.isEmpty else {
+            return
+        }
+        let companyId = self.companyId
+        guard !companyId.isEmpty else { return }
+
+        let variants = (try? context.fetch(FetchDescriptor<CatalogVariant>())) ?? []
+        let families = (try? context.fetch(FetchDescriptor<CatalogItem>())) ?? []
+        let categories = (try? context.fetch(FetchDescriptor<CatalogCategory>())) ?? []
+
+        let scopedVariants = variants.filter { $0.companyId == companyId }
+        let scopedFamilies = families.filter { $0.companyId == companyId }
+        let scopedCategories = categories.filter { $0.companyId == companyId }
+
+        let suggestions = OrderSuggestionEngine().suggest(
+            variants: scopedVariants,
+            families: scopedFamilies,
+            categories: scopedCategories
+        )
+        let count = suggestions.count
+
+        do {
+            if count == 0 {
+                try await NotificationRepository.shared.markAllAsReadByType(
+                    type: "threshold_alert",
+                    userId: userId
+                )
+                print("[InboundProcessor] threshold reconcile: 0 below — cleared rail")
+            } else {
+                let exists = try await NotificationRepository.shared.hasUnreadOfType(
+                    type: "threshold_alert",
+                    userId: userId
+                )
+                if !exists {
+                    let dto = NotificationRepository.CreateNotificationDTO(
+                        userId: userId,
+                        companyId: companyId,
+                        type: "threshold_alert",
+                        title: "// \(count) ITEM\(count == 1 ? "" : "S") BELOW THRESHOLD",
+                        body: "Tap to review and draft an order.",
+                        deepLinkType: "catalogOrders",
+                        persistent: true,
+                        actionUrl: "ops://catalog/orders?tab=suggested",
+                        actionLabel: "REVIEW"
+                    )
+                    try await NotificationRepository.shared.createNotification(dto)
+                    print("[InboundProcessor] threshold reconcile: created rail entry for \(count) item(s)")
+                } else {
+                    print("[InboundProcessor] threshold reconcile: \(count) below; existing rail entry kept")
+                }
+            }
+        } catch {
+            print("[InboundProcessor] threshold reconcile failed: \(error)")
+        }
     }
 
     // MARK: - Entity Type Dispatch
@@ -255,16 +382,48 @@ final class InboundProcessor {
             try await syncInvoices(since: since, context: context)
         case .calendarUserEvent:
             try await syncCalendarUserEvents(context: context)
-        case .inventoryUnit:
-            try await syncInventoryUnits(since: since, context: context)
-        case .inventoryTag:
-            try await syncInventoryTags(since: since, context: context)
-        case .inventoryItem:
-            try await syncInventoryItems(since: since, context: context)
-        case .inventorySnapshot:
-            try await syncInventorySnapshots(since: since, context: context)
-        case .inventorySnapshotItem:
-            try await syncInventorySnapshotItems(context: context)
+        case .catalogCategory:
+            try await syncCatalogCategories(since: since, context: context)
+        case .catalogUnit:
+            try await syncCatalogUnits(since: since, context: context)
+        case .catalogTag:
+            try await syncCatalogTags(since: since, context: context)
+        case .catalogItem:
+            try await syncCatalogItems(since: since, context: context)
+        case .catalogVariant:
+            try await syncCatalogVariants(since: since, context: context)
+        case .catalogOption:
+            try await syncCatalogOptions(context: context)
+        case .catalogOptionValue:
+            try await syncCatalogOptionValues(context: context)
+        case .catalogVariantOptionValue:
+            try await syncCatalogVariantOptionValues(context: context)
+        case .catalogItemTag:
+            try await syncCatalogItemTags(context: context)
+        case .catalogSnapshot:
+            try await syncCatalogSnapshots(since: since, context: context)
+        case .catalogSnapshotItem:
+            try await syncCatalogSnapshotItems(context: context)
+        case .catalogOrder:
+            try await syncCatalogOrders(context: context)
+        case .catalogOrderItem:
+            try await syncCatalogOrderItems(context: context)
+        case .companyDefaultProduct:
+            try await syncCompanyDefaultProducts(context: context)
+        case .productOption:
+            try await syncProductOptions(context: context)
+        case .productOptionValue:
+            try await syncProductOptionValues(context: context)
+        case .productPricingModifier:
+            try await syncProductPricingModifiers(context: context)
+        case .productMaterial:
+            try await syncProductMaterials(context: context)
+        case .productBundleItem:
+            try await syncProductBundleItems(context: context)
+        case .taskTypeReminder:
+            try await syncTaskTypeReminders(since: since, context: context)
+        case .taskReminder:
+            try await syncTaskReminders(since: since, context: context)
         default:
             print("[InboundProcessor] Entity type \(entityType.rawValue) not yet supported for inbound sync")
         }
@@ -697,7 +856,16 @@ final class InboundProcessor {
             if accept.contains("title") { existing.title = dto.title }
             if accept.contains("status") { existing.status = Status(rawValue: dto.status) ?? .rfq }
             if accept.contains("company_id") { existing.companyId = dto.companyId }
-            if accept.contains("client_id") { existing.clientId = dto.clientId }
+            if accept.contains("client_id") {
+                existing.clientId = dto.clientId
+                // Bug c9b9dd44 — wire the SwiftData relationship inline so
+                // the JobBoard card shows the client name as soon as the
+                // project upserts, instead of staying blank until the
+                // end-of-sync `linkAllRelationships` pass runs. Clients
+                // sync earlier in `syncOrder` so the lookup almost always
+                // hits; if not, the end-of-sync pass still fixes it up.
+                wireProjectClient(existing, clientId: dto.clientId, context: context)
+            }
             if accept.contains("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept.contains("address") { existing.address = dto.address }
             if accept.contains("latitude") { existing.latitude = dto.latitude }
@@ -748,6 +916,11 @@ final class InboundProcessor {
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)
+            // Bug c9b9dd44 — wire the SwiftData relationship inline on
+            // first insert too. `dto.toModel()` only sets `clientId`
+            // (the scalar foreign key); without the relationship the
+            // JobBoard card stays blank until end-of-sync linking.
+            wireProjectClient(model, clientId: model.clientId, context: context)
 
             if model.deletedAt != nil {
                 spotlightTracker.markDeleted(domain: SpotlightDomain.project, id: model.id)
@@ -757,6 +930,24 @@ final class InboundProcessor {
         }
 
         try context.save()
+    }
+
+    /// Bug c9b9dd44 — set `project.client` from `clientId` against the
+    /// in-context Client cache. Mirrors the lookup the end-of-sync
+    /// `linkAllRelationships` pass uses, but runs inline during the
+    /// project upsert so the UI sees the client immediately. Falling
+    /// through to nil when no client matches is fine — the end-of-sync
+    /// pass will retry once all clients have been merged for this batch.
+    private func wireProjectClient(_ project: Project, clientId: String?, context: ModelContext) {
+        guard let cid = clientId, !cid.isEmpty else {
+            project.client = nil
+            return
+        }
+        if project.client?.id == cid { return }
+        let descriptor = FetchDescriptor<Client>(predicate: #Predicate { $0.id == cid })
+        if let client = try? context.fetch(descriptor).first {
+            project.client = client
+        }
     }
 
     // MARK: - Task Sync
@@ -1121,22 +1312,32 @@ final class InboundProcessor {
         )
 
         if let existing = try context.fetch(descriptor).first {
+            // Field names MUST match the keys recorded in
+            // `enqueueDeckDesignSync` (snake_case Supabase columns) so the
+            // pending-op suppression in `acceptableFields` can detect a
+            // local edit that hasn't been pushed yet. Using SwiftData
+            // property names here previously broke the lookup — every
+            // inbound sync clobbered the user's pending `drawing_data` /
+            // `thumbnail_url` / `updated_at` / `deleted_at` with stale
+            // server values, which surfaced as "deck designs are not
+            // saving" and "missing details" reports
+            // (bugs bed3a1fd, 48189db1, b2472c07, ab554b5f).
             let accept = acceptableFields(
                 entityType: .deckDesign,
                 entityId: id,
                 fields: [
-                    "title", "drawingDataJSON", "thumbnailURL",
-                    "version", "updatedAt", "deletedAt"
+                    "title", "drawing_data", "thumbnail_url",
+                    "version", "updated_at", "deleted_at"
                 ],
                 context: context
             )
 
             if accept.contains("title") { existing.title = dto.title }
-            if accept.contains("drawingDataJSON") { existing.drawingDataJSON = dto.drawingData.toJSON() }
-            if accept.contains("thumbnailURL") { existing.thumbnailURL = dto.thumbnailUrl }
+            if accept.contains("drawing_data") { existing.drawingDataJSON = dto.drawingData.toJSON() }
+            if accept.contains("thumbnail_url") { existing.thumbnailURL = dto.thumbnailUrl }
             if accept.contains("version") { existing.version = dto.version }
-            if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
-            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("updated_at") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("deleted_at") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
 
             existing.lastSyncedAt = Date()
             let hasPending = hasPendingOperations(entityType: .deckDesign, entityId: existing.id, context: context)
@@ -1309,56 +1510,12 @@ final class InboundProcessor {
             }
         }
 
-        // Link inventory: items → unit (by unitId) and items → tags (by tagIds).
-        // Snapshot items → snapshot (by snapshotId).
-        let inventoryItems: [InventoryItem]
-        let inventoryUnits: [InventoryUnit]
-        let inventoryTags: [InventoryTag]
-        let inventorySnapshots: [InventorySnapshot]
-        let inventorySnapshotItems: [InventorySnapshotItem]
-        do {
-            inventoryItems = try context.fetch(FetchDescriptor<InventoryItem>())
-            inventoryUnits = try context.fetch(FetchDescriptor<InventoryUnit>())
-            inventoryTags = try context.fetch(FetchDescriptor<InventoryTag>())
-            inventorySnapshots = try context.fetch(FetchDescriptor<InventorySnapshot>())
-            inventorySnapshotItems = try context.fetch(FetchDescriptor<InventorySnapshotItem>())
-        } catch {
-            print("[InboundProcessor] ⚠️ Failed to fetch inventory entities for linking: \(error)")
-            do { try context.save() } catch {
-                context.rollback()
-            }
-            return
-        }
-
-        var unitById: [String: InventoryUnit] = [:]
-        for u in inventoryUnits { unitById[u.id] = u }
-        var tagById: [String: InventoryTag] = [:]
-        for t in inventoryTags { tagById[t.id] = t }
-        var snapshotById: [String: InventorySnapshot] = [:]
-        for s in inventorySnapshots { snapshotById[s.id] = s }
-
-        for item in inventoryItems {
-            if let unitId = item.unitId, let unit = unitById[unitId] {
-                if item.unit?.id != unit.id {
-                    item.unit = unit
-                }
-            } else if item.unit != nil && item.unitId == nil {
-                item.unit = nil
-            }
-
-            let resolvedTags = item.tagIds.compactMap { tagById[$0] }
-            if Set(item.tags.map(\.id)) != Set(resolvedTags.map(\.id)) {
-                item.tags = resolvedTags
-            }
-        }
-
-        for snapItem in inventorySnapshotItems {
-            if let snapshot = snapshotById[snapItem.snapshotId] {
-                if snapItem.snapshot?.id != snapshot.id {
-                    snapItem.snapshot = snapshot
-                }
-            }
-        }
+        // Catalog models keep relationships as id-typed scalars + first-class
+        // junction entities (CatalogItemTag, CatalogVariantOptionValue), so
+        // there's no SwiftData @Relationship to wire up after a sync. The
+        // legacy inventory linker resolved InventoryItem.unit / .tags by id —
+        // catalog data stays flat and resolves at query time.
+        print("[InboundProcessor] Catalog data has no post-merge linking pass (junctions are first-class)")
 
         do {
             try context.save()
@@ -1808,41 +1965,45 @@ final class InboundProcessor {
         print("[InboundProcessor] Synced \(dtos.count) calendar user events for user \(userId)")
     }
 
-    // MARK: - Inventory Units
+    // MARK: - Catalog Categories
 
-    private func syncInventoryUnits(since: Date?, context: ModelContext) async throws {
-        let dtos = try await inventoryRepo.fetchUnitsForSync(since: since)
+    private func syncCatalogCategories(since: Date?, context: ModelContext) async throws {
+        let dtos = try await catalogRepo.fetchCategoriesForSync(since: since)
         for dto in dtos {
-            try mergeInventoryUnit(dto: dto, context: context)
+            try mergeCatalogCategory(dto: dto, context: context)
         }
 
         if let sinceDate = since {
-            let deletedIds = try await inventoryRepo.fetchDeletedUnitIds(since: sinceDate)
+            let deletedIds = try await catalogRepo.fetchDeletedCategoryIds(since: sinceDate)
             for id in deletedIds {
-                try markInventoryUnitDeleted(id: id, context: context)
+                try tombstoneCatalogCategory(id: id, context: context)
             }
         }
 
-        print("[InboundProcessor] Merged \(dtos.count) inventory units")
+        print("[InboundProcessor] Merged \(dtos.count) catalog categories")
     }
 
-    private func mergeInventoryUnit(dto: InventoryUnitReadDTO, context: ModelContext) throws {
+    private func mergeCatalogCategory(dto: CatalogCategoryDTO, context: ModelContext) throws {
         let id = dto.id
-        let descriptor = FetchDescriptor<InventoryUnit>(
-            predicate: #Predicate { $0.id == id }
-        )
+        let descriptor = FetchDescriptor<CatalogCategory>(predicate: #Predicate { $0.id == id })
 
         if let existing = try context.fetch(descriptor).first {
             let accept = acceptableFields(
-                entityType: .inventoryUnit,
+                entityType: .catalogCategory,
                 entityId: id,
-                fields: ["companyId", "display", "isDefault", "sortOrder", "deletedAt"],
+                fields: [
+                    "companyId", "name", "parentId", "sortOrder", "colorHex",
+                    "defaultWarningThreshold", "defaultCriticalThreshold", "deletedAt"
+                ],
                 context: context
             )
-            if accept.contains("companyId") { existing.companyId = dto.companyId }
-            if accept.contains("display")   { existing.display = dto.display }
-            if accept.contains("isDefault") { existing.isDefault = dto.isDefault }
-            if accept.contains("sortOrder") { existing.sortOrder = dto.sortOrder }
+            if accept.contains("companyId")                 { existing.companyId = dto.companyId }
+            if accept.contains("name")                      { existing.name = dto.name }
+            if accept.contains("parentId")                  { existing.parentId = dto.parentId }
+            if accept.contains("sortOrder")                 { existing.sortOrder = dto.sortOrder }
+            if accept.contains("colorHex")                  { existing.colorHex = dto.colorHex }
+            if accept.contains("defaultWarningThreshold")   { existing.defaultWarningThreshold = dto.defaultWarningThreshold }
+            if accept.contains("defaultCriticalThreshold")  { existing.defaultCriticalThreshold = dto.defaultCriticalThreshold }
             if accept.contains("deletedAt") {
                 existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
             }
@@ -1858,10 +2019,8 @@ final class InboundProcessor {
         try context.save()
     }
 
-    private func markInventoryUnitDeleted(id: String, context: ModelContext) throws {
-        let descriptor = FetchDescriptor<InventoryUnit>(
-            predicate: #Predicate { $0.id == id }
-        )
+    private func tombstoneCatalogCategory(id: String, context: ModelContext) throws {
+        let descriptor = FetchDescriptor<CatalogCategory>(predicate: #Predicate { $0.id == id })
         if let existing = try context.fetch(descriptor).first {
             existing.deletedAt = Date()
             existing.needsSync = false
@@ -1869,33 +2028,73 @@ final class InboundProcessor {
         }
     }
 
-    // MARK: - Inventory Tags
+    // MARK: - Catalog Units
 
-    private func syncInventoryTags(since: Date?, context: ModelContext) async throws {
-        let dtos = try await inventoryRepo.fetchTagsForSync(since: since)
+    /// catalog_units lacks a `fetchDeletedUnitIds` repo method; the table has a
+    /// soft-delete column but no dedicated delta endpoint yet, so we'd need a
+    /// repo addition to match the categories/items/variants pattern. For now,
+    /// we rely on `updated_at` bumps to surface tombstones (deletedAt is part
+    /// of the row payload).
+    private func syncCatalogUnits(since: Date?, context: ModelContext) async throws {
+        let dtos = try await catalogRepo.fetchUnitsForSync(since: since)
         for dto in dtos {
-            try mergeInventoryTag(dto: dto, context: context)
+            try mergeCatalogUnit(dto: dto, context: context)
         }
-
-        if let sinceDate = since {
-            let deletedIds = try await inventoryRepo.fetchDeletedTagIds(since: sinceDate)
-            for id in deletedIds {
-                try markInventoryTagDeleted(id: id, context: context)
-            }
-        }
-
-        print("[InboundProcessor] Merged \(dtos.count) inventory tags")
+        print("[InboundProcessor] Merged \(dtos.count) catalog units")
     }
 
-    private func mergeInventoryTag(dto: InventoryTagReadDTO, context: ModelContext) throws {
+    private func mergeCatalogUnit(dto: CatalogUnitDTO, context: ModelContext) throws {
         let id = dto.id
-        let descriptor = FetchDescriptor<InventoryTag>(
-            predicate: #Predicate { $0.id == id }
-        )
+        let descriptor = FetchDescriptor<CatalogUnit>(predicate: #Predicate { $0.id == id })
 
         if let existing = try context.fetch(descriptor).first {
             let accept = acceptableFields(
-                entityType: .inventoryTag,
+                entityType: .catalogUnit,
+                entityId: id,
+                fields: [
+                    "companyId", "display", "abbreviation", "dimension",
+                    "isDefault", "sortOrder", "deletedAt"
+                ],
+                context: context
+            )
+            if accept.contains("companyId")     { existing.companyId = dto.companyId }
+            if accept.contains("display")       { existing.display = dto.display }
+            if accept.contains("abbreviation")  { existing.abbreviation = dto.abbreviation }
+            if accept.contains("dimension")     { existing.dimension = dto.dimension }
+            if accept.contains("isDefault")     { existing.isDefault = dto.isDefault }
+            if accept.contains("sortOrder")     { existing.sortOrder = dto.sortOrder }
+            if accept.contains("deletedAt") {
+                existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+            }
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+
+        try context.save()
+    }
+
+    // MARK: - Catalog Tags
+
+    private func syncCatalogTags(since: Date?, context: ModelContext) async throws {
+        let dtos = try await catalogRepo.fetchTagsForSync(since: since)
+        for dto in dtos {
+            try mergeCatalogTag(dto: dto, context: context)
+        }
+        print("[InboundProcessor] Merged \(dtos.count) catalog tags")
+    }
+
+    private func mergeCatalogTag(dto: CatalogTagDTO, context: ModelContext) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<CatalogTag>(predicate: #Predicate { $0.id == id })
+
+        if let existing = try context.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .catalogTag,
                 entityId: id,
                 fields: ["companyId", "name", "warningThreshold", "criticalThreshold", "deletedAt"],
                 context: context
@@ -1919,69 +2118,52 @@ final class InboundProcessor {
         try context.save()
     }
 
-    private func markInventoryTagDeleted(id: String, context: ModelContext) throws {
-        let descriptor = FetchDescriptor<InventoryTag>(
-            predicate: #Predicate { $0.id == id }
-        )
-        if let existing = try context.fetch(descriptor).first {
-            existing.deletedAt = Date()
-            existing.needsSync = false
-            try context.save()
-        }
-    }
+    // MARK: - Catalog Items (variant families)
 
-    // MARK: - Inventory Items
-
-    /// Pulls inventory items + the item↔tag join table and rebuilds `tagIds` on each item.
-    /// `tagIds` is the source of truth for the SwiftData `tags` relationship, which is
-    /// then wired up in `linkAllRelationships`.
-    private func syncInventoryItems(since: Date?, context: ModelContext) async throws {
-        let dtos = try await inventoryRepo.fetchItemsForSync(since: since)
+    private func syncCatalogItems(since: Date?, context: ModelContext) async throws {
+        let dtos = try await catalogRepo.fetchItemsForSync(since: since)
         for dto in dtos {
-            try mergeInventoryItem(dto: dto, context: context)
+            try mergeCatalogItem(dto: dto, context: context)
         }
 
         if let sinceDate = since {
-            let deletedIds = try await inventoryRepo.fetchDeletedItemIds(since: sinceDate)
+            let deletedIds = try await catalogRepo.fetchDeletedItemIds(since: sinceDate)
             for id in deletedIds {
-                try markInventoryItemDeleted(id: id, context: context)
+                try tombstoneCatalogItem(id: id, context: context)
             }
         }
 
-        // Always refresh the join table — it has no timestamps, so there's no delta.
-        // Cost: a single small query (~hundreds of rows max per company).
-        try await refreshInventoryItemTags(context: context)
-
-        print("[InboundProcessor] Merged \(dtos.count) inventory items")
+        print("[InboundProcessor] Merged \(dtos.count) catalog items")
     }
 
-    private func mergeInventoryItem(dto: InventoryItemReadDTO, context: ModelContext) throws {
+    private func mergeCatalogItem(dto: CatalogItemDTO, context: ModelContext) throws {
         let id = dto.id
-        let descriptor = FetchDescriptor<InventoryItem>(
-            predicate: #Predicate { $0.id == id }
-        )
+        let descriptor = FetchDescriptor<CatalogItem>(predicate: #Predicate { $0.id == id })
 
         if let existing = try context.fetch(descriptor).first {
             let accept = acceptableFields(
-                entityType: .inventoryItem,
+                entityType: .catalogItem,
                 entityId: id,
                 fields: [
-                    "companyId", "name", "itemDescription", "quantity", "unitId",
-                    "sku", "notes", "imageUrl",
-                    "warningThreshold", "criticalThreshold", "deletedAt"
+                    "companyId", "categoryId", "name", "itemDescription",
+                    "defaultPrice", "defaultUnitCost",
+                    "defaultWarningThreshold", "defaultCriticalThreshold",
+                    "defaultUnitId", "imageUrl", "notes", "isActive", "deletedAt"
                 ],
                 context: context
             )
-            if accept.contains("companyId")          { existing.companyId = dto.companyId }
-            if accept.contains("name")               { existing.name = dto.name }
-            if accept.contains("itemDescription")    { existing.itemDescription = dto.description }
-            if accept.contains("quantity")           { existing.quantity = dto.quantity }
-            if accept.contains("unitId")             { existing.unitId = dto.unitId }
-            if accept.contains("sku")                { existing.sku = dto.sku }
-            if accept.contains("notes")              { existing.notes = dto.notes }
-            if accept.contains("imageUrl")           { existing.imageUrl = dto.imageUrl }
-            if accept.contains("warningThreshold")   { existing.warningThreshold = dto.warningThreshold }
-            if accept.contains("criticalThreshold")  { existing.criticalThreshold = dto.criticalThreshold }
+            if accept.contains("companyId")                 { existing.companyId = dto.companyId }
+            if accept.contains("categoryId")                { existing.categoryId = dto.categoryId }
+            if accept.contains("name")                      { existing.name = dto.name }
+            if accept.contains("itemDescription")           { existing.itemDescription = dto.description }
+            if accept.contains("defaultPrice")              { existing.defaultPrice = dto.defaultPrice }
+            if accept.contains("defaultUnitCost")           { existing.defaultUnitCost = dto.defaultUnitCost }
+            if accept.contains("defaultWarningThreshold")   { existing.defaultWarningThreshold = dto.defaultWarningThreshold }
+            if accept.contains("defaultCriticalThreshold")  { existing.defaultCriticalThreshold = dto.defaultCriticalThreshold }
+            if accept.contains("defaultUnitId")             { existing.defaultUnitId = dto.defaultUnitId }
+            if accept.contains("imageUrl")                  { existing.imageUrl = dto.imageUrl }
+            if accept.contains("notes")                     { existing.notes = dto.notes }
+            if accept.contains("isActive")                  { existing.isActive = dto.isActive }
             if accept.contains("deletedAt") {
                 existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
             }
@@ -1997,10 +2179,8 @@ final class InboundProcessor {
         try context.save()
     }
 
-    private func markInventoryItemDeleted(id: String, context: ModelContext) throws {
-        let descriptor = FetchDescriptor<InventoryItem>(
-            predicate: #Predicate { $0.id == id }
-        )
+    private func tombstoneCatalogItem(id: String, context: ModelContext) throws {
+        let descriptor = FetchDescriptor<CatalogItem>(predicate: #Predicate { $0.id == id })
         if let existing = try context.fetch(descriptor).first {
             existing.deletedAt = Date()
             existing.needsSync = false
@@ -2008,48 +2188,221 @@ final class InboundProcessor {
         }
     }
 
-    /// Pulls every (item_id, tag_id) row for this company and rewrites each item's
-    /// `tagIds` array. The relationship array (`item.tags`) is wired up later by
-    /// `linkAllRelationships` once Tag rows are present locally.
-    private func refreshInventoryItemTags(context: ModelContext) async throws {
-        let joinRows = try await inventoryRepo.fetchItemTagsForCompany()
+    // MARK: - Catalog Variants
 
-        // Group tag IDs by item ID.
-        var tagsByItem: [String: [String]] = [:]
-        for row in joinRows {
-            tagsByItem[row.itemId, default: []].append(row.tagId)
+    private func syncCatalogVariants(since: Date?, context: ModelContext) async throws {
+        let dtos = try await catalogRepo.fetchVariantsForSync(since: since)
+        for dto in dtos {
+            try mergeCatalogVariant(dto: dto, context: context)
         }
 
-        // Apply to every local item belonging to this company. Items not in the
-        // join map get an empty array so removed tags clear out.
-        let descriptor = FetchDescriptor<InventoryItem>()
-        let items = try context.fetch(descriptor)
-        for item in items where item.companyId == self.companyId {
-            let serverTagIds = (tagsByItem[item.id] ?? []).sorted()
-            let localTagIds = item.tagIds.sorted()
-            if serverTagIds != localTagIds && !hasPendingOperations(entityType: .inventoryItem, entityId: item.id, context: context) {
-                item.tagIds = serverTagIds
+        if let sinceDate = since {
+            let deletedIds = try await catalogRepo.fetchDeletedVariantIds(since: sinceDate)
+            for id in deletedIds {
+                try tombstoneCatalogVariant(id: id, context: context)
             }
         }
+
+        print("[InboundProcessor] Merged \(dtos.count) catalog variants")
+    }
+
+    private func mergeCatalogVariant(dto: CatalogVariantDTO, context: ModelContext) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<CatalogVariant>(predicate: #Predicate { $0.id == id })
+
+        if let existing = try context.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .catalogVariant,
+                entityId: id,
+                fields: [
+                    "companyId", "catalogItemId", "sku", "quantity",
+                    "priceOverride", "unitCostOverride",
+                    "warningThreshold", "criticalThreshold", "unitId",
+                    "isActive", "deletedAt"
+                ],
+                context: context
+            )
+            if accept.contains("companyId")          { existing.companyId = dto.companyId }
+            if accept.contains("catalogItemId")      { existing.catalogItemId = dto.catalogItemId }
+            if accept.contains("sku")                { existing.sku = dto.sku }
+            if accept.contains("quantity")           { existing.quantity = dto.quantity }
+            if accept.contains("priceOverride")      { existing.priceOverride = dto.priceOverride }
+            if accept.contains("unitCostOverride")   { existing.unitCostOverride = dto.unitCostOverride }
+            if accept.contains("warningThreshold")   { existing.warningThreshold = dto.warningThreshold }
+            if accept.contains("criticalThreshold")  { existing.criticalThreshold = dto.criticalThreshold }
+            if accept.contains("unitId")             { existing.unitId = dto.unitId }
+            if accept.contains("isActive")           { existing.isActive = dto.isActive }
+            if accept.contains("deletedAt") {
+                existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+            }
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+
         try context.save()
     }
 
-    // MARK: - Inventory Snapshots
-
-    /// Snapshots are append-only — no updates, no soft-deletes. Just upsert by id.
-    private func syncInventorySnapshots(since: Date?, context: ModelContext) async throws {
-        let dtos = try await inventoryRepo.fetchSnapshotsForSync(since: since)
-        for dto in dtos {
-            try mergeInventorySnapshot(dto: dto, context: context)
+    private func tombstoneCatalogVariant(id: String, context: ModelContext) throws {
+        let descriptor = FetchDescriptor<CatalogVariant>(predicate: #Predicate { $0.id == id })
+        if let existing = try context.fetch(descriptor).first {
+            existing.deletedAt = Date()
+            existing.needsSync = false
+            try context.save()
         }
-        print("[InboundProcessor] Merged \(dtos.count) inventory snapshots")
     }
 
-    private func mergeInventorySnapshot(dto: InventorySnapshotReadDTO, context: ModelContext) throws {
+    // MARK: - Catalog Options
+
+    /// Full reconciliation: catalog_options has no updated_at column, so we
+    /// pull every option for the company and prune local rows missing from
+    /// the response.
+    private func syncCatalogOptions(context: ModelContext) async throws {
+        let dtos = try await catalogRepo.fetchOptionsForCompany()
+        let serverIds = Set(dtos.map(\.id))
+
+        for dto in dtos {
+            let id = dto.id
+            let descriptor = FetchDescriptor<CatalogOption>(predicate: #Predicate { $0.id == id })
+            if let existing = try context.fetch(descriptor).first {
+                existing.catalogItemId = dto.catalogItemId
+                existing.name = dto.name
+                existing.sortOrder = dto.sortOrder
+                existing.lastSyncedAt = Date()
+                existing.needsSync = false
+            } else {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                model.needsSync = false
+                context.insert(model)
+            }
+        }
+
+        // Prune local options the server no longer reports.
+        let allLocal = try context.fetch(FetchDescriptor<CatalogOption>())
+        let localItemIds = Set(try context.fetch(FetchDescriptor<CatalogItem>())
+            .filter { $0.companyId == self.companyId }
+            .map(\.id))
+        for option in allLocal where localItemIds.contains(option.catalogItemId) && !serverIds.contains(option.id) {
+            context.delete(option)
+        }
+
+        try context.save()
+        print("[InboundProcessor] Merged \(dtos.count) catalog options")
+    }
+
+    // MARK: - Catalog Option Values
+
+    private func syncCatalogOptionValues(context: ModelContext) async throws {
+        let dtos = try await catalogRepo.fetchOptionValuesForCompany()
+        let serverIds = Set(dtos.map(\.id))
+
+        for dto in dtos {
+            let id = dto.id
+            let descriptor = FetchDescriptor<CatalogOptionValue>(predicate: #Predicate { $0.id == id })
+            if let existing = try context.fetch(descriptor).first {
+                existing.optionId = dto.optionId
+                existing.value = dto.value
+                existing.sortOrder = dto.sortOrder
+                existing.lastSyncedAt = Date()
+                existing.needsSync = false
+            } else {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                model.needsSync = false
+                context.insert(model)
+            }
+        }
+
+        // Prune values whose option still belongs to this company but whose id
+        // is no longer reported by the server.
+        let localOptionIds = Set(try context.fetch(FetchDescriptor<CatalogOption>()).map(\.id))
+        let allLocal = try context.fetch(FetchDescriptor<CatalogOptionValue>())
+        for value in allLocal where localOptionIds.contains(value.optionId) && !serverIds.contains(value.id) {
+            context.delete(value)
+        }
+
+        try context.save()
+        print("[InboundProcessor] Merged \(dtos.count) catalog option values")
+    }
+
+    // MARK: - Catalog Variant ↔ Option-Value joins
+
+    private func syncCatalogVariantOptionValues(context: ModelContext) async throws {
+        let dtos = try await catalogRepo.fetchVariantOptionValuesForCompany()
+
+        // Junction has no surrogate id from the server; uniqueness is the
+        // (variantId, optionValueId) pair. Wipe + insert for variants this
+        // company owns is the simplest correctness story.
+        let companyVariantIds = Set(try context.fetch(FetchDescriptor<CatalogVariant>())
+            .filter { $0.companyId == self.companyId }
+            .map(\.id))
+
+        let allLocal = try context.fetch(FetchDescriptor<CatalogVariantOptionValue>())
+        for row in allLocal where companyVariantIds.contains(row.variantId) {
+            context.delete(row)
+        }
+
+        for dto in dtos {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            context.insert(model)
+        }
+
+        try context.save()
+        print("[InboundProcessor] Merged \(dtos.count) variant option-value joins")
+    }
+
+    // MARK: - Catalog Item Tags
+
+    private func syncCatalogItemTags(context: ModelContext) async throws {
+        let dtos = try await catalogRepo.fetchItemTagsForCompany()
+        let serverIds = Set(dtos.map(\.id))
+
+        for dto in dtos {
+            let id = dto.id
+            let descriptor = FetchDescriptor<CatalogItemTag>(predicate: #Predicate { $0.id == id })
+            if let existing = try context.fetch(descriptor).first {
+                existing.catalogItemId = dto.catalogItemId
+                existing.tagId = dto.tagId
+                existing.lastSyncedAt = Date()
+            } else {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                context.insert(model)
+            }
+        }
+
+        let companyItemIds = Set(try context.fetch(FetchDescriptor<CatalogItem>())
+            .filter { $0.companyId == self.companyId }
+            .map(\.id))
+        let allLocal = try context.fetch(FetchDescriptor<CatalogItemTag>())
+        for row in allLocal where companyItemIds.contains(row.catalogItemId) && !serverIds.contains(row.id) {
+            context.delete(row)
+        }
+
+        try context.save()
+        print("[InboundProcessor] Merged \(dtos.count) catalog item-tag joins")
+    }
+
+    // MARK: - Catalog Snapshots
+
+    /// Snapshots are append-only — no updates, no soft-deletes. Just upsert by id.
+    private func syncCatalogSnapshots(since: Date?, context: ModelContext) async throws {
+        let dtos = try await catalogRepo.fetchSnapshotsForSync(since: since)
+        for dto in dtos {
+            try mergeCatalogSnapshot(dto: dto, context: context)
+        }
+        print("[InboundProcessor] Merged \(dtos.count) catalog snapshots")
+    }
+
+    private func mergeCatalogSnapshot(dto: CatalogSnapshotDTO, context: ModelContext) throws {
         let id = dto.id
-        let descriptor = FetchDescriptor<InventorySnapshot>(
-            predicate: #Predicate { $0.id == id }
-        )
+        let descriptor = FetchDescriptor<CatalogSnapshot>(predicate: #Predicate { $0.id == id })
         if try context.fetch(descriptor).first == nil {
             let model = dto.toModel()
             model.lastSyncedAt = Date()
@@ -2059,30 +2412,39 @@ final class InboundProcessor {
         }
     }
 
-    // MARK: - Inventory Snapshot Items
+    // MARK: - Catalog Snapshot Items
 
-    /// Snapshot items are immutable. For any local snapshot belonging to this company
-    /// whose item list is empty, pull its rows in one batched query.
-    private func syncInventorySnapshotItems(context: ModelContext) async throws {
-        let snapshotDescriptor = FetchDescriptor<InventorySnapshot>()
-        let snapshots = try context.fetch(snapshotDescriptor).filter { $0.companyId == self.companyId }
+    /// Snapshot items are immutable. For any local snapshot belonging to this
+    /// company whose item count is non-zero but whose items are missing
+    /// locally, pull its rows in one batched query.
+    private func syncCatalogSnapshotItems(context: ModelContext) async throws {
+        let snapshots = try context.fetch(FetchDescriptor<CatalogSnapshot>())
+            .filter { $0.companyId == self.companyId }
 
-        let snapshotsNeedingItems = snapshots.filter { ($0.items?.isEmpty ?? true) && $0.itemCount > 0 }
-        guard !snapshotsNeedingItems.isEmpty else {
-            print("[InboundProcessor] No snapshots need item backfill")
+        let needsBackfill = snapshots.filter { snap in
+            guard snap.itemCount > 0 else { return false }
+            let snapId = snap.id
+            let descriptor = FetchDescriptor<CatalogSnapshotItem>(
+                predicate: #Predicate { $0.snapshotId == snapId }
+            )
+            let existingCount = (try? context.fetchCount(descriptor)) ?? 0
+            return existingCount == 0
+        }
+
+        guard !needsBackfill.isEmpty else {
+            print("[InboundProcessor] No catalog snapshots need item backfill")
             return
         }
 
-        let snapshotIds = snapshotsNeedingItems.map { $0.id }
-        let dtos = try await inventoryRepo.fetchSnapshotItemsForSnapshots(snapshotIds)
+        let snapshotIds = needsBackfill.map(\.id)
+        let dtos = try await catalogRepo.fetchSnapshotItemsForSnapshots(snapshotIds)
 
-        // Insert any items not already present locally.
-        let allItemIds = Set(dtos.map { $0.id })
-        let existingDescriptor = FetchDescriptor<InventorySnapshotItem>(
+        let allItemIds = Set(dtos.map(\.id))
+        let existingDescriptor = FetchDescriptor<CatalogSnapshotItem>(
             predicate: #Predicate { allItemIds.contains($0.id) }
         )
         let existingItems = try context.fetch(existingDescriptor)
-        let existingIds = Set(existingItems.map { $0.id })
+        let existingIds = Set(existingItems.map(\.id))
 
         for dto in dtos where !existingIds.contains(dto.id) {
             let model = dto.toModel()
@@ -2091,7 +2453,427 @@ final class InboundProcessor {
             context.insert(model)
         }
         try context.save()
+        print("[InboundProcessor] Merged \(dtos.count) catalog snapshot items across \(snapshotIds.count) snapshots")
+    }
 
-        print("[InboundProcessor] Merged \(dtos.count) snapshot items across \(snapshotIds.count) snapshots")
+    // MARK: - Catalog Orders
+
+    /// CatalogOrderRepository.fetchAll filters out soft-deleted rows, so every
+    /// id we see here is live. Local rows missing from the response are pruned
+    /// (treated as server-side deletes) — apart from rows with pending local
+    /// SyncOperations, which we leave untouched.
+    private func syncCatalogOrders(context: ModelContext) async throws {
+        let dtos = try await orderRepo.fetchAll()
+        let serverIds = Set(dtos.map(\.id))
+
+        for dto in dtos {
+            try mergeCatalogOrder(dto: dto, context: context)
+        }
+
+        let companyLocal = try context.fetch(FetchDescriptor<CatalogOrder>())
+            .filter { $0.companyId == self.companyId }
+        for order in companyLocal where !serverIds.contains(order.id) {
+            if hasPendingOperations(entityType: .catalogOrder, entityId: order.id, context: context) { continue }
+            order.deletedAt = Date()
+            order.needsSync = false
+        }
+        try context.save()
+        print("[InboundProcessor] Merged \(dtos.count) catalog orders")
+    }
+
+    private func mergeCatalogOrder(dto: CatalogOrderDTO, context: ModelContext) throws {
+        let id = dto.id
+        let descriptor = FetchDescriptor<CatalogOrder>(predicate: #Predicate { $0.id == id })
+
+        if let existing = try context.fetch(descriptor).first {
+            let accept = acceptableFields(
+                entityType: .catalogOrder,
+                entityId: id,
+                fields: [
+                    "companyId", "status", "title", "supplierName", "supplierContact",
+                    "expectedDeliveryDate", "notes", "createdById",
+                    "sentAt", "fulfilledAt", "cancelledAt", "deletedAt"
+                ],
+                context: context
+            )
+            if accept.contains("companyId")              { existing.companyId = dto.companyId }
+            if accept.contains("status")                 { existing.status = CatalogOrderStatus(rawValue: dto.status) ?? .draft }
+            if accept.contains("title")                  { existing.title = dto.title }
+            if accept.contains("supplierName")           { existing.supplierName = dto.supplierName }
+            if accept.contains("supplierContact")        { existing.supplierContact = dto.supplierContact }
+            if accept.contains("expectedDeliveryDate")   { existing.expectedDeliveryDate = dto.expectedDeliveryDate.flatMap { SupabaseDate.parseDateOnly($0) } }
+            if accept.contains("notes")                  { existing.notes = dto.notes }
+            if accept.contains("createdById")            { existing.createdById = dto.createdById }
+            if accept.contains("sentAt")                 { existing.sentAt = dto.sentAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("fulfilledAt")            { existing.fulfilledAt = dto.fulfilledAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("cancelledAt")            { existing.cancelledAt = dto.cancelledAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("deletedAt")              { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+
+            existing.updatedAt = SupabaseDate.parse(dto.updatedAt) ?? Date()
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+
+        try context.save()
+    }
+
+    // MARK: - Catalog Order Items
+
+    /// Pull items for every local order belonging to this company. Server is
+    /// authoritative — we replace the children for each order in one pass.
+    private func syncCatalogOrderItems(context: ModelContext) async throws {
+        let companyOrders = try context.fetch(FetchDescriptor<CatalogOrder>())
+            .filter { $0.companyId == self.companyId }
+
+        var totalMerged = 0
+        for order in companyOrders {
+            let dtos = try await orderRepo.fetchOrderItems(orderId: order.id)
+            let serverIds = Set(dtos.map(\.id))
+            let orderId = order.id
+
+            for dto in dtos {
+                let id = dto.id
+                let descriptor = FetchDescriptor<CatalogOrderItem>(predicate: #Predicate { $0.id == id })
+                if let existing = try context.fetch(descriptor).first {
+                    existing.orderId = dto.orderId
+                    existing.catalogVariantId = dto.catalogVariantId
+                    existing.quantityRequested = dto.quantityRequested
+                    existing.costPerUnit = dto.costPerUnit
+                    existing.notes = dto.notes
+                    existing.lastSyncedAt = Date()
+                    existing.needsSync = false
+                } else {
+                    let model = dto.toModel()
+                    model.lastSyncedAt = Date()
+                    model.needsSync = false
+                    context.insert(model)
+                }
+                totalMerged += 1
+            }
+
+            // Remove children the server has deleted. Skip rows with pending
+            // local writes — they may be in-flight inserts.
+            let localChildren = try context.fetch(FetchDescriptor<CatalogOrderItem>(
+                predicate: #Predicate { $0.orderId == orderId }
+            ))
+            for child in localChildren where !serverIds.contains(child.id) {
+                if hasPendingOperations(entityType: .catalogOrderItem, entityId: child.id, context: context) { continue }
+                context.delete(child)
+            }
+        }
+        try context.save()
+        print("[InboundProcessor] Merged \(totalMerged) catalog order items across \(companyOrders.count) orders")
+    }
+
+    // MARK: - Company Default Products
+
+    private func syncCompanyDefaultProducts(context: ModelContext) async throws {
+        let dtos = try await defaultProductRepo.fetchAll()
+        let serverKeys = Set(dtos.map { "\($0.companyId)::\($0.componentType)" })
+
+        for dto in dtos {
+            try mergeCompanyDefaultProduct(dto: dto, context: context)
+        }
+
+        // Prune defaults the server no longer reports for this company.
+        let local = try context.fetch(FetchDescriptor<CompanyDefaultProduct>())
+            .filter { $0.companyId == self.companyId }
+        for row in local {
+            let key = "\(row.companyId)::\(row.componentType.rawValue)"
+            if !serverKeys.contains(key) {
+                context.delete(row)
+            }
+        }
+        try context.save()
+        print("[InboundProcessor] Merged \(dtos.count) company default products")
+    }
+
+    private func mergeCompanyDefaultProduct(dto: CompanyDefaultProductDTO, context: ModelContext) throws {
+        // Composite key: (companyId, componentType).
+        let companyId = dto.companyId
+        let componentTypeRaw = dto.componentType
+        let descriptor = FetchDescriptor<CompanyDefaultProduct>(
+            predicate: #Predicate { $0.companyId == companyId }
+        )
+
+        let existing = try context.fetch(descriptor)
+            .first(where: { $0.componentType.rawValue == componentTypeRaw })
+
+        if let existing = existing {
+            existing.productId = dto.productId
+            existing.updatedAt = SupabaseDate.parse(dto.updatedAt) ?? Date()
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+        try context.save()
+    }
+
+    // MARK: - Product Options
+
+    private func syncProductOptions(context: ModelContext) async throws {
+        let dtos = try await productRichnessRepo.fetchOptionsForCompany()
+        let serverIds = Set(dtos.map(\.id))
+
+        for dto in dtos {
+            let id = dto.id
+            let descriptor = FetchDescriptor<ProductOption>(predicate: #Predicate { $0.id == id })
+            if let existing = try context.fetch(descriptor).first {
+                existing.productId = dto.productId
+                existing.name = dto.name
+                existing.kind = ProductOptionKind(rawValue: dto.kind) ?? .select
+                existing.affectsPrice = dto.affectsPrice
+                existing.affectsRecipe = dto.affectsRecipe
+                existing.required = dto.required
+                existing.defaultValue = dto.defaultValue
+                existing.optionDefaultSource = dto.optionDefaultSource
+                existing.sortOrder = dto.sortOrder
+                existing.lastSyncedAt = Date()
+                existing.needsSync = false
+            } else {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                model.needsSync = false
+                context.insert(model)
+            }
+        }
+
+        let companyProductIds = Set(try context.fetch(FetchDescriptor<Product>())
+            .filter { $0.companyId == self.companyId }
+            .map(\.id))
+        let allLocal = try context.fetch(FetchDescriptor<ProductOption>())
+        for option in allLocal where companyProductIds.contains(option.productId) && !serverIds.contains(option.id) {
+            context.delete(option)
+        }
+
+        try context.save()
+        print("[InboundProcessor] Merged \(dtos.count) product options")
+    }
+
+    // MARK: - Product Option Values
+
+    private func syncProductOptionValues(context: ModelContext) async throws {
+        let dtos = try await productRichnessRepo.fetchOptionValuesForCompany()
+        let serverIds = Set(dtos.map(\.id))
+
+        for dto in dtos {
+            let id = dto.id
+            let descriptor = FetchDescriptor<ProductOptionValue>(predicate: #Predicate { $0.id == id })
+            if let existing = try context.fetch(descriptor).first {
+                existing.optionId = dto.optionId
+                existing.value = dto.value
+                existing.sortOrder = dto.sortOrder
+                existing.lastSyncedAt = Date()
+                existing.needsSync = false
+            } else {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                model.needsSync = false
+                context.insert(model)
+            }
+        }
+
+        let localOptionIds = Set(try context.fetch(FetchDescriptor<ProductOption>()).map(\.id))
+        let allLocal = try context.fetch(FetchDescriptor<ProductOptionValue>())
+        for value in allLocal where localOptionIds.contains(value.optionId) && !serverIds.contains(value.id) {
+            context.delete(value)
+        }
+
+        try context.save()
+        print("[InboundProcessor] Merged \(dtos.count) product option values")
+    }
+
+    // MARK: - Product Pricing Modifiers
+
+    private func syncProductPricingModifiers(context: ModelContext) async throws {
+        let dtos = try await productRichnessRepo.fetchPricingModifiersForCompany()
+        let serverIds = Set(dtos.map(\.id))
+
+        for dto in dtos {
+            let id = dto.id
+            let descriptor = FetchDescriptor<ProductPricingModifier>(predicate: #Predicate { $0.id == id })
+            if let existing = try context.fetch(descriptor).first {
+                existing.productId = dto.productId
+                existing.optionId = dto.optionId
+                existing.triggerValueId = dto.triggerValueId
+                existing.triggerIntMin = dto.triggerIntMin
+                existing.triggerIntMax = dto.triggerIntMax
+                existing.modifierKind = PricingModifierKind(rawValue: dto.modifierKind) ?? .addPerUnit
+                existing.amount = dto.amount
+                existing.lastSyncedAt = Date()
+                existing.needsSync = false
+            } else {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                model.needsSync = false
+                context.insert(model)
+            }
+        }
+
+        let companyProductIds = Set(try context.fetch(FetchDescriptor<Product>())
+            .filter { $0.companyId == self.companyId }
+            .map(\.id))
+        let allLocal = try context.fetch(FetchDescriptor<ProductPricingModifier>())
+        for row in allLocal where companyProductIds.contains(row.productId) && !serverIds.contains(row.id) {
+            context.delete(row)
+        }
+
+        try context.save()
+        print("[InboundProcessor] Merged \(dtos.count) product pricing modifiers")
+    }
+
+    // MARK: - Product Materials (recipes)
+
+    private func syncProductMaterials(context: ModelContext) async throws {
+        let dtos = try await productRichnessRepo.fetchMaterialsForCompany()
+        let serverIds = Set(dtos.map(\.id))
+
+        for dto in dtos {
+            let id = dto.id
+            let descriptor = FetchDescriptor<ProductMaterial>(predicate: #Predicate { $0.id == id })
+            if let existing = try context.fetch(descriptor).first {
+                existing.productId = dto.productId
+                existing.catalogVariantId = dto.catalogVariantId
+                existing.catalogItemId = dto.catalogItemId
+                existing.variantSelectorJSON = dto.variantSelector?.rawJSONString
+                existing.quantityPerUnit = dto.quantityPerUnit
+                existing.scaledByOptionId = dto.scaledByOptionId
+                existing.unitId = dto.unitId
+                existing.notes = dto.notes
+                existing.lastSyncedAt = Date()
+                existing.needsSync = false
+            } else {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                model.needsSync = false
+                context.insert(model)
+            }
+        }
+
+        let companyProductIds = Set(try context.fetch(FetchDescriptor<Product>())
+            .filter { $0.companyId == self.companyId }
+            .map(\.id))
+        let allLocal = try context.fetch(FetchDescriptor<ProductMaterial>())
+        for row in allLocal where companyProductIds.contains(row.productId) && !serverIds.contains(row.id) {
+            context.delete(row)
+        }
+
+        try context.save()
+        print("[InboundProcessor] Merged \(dtos.count) product materials")
+    }
+
+    /// Pulls bundle composition rows from public.product_bundle_items. Bundle
+    /// products themselves come down via the regular Product sync (kind='package');
+    /// this method only resolves the parent↔child mapping. Reconciles deletions
+    /// scoped to the company's known products to avoid wiping rows for a
+    /// different company's bundles.
+    private func syncProductBundleItems(context: ModelContext) async throws {
+        let repo = ProductBundleItemRepository(companyId: companyId)
+        let dtos = try await repo.fetchAll()
+        let serverIds = Set(dtos.map(\.id))
+
+        for dto in dtos {
+            let id = dto.id
+            let descriptor = FetchDescriptor<ProductBundleItem>(predicate: #Predicate { $0.id == id })
+            if let existing = try context.fetch(descriptor).first {
+                // Preserve pending local edits — outbound will push them.
+                if existing.needsSync {
+                    print("[InboundProcessor] Skipping bundle item \(id) — pending local op")
+                    continue
+                }
+                existing.bundleProductId = dto.bundleProductId
+                existing.childProductId  = dto.childProductId
+                existing.quantity        = dto.quantity
+                existing.displayOrder    = dto.displayOrder
+                existing.updatedAt       = SupabaseDate.parse(dto.updatedAt) ?? existing.updatedAt
+                existing.deletedAt       = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+                existing.lastSyncedAt    = Date()
+                existing.needsSync       = false
+            } else {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                model.needsSync = false
+                context.insert(model)
+            }
+        }
+
+        // Reconcile deletions only within the current company's product space —
+        // a server row that vanished means the row was hard-deleted (RESTRICT
+        // FK prevents accidental cascade for child_product_id; CASCADE on
+        // bundle_product_id means bundle-level deletes drop the rows server-side).
+        let companyProductIds = Set(try context.fetch(FetchDescriptor<Product>())
+            .filter { $0.companyId == self.companyId }
+            .map(\.id))
+        let allLocal = try context.fetch(FetchDescriptor<ProductBundleItem>())
+        for row in allLocal where companyProductIds.contains(row.bundleProductId) && !serverIds.contains(row.id) {
+            context.delete(row)
+        }
+
+        try context.save()
+        print("[InboundProcessor] Merged \(dtos.count) product bundle items")
+    }
+
+    // MARK: - Task Reminders (bug 4f00c2d7)
+
+    /// Pulls reminder templates for this company. Templates live on a TaskType
+    /// and are server-side-propagated into per-task instances via triggers.
+    /// Reconciles deletions by comparing the server set to the local set for
+    /// the same task_type_id space.
+    private func syncTaskTypeReminders(since: Date?, context: ModelContext) async throws {
+        let dtos = try await TaskReminderRepository.shared.fetchTemplates(companyId: companyId, since: since)
+        for dto in dtos {
+            let id = dto.id
+            let descriptor = FetchDescriptor<TaskTypeReminder>(predicate: #Predicate { $0.id == id })
+            if let existing = try context.fetch(descriptor).first {
+                dto.apply(to: existing)
+            } else {
+                context.insert(dto.makeLocalRow())
+            }
+        }
+
+        // Reconcile soft-deletes from the server. Pulling only `since` may
+        // miss rows that lost their deleted_at NULL → NOT NULL transition
+        // outside the window, so we also accept the dto-level deleted_at flag.
+        try context.save()
+        print("[InboundProcessor] Merged \(dtos.count) task reminder templates")
+    }
+
+    /// Pulls reminder instances for this company. Heavy table — server-side
+    /// triggers materialize one row per template per task, so we expect this
+    /// to grow with project_tasks count. `since` keeps the delta small.
+    private func syncTaskReminders(since: Date?, context: ModelContext) async throws {
+        let dtos = try await TaskReminderRepository.shared.fetchInstances(companyId: companyId, since: since)
+        for dto in dtos {
+            let id = dto.id
+            let descriptor = FetchDescriptor<TaskReminder>(predicate: #Predicate { $0.id == id })
+            if let existing = try context.fetch(descriptor).first {
+                // Skip if the local row has a pending unsynced ack/dismiss
+                // (defensive — current UI always pushes immediately, but
+                // sync ordering across crashes can land this state).
+                if existing.needsSync {
+                    print("[InboundProcessor] Skipping reminder \(id) — pending local op")
+                    continue
+                }
+                dto.apply(to: existing)
+            } else {
+                context.insert(dto.makeLocalRow())
+            }
+        }
+        try context.save()
+
+        // Reschedule local UNCalendarNotificationTriggers for the current user
+        // off the freshly synced set so iOS push reflects server state.
+        await NotificationManager.shared.refreshTaskReminderSchedules(context: context)
+
+        print("[InboundProcessor] Merged \(dtos.count) task reminder instances")
     }
 }

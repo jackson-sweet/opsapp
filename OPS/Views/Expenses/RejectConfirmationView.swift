@@ -186,8 +186,9 @@ struct RejectConfirmationView: View {
     // MARK: - Sticky Footer
 
     private var stickyFooter: some View {
-        VStack(spacing: 0) {
-            if flaggedExpenses.isEmpty {
+        OPSFloatingButtonBar(horizontalPadding: OPSStyle.Layout.spacing3, verticalPadding: OPSStyle.Layout.spacing2) {
+            Group {
+                if flaggedExpenses.isEmpty {
                 // All items unflagged — offer approve all
                 Button {
                     let userId = dataController.currentUser?.id ?? ""
@@ -234,11 +235,9 @@ struct RejectConfirmationView: View {
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
                 }
                 .buttonStyle(PlainButtonStyle())
+                }
             }
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.background)
     }
 
     // MARK: - Formatters

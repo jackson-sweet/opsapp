@@ -19,6 +19,8 @@ struct NotificationDTO: Codable, Identifiable {
     let expenseId: String?
     let batchId: String?
     let deepLinkType: String?
+    let actionUrl: String?
+    let actionLabel: String?
     var isRead: Bool
     let createdAt: String
 
@@ -34,6 +36,8 @@ struct NotificationDTO: Codable, Identifiable {
         case expenseId   = "expense_id"
         case batchId     = "batch_id"
         case deepLinkType = "deep_link_type"
+        case actionUrl   = "action_url"
+        case actionLabel = "action_label"
         case isRead      = "is_read"
         case createdAt   = "created_at"
     }

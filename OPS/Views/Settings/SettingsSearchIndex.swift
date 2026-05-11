@@ -63,7 +63,6 @@ struct SettingsRoute: Equatable {
         case integrations
         case projectSettings
         case taskTypes
-        case schedulingType
         case allPhotos
         case myExpenses
         case reviewExpenses
@@ -300,16 +299,40 @@ enum SettingsSearchIndex {
         let hasPipelineAccess = permissionStore.can("pipeline.view")
         let canViewOwnExpenses = permissionStore.can("expenses.view", requiredScope: "own")
         let canApproveExpenses = permissionStore.can("expenses.approve")
-        let hasInventoryAccess = permissionStore.can("inventory.view")
+        let hasInventoryAccess = permissionStore.can("catalog.view")
         let hasFinanceView = permissionStore.can("finances.view")
 
-        // ─── ACCOUNT ─────────────────────────────────────────────────────
+        // Bug 4014b472 — index order mirrors the new Settings IA:
+        // PROFILE · ORGANIZATION · BUSINESS · OPERATIONS · APP · DATA · SUPPORT.
+
+        // ─── PROFILE ─────────────────────────────────────────────────────
 
         entries.append(contentsOf: profileEntries())
+
+        // ─── ORGANIZATION ────────────────────────────────────────────────
+
         entries.append(contentsOf: organizationEntries(isAdmin: isAdmin, isAdminOrOffice: isAdminOrOffice))
 
         if isAdmin {
             entries.append(contentsOf: subscriptionEntries())
+            entries.append(contentsOf: permissionsEntries())
+        }
+
+        // ─── BUSINESS ────────────────────────────────────────────────────
+
+        if hasPipelineAccess {
+            entries.append(contentsOf: productsAndServicesEntries())
+            entries.append(contentsOf: integrationsEntries())
+        }
+
+        // ─── OPERATIONS ──────────────────────────────────────────────────
+
+        if isAdminOrOffice {
+            entries.append(contentsOf: projectRulesEntries(hasFinanceView: hasFinanceView))
+        }
+
+        if hasInventoryAccess {
+            entries.append(contentsOf: inventoryEntries())
         }
 
         // ─── APP ─────────────────────────────────────────────────────────
@@ -334,25 +357,6 @@ enum SettingsSearchIndex {
 
         if isAdminOrOffice {
             entries.append(contentsOf: trashEntries())
-        }
-
-        // ─── BUSINESS ────────────────────────────────────────────────────
-
-        if hasPipelineAccess {
-            entries.append(contentsOf: productsAndServicesEntries())
-            entries.append(contentsOf: integrationsEntries())
-        }
-
-        if isAdminOrOffice {
-            entries.append(contentsOf: projectSettingsEntries(hasFinanceView: hasFinanceView))
-        }
-
-        if hasInventoryAccess {
-            entries.append(contentsOf: inventorySettingsEntries())
-        }
-
-        if isAdmin {
-            entries.append(contentsOf: permissionsEntries())
         }
 
         // ─── SUPPORT ─────────────────────────────────────────────────────
@@ -418,25 +422,25 @@ enum SettingsSearchIndex {
     }
 
     // MARK: - Organization
+    //
+    // Bug 4014b472 — Organization Details, Manage Team, Subscription, and
+    // Permissions are now top-level rows. Breadcrumbs match: each entry hangs
+    // off its own page name, not a parent "Organization" page.
 
     private static func organizationEntries(isAdmin: Bool, isAdminOrOffice: Bool) -> [SettingsSearchEntry] {
-        let breadcrumb = ["Organization"]
         let icon = "building.2.fill"
-        let route: (String?) -> SettingsRoute = { SettingsRoute(.organization, section: $0) }
 
         var items: [SettingsSearchEntry] = [
             SettingsSearchEntry(
-                title: "Organization",
-                breadcrumb: breadcrumb,
+                title: "Organization Details",
+                breadcrumb: ["Organization Details"],
                 icon: icon,
-                keywords: ["company", "business", "organization", "org", "company info"],
-                route: route(nil)
-            ),
-            SettingsSearchEntry(
-                title: "Company Details",
-                breadcrumb: breadcrumb + ["Organization Details"],
-                icon: icon,
-                keywords: ["company name", "company logo", "logo", "company details", "company phone", "company email", "company address", "website", "tax id"],
+                keywords: [
+                    "company", "business", "organization", "org",
+                    "company name", "company logo", "logo", "company details",
+                    "company phone", "company email", "company address",
+                    "website", "tax id"
+                ],
                 route: SettingsRoute(.organizationDetails)
             ),
         ]
@@ -445,7 +449,7 @@ enum SettingsSearchIndex {
             items.append(
                 SettingsSearchEntry(
                     title: "Manage Team",
-                    breadcrumb: breadcrumb,
+                    breadcrumb: ["Manage Team"],
                     icon: "person.3.fill",
                     keywords: [
                         "team", "members", "employees", "crew", "staff", "people",
@@ -458,7 +462,7 @@ enum SettingsSearchIndex {
             items.append(
                 SettingsSearchEntry(
                     title: "Invite Team Member",
-                    breadcrumb: breadcrumb + ["Manage Team"],
+                    breadcrumb: ["Manage Team"],
                     icon: "person.crop.circle.badge.plus",
                     keywords: [
                         "invite", "invite team", "invite member", "invite employee",
@@ -471,7 +475,7 @@ enum SettingsSearchIndex {
             items.append(
                 SettingsSearchEntry(
                     title: "Crew Code",
-                    breadcrumb: breadcrumb + ["Manage Team"],
+                    breadcrumb: ["Manage Team"],
                     icon: "qrcode",
                     keywords: ["crew code", "join code", "company code", "invite code", "share code"],
                     route: SettingsRoute(.manageTeam, section: "crew_code")
@@ -480,7 +484,7 @@ enum SettingsSearchIndex {
             items.append(
                 SettingsSearchEntry(
                     title: "Manage Seats",
-                    breadcrumb: breadcrumb + ["Manage Team"],
+                    breadcrumb: ["Manage Team"],
                     icon: "person.2.badge.gearshape",
                     keywords: ["seats", "seat count", "available seats", "seat management", "buy seats"],
                     route: SettingsRoute(.manageTeam, section: "seats")
@@ -920,24 +924,31 @@ enum SettingsSearchIndex {
         ]
     }
 
-    // MARK: - Project Settings
+    // MARK: - Project Rules
+    //
+    // Bug 4014b472 — was `projectSettingsEntries`. Task Types and Scheduling
+    // Type are now top-level OPERATIONS rows, so their breadcrumbs hang off
+    // their own page names — not a "Project Settings" parent. Project Rules
+    // keeps its own breadcrumb only for the in-page Project Review section.
 
-    private static func projectSettingsEntries(hasFinanceView: Bool) -> [SettingsSearchEntry] {
-        let breadcrumb = ["Project Settings"]
-        let icon = "hammer.circle"
+    private static func projectRulesEntries(hasFinanceView: Bool) -> [SettingsSearchEntry] {
         let route: (String?) -> SettingsRoute = { SettingsRoute(.projectSettings, section: $0) }
 
         var items: [SettingsSearchEntry] = [
             SettingsSearchEntry(
-                title: "Project Settings",
-                breadcrumb: breadcrumb,
-                icon: icon,
-                keywords: ["project", "project defaults", "project configuration", "workflow"],
+                title: "Project Rules",
+                breadcrumb: ["Project Rules"],
+                icon: "hammer.circle",
+                keywords: [
+                    "project rules", "project", "project defaults",
+                    "project configuration", "project review", "review",
+                    "workflow rules"
+                ],
                 route: route(nil)
             ),
             SettingsSearchEntry(
                 title: "Task Types",
-                breadcrumb: breadcrumb,
+                breadcrumb: ["Task Types"],
                 icon: "square.grid.2x2",
                 keywords: [
                     "task types", "task category", "task kind", "categorize tasks",
@@ -948,7 +959,7 @@ enum SettingsSearchIndex {
             // The headline example from the bug — "Set Color" deep into Task Types
             SettingsSearchEntry(
                 title: "Set Color",
-                breadcrumb: breadcrumb + ["Task Types"],
+                breadcrumb: ["Task Types"],
                 icon: "paintpalette",
                 keywords: [
                     "color", "set color", "task color", "task type color",
@@ -958,38 +969,28 @@ enum SettingsSearchIndex {
             ),
             SettingsSearchEntry(
                 title: "Add Task Type",
-                breadcrumb: breadcrumb + ["Task Types"],
+                breadcrumb: ["Task Types"],
                 icon: "plus.circle",
                 keywords: ["add task type", "new task type", "create task type", "custom task type"],
                 route: SettingsRoute(.taskTypes, section: "add_type")
             ),
             SettingsSearchEntry(
                 title: "Rename Task Type",
-                breadcrumb: breadcrumb + ["Task Types"],
+                breadcrumb: ["Task Types"],
                 icon: "pencil",
                 keywords: ["rename", "rename task type", "edit task type", "change task type name"],
                 route: SettingsRoute(.taskTypes, section: "rename_type")
             ),
             SettingsSearchEntry(
                 title: "Delete Task Type",
-                breadcrumb: breadcrumb + ["Task Types"],
+                breadcrumb: ["Task Types"],
                 icon: "trash",
                 keywords: ["delete task type", "remove task type", "merge task type"],
                 route: SettingsRoute(.taskTypes, section: "delete_type")
             ),
             SettingsSearchEntry(
-                title: "Scheduling Type",
-                breadcrumb: breadcrumb,
-                icon: "calendar.badge.clock",
-                keywords: [
-                    "scheduling", "scheduling type", "schedule mode",
-                    "appointment", "block", "schedule style"
-                ],
-                route: SettingsRoute(.schedulingType)
-            ),
-            SettingsSearchEntry(
                 title: "Overdue Threshold",
-                breadcrumb: breadcrumb + ["Project Review"],
+                breadcrumb: ["Project Rules", "Project Review"],
                 icon: "clock.badge.exclamationmark",
                 keywords: [
                     "overdue", "overdue threshold", "overdue days", "review threshold",
@@ -999,7 +1000,7 @@ enum SettingsSearchIndex {
             ),
             SettingsSearchEntry(
                 title: "Reminder Frequency",
-                breadcrumb: breadcrumb + ["Project Review"],
+                breadcrumb: ["Project Rules", "Project Review"],
                 icon: "bell.badge",
                 keywords: [
                     "reminder frequency", "reminder days", "renotify",
@@ -1013,7 +1014,7 @@ enum SettingsSearchIndex {
             items.append(
                 SettingsSearchEntry(
                     title: "Match Invoice Payment Terms",
-                    breadcrumb: breadcrumb + ["Project Review"],
+                    breadcrumb: ["Project Rules", "Project Review"],
                     icon: "doc.badge.gearshape",
                     keywords: [
                         "invoice terms", "net terms", "payment terms",
@@ -1027,16 +1028,20 @@ enum SettingsSearchIndex {
         return items
     }
 
-    // MARK: - Inventory Settings
+    // MARK: - Inventory
+    //
+    // Bug 4014b472 — was `inventorySettingsEntries` with breadcrumb
+    // "Inventory Settings". Promoted to a top-level OPERATIONS row labeled
+    // just "Inventory", so the breadcrumb matches.
 
-    private static func inventorySettingsEntries() -> [SettingsSearchEntry] {
-        let breadcrumb = ["Inventory Settings"]
+    private static func inventoryEntries() -> [SettingsSearchEntry] {
+        let breadcrumb = ["Inventory"]
         let icon = "shippingbox.fill"
         let route: (String?) -> SettingsRoute = { SettingsRoute(.inventorySettings, section: $0) }
 
         return [
             SettingsSearchEntry(
-                title: "Inventory Settings",
+                title: "Inventory",
                 breadcrumb: breadcrumb,
                 icon: icon,
                 keywords: [

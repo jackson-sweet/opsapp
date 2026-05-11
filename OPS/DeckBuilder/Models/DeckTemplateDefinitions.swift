@@ -106,6 +106,107 @@ enum DeckTemplateType: String, CaseIterable, Identifiable {
         default: return true
         }
     }
+
+    // MARK: - Diagram ↔ Engine Wiring (Bug 22577979)
+
+    /// Maps each user-facing dimension label (A/B/C/D, in `dimensionLabels`
+    /// order) to the edge index of the polygon emitted by `DeckTemplateEngine`.
+    ///
+    /// Why this exists: edges in the engine's polygon aren't always in the
+    /// same order as labels — e.g. an L-shape's edge 1 carries dimension `d`
+    /// (the right-upper side, which the user names "Extension Depth"), not
+    /// dimension `b` (the left side, which is "Full Depth" and lives at edge 5).
+    /// Without this mapping the diagram painted label B onto the wrong edge,
+    /// confusing the user before they ever pressed Create.
+    var labelEdgeIndices: [Int] {
+        switch self {
+        case .rectangle, .frontPorch, .freestanding:
+            // Edge 0 = top (A), Edge 1 = right (B) — label A & B sit on those.
+            return [0, 1]
+        case .lShape:
+            // Engine edges: 0=top(a), 1=rightUpper(d), 2=stepH(c),
+            // 3=stepV(b-d), 4=bottom(a-c), 5=left(b).
+            // Labels A=Long Side, B=Full Depth, C=Extension Width, D=Extension Depth.
+            return [0, 5, 2, 1]
+        case .wraparound:
+            // Engine edges: 0=top(a), 1=right(b), 2=bottomRight(a-c),
+            // 3=innerV(b-d), 4=innerH(c), 5=left(d).
+            // Labels A=Long Side, B=Full Depth, C=Return Width, D=Return Depth.
+            return [0, 1, 4, 5]
+        case .tShape:
+            // Engine edges (with stemDepth-as-input semantics): 0=top(a),
+            // 1=rightOfTop(d), 2=rightOverhang, 3=stemRight(stemDepth),
+            // 4=stemBottom(c), 5=stemLeft(stemDepth), 6=leftOverhang,
+            // 7=leftOfTop(d).
+            // Labels A=Top Width, B=Stem Depth, C=Stem Width, D=Top Depth.
+            return [0, 3, 4, 1]
+        case .multiLevel:
+            // Diagram outline (see DeckTemplateEngine.vertexPositions):
+            //   0=upper top (a),     1=upper right (b),  2=transition right,
+            //   3=lower right (d),   4=lower bottom (c), 5=lower left (d),
+            //   6=transition left,   7=upper left (b).
+            // Labels A=Upper Length, B=Upper Depth, C=Lower Length, D=Lower Depth.
+            return [0, 1, 4, 3]
+        case .poolDeck:
+            // Same rectangle polygon as `.rectangle`; pool diameter (C) has no
+            // edge to live on, so we leave it off the diagram (sentinel -1 →
+            // caller suppresses edge highlight, surfaces label as a centered
+            // pool callout).
+            return [0, 1, -1]
+        }
+    }
+
+    /// Returns a list of inline validation messages for the given parsed
+    /// dimensions (already converted to inches). Empty array means the
+    /// dimensions form a valid shape for this template.
+    ///
+    /// Used by the input view to keep the Create button disabled and surface
+    /// a specific message — replaces the silent "fallback to rectangle"
+    /// behaviour the engine previously had for impossible L / wraparound /
+    /// T-shapes. Bug 22577979.
+    func validationErrors(for dims: [Double]) -> [String] {
+        guard dims.count >= dimensionCount else {
+            return ["Enter all \(dimensionCount) dimensions."]
+        }
+        guard dims.prefix(dimensionCount).allSatisfy({ $0 > 0 }) else {
+            return ["Dimensions must be greater than zero."]
+        }
+
+        switch self {
+        case .rectangle, .frontPorch, .freestanding, .multiLevel:
+            return []
+        case .lShape:
+            // c (extension width) must be smaller than a (long side); d
+            // (extension depth) must be smaller than b (full depth) — else
+            // it's not an L, it's a rectangle.
+            let a = dims[0], b = dims[1], c = dims[2], d = dims[3]
+            var errs: [String] = []
+            if c >= a { errs.append("Extension width (C) must be less than long side (A).") }
+            if d >= b { errs.append("Extension depth (D) must be less than full depth (B).") }
+            return errs
+        case .wraparound:
+            let a = dims[0], b = dims[1], c = dims[2], d = dims[3]
+            var errs: [String] = []
+            if c >= a { errs.append("Return width (C) must be less than long side (A).") }
+            if d >= b { errs.append("Return depth (D) must be less than full depth (B).") }
+            return errs
+        case .tShape:
+            // T-shape input semantics (post-fix): A=top width, B=stem depth,
+            // C=stem width, D=top depth. Stem must fit inside the top width.
+            let a = dims[0], c = dims[2]
+            var errs: [String] = []
+            if c >= a { errs.append("Stem width (C) must be less than top width (A).") }
+            return errs
+        case .poolDeck:
+            // Pool must physically fit inside the rectangle, with a small
+            // margin so the deck doesn't degenerate into a ring of slivers.
+            let a = dims[0], b = dims[1], pool = dims[2]
+            var errs: [String] = []
+            let minSide = min(a, b)
+            if pool >= minSide { errs.append("Pool diameter must be less than the shorter deck side.") }
+            return errs
+        }
+    }
 }
 
 struct DimensionLabel: Identifiable {

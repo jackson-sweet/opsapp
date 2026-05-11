@@ -10,6 +10,7 @@ struct MaterialPickerSheet: View {
     @Query(filter: #Predicate<Product> { $0.isActive }, sort: \Product.name)
     private var products: [Product]
     @Query(sort: \TaskType.displayOrder) private var taskTypes: [TaskType]
+    @Query private var companyDefaults: [CompanyDefaultProduct]
 
     /// Whether we're showing linear (edge) or area (footprint) materials
     private var isLinearMode: Bool {
@@ -52,6 +53,45 @@ struct MaterialPickerSheet: View {
         }
     }
 
+    /// Which `DesignComponentType` the picker is filling for, derived from
+    /// the current selection. Drives the company-default highlighting per
+    /// deck-catalog integration spec § 4.4 — the picker pre-pins the
+    /// default Product (when one exists) at the top of the list with a
+    /// "// DEFAULT" tag.
+    private var surfaceContext: DesignComponentType {
+        if viewModel.selection.hasEdges {
+            // Stair-context wins over railing when the selected edge
+            // already carries a stair config — assigning more material
+            // there is presumptively for the stair set.
+            let firstId = viewModel.selection.selectedEdgeIds.first
+            if let firstId, let edge = viewModel.findEdge(byId: firstId), edge.stairConfig != nil {
+                return .stairSet
+            }
+            return .railing
+        }
+        return .deckBoard
+    }
+
+    /// Company default Product id for the current `surfaceContext`, when
+    /// the company has set one. Drives the "// DEFAULT" tag in the row.
+    private var defaultProductId: String? {
+        let companyId = viewModel.deckDesign.companyId
+        return companyDefaults.first(where: {
+            $0.companyId == companyId && $0.componentType == surfaceContext
+        })?.productId
+    }
+
+    /// `filteredProducts` with the company default (if any) hoisted to
+    /// the top so it's the first thing the user sees.
+    private var orderedProducts: [Product] {
+        guard let pid = defaultProductId,
+              let pinned = filteredProducts.first(where: { $0.id == pid }) else {
+            return filteredProducts
+        }
+        let rest = filteredProducts.filter { $0.id != pid }
+        return [pinned] + rest
+    }
+
     // MARK: - Task Type Helpers
 
     private func taskTypeColor(for taskTypeId: String?) -> Color? {
@@ -86,7 +126,7 @@ struct MaterialPickerSheet: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, OPSStyle.Layout.spacing4)
                     } else {
-                        ForEach(filteredProducts) { product in
+                        ForEach(orderedProducts) { product in
                             productRow(product)
                         }
                     }
@@ -127,14 +167,21 @@ struct MaterialPickerSheet: View {
     @ViewBuilder
     private func productRow(_ product: Product) -> some View {
         let mapped = Self.unitType(from: product.unit) ?? (isLinearMode ? .linearFoot : .squareFoot)
+        // Gate-detection per deck-catalog spec § 3.5 — products whose
+        // category (legacy free-text on Product) contains "gate" auto-flag
+        // the assignment as a gate, which drives the gate-component
+        // emission on the parent edge. The user can override later via
+        // the property sheet if the inference is wrong.
+        let isGate = product.category?.lowercased().contains("gate") == true
         Button {
             let item = AssignedItem(
                 productId: product.id,
                 name: product.name,
                 unitType: mapped,
-                unitPrice: product.defaultPrice,
+                unitPrice: product.basePrice,
                 taskTypeId: product.taskTypeId,
-                taskTypeColor: taskTypes.first(where: { $0.id == product.taskTypeId && $0.deletedAt == nil })?.color
+                taskTypeColor: taskTypes.first(where: { $0.id == product.taskTypeId && $0.deletedAt == nil })?.color,
+                isGate: isGate
             )
             applyMaterial(item)
             dismiss()
@@ -145,12 +192,25 @@ struct MaterialPickerSheet: View {
                     .frame(width: 12, height: 12)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(product.name)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    HStack(spacing: 6) {
+                        Text(product.name)
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        if defaultProductId == product.id {
+                            Text("// DEFAULT")
+                                .font(OPSStyle.Typography.smallCaption.monospaced())
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    OPSStyle.Colors.primaryAccent.opacity(0.12)
+                                        .clipShape(Capsule())
+                                )
+                        }
+                    }
 
                     HStack(spacing: 4) {
-                        Text(String(format: "$%.2f / %@", product.defaultPrice, isLinearMode ? "lin ft" : "sq ft"))
+                        Text(String(format: "$%.2f / %@", product.basePrice, isLinearMode ? "lin ft" : "sq ft"))
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 

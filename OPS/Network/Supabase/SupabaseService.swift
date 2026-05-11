@@ -58,3 +58,14 @@ class SupabaseService: ObservableObject {
         }
     }
 }
+
+extension SupabaseService {
+    /// Firebase UID of the currently signed-in user, if any. The Supabase
+    /// client itself can't surface a user id (the SDK's `client.auth` is
+    /// inert when `accessToken` is set), so we read directly from Firebase.
+    /// `nonisolated` because `Auth.auth().currentUser` is thread-safe in the
+    /// Firebase SDK — telemetry can read this from background tasks.
+    nonisolated var currentUserId: String? {
+        Auth.auth().currentUser?.uid
+    }
+}

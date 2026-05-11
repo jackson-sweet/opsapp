@@ -2,6 +2,7 @@
 
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct DeckBuilderView: View {
     @StateObject private var viewModel: DeckBuilderViewModel
@@ -24,6 +25,25 @@ struct DeckBuilderView: View {
     let projectId: String?
     let companyId: String
 
+    /// Top safe-area inset for the current key window. Read at usage time so
+    /// devices with a Dynamic Island (top inset ~59pt) and notched iPhones
+    /// (~47pt) both clear the hardware cutout — `.statusBarHidden(true)`
+    /// only hides the clock, it does NOT shrink the system-reserved top
+    /// region. Bug 55083a46.
+    private var topSafeAreaInset: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let keyWindow = scenes.flatMap { $0.windows }.first(where: { $0.isKeyWindow })
+        return keyWindow?.safeAreaInsets.top ?? 0
+    }
+
+    /// Top padding applied to every floating canvas overlay (title pill,
+    /// edit cluster, live-dim pill, screenshot button). Uses the device
+    /// safe-area top so the header always sits below the Dynamic Island /
+    /// notch instead of being clipped by it.
+    private var floatingHeaderTopPadding: CGFloat {
+        max(OPSStyle.Layout.spacing3, topSafeAreaInset)
+    }
+
     init(deckDesign: DeckDesign, modelContext: ModelContext, syncEngine: SyncEngine? = nil) {
         // Bug ab554b5f — pass the SyncEngine to the view model so saves
         // enqueue Supabase pushes. Optional so test/preview call sites that
@@ -40,12 +60,11 @@ struct DeckBuilderView: View {
     var body: some View {
         VStack(spacing: 0) {
             if viewModel.is3DMode {
-                // 3D mode: title bar is a contained pill, matching the 2D
-                // floating-header aesthetic. Previously rendered as a
-                // full-width bar bleeding to the screen edges. Bug 0a5f3fe1
-                // follow-up.
+                // 3D mode: contained title pill, screenshot button floats over
+                // the scene as a separate canvas-aligned cluster (matches the
+                // 2D layout's floating-cluster pattern).
                 titleBar
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
                     .padding(.vertical, OPSStyle.Layout.spacing2)
                     .background(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -57,10 +76,17 @@ struct DeckBuilderView: View {
                             .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing4)
-                    .padding(.top, OPSStyle.Layout.spacing2)
+                    .padding(.top, floatingHeaderTopPadding)
 
-                DeckScene3DView(drawingData: viewModel.drawingData, controller: scene3DController)
-                    .transition(.opacity)
+                ZStack(alignment: .topTrailing) {
+                    DeckScene3DView(drawingData: viewModel.drawingData, controller: scene3DController)
+                        .transition(.opacity)
+
+                    screenshot3DButton
+                        .padding(.trailing, OPSStyle.Layout.spacing4)
+                        .padding(.top, OPSStyle.Layout.spacing2)
+                }
+                .ignoresSafeArea(edges: .horizontal)
 
                 CameraPresetBar { preset in
                     scene3DController.setCameraPreset(preset)
@@ -77,12 +103,16 @@ struct DeckBuilderView: View {
                         DeckCanvasView(viewModel: viewModel)
                             .ignoresSafeArea(edges: [.top, .horizontal])
 
-                    // Assignment wheel — visible when any element is selected.
-                    // Padding bumped from 20 → spacing4 (24pt) so the 56pt circle
-                    // doesn't kiss the rounded screen corner on modern iPhones —
-                    // canvas behind it ignores horizontal safe area, so the wheel
-                    // is the only thing keeping itself off the bezel.
-                    if !viewModel.selection.isEmpty {
+                    // Assignment wheel — visible only when there are edges in the
+                    // selection. The wheel exposes edge-specific choices
+                    // (railing styles, edge type, add stairs, dimension) that
+                    // aren't in the toolbar quick-access. For surface-only
+                    // selections it would collapse to a single "Material"
+                    // button floating in the canvas — duplicating the
+                    // toolbar's material button — so we hide it there
+                    // (DECK-NEW-2). 24pt margin keeps the 56pt center circle
+                    // off the rounded screen corner on modern iPhones.
+                    if viewModel.selection.hasEdges {
                         AssignmentWheelView(viewModel: viewModel)
                             .padding(.trailing, OPSStyle.Layout.spacing4)
                             .padding(.bottom, OPSStyle.Layout.spacing4)
@@ -141,11 +171,16 @@ struct DeckBuilderView: View {
                     .animation(.easeInOut(duration: 0.25), value: viewModel.showAssignmentToast)
                     } // end canvas ZStack (bottomTrailing)
 
-                    // Floating header stack — title chip + AR banner + level bar as a single
-                    // consistent column with shared horizontal margins. No overlapping layers.
+                    // Floating header — compact stack. Title now lives INSIDE
+                    // the title bar (replaced the previous separate title-pill
+                    // row), so the header collapses to: titleBar → optional
+                    // metrics+AR row → optional level tabs. Edit cluster
+                    // (undo/redo/import) and live-dim pill float on the canvas
+                    // as separate overlays below the title bar — they no
+                    // longer occupy a permanent 44pt header row. DECK-NEW-2.
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         titleBar
-                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
                             .padding(.vertical, OPSStyle.Layout.spacing2)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -157,20 +192,10 @@ struct DeckBuilderView: View {
                                     .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
                             )
 
-                        // Title pill — sits directly below title bar, left aligned to the same
-                        // column so it reads as part of the header stack (no more "floating
-                        // over" the title bar via padding tricks).
-                        floatingTitlePill
-
-                        // At-a-glance metrics — sqft + linear feet pill floats below
-                        // the title badge when the polygon is closed. Moved here from
-                        // DeckCanvasView so it doesn't overlap with the titleBar. Bug 11.
-                        if viewModel.isClosed, let area = viewModel.totalArea {
-                            metricspill(area: area)
-                        }
-
-                        // AR accuracy banner — spans full width under title bar
-                        arAccuracyBanner
+                        // Combined metrics + AR row — when both apply they
+                        // share a single horizontal row instead of stacking
+                        // as two rows.
+                        metricsAndARRow
 
                         // Level tab bar — only when the design actually has
                         // levels. The previous fallback to vertices.count >= 3
@@ -186,14 +211,46 @@ struct DeckBuilderView: View {
                         Spacer(minLength: 0)
                     }
                     // Floating header sits inside the safe area while the canvas
-                    // extends under it. Use spacing4 horizontal so the title pill
-                    // has breathing room from the screen edge (previously
-                    // spacing3, which read as flush once the canvas went full
-                    // bleed) and spacing3 top so it clears the dynamic island /
-                    // status bar without being smashed against it. Bug 0a5f3fe1.
+                    // extends under it. Horizontal: spacing4 from screen edge so
+                    // the title pill clears the rounded corners and never bleeds
+                    // off-screen. Top: `floatingHeaderTopPadding` reads the device
+                    // safe-area inset so the pill always sits below the Dynamic
+                    // Island / notch instead of being clipped by it (bug
+                    // 55083a46). spacing3 is the minimum on devices without a
+                    // hardware cutout (small iPhone SE).
                     .padding(.horizontal, OPSStyle.Layout.spacing4)
-                    .padding(.top, OPSStyle.Layout.spacing3)
+                    .padding(.top, floatingHeaderTopPadding)
                     .allowsHitTesting(true)
+
+                    // Edit cluster (undo + redo + import) — floats below the
+                    // title bar at the trailing edge of the canvas. Hidden while
+                    // a draw is in flight: the live-dimension pill takes this
+                    // slot, undo/redo can't fire mid-stroke anyway, and stacking
+                    // both clusters at the same anchor caused the right-edge
+                    // bleed reported in bug 55083a46.
+                    if PermissionStore.shared.can("deck_builder.edit"),
+                       viewModel.liveDimensionLabel == nil {
+                        editCluster2D
+                            .padding(.trailing, OPSStyle.Layout.spacing4)
+                            .padding(.top, floatingHeaderTopPadding + headerOverlayBelowTitleOffset)
+                            .frame(maxWidth: .infinity, alignment: .topTrailing)
+                            .allowsHitTesting(true)
+                    }
+
+                    // Live dimension pill — right-aligned, anchored just below
+                    // the title bar so it sits at the top of the canvas where
+                    // the user's drawing finger can't block it. Latitude matches
+                    // the (now-hidden) edit cluster so the layout doesn't shift
+                    // when drawing begins. Bugs 4e9057d2, 9c2b8866, bc9109ef.
+                    if let liveLabel = viewModel.liveDimensionLabel {
+                        liveDimensionPill(label: liveLabel)
+                            .padding(.trailing, OPSStyle.Layout.spacing4)
+                            .padding(.top, floatingHeaderTopPadding + headerOverlayBelowTitleOffset)
+                            .frame(maxWidth: .infinity, alignment: .topTrailing)
+                            .transition(.opacity)
+                            .animation(OPSStyle.Animation.fast, value: viewModel.liveDimensionLabel)
+                            .allowsHitTesting(false)
+                    }
                 } // end ZStack (top-aligned, floating title over canvas)
 
                 // Toolbar — below the canvas. Wrapped in horizontal padding +
@@ -218,9 +275,6 @@ struct DeckBuilderView: View {
         }
         .sheet(isPresented: $viewModel.showingDimensionInput) {
             DimensionInputView(viewModel: viewModel)
-        }
-        .sheet(isPresented: $viewModel.showingPropertySheet) {
-            PropertySheetView(viewModel: viewModel)
         }
         .sheet(isPresented: $viewModel.showingElevationInput) {
             ElevationInputView(viewModel: viewModel)
@@ -495,60 +549,33 @@ struct DeckBuilderView: View {
         }
     }
 
-    // MARK: - Floating Title
+    // MARK: - Live Dimension Pill
 
+    /// Live dimension pill — floats on the canvas at top-center while a
+    /// draw is in flight. Used to live in a header row beside the title;
+    /// moved to canvas overlay so the header row 2 could be deleted.
     @ViewBuilder
-    private var floatingTitlePill: some View {
-        HStack {
-            Group {
-                if viewModel.isEditingTitle {
-                    HStack(spacing: OPSStyle.Layout.spacing2) {
-                        TextField("Design name", text: $editingTitleText)
-                            .font(OPSStyle.Typography.bodyEmphasis)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .textFieldStyle(.plain)
-                            .submitLabel(.done)
-                            .onSubmit { commitTitleEdit() }
-
-                        Button {
-                            commitTitleEdit()
-                        } label: {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                    }
-                } else {
-                    Button {
-                        editingTitleText = viewModel.deckDesign.title
-                        viewModel.isEditingTitle = true
-                    } label: {
-                        HStack(spacing: OPSStyle.Layout.spacing2) {
-                            Text(viewModel.deckDesign.title)
-                                .font(OPSStyle.Typography.bodyEmphasis)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .lineLimit(1)
-                            Image(systemName: "pencil")
-                                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
-                                .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.6))
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .fill(OPSStyle.Colors.cardBackground.opacity(0.96))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-                    .shadow(color: Color.black.opacity(0.2), radius: 6, y: 2)
-            )
-
-            Spacer()
+    private func liveDimensionPill(label: String) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Image(systemName: "ruler")
+                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+            Text(label)
+                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .foregroundColor(OPSStyle.Colors.primaryText)
         }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .fill(OPSStyle.Colors.cardBackground.opacity(0.96))
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.2), radius: 6, y: 2)
+        )
+        .allowsHitTesting(false)
     }
 
     private func commitTitleEdit() {
@@ -558,8 +585,13 @@ struct DeckBuilderView: View {
 
     // MARK: - Title Bar
 
+    /// Compact single-row title bar used in both 2D and 3D modes.
+    /// Layout: close | save-dot | title (flex, editable) | 2D/3D | gear.
+    /// Import (2D) and screenshot (3D) live in a separate floating cluster
+    /// over the canvas — keeps this bar narrow enough to fit on iPhone SE
+    /// without bleeding past the pill edges.
     private var titleBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             // Close
             Button {
                 guard !isSaving else { return }
@@ -582,18 +614,20 @@ struct DeckBuilderView: View {
             }
             .disabled(isSaving)
 
-            // Save status — tracks local persistence, not remote sync
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(viewModel.isLocallySaved ? OPSStyle.Colors.successStatus : OPSStyle.Colors.warningStatus)
-                    .frame(width: 6, height: 6)
-                Text(viewModel.isLocallySaved ? "Saved" : "Saving…")
-                    .font(OPSStyle.Typography.microLabel)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // Save status dot — tracks local persistence, not remote sync.
+            // Color encodes state (green = saved, amber = saving). Text label
+            // intentionally absent so the bar fits in portrait without the
+            // pill bleeding past the screen edge.
+            Circle()
+                .fill(viewModel.isLocallySaved ? OPSStyle.Colors.successStatus : OPSStyle.Colors.warningStatus)
+                .frame(width: 8, height: 8)
+                .accessibilityLabel(viewModel.isLocallySaved ? "Saved" : "Saving")
 
-            // 2D/3D toggle
+            // Title — flex content. Tap to edit when edit permission allows.
+            inlineTitleEditor
+
+            // 2D/3D toggle. 80pt is enough for "2D"/"3D" labels and saves
+            // 16pt vs the previous 96pt — meaningful margin on iPhone SE.
             SegmentedControl(
                 selection: Binding(
                     get: { viewModel.is3DMode },
@@ -608,79 +642,10 @@ struct DeckBuilderView: View {
                     (true, "3D")
                 ]
             )
-            .frame(width: 96)
+            .frame(width: 80)
             .disabled(!viewModel.can3DMode)
 
-            // Undo / Redo — edit permission required
-            if !viewModel.is3DMode && PermissionStore.shared.can("deck_builder.edit") {
-                Button { viewModel.undo() } label: {
-                    Image(systemName: "arrow.uturn.backward")
-                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
-                        .foregroundColor(viewModel.canUndo ? Color.white : OPSStyle.Colors.tertiaryText)
-                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                }
-                .disabled(!viewModel.canUndo)
-
-                Button { viewModel.redo() } label: {
-                    Image(systemName: "arrow.uturn.forward")
-                        .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
-                        .foregroundColor(viewModel.canRedo ? Color.white : OPSStyle.Colors.tertiaryText)
-                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                }
-                .disabled(!viewModel.canRedo)
-            }
-
-            // Right-most buttons
-            if viewModel.is3DMode {
-                Button {
-                    if let screenshot = scene3DController.captureScreenshot() {
-                        screenshotImage = screenshot
-                        showing3DScreenshotShare = true
-                    }
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                } label: {
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                }
-            } else if PermissionStore.shared.can("deck_builder.edit") {
-                // Import menu — edit permission required
-                Menu {
-                    Button {
-                        if viewModel.drawingData.allVertices.count > 0 {
-                            showingTemplateReplaceConfirm = true
-                        } else {
-                            showingTemplatePicker = true
-                        }
-                    } label: {
-                        Label("From Template", systemImage: "square.grid.2x2")
-                    }
-                    Button { showingSketchCapture = true } label: {
-                        Label("Scan Paper Sketch", systemImage: "doc.text.viewfinder")
-                    }
-                    Button { showingARPerimeter = true } label: {
-                        Label("Walk Perimeter (AR)", systemImage: "camera.viewfinder")
-                    }
-                    Divider()
-                    if viewModel.isLaserConnected {
-                        Label("Laser Connected", systemImage: "antenna.radiowaves.left.and.right")
-                    } else {
-                        Button(action: {}) {
-                            Label("Connect Laser Meter", systemImage: "antenna.radiowaves.left.and.right")
-                        }
-                        .disabled(true)
-                    }
-                } label: {
-                    Image(systemName: "plus.circle")
-                        .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                }
-            }
-
             // Always-visible canvas settings — reachable from ANY tool/selection state.
-            // Field fix: the toolbar gear was hidden whenever anything was selected.
             Button {
                 viewModel.showingSettings = true
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -693,66 +658,281 @@ struct DeckBuilderView: View {
         }
     }
 
-    // MARK: - Metrics Pill (sqft + lin ft, below title when polygon is closed)
-
+    /// In-bar title editor. Read state shows `Title • pencil` (tap to edit
+    /// when allowed). Edit state shows a TextField with a confirm checkmark.
+    /// Truncates with ellipsis on narrow screens.
     @ViewBuilder
-    private func metricspill(area: Double) -> some View {
-        HStack {
-            HStack(spacing: OPSStyle.Layout.spacing3) {
-                Label(DimensionEngine.formatArea(area, system: viewModel.drawingData.config.measurementSystem),
-                      systemImage: "square.dashed")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(Color.white)
-                if let perimeter = viewModel.totalPerimeter {
-                    Label(DimensionEngine.format(perimeter, system: viewModel.drawingData.config.measurementSystem),
-                          systemImage: "ruler")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+    private var inlineTitleEditor: some View {
+        if viewModel.isEditingTitle {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                TextField("Design name", text: $editingTitleText)
+                    .font(OPSStyle.Typography.bodyEmphasis)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .textFieldStyle(.plain)
+                    .submitLabel(.done)
+                    .onSubmit { commitTitleEdit() }
+
+                Button {
+                    commitTitleEdit()
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .frame(width: 28, height: OPSStyle.Layout.touchTargetMin)
                 }
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackground.opacity(0.96))
-            .cornerRadius(OPSStyle.Layout.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .shadow(color: Color.black.opacity(0.2), radius: 6, y: 2)
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            let canEditTitle = PermissionStore.shared.can("deck_builder.edit")
+            Button {
+                guard canEditTitle else { return }
+                editingTitleText = viewModel.deckDesign.title
+                viewModel.isEditingTitle = true
+            } label: {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
+                    Text(viewModel.deckDesign.title)
+                        .font(OPSStyle.Typography.bodyEmphasis)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    if canEditTitle {
+                        Image(systemName: "pencil")
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
+                            .foregroundColor(OPSStyle.Colors.secondaryText.opacity(0.6))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .disabled(!canEditTitle)
         }
     }
 
-    // MARK: - AR Accuracy Banner
+    // MARK: - Floating Canvas Clusters
 
+    /// Edit cluster — undo, redo, import menu — floats over the 2D canvas
+    /// just below the title bar. Removed from the header VStack so it no
+    /// longer occupies a permanent 44pt row when the user isn't actively
+    /// editing.
     @ViewBuilder
-    private var arAccuracyBanner: some View {
-        let hasAREdges = viewModel.drawingData.edges.contains { $0.accuracyPercent != nil }
-        let allVerified = AccuracyModel.allEdgesVerified(viewModel.drawingData)
-        let hasAnyARSource = viewModel.drawingData.edges.contains { $0.dimensionSource == .ar }
+    private var editCluster2D: some View {
+        HStack(spacing: 0) {
+            Button { viewModel.undo() } label: {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
+                    .foregroundColor(viewModel.canUndo ? Color.white : OPSStyle.Colors.tertiaryText)
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            }
+            .disabled(!viewModel.canUndo)
 
-        if hasAREdges {
+            Divider()
+                .frame(width: 1, height: 24)
+                .overlay(OPSStyle.Colors.cardBorder.opacity(0.4))
+
+            Button { viewModel.redo() } label: {
+                Image(systemName: "arrow.uturn.forward")
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
+                    .foregroundColor(viewModel.canRedo ? Color.white : OPSStyle.Colors.tertiaryText)
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            }
+            .disabled(!viewModel.canRedo)
+
+            Divider()
+                .frame(width: 1, height: 24)
+                .overlay(OPSStyle.Colors.cardBorder.opacity(0.4))
+
+            Menu {
+                Button {
+                    if viewModel.drawingData.allVertices.count > 0 {
+                        showingTemplateReplaceConfirm = true
+                    } else {
+                        showingTemplatePicker = true
+                    }
+                } label: {
+                    Label("From Template", systemImage: "square.grid.2x2")
+                }
+                Button { showingSketchCapture = true } label: {
+                    Label("Scan Paper Sketch", systemImage: "doc.text.viewfinder")
+                }
+                Button { showingARPerimeter = true } label: {
+                    Label("Walk Perimeter (AR)", systemImage: "camera.viewfinder")
+                }
+                Divider()
+                if viewModel.isLaserConnected {
+                    Label("Laser Connected", systemImage: "antenna.radiowaves.left.and.right")
+                } else {
+                    Button(action: {}) {
+                        Label("Connect Laser Meter", systemImage: "antenna.radiowaves.left.and.right")
+                    }
+                    .disabled(true)
+                }
+            } label: {
+                Image(systemName: "plus.circle")
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .fill(OPSStyle.Colors.cardBackground.opacity(0.96))
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
+        )
+    }
+
+    /// 3D screenshot button — single-button floating cluster matching the
+    /// 2D edit cluster's styling. Replaces the previous in-titleBar camera
+    /// button so the title bar layout stays identical across modes.
+    @ViewBuilder
+    private var screenshot3DButton: some View {
+        Button {
+            if let screenshot = scene3DController.captureScreenshot() {
+                screenshotImage = screenshot
+                showing3DScreenshotShare = true
+            }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        } label: {
+            Image(systemName: "camera.fill")
+                .font(.system(size: OPSStyle.Layout.IconSize.md))
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .fill(OPSStyle.Colors.cardBackground.opacity(0.96))
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
+        )
+    }
+
+    /// Vertical offset from the BOTTOM of the title pill to where canvas
+    /// overlays (edit cluster, live-dim pill) anchor. The caller adds this
+    /// to `floatingHeaderTopPadding` so overlays stay aligned across the
+    /// Dynamic Island / notch / no-cutout devices alike. Matches the title
+    /// bar's intrinsic height: top pad + touch-target + bottom pad + small
+    /// gap between bar and overlay.
+    private var headerOverlayBelowTitleOffset: CGFloat {
+        OPSStyle.Layout.spacing2            // pill vertical pad (top)
+            + OPSStyle.Layout.touchTargetMin
+            + OPSStyle.Layout.spacing2      // pill vertical pad (bottom)
+            + OPSStyle.Layout.spacing2      // gap to overlay
+    }
+
+    // MARK: - Combined metrics + AR row
+
+    /// Renders metrics and AR banner on a single horizontal row when both
+    /// apply, or just one of them when the other is absent. Replaces the
+    /// previous two stacked rows so the floating header is shorter.
+    @ViewBuilder
+    private var metricsAndARRow: some View {
+        let showMetrics = viewModel.isClosed && viewModel.totalArea != nil
+        let arState = arBannerState
+        let showAR = arState != .none
+
+        if showMetrics || showAR {
+            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
+                if showMetrics, let area = viewModel.totalArea {
+                    metricsContent(area: area)
+                }
+                if showAR {
+                    arBannerContent(state: arState)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+        }
+    }
+
+    // MARK: - Metrics + AR content (compact, single-row)
+
+    /// Pill-shaped metrics content (sqft + lin ft). Sized to its intrinsic
+    /// width; the parent decides whether to share a row with the AR banner.
+    @ViewBuilder
+    private func metricsContent(area: Double) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing3) {
+            Label(DimensionEngine.formatArea(area, system: viewModel.drawingData.config.measurementSystem),
+                  systemImage: "square.dashed")
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(Color.white)
+                .lineLimit(1)
+            if let perimeter = viewModel.totalPerimeter {
+                Label(DimensionEngine.format(perimeter, system: viewModel.drawingData.config.measurementSystem),
+                      systemImage: "ruler")
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .background(OPSStyle.Colors.cardBackground.opacity(0.96))
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .shadow(color: Color.black.opacity(0.2), radius: 6, y: 2)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    /// State of the AR-derived dimensions banner.
+    private enum ARBannerState {
+        case none
+        case warning   // AR estimate; refine for material ordering
+        case verified  // All edges verified after AR
+    }
+
+    private var arBannerState: ARBannerState {
+        let hasAREdges = viewModel.drawingData.edges.contains { $0.accuracyPercent != nil }
+        if hasAREdges { return .warning }
+        let hasAnyARSource = viewModel.drawingData.edges.contains { $0.dimensionSource == .ar }
+        let allVerified = AccuracyModel.allEdgesVerified(viewModel.drawingData)
+        if hasAnyARSource && allVerified && !hideVerifiedBanner { return .verified }
+        return .none
+    }
+
+    /// AR banner content with no outer padding/background of its own beyond
+    /// what the row provides. Tinted by state.
+    @ViewBuilder
+    private func arBannerContent(state: ARBannerState) -> some View {
+        switch state {
+        case .none:
+            EmptyView()
+        case .warning:
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                Text("AR Estimate — refine with tape or laser for material ordering")
+                Text("AR Estimate — refine with tape or laser")
                     .font(OPSStyle.Typography.smallCaption)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
             }
             .foregroundColor(OPSStyle.Colors.warningStatus)
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(OPSStyle.Colors.warningStatus.opacity(0.15))
-        } else if hasAnyARSource && allVerified && !hideVerifiedBanner {
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+        case .verified:
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                 Text("All dimensions verified")
                     .font(OPSStyle.Typography.smallCaption)
+                    .lineLimit(1)
             }
             .foregroundColor(OPSStyle.Colors.successStatus)
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(OPSStyle.Colors.successStatus.opacity(0.1))
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
             .onAppear {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                     withAnimation { hideVerifiedBanner = true }

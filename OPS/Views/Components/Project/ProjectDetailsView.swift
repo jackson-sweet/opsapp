@@ -757,7 +757,15 @@ struct ProjectDetailsView: View {
             companyId: companyId,
             userId: userId,
             onDesignCreated: { design in
-                deckDesignToOpen = design
+                // Bug 1 fix: dismiss the picker sheet BEFORE presenting the
+                // fullScreenCover. iOS cannot present two modals simultaneously;
+                // setting deckDesignToOpen while the sheet is still visible
+                // caused DeckBuilderView to silently not appear. Close the
+                // picker first, then open the builder on the next run-loop turn.
+                showingDeckCreationPicker = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    deckDesignToOpen = design
+                }
             }
         )
         .presentationDetents([.medium])

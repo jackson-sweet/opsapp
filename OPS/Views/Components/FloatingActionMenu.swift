@@ -96,7 +96,6 @@ struct FloatingActionMenu: View {
     @State private var showingCreateClient = false
     @State private var showingCreateTaskType = false
     @State private var showingCreateTask = false
-    @State private var showingCreateInventoryItem = false
     @State private var showingCreateExpense = false
     @State private var showingCreateEstimate = false
     @State private var showingCreateInvoice = false
@@ -104,6 +103,24 @@ struct FloatingActionMenu: View {
     @State private var showingPersonalEventSheet = false
     @State private var showingTimeOffSheet = false
     @State private var showingLogActivity = false
+
+    // Catalog FAB state — adapts based on selected segment in CatalogView. The
+    // segment selection lives in @AppStorage so the FAB and CatalogView share
+    // a single source of truth without an explicit parameter pipeline.
+    @AppStorage("catalog.selectedSegment") private var catalogSelectedSegmentRaw: String = CatalogSegment.stock.rawValue
+
+    // BOOKS FAB state — adapts MONEY group ordering based on selected segment in
+    // BooksTabView. Mirrors the catalog pattern above.
+    @AppStorage("books.selectedSegment") private var booksSelectedSegmentRaw: String = "PIPELINE"
+    @State private var showingAddLead = false
+
+    @State private var showingCatalogAddVariant = false
+    @State private var showingCatalogAddFamily = false
+    @State private var showingCatalogImport = false
+    @State private var showingProductKindPicker = false
+    @State private var showingNewServiceSheet = false
+    @State private var showingNewGoodSheet = false
+    @State private var showingNewBundleSheet = false
 
     // View models — lazily created only when their sheets open
     @StateObject private var expenseViewModel = ExpenseViewModel()
@@ -118,9 +135,9 @@ struct FloatingActionMenu: View {
 
     // Parameters
     let currentTab: Int
-    let hasInventoryAccess: Bool
+    let hasCatalogAccess: Bool
     var isScheduleTab: Bool = false
-    var isInventoryTab: Bool = false
+    var isCatalogTab: Bool = false
 
     private let dragRowHeight: CGFloat = 64
 
@@ -202,7 +219,7 @@ struct FloatingActionMenu: View {
         guard dataController.currentUser != nil else { return false }
         if appState.isInventorySelectionMode { return false }
         if isScheduleTab { return true }
-        if isInventoryTab && hasInventoryAccess { return true }
+        if isCatalogTab && hasCatalogAccess { return true }
         return permissionStore.can("projects.create")
             || permissionStore.can("tasks.create")
             || permissionStore.can("clients.create")
@@ -213,6 +230,29 @@ struct FloatingActionMenu: View {
 
     private var isFABDisabledInTutorial: Bool {
         tutorialMode && (tutorialPhase == .fabTap || showCreateMenu)
+    }
+
+    // MARK: - MONEY group ordering
+
+    /// Promotes the active BOOKS segment's primary action to position 0.
+    /// `new-expense` lives in the EXPENSES group, not MONEY, so when EXPENSES
+    /// is the active segment the MONEY group falls back to its natural order.
+    private func orderedMoneyItems(rawItems: [FABMenuItem]) -> [FABMenuItem] {
+        let primaryId: String
+        switch booksSelectedSegmentRaw {
+        case "PIPELINE":  primaryId = "add-lead"
+        case "ESTIMATES": primaryId = "new-estimate"
+        case "INVOICES":  primaryId = "new-invoice"
+        case "EXPENSES":  primaryId = "new-expense"
+        default:          primaryId = "new-estimate"
+        }
+        if let idx = rawItems.firstIndex(where: { $0.id == primaryId }), idx > 0 {
+            var reordered = rawItems
+            let primary = reordered.remove(at: idx)
+            reordered.insert(primary, at: 0)
+            return reordered
+        }
+        return rawItems
     }
 
     // MARK: - Menu Groups
@@ -305,10 +345,23 @@ struct FloatingActionMenu: View {
             FABMenuGroup(id: "work", title: "WORK", items: workItems),
         ]
 
-        // Pipeline money items — only shown when the pipeline feature flag is enabled
+        // Pipeline money items — only shown when the pipeline feature flag is enabled.
+        // Order is segment-aware: the active BOOKS segment's primary action is
+        // promoted to position 0 via `orderedMoneyItems`.
         if permissionStore.isFeatureEnabled("pipeline") {
             groups.append(
-                FABMenuGroup(id: "money", title: "MONEY", items: [
+                FABMenuGroup(id: "money", title: "MONEY", items: orderedMoneyItems(rawItems: [
+                    FABMenuItem(
+                        id: "add-lead",
+                        icon: "person.badge.plus",
+                        label: "Add Lead",
+                        permission: "pipeline.manage",
+                        disabledInTutorial: true,
+                        action: {
+                            showCreateMenu = false
+                            showingAddLead = true
+                        }
+                    ),
                     FABMenuItem(
                         id: "new-estimate",
                         icon: OPSStyle.Icons.estimateDoc,
@@ -345,7 +398,7 @@ struct FloatingActionMenu: View {
                             showingRecordPayment = true
                         }
                     ),
-                ])
+                ]))
             )
         }
 
@@ -369,23 +422,88 @@ struct FloatingActionMenu: View {
             ])
         )
 
-        // Inventory — shown when user has inventory access
-        if hasInventoryAccess {
-            groups.append(
-                FABMenuGroup(id: "inventory", title: "INVENTORY", items: [
+        // Catalog — shown when user has catalog access. Actions vary by which
+        // CatalogView segment is currently selected; when off-tab, surface a
+        // single shortcut so users can jump straight to add-variant.
+        if hasCatalogAccess {
+            let segment = CatalogSegment(rawValue: catalogSelectedSegmentRaw) ?? .stock
+            var catalogItems: [FABMenuItem] = []
+            if isCatalogTab && segment == .stock {
+                catalogItems = [
                     FABMenuItem(
-                        id: "new-inventory-item",
-                        icon: "shippingbox.fill",
-                        label: "New Inventory Item",
-                        permission: "inventory.manage",
+                        id: "catalog-add-variant",
+                        icon: "plus.app",
+                        label: "Add Variant",
+                        permission: "catalog.manage",
                         disabledInTutorial: true,
                         action: {
                             showCreateMenu = false
-                            showingCreateInventoryItem = true
+                            showingCatalogAddVariant = true
                         }
                     ),
-                ])
-            )
+                    FABMenuItem(
+                        id: "catalog-add-family",
+                        icon: "square.stack.3d.up",
+                        label: "Add Family",
+                        permission: "catalog.manage",
+                        disabledInTutorial: true,
+                        action: {
+                            showCreateMenu = false
+                            showingCatalogAddFamily = true
+                        }
+                    ),
+                    FABMenuItem(
+                        id: "catalog-import",
+                        icon: "square.and.arrow.down",
+                        label: "Import",
+                        permission: "catalog.import",
+                        disabledInTutorial: true,
+                        action: {
+                            showCreateMenu = false
+                            showingCatalogImport = true
+                        }
+                    ),
+                ]
+            } else if isCatalogTab && segment == .products {
+                catalogItems = [
+                    FABMenuItem(
+                        id: "catalog-quick-add-product",
+                        icon: "plus",
+                        label: "Add Product",
+                        permission: "catalog.products.manage",
+                        disabledInTutorial: true,
+                        action: {
+                            showCreateMenu = false
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            showingProductKindPicker = true
+                        }
+                    ),
+                    // "Full Setup" was a fake button that opened an alert
+                    // pointing the user to the web app. Removed — the redesigned
+                    // QuickAddProductSheet now surfaces that hint as a footer
+                    // note inside the sheet, which is honest about the
+                    // limitation without exposing a tappable dead-end.
+                ]
+            } else {
+                // Catalog access but not on the Catalog tab — surface a single
+                // shortcut so the user can still kick off an add-variant flow.
+                catalogItems = [
+                    FABMenuItem(
+                        id: "catalog-add-variant",
+                        icon: "plus.app",
+                        label: "Add Variant",
+                        permission: "catalog.manage",
+                        disabledInTutorial: true,
+                        action: {
+                            showCreateMenu = false
+                            showingCatalogAddVariant = true
+                        }
+                    ),
+                ]
+            }
+            if !catalogItems.isEmpty {
+                groups.append(FABMenuGroup(id: "catalog", title: "CATALOG", items: catalogItems))
+            }
         }
 
         groups.append(
@@ -651,14 +769,60 @@ struct FloatingActionMenu: View {
         .sheet(isPresented: $showingCreateTask) {
             TaskFormSheet(mode: .create) { _ in }
         }
-        .sheet(isPresented: $showingCreateInventoryItem) {
-            InventoryFormSheet(item: nil)
+        .sheet(isPresented: $showingCatalogAddVariant) {
+            VariantFormSheet()
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingCatalogAddFamily) {
+            AddFamilySheet()
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingCatalogImport) {
+            CatalogImportSheet()
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingProductKindPicker) {
+            ProductKindPickerSheet { picked in
+                // Chained sheets — flip the next flag after the picker
+                // dismiss settles so SwiftUI doesn't drop the second
+                // presentation. The 0.25s delay matches the system's
+                // presentation transition tail.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    switch picked {
+                    case .service:  showingNewServiceSheet = true
+                    case .material: showingNewGoodSheet = true
+                    case .bundle:   showingNewBundleSheet = true
+                    case .fee:      break // not offered in v1 picker
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showingNewServiceSheet) {
+            NewServiceSheet()
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingNewGoodSheet) {
+            NewGoodSheet()
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingNewBundleSheet) {
+            NewBundleSheet()
+                .environmentObject(dataController)
         }
         .sheet(isPresented: $showingCreateExpense) {
             ExpenseFormSheet(viewModel: expenseViewModel)
         }
         .sheet(isPresented: $showingCreateEstimate) {
             EstimateFormSheet(viewModel: estimateViewModel)
+        }
+        .sheet(isPresented: $showingAddLead) {
+            AddLeadSheet { _ in
+                NotificationCenter.default.post(
+                    name: Notification.Name("LeadCreatedSuccess"),
+                    object: nil
+                )
+            }
+            .environmentObject(dataController)
         }
         .sheet(isPresented: $showingCustomizeSheet) {
             FABCustomizeSheet(groups: allPermittedItems, hiddenItemsData: $hiddenItemsData)
@@ -1241,6 +1405,16 @@ struct FloatingActionMenu: View {
         .padding(.vertical, 4)
     }
 }
+
+// MARK: - Catalog FAB Stubs
+//
+// Placeholder sheets wired to the catalog FAB actions added in Phase 5
+// Task 44. All have been replaced with real flows:
+//
+//   - CatalogAddVariantStub        → REPLACED in Phase 6 by `VariantFormSheet`
+//   - CatalogAddFamilyStub         → REPLACED in Phase 6 by `AddFamilySheet`
+//   - CatalogImportStub            → REPLACED by `CatalogImportSheet` (Phase 8)
+//   - CatalogQuickAddProductStub   → REPLACED in Phase 7 by `QuickAddProductSheet`
 
 // MARK: - FAB Customize Sheet
 

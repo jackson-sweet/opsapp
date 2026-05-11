@@ -22,6 +22,7 @@ struct ExpenseFormSheet: View {
     @State private var merchantName = ""
     @State private var amount = ""
     @State private var taxAmount = ""
+    @State private var selectedCurrency: String = Self.defaultCurrencyCode()
     @State private var expenseDate = Date()
     @State private var selectedCategoryId: String? = nil
     @State private var paymentMethod: ExpensePaymentMethod = .personalCard
@@ -53,6 +54,38 @@ struct ExpenseFormSheet: View {
     // Custom picker sheet state
     @State private var showCategoryPicker = false
     @State private var showPaymentPicker = false
+    @State private var showCurrencyPicker = false
+
+    /// Resolves a sane default currency for new expenses: the user's locale
+    /// first, falling back to USD. Existing expenses override this in
+    /// `onAppear` from the persisted `currency` field.
+    private static func defaultCurrencyCode() -> String {
+        if let code = Locale.current.currency?.identifier, !code.isEmpty {
+            return code.uppercased()
+        }
+        return "USD"
+    }
+
+    /// Returns true when the company is on per-job review and so each
+    /// expense must be allocated to exactly one project.
+    private var isPerJobMode: Bool {
+        viewModel.settings?.reviewFrequency == "per_job"
+    }
+
+    /// Disable adding more allocations when per-job and one already exists.
+    private var canAddMoreAllocations: Bool {
+        !isPerJobMode || projectAllocations.isEmpty
+    }
+
+    /// Currency symbol for the selected ISO code (e.g. "$" for USD, "CA$"
+    /// for CAD). Falls back to the ISO code itself if Foundation can't
+    /// produce one.
+    private var currencySymbol: String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = selectedCurrency
+        return formatter.currencySymbol ?? selectedCurrency
+    }
 
     // Keyboard state
     @FocusState private var focusedField: ExpenseField?
@@ -199,6 +232,15 @@ struct ExpenseFormSheet: View {
                     }
                 )
             }
+            .sheet(isPresented: $showCurrencyPicker) {
+                ExpenseCurrencyPickerSheet(
+                    selected: selectedCurrency,
+                    onSelect: { code in
+                        selectedCurrency = code
+                        showCurrencyPicker = false
+                    }
+                )
+            }
             .confirmationDialog("ADD RECEIPT", isPresented: $showReceiptSourceSheet, titleVisibility: .visible) {
                 Button("Scan Receipt") { showDocumentScanner = true }
                 Button("Choose from Library") { showImagePicker = true }
@@ -215,6 +257,9 @@ struct ExpenseFormSheet: View {
                     merchantName = exp.merchantName ?? ""
                     amount = exp.amount > 0 ? String(format: "%.2f", exp.amount) : ""
                     taxAmount = exp.taxAmount.map { String(format: "%.2f", $0) } ?? ""
+                    if let currency = exp.currency, !currency.isEmpty {
+                        selectedCurrency = currency.uppercased()
+                    }
                     selectedCategoryId = exp.categoryId
                     paymentMethod = ExpensePaymentMethod(rawValue: exp.paymentMethod ?? "") ?? .personalCard
                     expenseDescription = exp.description ?? ""
@@ -273,19 +318,23 @@ struct ExpenseFormSheet: View {
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 }
 
-                // Thumbnail with retake
+                // Receipt preview — full receipt visible (no crop), capped height so it
+                // doesn't dominate the form. Receipts are typically tall (1:3+ aspect),
+                // so we use scaledToFit and cap at 360pt to keep the rest of the
+                // form reachable while showing every line item.
                 ZStack(alignment: .bottomTrailing) {
                     Image(uiImage: image)
                         .resizable()
-                        .scaledToFill()
+                        .scaledToFit()
                         .frame(maxWidth: .infinity)
-                        .frame(height: 160)
-                        .clipped()
+                        .frame(maxHeight: 360)
+                        .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
+                        .contentShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
 
                     if ocrUsed {
                         Text("AUTO-FILLED FROM RECEIPT")
@@ -419,7 +468,7 @@ struct ExpenseFormSheet: View {
             // Amount
             detailRow(label: "AMOUNT") {
                 HStack(spacing: 4) {
-                    Text("$")
+                    Text(currencySymbol)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     TextField("", text: $amount)
@@ -439,10 +488,29 @@ struct ExpenseFormSheet: View {
 
             dividerLine
 
+            // Currency
+            detailRow(label: "CURRENCY") {
+                Button {
+                    showCurrencyPicker = true
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
+                        Text(selectedCurrency)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+
+            dividerLine
+
             // Tax
             detailRow(label: "TAX") {
                 HStack(spacing: 4) {
-                    Text("$")
+                    Text(currencySymbol)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     TextField("", text: $taxAmount)
@@ -572,26 +640,40 @@ struct ExpenseFormSheet: View {
                         .frame(height: 1)
                 }
 
-                Button {
-                    projectAllocations.append((projectId: "", percentage: "100"))
-                    // Immediately open picker for the new row
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        projectPickerIndex = projectAllocations.count - 1
-                        showProjectPicker = true
+                if canAddMoreAllocations {
+                    Button {
+                        projectAllocations.append((projectId: "", percentage: "100"))
+                        // Immediately open picker for the new row
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            projectPickerIndex = projectAllocations.count - 1
+                            showProjectPicker = true
+                        }
+                    } label: {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            Image(systemName: OPSStyle.Icons.plus)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            Text("ADD PROJECT")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            Spacer()
+                        }
+                        .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
                     }
-                } label: {
-                    HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Image(systemName: OPSStyle.Icons.plus)
-                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        Text("ADD PROJECT")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        Spacer()
+                    .buttonStyle(PlainButtonStyle())
+                } else {
+                    // per_job mode — exactly one project per expense.
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
+                        Image(systemName: OPSStyle.Icons.exclamationmarkTriangleFill)
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        Text("PER-JOB COMPANIES ALLOW ONE PROJECT PER EXPENSE")
+                            .font(OPSStyle.Typography.smallCaption)
                     }
-                    .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
                 }
-                .buttonStyle(PlainButtonStyle())
             }
         }
     }
@@ -687,24 +769,25 @@ struct ExpenseFormSheet: View {
     }
 
     private var stickyFooter: some View {
-        VStack(spacing: OPSStyle.Layout.spacing2) {
-            if !validationErrors.isEmpty {
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                    ForEach(validationErrors, id: \.self) { error in
-                        HStack(spacing: OPSStyle.Layout.spacing1) {
-                            Image(systemName: OPSStyle.Icons.exclamationmarkCircleFill)
-                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                .foregroundColor(OPSStyle.Colors.errorStatus)
-                            Text(error)
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.errorStatus)
+        OPSFloatingButtonBar {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                if !validationErrors.isEmpty {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                        ForEach(validationErrors, id: \.self) { error in
+                            HStack(spacing: OPSStyle.Layout.spacing1) {
+                                Image(systemName: OPSStyle.Icons.exclamationmarkCircleFill)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                    .foregroundColor(OPSStyle.Colors.errorStatus)
+                                Text(error)
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.errorStatus)
+                            }
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-            }
 
-            HStack(spacing: OPSStyle.Layout.spacing3) {
+                HStack(spacing: OPSStyle.Layout.spacing3) {
                 if isSaving {
                     ProgressView()
                         .tint(OPSStyle.Colors.primaryAccent)
@@ -817,10 +900,9 @@ struct ExpenseFormSheet: View {
                         .opsPrimaryButtonStyle()
                     }
                 }
+                }
             }
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-        .padding(.vertical, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Approval Banner
@@ -958,6 +1040,22 @@ struct ExpenseFormSheet: View {
             errors.append("Date cannot be in the future")
         }
 
+        // Allocation invariants (per bible 09: "Percentages must sum to 100% if
+        // any allocations exist").
+        let resolvedAllocations = projectAllocations.filter { !$0.projectId.isEmpty }
+        if !resolvedAllocations.isEmpty {
+            let total = resolvedAllocations.compactMap { Double($0.percentage) }.reduce(0, +)
+            if abs(total - 100.0) > 0.01 {
+                errors.append("Project allocations must sum to 100% (currently \(Int(total))%)")
+            }
+        }
+
+        // per_job constraint: companies on per-job review allow exactly one
+        // project per expense.
+        if isPerJobMode && resolvedAllocations.count > 1 {
+            errors.append("Per-job companies allow one project per expense")
+        }
+
         validationErrors = errors
         return errors.isEmpty
     }
@@ -989,6 +1087,7 @@ struct ExpenseFormSheet: View {
                 description: descriptionValue,
                 amount: amountValue,
                 taxAmount: taxValue,
+                currency: selectedCurrency,
                 expenseDate: dateString,
                 paymentMethod: paymentMethod.rawValue,
                 status: wasSubmitted ? ExpenseStatus.draft.rawValue : nil
@@ -1047,6 +1146,7 @@ struct ExpenseFormSheet: View {
                 description: descriptionValue,
                 amount: amountValue,
                 taxAmount: taxValue,
+                currency: selectedCurrency,
                 expenseDate: dateString,
                 paymentMethod: paymentMethod.rawValue,
                 receiptImageUrl: nil,
@@ -1460,5 +1560,140 @@ private struct DocumentScannerView: UIViewControllerRepresentable {
         func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
             parent.presentationMode.wrappedValue.dismiss()
         }
+    }
+}
+
+// MARK: - Currency Picker Sheet
+
+private struct ExpenseCurrencyPickerSheet: View {
+    let selected: String
+    let onSelect: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText = ""
+
+    /// A short curated head followed by the full ISO 4217 list. Trades-first:
+    /// the currencies most OPS field crews encounter (USD/CAD primarily) sit
+    /// at the top so they're tappable without a search.
+    private static let prioritized: [String] = ["USD", "CAD", "MXN", "EUR", "GBP", "AUD"]
+
+    private var allCodes: [String] {
+        // Foundation's known ISO codes, deduped + sorted, with prioritized
+        // entries lifted to the top.
+        let known = Set(Locale.commonISOCurrencyCodes.map { $0.uppercased() })
+        let priority = Self.prioritized.filter { known.contains($0) }
+        let rest = known.subtracting(priority).sorted()
+        return priority + rest
+    }
+
+    private var filtered: [String] {
+        let q = searchText.trimmingCharacters(in: .whitespaces).uppercased()
+        guard !q.isEmpty else { return allCodes }
+        return allCodes.filter { code in
+            code.contains(q) || (currencyName(for: code) ?? "").uppercased().contains(q)
+        }
+    }
+
+    private func currencyName(for code: String) -> String? {
+        Locale.current.localizedString(forCurrencyCode: code)
+    }
+
+    private func currencySymbol(for code: String) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = code
+        return formatter.currencySymbol ?? code
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                OPSStyle.Colors.background.ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        TextField("", text: $searchText)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .autocorrectionDisabled(true)
+                            .textInputAutocapitalization(.characters)
+                            .placeholder(when: searchText.isEmpty) {
+                                Text("Search currency...")
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.placeholderText)
+                            }
+                    }
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .background(OPSStyle.Colors.cardBackgroundDark)
+                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.top, OPSStyle.Layout.spacing3)
+
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(filtered, id: \.self) { code in
+                                Button { onSelect(code) } label: {
+                                    HStack(spacing: OPSStyle.Layout.spacing3) {
+                                        Text(currencySymbol(for: code))
+                                            .font(OPSStyle.Typography.body)
+                                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                                            .frame(width: 36, alignment: .leading)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(code)
+                                                .font(OPSStyle.Typography.bodyBold)
+                                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                            if let name = currencyName(for: code) {
+                                                Text(name)
+                                                    .font(OPSStyle.Typography.smallCaption)
+                                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                                    .lineLimit(1)
+                                            }
+                                        }
+                                        Spacer()
+                                        if selected.uppercased() == code {
+                                            Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                                                .font(.system(size: OPSStyle.Layout.IconSize.md))
+                                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                        }
+                                    }
+                                    .padding(.vertical, 14)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+
+                                Rectangle()
+                                    .fill(OPSStyle.Colors.cardBorder)
+                                    .frame(height: 1)
+                                    .padding(.leading, OPSStyle.Layout.spacing3_5)
+                            }
+                        }
+                        .padding(.top, OPSStyle.Layout.spacing2)
+                    }
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("CANCEL") { dismiss() }
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                ToolbarItem(placement: .principal) {
+                    Text("CURRENCY")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }

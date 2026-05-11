@@ -9,6 +9,9 @@ struct DeckLevel: Identifiable, Codable, Equatable {
     var vertices: [DeckVertex] = []
     var edges: [DeckEdge] = []
     var footprint: DeckFootprint = DeckFootprint()
+    /// Per-surface material/label store for THIS level. See
+    /// `DeckDrawingData.surfaces` for the data-model rationale (DECK-NEW-1).
+    var surfaces: [DeckSurface] = []
     var elevation: Double?             // uniform height off ground in feet
     var perVertexElevation: Bool = false
     var displayColor: LevelColor = .blue
@@ -110,6 +113,14 @@ struct DeckLevel: Identifiable, Codable, Equatable {
             ordered.reverse()
         }
         return ordered
+    }
+
+    /// Every closed face in this level's edge graph. Replaces the all-or-nothing
+    /// `orderedPositions` polygon when the user draws multiple loops or extra
+    /// detail lines beyond the perimeter (DECK-NEW-1). Returns empty when no
+    /// loop has been closed yet.
+    var detectedSurfaces: [DetectedSurface] {
+        SurfaceDetector.detect(vertices: vertices, edges: edges)
     }
 
     /// Effective elevation for a vertex (per-vertex if enabled, otherwise uniform)

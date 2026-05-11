@@ -50,35 +50,32 @@ struct DeckToolbar: View {
 
     private var multiSelectHeader: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            // Prominent mode indicator + live count — user always knows they're in multi-select
+            let total = viewModel.selection.selectedEdgeIds.count
+                      + viewModel.selection.selectedVertexIds.count
+                      + viewModel.selection.selectedSurfaceIds.count
+
+            // Count pill — primary mode indicator.
             HStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                Text("MULTI-SELECT")
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                Text("\(total) SELECTED")
                     .font(OPSStyle.Typography.miniLabel)
+                    .foregroundColor(total > 0 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
             }
-            .foregroundColor(OPSStyle.Colors.primaryAccent)
             .padding(.horizontal, OPSStyle.Layout.spacing2)
             .padding(.vertical, OPSStyle.Layout.spacing1)
-            .background(OPSStyle.Colors.primaryAccent.opacity(0.12))
+            .background(OPSStyle.Colors.primaryAccent.opacity(total > 0 ? 0.12 : 0.06))
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(OPSStyle.Colors.primaryAccent.opacity(total > 0 ? 0.4 : 0.2), lineWidth: OPSStyle.Layout.Border.standard)
+            )
             .cornerRadius(4)
 
-            let total = viewModel.selection.selectedEdgeIds.count
-                      + viewModel.selection.selectedVertexIds.count
-                      + (viewModel.selection.selectedFootprint ? 1 : 0)
-
-            // Count pill — sits beside the mode badge so scanning the toolbar shows both state + count
-            Text("\(total) SELECTED")
-                .font(OPSStyle.Typography.miniLabel)
-                .foregroundColor(total > 0 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
-                .padding(.horizontal, OPSStyle.Layout.spacing2)
-                .padding(.vertical, OPSStyle.Layout.spacing1)
-                .background(OPSStyle.Colors.cardBackground.opacity(total > 0 ? 1 : 0.4))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
-                )
-                .cornerRadius(4)
+            // Marquee / Lasso shape toggle — DECK-NEW-4. Picks the drag
+            // shape used when the user drags from empty canvas while in
+            // select mode. Compact 2-segment switch.
+            marqueeShapeToggle
 
             Spacer()
 
@@ -137,8 +134,9 @@ struct DeckToolbar: View {
 
         // Material only makes sense when at least one edge or surface is selected
         let canAssignMaterial = edgeCount > 0 || surfaceSelected
-        // Properties sheet supports edges + vertices + surface
-        let canOpenProperties = edgeCount > 0 || vertexCount > 0 || surfaceSelected
+        // Move-to-level applies only to surfaces in a multi-level design.
+        let canMoveToLevel = viewModel.isMultiLevel && !viewModel.selection.selectedSurfaceIds.isEmpty
+        _ = vertexCount  // silence unused-warning while we keep the readable line above
 
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
@@ -154,10 +152,8 @@ struct DeckToolbar: View {
                     }
                 }
 
-                if canOpenProperties {
-                    actionButton(icon: "info.circle", label: "Properties") {
-                        viewModel.showingPropertySheet = true
-                    }
+                if canMoveToLevel {
+                    moveToLevelMenu
                 }
 
                 Spacer()
@@ -170,6 +166,72 @@ struct DeckToolbar: View {
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2)
+        }
+    }
+
+    /// Marquee / Lasso shape toggle for tap-select mode (DECK-NEW-4).
+    @ViewBuilder
+    private var marqueeShapeToggle: some View {
+        HStack(spacing: 0) {
+            Button {
+                viewModel.marqueeShape = .rect
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Image(systemName: "rectangle.dashed")
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                    .foregroundColor(viewModel.marqueeShape == .rect ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .frame(height: 28)
+                    .background(viewModel.marqueeShape == .rect ? OPSStyle.Colors.primaryAccent.opacity(0.18) : Color.clear)
+            }
+            .accessibilityLabel("Marquee select")
+
+            Button {
+                viewModel.marqueeShape = .lasso
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Image(systemName: "lasso")
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                    .foregroundColor(viewModel.marqueeShape == .lasso ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .frame(height: 28)
+                    .background(viewModel.marqueeShape == .lasso ? OPSStyle.Colors.primaryAccent.opacity(0.18) : Color.clear)
+            }
+            .accessibilityLabel("Lasso select")
+        }
+        .background(OPSStyle.Colors.cardBackground.opacity(0.6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .cornerRadius(4)
+    }
+
+    /// Move-to-level menu — assigns every selected surface (and only the
+    /// surfaces; geometry stays in place) to a different level. DECK-NEW-4.
+    @ViewBuilder
+    private var moveToLevelMenu: some View {
+        Menu {
+            ForEach(Array(viewModel.drawingData.levels.enumerated()), id: \.element.id) { idx, level in
+                Button {
+                    viewModel.moveSelectedSurfacesToLevel(at: idx)
+                } label: {
+                    Label(level.name, systemImage: "square.stack.3d.up")
+                }
+            }
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: "square.stack.3d.up")
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
+                    .foregroundColor(.white)
+                Text("Move")
+                    .font(OPSStyle.Typography.miniLabel)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing1)
+            .frame(minWidth: OPSStyle.Layout.touchTargetStandard, minHeight: OPSStyle.Layout.touchTargetStandard)
         }
     }
 
@@ -188,10 +250,13 @@ struct DeckToolbar: View {
                         .background(OPSStyle.Colors.secondaryText.opacity(0.12))
                         .cornerRadius(4)
                 } else if canEdit {
+                    // DECK-NEW-4 — collapsed Select + Lasso + Multi into a
+                    // single Select tool. Tap = toggle individual; drag from
+                    // empty = marquee or lasso (sub-toolbar toggle). Saves
+                    // ~120pt of toolbar width and keeps select-mode entry
+                    // unambiguous.
                     toolButton(icon: "pencil.and.outline", label: "Draw", tool: .draw)
-                    toolButton(icon: "rectangle.dashed", label: "Select", tool: .select)
-                    toolButton(icon: "lasso", label: "Lasso", tool: .lasso)
-                    toolButton(icon: "checkmark.circle", label: "Multi", tool: .tapSelect)
+                    toolButton(icon: "checkmark.circle", label: "Select", tool: .tapSelect)
 
                     toolDivider
 
@@ -282,10 +347,6 @@ struct DeckToolbar: View {
                 viewModel.showingElevationInput = true
             }
 
-            actionButton(icon: "info.circle", label: "Properties") {
-                viewModel.showingPropertySheet = true
-            }
-
             Spacer()
 
             actionButton(icon: "trash", label: "Delete", tint: OPSStyle.Colors.errorStatus) {
@@ -321,10 +382,6 @@ struct DeckToolbar: View {
                     viewModel.showingMaterialPicker = true
                 }
 
-                actionButton(icon: "info.circle", label: "Properties") {
-                    viewModel.showingPropertySheet = true
-                }
-
                 Spacer()
 
                 actionButton(icon: "trash", label: "Delete", tint: OPSStyle.Colors.errorStatus) {
@@ -352,10 +409,6 @@ struct DeckToolbar: View {
 
             actionButton(icon: "arrow.up.and.down.circle", label: "Elevation") {
                 viewModel.showingElevationInput = true
-            }
-
-            actionButton(icon: "info.circle", label: "Properties") {
-                viewModel.showingPropertySheet = true
             }
 
             Spacer()

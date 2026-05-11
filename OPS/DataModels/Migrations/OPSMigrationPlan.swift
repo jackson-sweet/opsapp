@@ -20,25 +20,67 @@
 //  of. The `didMigrate` UUID backfill is kept as defense-in-depth in case a
 //  row somehow lands in V2 with an empty id.
 //
+//  V2 → V3 stage: drops the legacy `Inventory*` entities and registers the
+//  new `catalog_*` / `product_*` extension entities. The schema diff itself
+//  performs the destructive work (SwiftData removes records of entity types
+//  absent from the new schema), so `willMigrate` has nothing to do. We set
+//  `needs_full_catalog_sync` in `didMigrate` so InboundProcessor pulls a
+//  fresh full catalog on next launch.
+//
+//  V3 → V4 stage: lightweight additive — TaskTypeReminder + TaskReminder.
+//
+//  V4 → V5 stage: lightweight additive — CalendarMirrorMap for the iPhone
+//  Calendar Mirror feature. Originally landed as V3 on the calendar-mirror
+//  branch; renumbered to V5 during the catalog-variant-model merge.
+//
 
 import Foundation
 import SwiftData
 
 enum OPSMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [OPSSchemaV1.self, OPSSchemaV2.self, OPSSchemaV3.self]
+        [OPSSchemaV1.self, OPSSchemaV2.self, OPSSchemaV3.self, OPSSchemaV4.self, OPSSchemaV5.self]
     }
 
     static var stages: [MigrationStage] {
-        [migrateWizardStateIdV1toV2, addCalendarMirrorMapV2toV3]
+        [migrateWizardStateIdV1toV2, migrateInventoryToCatalogV2toV3, migrateAddTaskRemindersV3toV4, addCalendarMirrorMapV4toV5]
     }
 
-    /// V2 → V3: purely additive — `CalendarMirrorMap` is a brand-new model
+    /// V4 → V5: purely additive — `CalendarMirrorMap` is a brand-new model
     /// with no pre-existing rows to transform. SwiftData lightweight migration
     /// handles it.
-    static let addCalendarMirrorMapV2toV3 = MigrationStage.lightweight(
+    static let addCalendarMirrorMapV4toV5 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV4.self,
+        toVersion: OPSSchemaV5.self
+    )
+
+    /// V3 → V4 adds the TaskTypeReminder and TaskReminder entities plus inverse
+    /// `reminderTemplates` / `reminders` arrays on TaskType and ProjectTask.
+    /// Purely additive — no destructive transforms — so SwiftData lightweight
+    /// migration handles the schema diff transparently. We use `.lightweight`
+    /// to be explicit about the no-op nature of the V3 → V4 step.
+    static let migrateAddTaskRemindersV3toV4 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV3.self,
+        toVersion: OPSSchemaV4.self
+    )
+
+    /// V2 → V3 drops the legacy Inventory* entities and registers the new
+    /// catalog_* / product_* extension entities, then flags InboundProcessor
+    /// to pull a fresh full catalog sync on next launch.
+    static let migrateInventoryToCatalogV2toV3 = MigrationStage.custom(
         fromVersion: OPSSchemaV2.self,
-        toVersion: OPSSchemaV3.self
+        toVersion: OPSSchemaV3.self,
+        willMigrate: { _ in
+            // Intentionally empty. SwiftData drops entity types absent from the new
+            // schema during the schema transform itself; nothing for us to do here.
+            // The new catalog/product-extension entities will be empty until the
+            // next inbound sync runs.
+        },
+        didMigrate: { _ in
+            // Force a fresh full-sync flag so InboundProcessor pulls all
+            // catalog data on next launch.
+            UserDefaults.standard.set(true, forKey: "needs_full_catalog_sync")
+        }
     )
 
     /// Bridges the pre-`id` WizardState shape into the V2 schema by dropping

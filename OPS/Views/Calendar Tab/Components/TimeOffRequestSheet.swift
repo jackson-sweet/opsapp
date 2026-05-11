@@ -379,23 +379,18 @@ struct TimeOffRequestSheet: View {
         endDate: Date,
         eventId: String
     ) async {
-        struct UserIdRow: Codable { let id: String }
-
-        // Bug 8ef185af / 81470acd: schedulers receive the approval-side
-        // notification. Operators included because they're the foremen
-        // / crew leads who actually action the request in companies
-        // without an admin / office tier.
-        let schedulers = (try? await SupabaseService.shared.client
-            .from("users")
-            .select("id")
-            .eq("company_id", value: companyId)
-            .in("role", values: ["admin", "owner", "office", "operator"])
-            .execute()
-            .value as [UserIdRow]) ?? []
+        // Recipients = anyone with time_off.approve. Permission-gated, never
+        // role. Companies that want to delegate scheduling to operators or
+        // foremen grant the permission to that custom role or via per-user
+        // override.
+        let approverIds = (try? await RecipientLookupService.usersWithPermission(
+            companyId: companyId,
+            permission: "time_off.approve"
+        )) ?? []
 
         // Recipients exclude the requester AND the target — neither
         // should receive their own request as a "review this" entry.
-        let recipientIds = schedulers.map(\.id)
+        let recipientIds = approverIds
             .filter { $0 != requesterId && $0 != targetUserId }
 
         let dateFormatter = DateFormatter()

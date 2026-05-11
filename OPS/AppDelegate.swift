@@ -207,7 +207,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
     }
 
     /// Parse an `ops://<entity>/<id>` deep link and post the matching notification
-    /// that MainTabView observes. Supported entities: projects, clients, tasks, invoices, estimates.
+    /// that MainTabView observes. Supported entities: projects, clients, tasks, invoices, estimates,
+    /// catalog (catalog/orders surface).
     @discardableResult
     private func handleDeepLink(_ url: URL) -> Bool {
         let components = url.pathComponents // "/projects/abc" → ["/", "projects", "abc"]
@@ -227,6 +228,44 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         } else {
             print("[DEEP_LINK] Malformed deep link: \(url)")
             return false
+        }
+
+        // `catalog` deep links carry a sub-surface in `id` (e.g. "orders") and
+        // an optional `?tab=<sub-segment>` query string. Route them directly
+        // through MainTabView's notification observers — they don't need the
+        // DeepLinkCoordinator's PIN-gated stash because the catalog tab is
+        // always available to the signed-in user.
+        if entity == "catalog" {
+            let surface = id // expect "orders"
+            let tabValue = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?
+                .first(where: { $0.name == "tab" })?
+                .value
+            print("[DEEP_LINK] Catalog \(surface) tab=\(tabValue ?? "(none)")")
+            switch surface {
+            case "orders":
+                Task { @MainActor in
+                    NotificationCenter.default.post(name: Notification.Name("OpenCatalog"), object: nil)
+                    let segmentRaw: String = {
+                        switch tabValue?.lowercased() {
+                        case "draft": return "DRAFT"
+                        case "sent": return "SENT"
+                        default: return "SUGGESTED"
+                        }
+                    }()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("OpenCatalogOrders"),
+                            object: nil,
+                            userInfo: ["subSegment": segmentRaw]
+                        )
+                    }
+                }
+                return true
+            default:
+                print("[DEEP_LINK] Unknown catalog surface: \(surface)")
+                return false
+            }
         }
 
         guard !id.isEmpty else {
@@ -496,9 +535,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 name: Notification.Name("OpenManageTeam"),
                 object: nil
             )
-        case "expense_submitted", "invoice_approved", "invoice_revisions":
+        case "expense_submitted", "expense_approved", "expense_rejected":
             NotificationCenter.default.post(
                 name: Notification.Name("OpenExpenses"),
+                object: nil
+            )
+        case "invoice_approved", "invoice_revisions", "invoice_overdue":
+            // Bug bb63c37e — invoice notifications were previously routed
+            // to OpenExpenses, which landed the user on the wrong list.
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenInvoices"),
                 object: nil
             )
         case "role_assigned":
@@ -516,9 +562,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 name: Notification.Name("OpenSchedule"),
                 object: nil
             )
-        case "invoice_overdue":
+        case "projects_needing_tasks":
+            // Bug 78309d78 — push variant of the rail notification for
+            // accepted projects with no tasks.
             NotificationCenter.default.post(
-                name: Notification.Name("OpenExpenses"),
+                name: Notification.Name("OpenProjectsNeedingTasks"),
                 object: nil
             )
         case "advanceNotice":

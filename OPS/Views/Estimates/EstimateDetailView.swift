@@ -350,39 +350,36 @@ struct EstimateDetailView: View {
     // MARK: - Sticky Footer
 
     private var stickyFooter: some View {
-        HStack(spacing: OPSStyle.Layout.spacing3) {
-            switch estimate.status {
-            case .draft:
-                Button("EDIT") { showEditSheet = true }
-                    .opsSecondaryButtonStyle()
-                Button("SEND ESTIMATE") {
-                    Task { await viewModel.sendEstimate(estimate) }
-                }
-                .opsPrimaryButtonStyle()
-
-            case .sent, .viewed:
-                Button("RESEND") {
-                    Task { await viewModel.sendEstimate(estimate) }
-                }
-                .opsSecondaryButtonStyle()
-                Button("MARK APPROVED") {
-                    Task { await viewModel.markApproved(estimate) }
-                }
-                .opsPrimaryButtonStyle()
-
-            case .approved:
-                Button("CONVERT TO INVOICE") { showConvertOptions = true }
+        OPSFloatingButtonBar(horizontalPadding: OPSStyle.Layout.spacing3, verticalPadding: OPSStyle.Layout.spacing2) {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
+                switch estimate.status {
+                case .draft:
+                    Button("EDIT") { showEditSheet = true }
+                        .opsSecondaryButtonStyle()
+                    Button("SEND ESTIMATE") {
+                        Task { await viewModel.sendEstimate(estimate) }
+                    }
                     .opsPrimaryButtonStyle()
 
-            default:
-                EmptyView()
+                case .sent, .viewed:
+                    Button("RESEND") {
+                        Task { await viewModel.sendEstimate(estimate) }
+                    }
+                    .opsSecondaryButtonStyle()
+                    Button("MARK APPROVED") {
+                        Task { await viewModel.markApproved(estimate) }
+                    }
+                    .opsPrimaryButtonStyle()
+
+                case .approved:
+                    Button("CONVERT TO INVOICE") { showConvertOptions = true }
+                        .opsPrimaryButtonStyle()
+
+                default:
+                    EmptyView()
+                }
             }
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(
-            OPSStyle.Colors.background
-        )
     }
 }
 

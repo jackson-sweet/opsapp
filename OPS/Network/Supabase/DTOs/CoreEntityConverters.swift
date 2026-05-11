@@ -189,6 +189,10 @@ extension SupabaseTaskTypeDTO {
             tt.defaultTeamMemberIdsString = ids.joined(separator: ",")
         }
 
+        if let dd = defaultDuration, dd >= 1 {
+            tt.defaultDuration = dd
+        }
+
         tt.deletedAt = deletedAt.flatMap { SupabaseDate.parse($0) }
         return tt
     }
@@ -220,6 +224,8 @@ extension SupabaseProjectDTO {
         project.teamMemberIdsString = (teamMemberIds ?? []).joined(separator: ",")
         project.projectImagesString = (projectImages ?? []).joined(separator: ",")
         project.deletedAt = deletedAt.flatMap { SupabaseDate.parse($0) }
+        project.createdAt = createdAt.flatMap { SupabaseDate.parse($0) }
+        project.createdBy = createdBy
         return project
     }
 }
@@ -262,7 +268,11 @@ extension SupabaseProjectTaskDTO {
             task.endTime = Self.parseTime(et) ?? task.endTime
         }
 
+        task.pairedFromTaskId = pairedFromTaskId
+        task.scheduleLocked = scheduleLocked ?? false
+
         task.deletedAt = deletedAt.flatMap { SupabaseDate.parse($0) }
+        task.createdAt = createdAt.flatMap { SupabaseDate.parse($0) }
         return task
     }
 

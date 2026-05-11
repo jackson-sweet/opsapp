@@ -91,6 +91,10 @@ struct DetailsTabView: View {
                 onDeleteTask: onDeleteTask
             )
 
+            // REMINDERS (bug 4f00c2d7) — only renders when there's at least
+            // one open reminder across the project's open tasks
+            ProjectReminderChecklist(project: project)
+
             // DESCRIPTION
             DescriptionSection(
                 project: project,
@@ -574,6 +578,14 @@ struct TaskListSection: View {
                             .frame(height: 1)
                             .padding(.leading, 16)
                     }
+                }
+
+                // Quick Add suggestions rail (bug e3996ac3 — surface
+                // company-frequent (taskType + crew) combos as one-tap chips).
+                // Rail self-collapses when there are no qualifying
+                // suggestions; gated on canEdit via the rail's internals.
+                if canEdit {
+                    QuickAddSuggestionsRail(project: project, canEdit: canEdit)
                 }
 
                 // Add task row (admin only)

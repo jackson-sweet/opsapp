@@ -21,7 +21,7 @@ struct InventorySetupWizard: WizardDefinitionProtocol {
     let iconName = "shippingbox.fill"
     let triggerType: WizardTriggerType = .contextual
     let minimumTier: WizardAccessTier = .office
-    let requiredPermission: String? = "inventory.manage"
+    let requiredPermission: String? = "catalog.manage"
     let bannerText = "Let's set up your inventory"
     let estimatedMinutes = 2
 

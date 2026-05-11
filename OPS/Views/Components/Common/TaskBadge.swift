@@ -29,9 +29,13 @@ struct TaskBadge: View {
             }
         }
 
+        // Bug 3685b6e8 — paddings audited across all sizes. Old values had
+        // small=3/5 (cramped) and large=5/10 (paddingV didn't grow with the
+        // font). New ladder scales paddingV proportionally to the font so
+        // every size has a balanced badge body.
         var paddingH: CGFloat {
             switch self {
-            case .small: return 5
+            case .small: return 6
             case .medium: return 8
             case .large: return 10
             case .navBar: return 12
@@ -40,10 +44,10 @@ struct TaskBadge: View {
 
         var paddingV: CGFloat {
             switch self {
-            case .small: return 3
+            case .small: return 4
             case .medium: return 5
-            case .large: return 5
-            case .navBar: return 6
+            case .large: return 6
+            case .navBar: return 7
             }
         }
 
@@ -53,6 +57,17 @@ struct TaskBadge: View {
             case .medium: return 4
             case .large: return 4
             case .navBar: return OPSStyle.Layout.buttonRadius
+            }
+        }
+
+        // Border stroke weight — half-pixel hairlines on small/medium read
+        // cleaner against the calendar card background; navBar gets the
+        // full pixel so it reads as authoritative chrome.
+        var borderWidth: CGFloat {
+            switch self {
+            case .small, .medium: return 0.5
+            case .large: return 0.75
+            case .navBar: return 1
             }
         }
 
@@ -80,7 +95,7 @@ struct TaskBadge: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: size.cornerRadius)
-                    .stroke(color, lineWidth: 1)
+                    .stroke(color, lineWidth: size.borderWidth)
             )
             .opacity(faded ? 0.4 : 1.0)
     }
@@ -106,7 +121,7 @@ struct StatusBadgePill: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: size.cornerRadius)
-                    .stroke(color, lineWidth: 1)
+                    .stroke(color, lineWidth: size.borderWidth)
             )
     }
 }

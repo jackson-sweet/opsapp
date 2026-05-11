@@ -485,11 +485,7 @@ struct ExpenseBatchDetailView: View {
     // MARK: - Sticky Footer
 
     private var stickyFooter: some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(OPSStyle.Colors.cardBorder)
-                .frame(height: 1)
-
+        OPSFloatingButtonBar(horizontalPadding: OPSStyle.Layout.spacing3, verticalPadding: OPSStyle.Layout.spacing2) {
             Group {
                 if flaggedCount == 0 {
                     // No flags — approve all
@@ -547,11 +543,8 @@ struct ExpenseBatchDetailView: View {
                     }
                 }
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
             .animation(OPSStyle.Animation.fast, value: flaggedCount)
         }
-        .background(OPSStyle.Colors.background)
     }
 
     // MARK: - Formatters

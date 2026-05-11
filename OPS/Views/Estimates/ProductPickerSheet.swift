@@ -3,16 +3,25 @@
 //  OPS
 //
 //  Bottom sheet to select a product from the catalog to add as a line item.
+//  Configurable products (with options) hand off to LineItemEditSheet via
+//  the selectedProduct binding so the host can present the configuration
+//  step. Flat products take the direct-create fast path.
 //
 
 import SwiftUI
+import SwiftData
 
 struct ProductPickerSheet: View {
     let estimateId: String
     @ObservedObject var viewModel: EstimateViewModel
+    @Binding var selectedProduct: Product?
     @EnvironmentObject private var dataController: DataController
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+
+    @Query private var allOptions: [ProductOption]
+
     @State private var searchText = ""
     @State private var products: [Product] = []
     @State private var isLoading = true
@@ -24,10 +33,13 @@ struct ProductPickerSheet: View {
         }
     }
 
+    private func optionCount(for product: Product) -> Int {
+        allOptions.filter { $0.productId == product.id }.count
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Search
                 HStack {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -49,7 +61,6 @@ struct ProductPickerSheet: View {
                     .background(OPSStyle.Colors.separator)
                     .padding(.top, OPSStyle.Layout.spacing2)
 
-                // Product list
                 if isLoading {
                     Spacer()
                     TacticalLoadingBarAnimated()
@@ -70,7 +81,7 @@ struct ProductPickerSheet: View {
                         LazyVStack(spacing: 0) {
                             ForEach(filteredProducts) { product in
                                 Button {
-                                    addFromProduct(product)
+                                    handleSelection(product)
                                 } label: {
                                     productRow(product)
                                 }
@@ -105,34 +116,48 @@ struct ProductPickerSheet: View {
     }
 
     private func productRow(_ product: Product) -> some View {
-        HStack {
+        let count = optionCount(for: product)
+        return HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(product.name)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                Text("\(product.type.rawValue.uppercased()) · \(product.defaultPrice, format: .currency(code: "USD"))/\(product.unit ?? "ea")")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                HStack(spacing: 4) {
+                    Text("\(product.type.rawValue.uppercased()) · \(product.basePrice, format: .currency(code: "USD"))/\(product.pricingUnit.rawValue)")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    if count > 0 {
+                        Text("· \(count) OPTION\(count == 1 ? "" : "S")")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
+                }
             }
             Spacer()
-            Image(systemName: "plus.circle.fill")
+            Image(systemName: count > 0 ? "slider.horizontal.3" : "plus.circle.fill")
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
                 .font(.system(size: OPSStyle.Layout.IconSize.md))
         }
         .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
     }
 
-    private func addFromProduct(_ product: Product) {
+    private func handleSelection(_ product: Product) {
+        if optionCount(for: product) > 0 {
+            selectedProduct = product
+            dismiss()
+            return
+        }
         Task {
             await viewModel.addLineItem(
                 estimateId: estimateId,
                 description: product.name,
                 type: product.type,
                 quantity: 1,
-                unitPrice: product.defaultPrice,
+                unitPrice: product.basePrice,
                 isOptional: false,
                 productId: product.id,
-                taskTypeId: product.taskTypeId
+                taskTypeId: product.taskTypeId,
+                unit: product.pricingUnit.rawValue
             )
             if viewModel.error == nil { dismiss() }
         }
@@ -140,6 +165,15 @@ struct ProductPickerSheet: View {
 
     private func loadProducts() async {
         guard let companyId = dataController.currentUser?.companyId else {
+            isLoading = false
+            return
+        }
+        let descriptor = FetchDescriptor<Product>(
+            predicate: #Predicate { $0.companyId == companyId && $0.isActive },
+            sortBy: [SortDescriptor(\.name)]
+        )
+        if let local = try? modelContext.fetch(descriptor), !local.isEmpty {
+            products = local
             isLoading = false
             return
         }

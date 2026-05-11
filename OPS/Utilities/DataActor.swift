@@ -390,9 +390,9 @@ actor DataActor {
         case .inventorySnapshotItem:
             try await syncInventorySnapshotItems(repos: repos)
         case .taskTypeReminder:
-            try await syncTaskTypeReminders(since: since)
+            try await syncTaskTypeReminders(since: since, repos: repos)
         case .taskReminder:
-            try await syncTaskReminders(since: since)
+            try await syncTaskReminders(since: since, repos: repos)
         default:
             print("[DataActor] Entity type \(entityType.rawValue) not yet supported for inbound sync")
         }
@@ -2645,8 +2645,8 @@ actor DataActor {
 
     // MARK: - Sync: Task Reminders (bug 4f00c2d7)
 
-    private func syncTaskTypeReminders(since: Date?) async throws {
-        let dtos = try await TaskReminderRepository.shared.fetchTemplates(companyId: companyId, since: since)
+    private func syncTaskTypeReminders(since: Date?, repos: InboundRepositories) async throws {
+        let dtos = try await TaskReminderRepository.shared.fetchTemplates(companyId: repos.companyId, since: since)
         guard !dtos.isEmpty else { return }
         try modelContext.transaction {
             for dto in dtos {
@@ -2662,8 +2662,8 @@ actor DataActor {
         print("[DataActor] Merged \(dtos.count) task reminder templates")
     }
 
-    private func syncTaskReminders(since: Date?) async throws {
-        let dtos = try await TaskReminderRepository.shared.fetchInstances(companyId: companyId, since: since)
+    private func syncTaskReminders(since: Date?, repos: InboundRepositories) async throws {
+        let dtos = try await TaskReminderRepository.shared.fetchInstances(companyId: repos.companyId, since: since)
         guard !dtos.isEmpty else { return }
         try modelContext.transaction {
             for dto in dtos {

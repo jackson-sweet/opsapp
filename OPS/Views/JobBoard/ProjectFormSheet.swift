@@ -2907,6 +2907,8 @@ struct ProjectFormSheet: View {
                 dependencyOverrides: nil,
                 startTime: nil,
                 endTime: nil,
+                pairedFromTaskId: nil,
+                scheduleLocked: nil,
                 deletedAt: nil,
                 createdAt: ISO8601DateFormatter().string(from: Date())
             )

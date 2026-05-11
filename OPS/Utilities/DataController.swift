@@ -4783,9 +4783,10 @@ class DataController: ObservableObject {
     @MainActor
     private func cascadeCancelToPaired(predecessorId: String) async {
         guard let context = modelContext else { return }
+        let cancelledStatus = TaskStatus.cancelled
         let descriptor = FetchDescriptor<ProjectTask>(
             predicate: #Predicate<ProjectTask> { t in
-                t.pairedFromTaskId == predecessorId && t.deletedAt == nil && t.status != .cancelled
+                t.pairedFromTaskId == predecessorId && t.deletedAt == nil && t.status != cancelledStatus
             }
         )
         guard let paired = try? context.fetch(descriptor), !paired.isEmpty else { return }

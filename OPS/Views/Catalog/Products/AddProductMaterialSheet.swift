@@ -67,6 +67,7 @@ struct AddProductMaterialSheet: View {
 
     @Query private var allFamilies: [CatalogItem]
     @Query private var allVariants: [CatalogVariant]
+    @Query private var allUnits: [CatalogUnit]
     @Query private var allOptions: [CatalogOption]
     @Query private var allOptionValues: [CatalogOptionValue]
     @Query private var allVariantOptionValues: [CatalogVariantOptionValue]

@@ -1027,8 +1027,8 @@ struct TaskTypeSheet: View {
                     ) { newIndex in
                         dependencies[index] = updatedDependency(
                             from: dep,
-                            overlapMode: "percentage",
-                            overlapPercentage: newIndex * 10
+                            overlapPercentage: newIndex * 10,
+                            overlapMode: "percentage"
                         )
                     }
                     .id("percentage-\(dep.dependsOnTaskTypeId)")
@@ -1753,6 +1753,7 @@ struct TaskTypeSheet: View {
                 displayOrder: nil,
                 dependencies: capturedDependencies.isEmpty ? nil : capturedDependencies,
                 defaultTeamMemberIds: nil,
+                defaultDuration: nil,
                 deletedAt: nil
             )
 

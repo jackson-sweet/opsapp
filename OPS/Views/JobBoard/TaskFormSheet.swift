@@ -1662,6 +1662,8 @@ struct TaskFormSheet: View {
                         dependencyOverrides: snapshotDependencyOverrides,
                         startTime: nil,
                         endTime: nil,
+                        pairedFromTaskId: nil,
+                        scheduleLocked: nil,
                         deletedAt: nil,
                         createdAt: task.createdAt.map { ISO8601DateFormatter().string(from: $0) }
                     )

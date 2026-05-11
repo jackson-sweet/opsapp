@@ -236,6 +236,8 @@ struct QuickAddSuggestionsRail: View {
             dependencyOverrides: nil,
             startTime: nil,
             endTime: nil,
+            pairedFromTaskId: nil,
+            scheduleLocked: nil,
             deletedAt: nil,
             createdAt: nil
         )

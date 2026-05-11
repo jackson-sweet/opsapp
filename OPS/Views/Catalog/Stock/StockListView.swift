@@ -13,6 +13,12 @@ import SwiftUI
 
 struct StockListView: View {
     let rows: [EnrichedVariantRow]
+    /// All categories the user can see, used to resolve a child's parent
+    /// even when the parent has no rows of its own. Without this, child-only
+    /// parents (e.g. "Hardware" / "Fasteners" with rows only under their
+    /// children) rendered with a nil parent and the header collapsed to
+    /// "UNCATEGORIZED" (bug 9a4bcfae).
+    let categories: [CatalogCategory]
     var onTap: ((EnrichedVariantRow) -> Void)? = nil
 
     /// Build the (parent, parentRows, children) groupings used by the
@@ -27,14 +33,21 @@ struct StockListView: View {
     }
 
     private var groups: [Group] {
+        let categoryById = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+
         var byParentId: [String: (category: CatalogCategory?, rows: [EnrichedVariantRow], childRows: [String: [EnrichedVariantRow]], childById: [String: CatalogCategory])] = [:]
 
         for row in rows {
             if let category = row.category {
                 if let parentId = category.parentId {
-                    // Row is on a child category.
+                    // Row is on a child category. Resolve the parent up front
+                    // from `categoryById` — relying on a row also being
+                    // directly on the parent leaves parents with only nested
+                    // rows nameless.
                     let key = parentId
-                    var entry = byParentId[key] ?? (category: nil, rows: [], childRows: [:], childById: [:])
+                    let resolvedParent = categoryById[parentId]
+                    var entry = byParentId[key] ?? (category: resolvedParent, rows: [], childRows: [:], childById: [:])
+                    if entry.category == nil { entry.category = resolvedParent }
                     var bucket = entry.childRows[category.id] ?? []
                     bucket.append(row)
                     entry.childRows[category.id] = bucket
@@ -61,13 +74,17 @@ struct StockListView: View {
         let sortedKeys = byParentId.keys.sorted { lhs, rhs in
             if lhs == "__uncategorized__" { return false }
             if rhs == "__uncategorized__" { return true }
-            let lhsName = byParentId[lhs]?.category?.name ?? ""
-            let rhsName = byParentId[rhs]?.category?.name ?? ""
+            let lhsName = byParentId[lhs]?.category?.name ?? categoryById[lhs]?.name ?? ""
+            let rhsName = byParentId[rhs]?.category?.name ?? categoryById[rhs]?.name ?? ""
             return lhsName.localizedCaseInsensitiveCompare(rhsName) == .orderedAscending
         }
 
         return sortedKeys.compactMap { key in
             guard let entry = byParentId[key] else { return nil }
+            // Fall back to the resolved category when the entry was created
+            // for a parent that only has children-with-rows. The categoryById
+            // lookup is the source of truth for parent names.
+            let parent = entry.category ?? categoryById[key]
             let children = entry.childRows
                 .map { (childId, rows) -> (category: CatalogCategory, rows: [EnrichedVariantRow]) in
                     (category: entry.childById[childId]!, rows: rows.sorted { $0.family.name < $1.family.name })
@@ -75,7 +92,7 @@ struct StockListView: View {
                 .sorted { $0.category.name.localizedCaseInsensitiveCompare($1.category.name) == .orderedAscending }
             return Group(
                 id: key,
-                parent: entry.category,
+                parent: parent,
                 parentRows: entry.rows.sorted { $0.family.name < $1.family.name },
                 children: children
             )

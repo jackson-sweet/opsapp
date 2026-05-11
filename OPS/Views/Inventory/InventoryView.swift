@@ -28,6 +28,16 @@ struct InventoryView: View {
     private let minScale: CGFloat = 0.8
     private let maxScale: CGFloat = 1.5
 
+    // View mode (feature 217c3d1f): list vs table (rows=items, columns=tags)
+    @AppStorage("inventory.viewMode") private var viewModeRaw: String = InventoryViewMode.list.rawValue
+    private var viewMode: InventoryViewMode {
+        InventoryViewMode(rawValue: viewModeRaw) ?? .list
+    }
+
+    // Create-order sheet (feature e08c63a2): suggests an order based on
+    // items below their warning/critical thresholds.
+    @State private var showingCreateOrderSheet = false
+
     // Sort options - default will be set based on whether tags exist
     @State private var sortMode: InventorySortMode = .tag
 
@@ -36,6 +46,18 @@ struct InventoryView: View {
         case name = "NAME"
         case quantity = "QUANTITY"
         case threshold = "THRESHOLD"
+    }
+
+    enum InventoryViewMode: String, CaseIterable {
+        case list = "LIST"
+        case table = "TABLE"
+
+        var icon: String {
+            switch self {
+            case .list:  return "list.bullet"
+            case .table: return "tablecells"
+            }
+        }
     }
 
     // Selection mode
@@ -179,15 +201,25 @@ struct InventoryView: View {
                 AppHeader(headerType: .inventory, onInsightsTapped: { showInsights = true })
                     .padding(.bottom, 8)
 
-                // Search and Sort
+                // Search, view mode, sort
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     SearchBar(searchText: $searchText, placeholder: "Search inventory...")
+
+                    viewModeToggle
 
                     // Sort toggle
                     sortToggleButton
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.top, OPSStyle.Layout.spacing2)
+
+                // Suggested-order banner (feature e08c63a2): appears whenever
+                // any item has fallen below its warning/critical threshold.
+                if suggestedOrderItems.count > 0 {
+                    createOrderBanner
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .padding(.top, OPSStyle.Layout.spacing2)
+                }
 
                 // Tag filters
                 if !allTags.isEmpty {
@@ -200,29 +232,45 @@ struct InventoryView: View {
                         emptyStateView
                             .frame(minHeight: 400)
                     } else {
-                        InventoryListView(
-                            items: filteredItems,
-                            isSelectionMode: isSelectionMode,
-                            selectedItemIds: $selectedItemIds,
-                            scale: CGFloat(cardScale),
-                            onItemTap: { item in
-                                if isSelectionMode {
-                                    toggleItemSelection(item)
-                                } else {
-                                    itemForQuantityAdjustment = item
+                        switch viewMode {
+                        case .list:
+                            InventoryListView(
+                                items: filteredItems,
+                                isSelectionMode: isSelectionMode,
+                                selectedItemIds: $selectedItemIds,
+                                scale: CGFloat(cardScale),
+                                onItemTap: { item in
+                                    if isSelectionMode {
+                                        toggleItemSelection(item)
+                                    } else {
+                                        itemForQuantityAdjustment = item
+                                    }
+                                },
+                                onItemEdit: { item in
+                                    selectedItem = item
+                                    showingAddItemSheet = true
+                                },
+                                onItemDelete: { item in
+                                    deleteItem(item)
+                                },
+                                onItemSelect: { item in
+                                    enterSelectionMode(with: item)
                                 }
-                            },
-                            onItemEdit: { item in
-                                selectedItem = item
-                                showingAddItemSheet = true
-                            },
-                            onItemDelete: { item in
-                                deleteItem(item)
-                            },
-                            onItemSelect: { item in
-                                enterSelectionMode(with: item)
-                            }
-                        )
+                            )
+                        case .table:
+                            InventoryTableView(
+                                items: filteredItems,
+                                tags: companyTags,
+                                onTap: { item in
+                                    if isSelectionMode {
+                                        toggleItemSelection(item)
+                                    } else {
+                                        itemForQuantityAdjustment = item
+                                    }
+                                }
+                            )
+                            .trackScreen("Inventory.Table")
+                        }
 
                         // Bug 3cacb606: persistent import CTA at the bottom of
                         // the list so users don't have to empty their inventory
@@ -310,6 +358,10 @@ struct InventoryView: View {
                 InventoryInsightsView(companyId: companyId)
                     .environmentObject(dataController)
             }
+        }
+        .sheet(isPresented: $showingCreateOrderSheet) {
+            CreateOrderSheet(items: suggestedOrderItems)
+                .environmentObject(dataController)
         }
         .onAppear {
             AnalyticsManager.shared.trackScreenView(screenName: .inventory)
@@ -418,6 +470,84 @@ struct InventoryView: View {
                     .stroke(sortMode == .threshold ? OPSStyle.Colors.warningStatus.opacity(0.5) : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
+    }
+
+    // MARK: - View Mode Toggle (feature 217c3d1f)
+
+    private var viewModeToggle: some View {
+        Menu {
+            ForEach(InventoryViewMode.allCases, id: \.self) { mode in
+                Button {
+                    viewModeRaw = mode.rawValue
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Label(mode.rawValue, systemImage: viewMode == mode ? "checkmark" : mode.icon)
+                }
+            }
+        } label: {
+            Image(systemName: viewMode.icon)
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+        }
+        .accessibilityLabel("View mode")
+    }
+
+    // MARK: - Create-Order Banner (feature e08c63a2)
+
+    /// Items currently below their effective warning or critical threshold.
+    /// Powers both the banner count and the suggested-order sheet contents.
+    /// Read off the unfiltered company set so the banner stays accurate when
+    /// the user is searching or filtering.
+    private var suggestedOrderItems: [InventoryItem] {
+        companyItems.filter { $0.effectiveThresholdStatus() != .normal }
+    }
+
+    private var createOrderBanner: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showingCreateOrderSheet = true
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: "cart.badge.plus")
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("ORDER SUGGESTED")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.warningStatus)
+                        .tracking(1.1)
+                    Text("\(suggestedOrderItems.count) item\(suggestedOrderItems.count == 1 ? "" : "s") below threshold")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                Spacer()
+                Text("CREATE ORDER")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .tracking(1.1)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+            .background(OPSStyle.Colors.warningBackground)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.warningStatus.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(suggestedOrderItems.count) items below threshold. Create order.")
     }
 
     // MARK: - Tag Filter Section
@@ -629,9 +759,20 @@ struct InventoryView: View {
             isRefreshing = true
         }
 
-        // Inventory sync via Supabase not yet implemented on SyncManager
-        // Items are loaded from local SwiftData via @Query
-        print("[INVENTORY] Pull-to-refresh triggered (local data only)")
+        // Pull the legacy inventory_* tables in priority order (units →
+        // tags → items → item↔tag joins) via the DataActor sync path. The
+        // sync engine handles relationship linking and the @Query above
+        // will refresh on the next ModelContext didSave.
+        if let companyId = dataController.currentUser?.companyId, !companyId.isEmpty {
+            print("[INVENTORY] Pull-to-refresh: syncing inventory_*")
+            do {
+                try await dataController.dataActor?.fullSync(companyId: companyId, onProgress: nil)
+            } catch {
+                print("[INVENTORY] Pull-to-refresh sync failed: \(error)")
+            }
+        } else {
+            print("[INVENTORY] Pull-to-refresh skipped — no companyId")
+        }
 
         await MainActor.run {
             isRefreshing = false

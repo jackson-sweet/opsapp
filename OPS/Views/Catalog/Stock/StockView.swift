@@ -339,7 +339,11 @@ struct StockView: View {
         } else {
             switch viewMode {
             case .list:
-                StockListView(rows: rows, onTap: { selectedRow = $0 })
+                StockListView(
+                    rows: rows,
+                    categories: companyCategories,
+                    onTap: { selectedRow = $0 }
+                )
                     .trackScreen("Catalog.Stock.List")
             case .grid:
                 StockGridView(rows: rows, onTap: { selectedRow = $0 })

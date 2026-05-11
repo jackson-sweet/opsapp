@@ -291,6 +291,10 @@ struct TaskTypeMergeSheet: View {
     /// saves locally, records sync operations, then soft-deletes the source.
     /// The soft-delete uses the DataController path so cascading doesn't
     /// re-delete the freshly-reassigned tasks.
+    ///
+    /// Bug 4dadd96c — also re-pins every Product and TaskTemplate that
+    /// pointed at the source type. Without this, merging left dangling
+    /// products on the source type and templates orphaned in the catalog.
     private func performMerge() async {
         guard let target = selectedTarget else { return }
         guard !isMerging else { return }
@@ -299,6 +303,7 @@ struct TaskTypeMergeSheet: View {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         let targetId = target.id
+        let sourceId = source.id
 
         // Reassign every active task to the target type.
         let activeTasks = source.tasks.filter { $0.deletedAt == nil }
@@ -313,6 +318,35 @@ struct TaskTypeMergeSheet: View {
             )
         }
 
+        // Re-pin every Product that pointed at the source. Both columns get
+        // rewritten so legacy `task_type_id` text reads land on the same
+        // parent as the canonical `task_type_ref` reads.
+        let productDescriptor = FetchDescriptor<Product>(
+            predicate: #Predicate<Product> { product in
+                product.taskTypeRef == sourceId || product.taskTypeId == sourceId
+            }
+        )
+        let linkedProducts = (try? modelContext.fetch(productDescriptor)) ?? []
+        for product in linkedProducts {
+            product.taskTypeRef = targetId
+            product.taskTypeId = targetId
+        }
+
+        // Re-pin every TaskTemplate (sub-task scaffolding) that pointed at
+        // the source so the merge target inherits the workflow steps.
+        let templateDescriptor = FetchDescriptor<TaskTemplate>(
+            predicate: #Predicate<TaskTemplate> { template in
+                (template.taskTypeRef == sourceId || template.taskTypeId == sourceId)
+                && template.deletedAt == nil
+            }
+        )
+        let linkedTemplates = (try? modelContext.fetch(templateDescriptor)) ?? []
+        for template in linkedTemplates {
+            template.taskTypeRef = targetId
+            template.taskTypeId = targetId
+            template.needsSync = true
+        }
+
         do {
             try modelContext.save()
         } catch {
@@ -321,9 +355,37 @@ struct TaskTypeMergeSheet: View {
             return
         }
 
-        // Source type no longer owns any active tasks, so the cascading soft
-        // delete inside DataController.deleteTaskType won't touch the ones we
-        // just reassigned.
+        // Mirror the local re-pins server-side. Failures here aren't fatal —
+        // the rows have `needsSync` and the SwiftData snapshot is authoritative
+        // locally; the next sync sweep will reconcile.
+        let companyId = source.companyId
+        let productRepo = ProductRepository(companyId: companyId)
+        for product in linkedProducts {
+            var fields = UpdateProductDTO()
+            fields.taskTypeRef = targetId
+            fields.taskTypeId = targetId
+            do {
+                _ = try await productRepo.update(product.id, fields: fields)
+            } catch {
+                print("[TaskTypeMerge] ⚠️ Product re-pin sync failed for \(product.id): \(error)")
+            }
+        }
+
+        let templateRepo = TaskTemplateRepository(companyId: companyId)
+        for template in linkedTemplates {
+            var fields = UpdateTaskTemplateDTO()
+            fields.taskTypeRef = targetId
+            fields.taskTypeId = targetId
+            do {
+                _ = try await templateRepo.update(template.id, fields: fields)
+            } catch {
+                print("[TaskTypeMerge] ⚠️ TaskTemplate re-pin sync failed for \(template.id): \(error)")
+            }
+        }
+
+        // Source type no longer owns any active tasks, products, or templates,
+        // so the cascading soft delete inside DataController.deleteTaskType
+        // won't touch the rows we just reassigned.
         do {
             try await dataController.deleteTaskType(taskTypeId: source.id)
         } catch {

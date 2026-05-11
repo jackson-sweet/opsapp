@@ -1,21 +1,23 @@
 //
-//  ProjectSettingsView.swift
+//  ProjectRulesView.swift
 //  OPS
 //
-//  Project-related settings for office crews and admins
+//  Company-wide rules for how the app tracks and notifies about projects:
+//  overdue thresholds, reminder cadence, and invoice-term matching.
+//
+//  Bug 4014b472 — renamed from `ProjectSettingsView` and stripped of the
+//  in-page Task Types navigation row. Task Types now lives as a top-level
+//  entry in the OPERATIONS section of `SettingsView`, so the page no longer
+//  doubles as a navigation hub.
 //
 
 import SwiftUI
 import SwiftData
 
-struct ProjectSettingsView: View {
+struct ProjectRulesView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
-
-    // Navigation states
-    @State private var showTaskSettings = false
-    @State private var showSchedulingType = false
 
     // Project review settings (bound to Company model)
     @State private var overdueThreshold: Int = 14
@@ -27,10 +29,7 @@ struct ProjectSettingsView: View {
     // tagged below. Self-clears after the spotlight animation completes.
     @State private var highlightedSection: String? = nil
 
-    // Anchor IDs for ScrollViewReader. Centralized so the deep-link observer
-    // and the spotlight overlay reference the same strings.
     private enum AnchorID {
-        static let projectSettings = "project_settings"
         static let projectReview = "project_review"
     }
 
@@ -41,7 +40,7 @@ struct ProjectSettingsView: View {
 
             VStack(spacing: 0) {
                 SettingsHeader(
-                    title: "Project Settings",
+                    title: "Project Rules",
                     onBackTapped: { dismiss() }
                 )
                 .padding(.bottom, 8)
@@ -49,26 +48,6 @@ struct ProjectSettingsView: View {
                 ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: OPSStyle.Layout.spacing4) {
-                        settingsSection(title: "PROJECT SETTINGS") {
-                            settingsRow(
-                                icon: "square.grid.2x2",
-                                title: "Task Types",
-                                action: { showTaskSettings = true }
-                            )
-
-                            sectionDivider
-
-                            settingsRow(
-                                icon: "calendar.badge.clock",
-                                title: "Scheduling Type",
-                                action: { showSchedulingType = true }
-                            )
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 20)
-                        .id(AnchorID.projectSettings)
-                        .deepLinkSpotlight(highlightedSection == AnchorID.projectSettings)
-
                         // MARK: - Project Review Settings
                         settingsSection(title: "PROJECT REVIEW") {
                             // Overdue threshold stepper
@@ -159,6 +138,7 @@ struct ProjectSettingsView: View {
                             .opacity(permissionStore.can("finances.view") ? 1.0 : 0.5)
                         }
                         .padding(.horizontal, 20)
+                        .padding(.top, 20)
                         .id(AnchorID.projectReview)
                         .deepLinkSpotlight(highlightedSection == AnchorID.projectReview)
                     }
@@ -182,20 +162,8 @@ struct ProjectSettingsView: View {
                 }
             }
         }
-        .trackScreen("Settings.Projects")
+        .trackScreen("Settings.ProjectRules")
         .navigationBarHidden(true)
-        .fullScreenCover(isPresented: $showTaskSettings) {
-            NavigationStack {
-                TaskSettingsView()
-                    .environmentObject(dataController)
-            }
-        }
-        .fullScreenCover(isPresented: $showSchedulingType) {
-            NavigationStack {
-                SchedulingTypeExplanationView()
-                    .environmentObject(dataController)
-            }
-        }
         .onAppear {
             loadReviewSettings()
         }
@@ -245,33 +213,6 @@ struct ProjectSettingsView: View {
                     .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
             )
         }
-    }
-
-    // MARK: - Row Component
-
-    private func settingsRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: OPSStyle.Layout.IconSize.md))
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .frame(width: 28, alignment: .center)
-
-                Text(title)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-
-                Spacer()
-
-                Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-            }
-            .padding(.vertical, 14)
-            .padding(.horizontal, 16)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(PlainButtonStyle())
     }
 
     // MARK: - Review Settings Helpers

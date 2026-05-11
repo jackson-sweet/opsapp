@@ -90,13 +90,13 @@ enum PermissionRegistry {
 
     static func iconForRole(_ roleName: String) -> String {
         switch roleName.lowercased() {
-        case "admin": return "shield.checkered"
-        case "owner": return "crown.fill"
-        case "office": return "desktopcomputer"
-        case "operator": return "wrench.and.screwdriver.fill"
-        case "crew": return "hammer.fill"
-        case "unassigned": return "person.fill.questionmark"
-        default: return "person.fill"
+        case "admin": return "shield"
+        case "owner": return "star"
+        case "office": return "building.2"
+        case "operator": return "wrench.adjustable"
+        case "crew": return "hammer"
+        case "unassigned": return "questionmark.circle"
+        default: return "person"
         }
     }
 
@@ -272,15 +272,9 @@ struct RoleDetailView: View {
                                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(PermissionRegistry.displayName(for: role.name).uppercased())
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                                    Text("Hierarchy level: \(role.hierarchy)")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                }
+                                Text(PermissionRegistry.displayName(for: role.name).uppercased())
+                                    .font(OPSStyle.Typography.bodyBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
                             }
                             .padding(.horizontal, 20)
 

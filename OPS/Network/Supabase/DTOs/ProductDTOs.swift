@@ -37,6 +37,8 @@ struct ProductDTO: Codable, Identifiable {
     let taskTypeId: String?
     let taskTypeRef: String?
     let unitId: String?
+    let linkedCatalogItemId: String?       // FK to catalog_items; populated when a Material product is wired into the stock catalog via the iOS // SHOW IN STOCK toggle
+    let bundlePricingMode: String?         // 'auto' | 'override' | nil for non-bundles. Only set on kind='package' rows.
     let createdAt: String
     let updatedAt: String
 
@@ -66,6 +68,8 @@ struct ProductDTO: Codable, Identifiable {
         case taskTypeId            = "task_type_id"
         case taskTypeRef           = "task_type_ref"
         case unitId                = "unit_id"
+        case linkedCatalogItemId   = "linked_catalog_item_id"
+        case bundlePricingMode     = "bundle_pricing_mode"
         case createdAt             = "created_at"
         case updatedAt             = "updated_at"
     }
@@ -99,6 +103,8 @@ struct ProductDTO: Codable, Identifiable {
         prod.taskTypeId = taskTypeId
         prod.taskTypeRef = taskTypeRef
         prod.unitId = unitId
+        prod.linkedCatalogItemId = linkedCatalogItemId
+        prod.bundlePricingMode = bundlePricingMode
         return prod
     }
 }
@@ -111,33 +117,39 @@ struct CreateProductDTO: Codable {
     let unitCost: Double?
     let unit: String?
     let pricingUnit: String?
-    let unitId: String?              // FK to catalog_units; column already exists server-side
-    let category: String?            // legacy free-text — kept populated for read fallback compatibility
-    let categoryId: String?          // FK to catalog_categories; authoritative going forward
+    let unitId: String?                  // FK to catalog_units; column already exists server-side
+    let category: String?                // legacy free-text — kept populated for read fallback compatibility
+    let categoryId: String?              // FK to catalog_categories; authoritative going forward
     let sku: String?
-    let thumbnailUrl: String?        // Storage URL; usually nil at create time and patched in via UpdateProductDTO once the upload finishes
+    let thumbnailUrl: String?            // Storage URL; usually nil at create time and patched in via UpdateProductDTO once the upload finishes
     let kind: String?
     let type: String?
     let isTaxable: Bool
     let taskTypeId: String?
+    let taskTypeRef: String?             // FK to task_types; populated by the Service-category Task Type picker on iOS
+    let linkedCatalogItemId: String?     // FK to catalog_items; populated by the Material-category // SHOW IN STOCK toggle
+    var bundlePricingMode: String? = nil // 'auto' | 'override' | nil. Only set on kind='package' bundles.
 
     enum CodingKeys: String, CodingKey {
-        case companyId    = "company_id"
+        case companyId           = "company_id"
         case name
         case description
-        case basePrice    = "base_price"
-        case unitCost     = "unit_cost"
+        case basePrice           = "base_price"
+        case unitCost            = "unit_cost"
         case unit
-        case pricingUnit  = "pricing_unit"
-        case unitId       = "unit_id"
+        case pricingUnit         = "pricing_unit"
+        case unitId              = "unit_id"
         case category
-        case categoryId   = "category_id"
+        case categoryId          = "category_id"
         case sku
-        case thumbnailUrl = "thumbnail_url"
+        case thumbnailUrl        = "thumbnail_url"
         case kind
         case type
-        case isTaxable    = "is_taxable"
-        case taskTypeId   = "task_type_id"
+        case isTaxable           = "is_taxable"
+        case taskTypeId          = "task_type_id"
+        case taskTypeRef         = "task_type_ref"
+        case linkedCatalogItemId = "linked_catalog_item_id"
+        case bundlePricingMode   = "bundle_pricing_mode"
     }
 }
 
@@ -148,11 +160,11 @@ struct UpdateProductDTO: Codable {
     var unitCost: Double?
     var unit: String?
     var pricingUnit: String?
-    var unitId: String?               // FK to catalog_units; mirrors CreateProductDTO so edits keep the FK current
-    var category: String?             // legacy free-text — kept populated alongside the FK on edits
-    var categoryId: String?           // FK to catalog_categories; authoritative going forward
+    var unitId: String?                  // FK to catalog_units; mirrors CreateProductDTO so edits keep the FK current
+    var category: String?                // legacy free-text — kept populated alongside the FK on edits
+    var categoryId: String?              // FK to catalog_categories; authoritative going forward
     var sku: String?
-    var thumbnailUrl: String?         // Storage URL; nil = no change, "" can be used to explicitly clear (server-side stores empty string as-is — prefer attaching a new URL or leaving alone)
+    var thumbnailUrl: String?            // Storage URL; nil = no change, "" can be used to explicitly clear (server-side stores empty string as-is — prefer attaching a new URL or leaving alone)
     var kind: String?
     var type: String?
     var isTaxable: Bool?
@@ -161,27 +173,33 @@ struct UpdateProductDTO: Codable {
     var minimumCharge: Double?
     var minimumQuantity: Double?
     var taskTypeId: String?
+    var taskTypeRef: String?             // FK to task_types; mirrors CreateProductDTO so edits keep the FK current
+    var linkedCatalogItemId: String?     // FK to catalog_items; mirrors CreateProductDTO so edits keep the FK current
+    var bundlePricingMode: String?       // 'auto' | 'override' | nil. Only edited via the bundle composition sheet.
 
     enum CodingKeys: String, CodingKey {
         case name
         case description
-        case basePrice         = "base_price"
-        case unitCost          = "unit_cost"
+        case basePrice           = "base_price"
+        case unitCost            = "unit_cost"
         case unit
-        case pricingUnit       = "pricing_unit"
-        case unitId            = "unit_id"
+        case pricingUnit         = "pricing_unit"
+        case unitId              = "unit_id"
         case category
-        case categoryId        = "category_id"
+        case categoryId          = "category_id"
         case sku
-        case thumbnailUrl      = "thumbnail_url"
+        case thumbnailUrl        = "thumbnail_url"
         case kind
         case type
-        case isTaxable         = "is_taxable"
-        case isActive          = "is_active"
-        case isFavorite        = "is_favorite"
-        case minimumCharge     = "minimum_charge"
-        case minimumQuantity   = "minimum_quantity"
-        case taskTypeId        = "task_type_id"
+        case isTaxable           = "is_taxable"
+        case isActive            = "is_active"
+        case isFavorite          = "is_favorite"
+        case minimumCharge       = "minimum_charge"
+        case minimumQuantity     = "minimum_quantity"
+        case taskTypeId          = "task_type_id"
+        case taskTypeRef         = "task_type_ref"
+        case linkedCatalogItemId = "linked_catalog_item_id"
+        case bundlePricingMode   = "bundle_pricing_mode"
     }
 }
 

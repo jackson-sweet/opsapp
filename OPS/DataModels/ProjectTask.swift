@@ -144,6 +144,18 @@ final class ProjectTask {
     // MARK: - Dependency Overrides
     var dependencyOverridesJSON: String?  // JSON array of TaskTypeDependency; nil = use taskType defaults
 
+    // MARK: - Pair Linkage
+    /// ID of the predecessor task that auto-spawned this task. nil if this
+    /// task was created manually or by another path (line-item generation, sync).
+    /// Used for cascading delete/cancel and unambiguous pairing when a project
+    /// has multiple instances of the same predecessor type.
+    var pairedFromTaskId: String?
+
+    /// True after the user has manually edited this task's start date.
+    /// The dependency cascade respects this flag — once locked, predecessor
+    /// movements no longer auto-shift this task. Reset by deleting/recreating.
+    var scheduleLocked: Bool = false
+
     // Store team member IDs as string (for compatibility with existing patterns)
     var teamMemberIdsString: String = ""
     
@@ -156,14 +168,24 @@ final class ProjectTask {
     
     @Relationship(deleteRule: .noAction)
     var teamMembers: [User] = []
-    
+
+    /// Reminder instances on this task. Materialized server-side via triggers
+    /// from the parent TaskType's reminder templates. See bug 4f00c2d7.
+    @Relationship(deleteRule: .cascade, inverse: \TaskReminder.task)
+    var reminders: [TaskReminder] = []
+
     // MARK: - Sync tracking
     var lastSyncedAt: Date?
     var needsSync: Bool = false
 
     // Soft delete support
     var deletedAt: Date?
-    
+
+    // Audit — when this task was created. Added 2026-05-10 to give
+    // recency-sorted task type and team-member pickers a stable signal that
+    // doesn't drift on every edit-sync (unlike `lastSyncedAt`).
+    var createdAt: Date?
+
     // MARK: - Initialization
     init(
         id: String,
@@ -196,6 +218,12 @@ final class ProjectTask {
 
     var schedulingProjectId: String {
         projectId
+    }
+
+    /// SchedulableTask conformance — surfaces `scheduleLocked` to
+    /// `SchedulingEngine` so the cascade can skip user-edited paired tasks.
+    var schedulingLocked: Bool {
+        scheduleLocked
     }
 
     /// Get team member IDs as array

@@ -33,12 +33,22 @@ import SwiftData
 
 enum OPSMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [OPSSchemaV1.self, OPSSchemaV2.self, OPSSchemaV3.self]
+        [OPSSchemaV1.self, OPSSchemaV2.self, OPSSchemaV3.self, OPSSchemaV4.self]
     }
 
     static var stages: [MigrationStage] {
-        [migrateWizardStateIdV1toV2, migrateInventoryToCatalogV2toV3]
+        [migrateWizardStateIdV1toV2, migrateInventoryToCatalogV2toV3, migrateAddTaskRemindersV3toV4]
     }
+
+    /// V3 → V4 adds the TaskTypeReminder and TaskReminder entities plus inverse
+    /// `reminderTemplates` / `reminders` arrays on TaskType and ProjectTask.
+    /// Purely additive — no destructive transforms — so SwiftData lightweight
+    /// migration handles the schema diff transparently. We use `.lightweight`
+    /// to be explicit about the no-op nature of the V3 → V4 step.
+    static let migrateAddTaskRemindersV3toV4 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV3.self,
+        toVersion: OPSSchemaV4.self
+    )
 
     /// V2 → V3 drops the legacy Inventory* entities and registers the new
     /// catalog_* / product_* extension entities, then flags InboundProcessor

@@ -22,11 +22,20 @@ final class TaskType: Identifiable {
     var defaultTeamMemberIdsString: String = ""  // Default crew user IDs for auto-generated tasks
     var dependenciesJSON: String = "[]"  // JSON array of TaskTypeDependency objects
     var isWeatherDependent: Bool = false  // Stub for future weather-aware scheduling
+    /// Default duration in days for newly-created tasks of this type. Used by
+    /// `TaskPairSpawner` when auto-spawning paired tasks; also used as a hint
+    /// when generating tasks from line items. Editable in TaskTypeSheet.
+    var defaultDuration: Int = 1
 
     // MARK: - Relationships
     @Relationship(deleteRule: .nullify, inverse: \ProjectTask.taskType)
     var tasks: [ProjectTask] = []
-    
+
+    /// Reminder templates attached to this TaskType — instantiated as
+    /// `TaskReminder` rows on every ProjectTask of this type. See bug 4f00c2d7.
+    @Relationship(deleteRule: .cascade, inverse: \TaskTypeReminder.taskType)
+    var reminderTemplates: [TaskTypeReminder] = []
+
     // MARK: - Sync tracking
     var lastSyncedAt: Date?
     var needsSync: Bool = false

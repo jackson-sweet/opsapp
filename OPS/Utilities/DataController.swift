@@ -1168,6 +1168,13 @@ class DataController: ObservableObject {
         // Bug G9 — clear mention-based project access index on logout.
         MentionAccessIndex.shared.clear()
 
+        // Bug 68123654 — wipe the iPhone Calendar mirror on logout. Deletes
+        // the entire "OPS" calendar from EventKit (cascades to all mirrored
+        // events) and clears CalendarMirrorMap.
+        Task { @MainActor in
+            await CalendarMirrorService.shared.handleLogout()
+        }
+
         // Clear on-disk client avatar cache
         ClientAvatarCache.shared.clearAll()
 
@@ -1279,6 +1286,7 @@ class DataController: ObservableObject {
             deleteAll(FetchDescriptor<StageTransition>(), label: "StageTransition", in: context)
             deleteAll(FetchDescriptor<SiteVisit>(), label: "SiteVisit", in: context)
             deleteAll(FetchDescriptor<CalendarUserEvent>(), label: "CalendarUserEvent", in: context)
+            deleteAll(FetchDescriptor<CalendarMirrorMap>(), label: "CalendarMirrorMap", in: context)
             deleteAll(FetchDescriptor<ProjectNote>(), label: "ProjectNote", in: context)
             deleteAll(FetchDescriptor<EstimateLineItem>(), label: "EstimateLineItem", in: context)
             deleteAll(FetchDescriptor<InvoiceLineItem>(), label: "InvoiceLineItem", in: context)
@@ -2969,9 +2977,11 @@ class DataController: ObservableObject {
         project.needsSync = true
 
         // Cascade soft delete to all tasks
+        var cascadedTaskIds: [String] = []
         for task in project.tasks where task.deletedAt == nil {
             task.deletedAt = deletionDate
             task.needsSync = true
+            cascadedTaskIds.append(task.id)
 
             // Record delete for each cascaded task
             syncEngine.recordOperation(
@@ -2980,6 +2990,13 @@ class DataController: ObservableObject {
                 operationType: "delete",
                 changedFields: ["deleted_at": formatter.string(from: deletionDate)]
             )
+        }
+
+        // Unmirror cascaded tasks from iPhone Calendar
+        Task { @MainActor in
+            for tid in cascadedTaskIds {
+                await CalendarMirrorService.shared.unmirrorEvent(opsId: tid)
+            }
         }
 
         // Save changes locally
@@ -3750,6 +3767,12 @@ class DataController: ObservableObject {
         task.needsSync = true
         try? modelContext?.save()
 
+        // Mirror to iPhone Calendar
+        let mirrorTaskId = task.id
+        Task { @MainActor in
+            await CalendarMirrorService.shared.mirrorEvent(opsId: mirrorTaskId, source: .projectTask)
+        }
+
         // Notify calendar views to refresh immediately
         DispatchQueue.main.async { [weak self] in
             self?.scheduledTasksDidChange.toggle()
@@ -4108,6 +4131,12 @@ class DataController: ObservableObject {
         task.needsSync = true
         try? modelContext?.save()
         print("[UPDATE_TASK_TEAM] ✅ Task local state updated (IDs string + relationship)")
+
+        // Mirror to iPhone Calendar — team change may add/remove eligibility for the current user
+        let mirrorTaskId = task.id
+        Task { @MainActor in
+            await CalendarMirrorService.shared.mirrorEvent(opsId: mirrorTaskId, source: .projectTask)
+        }
 
         // Record for async sync
         syncEngine.recordOperation(
@@ -4608,6 +4637,9 @@ class DataController: ObservableObject {
             task.needsSync = true
             try? context.save()
         }
+
+        // Unmirror from iPhone Calendar
+        await CalendarMirrorService.shared.unmirrorEvent(opsId: taskId)
 
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]

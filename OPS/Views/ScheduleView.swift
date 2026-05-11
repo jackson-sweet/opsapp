@@ -52,7 +52,18 @@ struct ScheduleView: View {
     @State private var showScopeSheet = false
     @State private var showScheduleBanner = false
     @State private var scheduleBannerText = ""
-    
+
+    // Bug 68123654 — iPhone Calendar Mirror state
+    @StateObject private var mirrorService = CalendarMirrorService.shared
+    @AppStorage("ops.calendar.mirror.bannerDismissCount") private var mirrorBannerDismissCount: Int = 0
+
+    private var shouldShowMirrorBanner: Bool {
+        mirrorService.hasShownPrompt
+            && !mirrorService.isEnabled
+            && mirrorService.authorizationStatus != .denied
+            && mirrorBannerDismissCount < 2
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -76,6 +87,13 @@ struct ScheduleView: View {
                         filterCount: viewModel.activeFilterCount
                     )
                     .padding(.bottom, 8)
+
+                    // Bug 68123654 — iPhone Calendar Mirror reminder banner
+                    if shouldShowMirrorBanner {
+                        mirrorBanner
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 8)
+                    }
                 
                 VStack(spacing: 0) {
                     // Extra top padding during calendarMonthPrompt to make room for tooltip
@@ -467,6 +485,39 @@ struct ScheduleView: View {
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
         .padding(.vertical, 14)
+    }
+
+    // MARK: - iPhone Calendar Mirror banner (Bug 68123654)
+
+    private var mirrorBanner: some View {
+        HStack(spacing: 12) {
+            Text("// MIRROR DISABLED · TAP TO ENABLE")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            Spacer()
+            Button {
+                mirrorBannerDismissCount += 1
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            }
+            .frame(width: 44, height: 44)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            Task { try? await mirrorService.enable() }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        }
     }
 }
 

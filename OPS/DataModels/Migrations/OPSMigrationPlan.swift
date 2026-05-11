@@ -26,12 +26,20 @@ import SwiftData
 
 enum OPSMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [OPSSchemaV1.self, OPSSchemaV2.self]
+        [OPSSchemaV1.self, OPSSchemaV2.self, OPSSchemaV3.self]
     }
 
     static var stages: [MigrationStage] {
-        [migrateWizardStateIdV1toV2]
+        [migrateWizardStateIdV1toV2, addCalendarMirrorMapV2toV3]
     }
+
+    /// V2 → V3: purely additive — `CalendarMirrorMap` is a brand-new model
+    /// with no pre-existing rows to transform. SwiftData lightweight migration
+    /// handles it.
+    static let addCalendarMirrorMapV2toV3 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV2.self,
+        toVersion: OPSSchemaV3.self
+    )
 
     /// Bridges the pre-`id` WizardState shape into the V2 schema by dropping
     /// every legacy row before the schema transform runs, then defensively

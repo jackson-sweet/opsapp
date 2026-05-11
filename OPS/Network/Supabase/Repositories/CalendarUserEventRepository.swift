@@ -51,13 +51,18 @@ class CalendarUserEventRepository {
     // MARK: - Create
 
     func create(_ dto: CreateCalendarUserEventDTO) async throws -> CalendarUserEventDTO {
-        return try await client
+        let result: CalendarUserEventDTO = try await client
             .from("calendar_user_events")
             .insert(dto)
             .select()
             .single()
             .execute()
             .value
+        let opsId = result.id
+        Task { @MainActor in
+            await CalendarMirrorService.shared.mirrorEvent(opsId: opsId, source: .calendarUserEvent)
+        }
+        return result
     }
 
     // MARK: - Update Status (admin approve/deny time off)
@@ -74,6 +79,9 @@ class CalendarUserEventRepository {
             .update(payload)
             .eq("id", value: eventId)
             .execute()
+        Task { @MainActor in
+            await CalendarMirrorService.shared.mirrorEvent(opsId: eventId, source: .calendarUserEvent)
+        }
     }
 
     /// Update status and notify the requesting user of the decision.
@@ -135,6 +143,9 @@ class CalendarUserEventRepository {
             .update(payload)
             .eq("id", value: eventId)
             .execute()
+        Task { @MainActor in
+            await CalendarMirrorService.shared.unmirrorEvent(opsId: eventId)
+        }
     }
 
     // MARK: - Series fetch / update / delete (Apple-Calendar scopes)
@@ -201,6 +212,9 @@ class CalendarUserEventRepository {
             .update(fields)
             .eq("id", value: eventId)
             .execute()
+        Task { @MainActor in
+            await CalendarMirrorService.shared.mirrorEvent(opsId: eventId, source: .calendarUserEvent)
+        }
     }
 
     /// Detach a row from its series — sets series_id to NULL so subsequent
@@ -232,6 +246,9 @@ class CalendarUserEventRepository {
             .eq("series_id", value: seriesId)
             .is("deleted_at", value: nil)
             .execute()
+        Task { @MainActor in
+            await CalendarMirrorService.shared.reconcileAll()
+        }
     }
 
     /// Soft-delete every row in the series whose start_date is on or after
@@ -250,6 +267,9 @@ class CalendarUserEventRepository {
             .gte("start_date", value: iso.string(from: from))
             .is("deleted_at", value: nil)
             .execute()
+        Task { @MainActor in
+            await CalendarMirrorService.shared.reconcileAll()
+        }
     }
 }
 

@@ -23,6 +23,20 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         // register identifiers now and have SyncEngine attach handlers later.
         BackgroundSyncScheduler.shared.registerTasks()
 
+        // Bug 68123654 — register iPhone Calendar Mirror refresh handler. Must
+        // happen here, before the app finishes launching, per BGTaskScheduler
+        // contract.
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: CalendarMirrorService.backgroundTaskId,
+            using: nil
+        ) { task in
+            Task { @MainActor in
+                await CalendarMirrorService.shared.reconcileAll()
+                CalendarMirrorService.shared.scheduleNextRefresh()
+                task.setTaskCompleted(success: true)
+            }
+        }
+
         // Configure Firebase (must be first)
         FirebaseApp.configure()
 
@@ -227,6 +241,28 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
             // Hand to the coordinator — stash + post + analytics happen there.
             Task { @MainActor in
                 DeepLinkCoordinator.shared.receive(entity: entity, id: id, scheme: "ops")
+            }
+            return true
+        case "event":
+            // ops://event/<calendarUserEventId> — Bug 68123654. iPhone Calendar
+            // Mirror writes these into EKEvent.url so tapping the event in iOS
+            // Calendar returns the user to OPS. We route to the Schedule tab and
+            // post a downstream notification carrying the event id.
+            Task { @MainActor in
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenCalendarUserEvent"),
+                    object: nil,
+                    userInfo: ["eventId": id]
+                )
+                AnalyticsService.shared.track(
+                    eventType: .action,
+                    eventName: "deep_link_routed",
+                    properties: [
+                        "entity": entity,
+                        "id": id,
+                        "scheme": "ops"
+                    ]
+                )
             }
             return true
         case "tasks":

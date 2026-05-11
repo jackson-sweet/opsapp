@@ -32,7 +32,7 @@ struct OPSApp: App {
     @StateObject private var permissionStore = PermissionStore.shared
 
     // Create the model container for SwiftData.
-    // Schema is driven by the current VersionedSchema (`OPSSchemaV2`) and the
+    // Schema is driven by the current VersionedSchema (`OPSSchemaV3`) and the
     // container runs `OPSMigrationPlan` on launch so stores written by earlier
     // builds (e.g. pre-`WizardState.id`) are migrated in place.
     //
@@ -41,7 +41,7 @@ struct OPSApp: App {
     // schema in the migration plan, so it refuses to open it. We delete the store
     // and start fresh — Supabase sync will re-hydrate all data on next launch.
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: OPSSchemaV2.self)
+        let schema = Schema(versionedSchema: OPSSchemaV3.self)
 
         let modelConfiguration = ModelConfiguration(
             schema: schema,
@@ -105,6 +105,10 @@ struct OPSApp: App {
                     let context = sharedModelContainer.mainContext
                     dataController.setModelContext(context)
 
+                    // Bridge the model container to non-View singletons
+                    // (CalendarMirrorService reaches SwiftData through this).
+                    ModelContainerHolder.shared = sharedModelContainer
+
                     // Register background sync tasks (syncEngine may not be initialized yet
                     // since setModelContext kicks off async init — guard against nil)
                     dataController.syncEngine?.registerBackgroundTasks()
@@ -119,6 +123,13 @@ struct OPSApp: App {
                     if let userId = UserDefaults.standard.string(forKey: "currentUserId"),
                        !userId.isEmpty {
                         MentionAccessIndex.shared.rebuild(context: context, userId: userId)
+                    }
+
+                    // Bug 68123654 — kick a launch-time reconcile so the iPhone
+                    // Calendar mirror catches up with any changes that happened
+                    // while the app was closed. No-op when feature is disabled.
+                    Task { @MainActor in
+                        await CalendarMirrorService.shared.reconcileAll()
                     }
 
                     // Initialize SubscriptionManager with DataController

@@ -11,6 +11,8 @@ struct IntegrationsSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showQuickBooksAuth = false
     @State private var showSageAuth = false
+    @StateObject private var mirrorService = CalendarMirrorService.shared
+    @State private var showingMirrorDisconnectConfirm = false
 
     var body: some View {
         ZStack {
@@ -24,11 +26,27 @@ struct IntegrationsSettingsView: View {
 
                 ScrollView {
                     VStack(spacing: 24) {
+                        // Calendar header (Bug 68123654)
+                        Text("CALENDAR")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        // iPhone Calendar mirror
+                        integrationCard(
+                            name: "iPhone Calendar",
+                            description: "Sync OPS events to your iPhone Calendar — time off, personal events, and your assigned work.",
+                            iconName: "calendar",
+                            isConnected: mirrorService.isEnabled && mirrorService.authorizationStatus == .fullAccess,
+                            onConnect: { handleMirrorToggle() }
+                        )
+
                         // Accounting header
                         Text("ACCOUNTING")
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 8)
 
                         // QuickBooks
                         integrationCard(
@@ -72,6 +90,22 @@ struct IntegrationsSettingsView: View {
         }
         .sheet(isPresented: $showSageAuth) {
             oauthPlaceholder(provider: "Sage")
+        }
+        .alert("// DISCONNECT iPHONE CALENDAR", isPresented: $showingMirrorDisconnectConfirm) {
+            Button("CANCEL", role: .cancel) { }
+            Button("DISCONNECT", role: .destructive) {
+                Task { await mirrorService.disable() }
+            }
+        } message: {
+            Text("Existing mirrored events will be removed from your iPhone Calendar.")
+        }
+    }
+
+    private func handleMirrorToggle() {
+        if mirrorService.isEnabled {
+            showingMirrorDisconnectConfirm = true
+        } else {
+            Task { try? await mirrorService.enable() }
         }
     }
 

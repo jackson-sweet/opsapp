@@ -82,6 +82,9 @@ struct UserEventSheet: View {
     @State private var allDay: Bool = true
     @State private var isSaving: Bool = false
 
+    /// First-event-save permission ask for iPhone Calendar Mirror.
+    @State private var showingMirrorPrompt: Bool = false
+
     // Section state
     @State private var isDetailsExpanded: Bool = true
     @State private var isScheduleExpanded: Bool = true
@@ -317,6 +320,15 @@ struct UserEventSheet: View {
                     selectedTeamMemberIds: $selectedTeamMemberIds,
                     allTeamMembers: members
                 )
+            }
+        }
+        // Bug 68123654 — first-event-save iPhone Calendar Mirror permission ask.
+        .sheet(isPresented: $showingMirrorPrompt) {
+            CalendarMirrorPromptSheet(isPresented: $showingMirrorPrompt)
+        }
+        .onChange(of: showingMirrorPrompt) { _, isShowing in
+            if !isShowing {
+                isPresented = false
             }
         }
     }
@@ -1115,7 +1127,16 @@ struct UserEventSheet: View {
             await MainActor.run {
                 isSaving = false
                 viewModel.loadUserEvents()
-                isPresented = false
+                // Bug 68123654 — surface the iPhone Calendar Mirror prompt at most
+                // once per install, at the moment the user clearly cares about
+                // their calendar. If the user has already seen the prompt, or has
+                // already granted permission, dismiss directly.
+                if !CalendarMirrorService.shared.hasShownPrompt
+                    && CalendarMirrorService.shared.authorizationStatus == .notDetermined {
+                    showingMirrorPrompt = true
+                } else {
+                    isPresented = false
+                }
             }
         }
     }

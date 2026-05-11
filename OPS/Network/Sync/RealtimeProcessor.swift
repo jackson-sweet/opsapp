@@ -240,6 +240,9 @@ final class RealtimeProcessor: ObservableObject {
                 model.id = id
                 let pendingFields = pendingFieldsForEntity(entityType: .projectTask, entityId: id, context: context)
                 try upsertProjectTask(context: context, id: id, model: model, pendingFields: pendingFields)
+                Task { @MainActor in
+                    await CalendarMirrorService.shared.mirrorEvent(opsId: id, source: .projectTask)
+                }
 
             case "users":
                 let dto = try record.decodeRecord(as: SupabaseUserDTO.self, decoder: decoder)
@@ -310,6 +313,9 @@ final class RealtimeProcessor: ObservableObject {
 
             case "calendar_user_events":
                 NotificationCenter.default.post(name: .calendarEventUpdated, object: nil)
+                Task { @MainActor in
+                    await CalendarMirrorService.shared.reconcileAll()
+                }
 
             case "notifications":
                 NotificationCenter.default.post(name: .notificationReceived, object: nil)
@@ -355,6 +361,9 @@ final class RealtimeProcessor: ObservableObject {
                 if let existing = try context.fetch(descriptor).first {
                     existing.deletedAt = Date()
                     try context.save()
+                }
+                Task { @MainActor in
+                    await CalendarMirrorService.shared.unmirrorEvent(opsId: id)
                 }
 
             case "users":
@@ -415,6 +424,9 @@ final class RealtimeProcessor: ObservableObject {
 
             case "calendar_user_events":
                 NotificationCenter.default.post(name: .calendarEventUpdated, object: nil)
+                Task { @MainActor in
+                    await CalendarMirrorService.shared.unmirrorEvent(opsId: id)
+                }
 
             case "notifications":
                 NotificationCenter.default.post(name: .notificationReceived, object: nil)

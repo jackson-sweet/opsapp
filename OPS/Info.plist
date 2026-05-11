@@ -40,6 +40,8 @@
 	<string>OPS needs access to save project photos to your photo library.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>OPS needs access to your contacts to easily import client information and save OPS contacts to your address book.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>OPS syncs your scheduled work, time off, and personal events to your iPhone Calendar so you can see them alongside your personal life.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>OPS uses your location to suggest nearby addresses when entering client information, making it faster and easier to add accurate address details.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
@@ -67,6 +69,7 @@
 	<array>
 		<string>com.ops.sync.refresh</string>
 		<string>com.ops.sync.processing</string>
+		<string>com.ops.calendar.mirror.refresh</string>
 	</array>
 	<key>UIAppFonts</key>
 	<array>

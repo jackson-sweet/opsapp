@@ -117,7 +117,6 @@ struct FloatingActionMenu: View {
     @State private var showingCatalogAddVariant = false
     @State private var showingCatalogAddFamily = false
     @State private var showingCatalogImport = false
-    @State private var showingCatalogQuickAddProduct = false
     @State private var showingProductKindPicker = false
     @State private var showingNewServiceSheet = false
     @State private var showingNewGoodSheet = false

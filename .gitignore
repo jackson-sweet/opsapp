@@ -11,3 +11,8 @@ Secrets.xcconfig
 
 # Firebase CLI debug logs
 firebase-debug.log
+
+# Xcode personal state (user-specific, not for version control)
+**/xcuserdata/
+**/*.xcuserstate
+*.xcuserdatad/

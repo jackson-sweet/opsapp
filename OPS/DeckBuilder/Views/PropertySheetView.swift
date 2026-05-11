@@ -92,6 +92,18 @@ struct PropertySheetView: View {
                             .frame(width: 200)
                         }
 
+                        // House cladding picker — only shown for house edges.
+                        // Bug 3d72ce0b — surfaces a tactile picker so the
+                        // user sees the rendered wall material in 2D and 3D.
+                        if edge.edgeType == .houseEdge {
+                            houseCladdingPicker(edgeId: edgeId, edge: edge)
+                        }
+
+                        // Free-text label rendered as the secondary line on
+                        // the dimension pill ("Hot tub side", "BBQ wall").
+                        // Bug 4a03f507.
+                        edgeLabelField(edgeId: edgeId, edge: edge)
+
                         Divider().background(OPSStyle.Colors.separator)
 
                         // Railing
@@ -265,6 +277,88 @@ struct PropertySheetView: View {
         }
     }
 
+    // MARK: - Edge Label (bug 4a03f507)
+
+    /// Free-text label for an individual edge. Wires `DeckEdge.label`
+    /// through the view model so the dimension pill picks it up as the
+    /// secondary line.
+    @ViewBuilder
+    private func edgeLabelField(edgeId: String, edge: DeckEdge) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Image(systemName: "tag")
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            TextField("Label (optional)", text: Binding(
+                get: { edge.label ?? "" },
+                set: { viewModel.setEdgeLabel(edgeId, label: $0) }
+            ))
+            .font(.system(size: 14, weight: .medium, design: .monospaced))
+            .foregroundColor(OPSStyle.Colors.primaryText)
+            .textInputAutocapitalization(.words)
+            .submitLabel(.done)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .background(OPSStyle.Colors.background.opacity(0.5))
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder.opacity(0.4), lineWidth: 1)
+        )
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+    }
+
+    // MARK: - House Cladding (bug 3d72ce0b)
+
+    /// Cladding picker shown on house edges. Three preset materials —
+    /// stucco, hardie, wood-vertical — drive the 2D hatch color, the 3D
+    /// wall fill, and the floating "HOUSE" label tone. None means "no
+    /// material picked yet" and renders the neutral fallback wall.
+    @ViewBuilder
+    private func houseCladdingPicker(edgeId: String, edge: DeckEdge) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("Cladding")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                ForEach(HouseEdgeMaterial.allCases, id: \.self) { material in
+                    Button {
+                        if edge.houseEdgeMaterial == material {
+                            viewModel.setHouseEdgeMaterial(edgeId, material: nil)
+                        } else {
+                            viewModel.setHouseEdgeMaterial(edgeId, material: material)
+                        }
+                    } label: {
+                        VStack(spacing: 4) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color(hex: material.fillHex) ?? .gray)
+                                .frame(height: 28)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(
+                                            edge.houseEdgeMaterial == material
+                                                ? OPSStyle.Colors.primaryAccent
+                                                : Color.white.opacity(0.15),
+                                            lineWidth: edge.houseEdgeMaterial == material ? 2 : 1
+                                        )
+                                )
+                            Text(material.displayName)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(
+                                    edge.houseEdgeMaterial == material
+                                        ? OPSStyle.Colors.primaryText
+                                        : OPSStyle.Colors.secondaryText
+                                )
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Vertex Properties
 
     @ViewBuilder
@@ -330,6 +424,11 @@ struct PropertySheetView: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             sectionHeader("Surface Properties", icon: "square.fill")
 
+            // Surface label — the field worker's own name for this area
+            // ("BBQ pad", "Hot tub deck"). Floats over the canvas via the
+            // surface label renderer. Bug 4a03f507.
+            surfaceLabelField
+
             // Area display
             if let area = viewModel.totalArea {
                 HStack {
@@ -387,6 +486,61 @@ struct PropertySheetView: View {
             // footprint store doesn't carry color/material today.
             surfaceMetadataSection
         }
+    }
+
+    // MARK: - Surface label field (bug 4a03f507)
+
+    /// Free-text label that floats on the canvas over the active surface.
+    /// Writes to per-surface labels when any persisted DeckSurface ids are
+    /// selected, otherwise falls back to the legacy footprint label so
+    /// single-shape decks (the common case) still get a name. Empty input
+    /// clears the label, returning the surface to its material-name (or
+    /// blank) state.
+    @ViewBuilder
+    private var surfaceLabelField: some View {
+        let selectedSurfaceIds = viewModel.selection.selectedSurfaceIds
+        let surfaces = selectedSurfaceIds.compactMap { viewModel.findSurface(byId: $0) }
+        let activeLabel: String = {
+            if let first = surfaces.first { return first.label ?? "" }
+            return viewModel.drawingData.footprint.label ?? ""
+        }()
+
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("Label")
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: "tag")
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                TextField("e.g. BBQ pad, Hot tub deck", text: Binding(
+                    get: { activeLabel },
+                    set: { newValue in
+                        if !selectedSurfaceIds.isEmpty {
+                            viewModel.setLabelOnSelectedSurfaces(newValue)
+                        } else {
+                            viewModel.setLabelOnActiveFootprint(newValue)
+                        }
+                    }
+                ))
+                .font(.system(size: 15, weight: .medium, design: .monospaced))
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .textInputAutocapitalization(.words)
+                .submitLabel(.done)
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+            .background(OPSStyle.Colors.background.opacity(0.5))
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder.opacity(0.4), lineWidth: 1)
+            )
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.cardBackground)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 
     // MARK: - Surface metadata section

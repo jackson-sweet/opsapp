@@ -53,8 +53,23 @@ struct TemplateDimensionInputView: View {
         }
     }
 
+    /// All four (or N) fields must be non-empty AND > 0 AND must produce
+    /// a geometrically valid shape per `DeckTemplateType.validationErrors`.
+    /// Without the shape check the Create button used to enable on input that
+    /// then silently degraded to a rectangle in the engine — the cause of
+    /// bug 22577979's "L-shape → rectangle" import.
     private var allValid: Bool {
-        parsedInches.allSatisfy { $0 != nil && ($0 ?? 0) > 0 }
+        guard parsedInches.allSatisfy({ $0 != nil && ($0 ?? 0) > 0 }) else { return false }
+        return geometricErrors.isEmpty
+    }
+
+    /// Geometric constraint violations for the currently-parsed dimensions
+    /// (empty fields are filtered out so the user doesn't see a wall of red
+    /// errors before they finish typing).
+    private var geometricErrors: [String] {
+        let dims = parsedInches.compactMap { $0 }
+        guard dims.count == templateType.dimensionCount else { return [] }
+        return templateType.validationErrors(for: dims)
     }
 
     var body: some View {
@@ -76,6 +91,14 @@ struct TemplateDimensionInputView: View {
 
                     // Dimension fields
                     dimensionFields
+
+                    // Constraint validation — surfaces "Extension width (C)
+                    // must be less than long side (A)" etc. inline before
+                    // the user taps Create. Bug 22577979.
+                    if !geometricErrors.isEmpty {
+                        validationBanner
+                            .transition(.opacity)
+                    }
 
                     // Voice overlay
                     if showingVoiceOverlay {
@@ -166,15 +189,20 @@ struct TemplateDimensionInputView: View {
         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
     }
 
+    /// Bug 22577979 — single source of truth for the diagram shape is now
+    /// `DeckTemplateEngine.vertexPositions(...)`. Previously the input view
+    /// kept its own normalized-coords switch statement that didn't match what
+    /// the engine generated (L-shape preview said "wide top, leg down-left"
+    /// but engine generated "thin wide top + main body below-left"). Routing
+    /// both through the engine guarantees the preview IS the export.
     private func drawTemplateDiagram(context: GraphicsContext, size: CGSize) {
-        let padding: CGFloat = 30
+        let padding: CGFloat = 36
         let available = CGSize(width: size.width - padding * 2, height: size.height - padding * 2)
 
-        // Get the vertex pattern — may have varying aspect ratio based on typed dimensions
-        let (verts, edgeLabels) = templateNormalizedShape()
+        let (verts, edgeBindings) = engineShape()
         guard !verts.isEmpty else { return }
 
-        // Find bounding box of the normalized shape and scale to fit uniformly
+        // Find bounding box and scale uniformly to fit.
         let xs = verts.map(\.x), ys = verts.map(\.y)
         let shapeW = max((xs.max() ?? 1) - (xs.min() ?? 0), 0.01)
         let shapeH = max((ys.max() ?? 1) - (ys.min() ?? 0), 0.01)
@@ -184,140 +212,190 @@ struct TemplateDimensionInputView: View {
 
         let points = verts.map { v in
             CGPoint(
-                x: v.x * fitScale + offsetX,
-                y: v.y * fitScale + offsetY
+                x: (v.x - (xs.min() ?? 0)) * fitScale + offsetX,
+                y: (v.y - (ys.min() ?? 0)) * fitScale + offsetY
             )
         }
 
-        // Draw filled shape
+        // Fill — uses opsAccent at low opacity (steel-blue tint) to keep the
+        // shape visible without dominating the labels. Matches OPSStyle's
+        // monochrome-canvas + accent rule.
         var shapePath = Path()
         shapePath.move(to: points[0])
         for i in 1..<points.count {
             shapePath.addLine(to: points[i])
         }
         shapePath.closeSubpath()
-        context.fill(shapePath, with: .color(OPSStyle.Colors.primaryAccent.opacity(0.1)))
+        context.fill(shapePath, with: .color(OPSStyle.Colors.opsAccent.opacity(0.08)))
 
-        // Draw edges with dimension labels
+        // Edges — colour each edge with its dimension label's colour so the
+        // visual link between "B = Full Depth" and *that specific line* is
+        // unambiguous. Unlabeled edges (e.g. the derived (b-d) step of an
+        // L-shape) draw in a muted neutral so they don't steal focus.
         let n = points.count
         for i in 0..<n {
             let j = (i + 1) % n
             let start = points[i]
             let end = points[j]
 
-            // Edge line
             var edgePath = Path()
             edgePath.move(to: start)
             edgePath.addLine(to: end)
-            context.stroke(edgePath, with: .color(Color.white.opacity(0.6)), lineWidth: 1.5)
 
-            // Label at midpoint
-            if i < edgeLabels.count {
-                let label = edgeLabels[i]
-                let mid = CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
+            let binding = edgeBindings[i]
+            let stroke: Color = binding?.label.color ?? OPSStyle.Colors.cardBorder
+            let width: CGFloat = binding == nil ? 1.0 : 2.2
+            context.stroke(edgePath, with: .color(stroke), lineWidth: width)
+        }
 
-                // Offset label away from center of shape
-                let centerX = points.map(\.x).reduce(0, +) / CGFloat(n)
-                let centerY = points.map(\.y).reduce(0, +) / CGFloat(n)
-                let dx = mid.x - centerX
-                let dy = mid.y - centerY
-                let dist = max(sqrt(dx * dx + dy * dy), 1)
-                let offsetAmt: CGFloat = 18
-                let labelPos = CGPoint(x: mid.x + dx / dist * offsetAmt, y: mid.y + dy / dist * offsetAmt)
+        // Labels — pinned to each edge's outward normal, NOT the polygon
+        // centroid. Old behaviour offset radially from centroid which
+        // mis-positioned labels on non-convex shapes (e.g. the L-shape's
+        // inner corner). Now every label sits perpendicular to its own
+        // edge, with a leader dot anchoring the visual link.
+        let centroid = polygonCentroid(points)
+        for i in 0..<n {
+            guard let binding = edgeBindings[i] else { continue }
+            let j = (i + 1) % n
+            let start = points[i]
+            let end = points[j]
+            let mid = CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
 
+            // Outward normal: rotate edge direction 90°, pick the side that
+            // points AWAY from the polygon centre so the label never falls
+            // inside the shape.
+            let dx = end.x - start.x
+            let dy = end.y - start.y
+            let len = max(sqrt(dx * dx + dy * dy), 1)
+            var nx = -dy / len
+            var ny =  dx / len
+            let toCentroid = CGPoint(x: mid.x - centroid.x, y: mid.y - centroid.y)
+            if (nx * toCentroid.x + ny * toCentroid.y) < 0 {
+                nx = -nx; ny = -ny
+            }
+
+            let leaderDist: CGFloat = 8
+            let labelDist: CGFloat = 22
+            let leaderPos = CGPoint(x: mid.x + nx * leaderDist, y: mid.y + ny * leaderDist)
+            let labelPos  = CGPoint(x: mid.x + nx * labelDist,  y: mid.y + ny * labelDist)
+
+            // Tiny leader dot in label colour — makes the binding read at
+            // a glance even when the label has to clear another edge.
+            context.fill(
+                Path(ellipseIn: CGRect(x: leaderPos.x - 2.5, y: leaderPos.y - 2.5, width: 5, height: 5)),
+                with: .color(binding.label.color)
+            )
+
+            // Letter — bold, in the label's color.
+            context.draw(
+                Text(binding.label.letter)
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .foregroundColor(binding.label.color),
+                at: labelPos
+            )
+
+            // Live numeric value below the letter — formatted in whatever
+            // units the user has picked (imperial / metric). Empty if the
+            // field is still blank. This is the live measurement display
+            // bug 22577979 asked for.
+            if let inches = parsedInches[safe: binding.labelIndex] ?? nil {
+                let formatted = DimensionEngine.format(inches, system: measurementSystem)
+                let textPos = CGPoint(x: labelPos.x + nx * 12, y: labelPos.y + ny * 12)
                 context.draw(
-                    Text(label.letter)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(label.color),
-                    at: labelPos
+                    Text(formatted)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(binding.label.color.opacity(0.85)),
+                    at: textPos
                 )
             }
         }
 
-        // Draw vertices
+        // Vertices — small white dots, drawn last so they sit on top of edges.
         for point in points {
-            let dotRect = CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)
-            context.fill(Path(ellipseIn: dotRect), with: .color(Color.white))
+            let dotRect = CGRect(x: point.x - 3, y: point.y - 3, width: 6, height: 6)
+            context.fill(Path(ellipseIn: dotRect), with: .color(OPSStyle.Colors.primaryText))
+        }
+
+        // Pool deck callout — pool diameter (label C) has no edge to live on,
+        // so we render the pool itself as a centred circle with the C label
+        // floating beside it. Bug 22577979 — pool deck previously inherited
+        // the rectangle's preview with no pool indication at all.
+        if templateType == .poolDeck,
+           let pool = parsedInches[safe: 2] ?? nil,
+           let length = parsedInches[safe: 0] ?? nil,
+           let depth = parsedInches[safe: 1] ?? nil,
+           pool > 0, length > 0, depth > 0 {
+            let poolPxRadius = (pool / 2) * fitScale
+            let center = CGPoint(
+                x: offsetX + (length / 2) * fitScale,
+                y: offsetY + (depth / 2) * fitScale
+            )
+            let circleRect = CGRect(
+                x: center.x - poolPxRadius,
+                y: center.y - poolPxRadius,
+                width: poolPxRadius * 2,
+                height: poolPxRadius * 2
+            )
+            let poolColor = templateType.dimensionLabels[2].color
+            context.fill(Path(ellipseIn: circleRect), with: .color(poolColor.opacity(0.18)))
+            context.stroke(Path(ellipseIn: circleRect), with: .color(poolColor), lineWidth: 2.2)
+            context.draw(
+                Text("C")
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .foregroundColor(poolColor),
+                at: center
+            )
         }
     }
 
-    /// Returns normalized vertex positions (0..1 range) and edge labels for diagram rendering.
-    /// Positions scale proportionally based on entered dimensions for live feedback.
-    private func templateNormalizedShape() -> (vertices: [CGPoint], labels: [DimensionLabel]) {
-        let dims = parsedInches.map { $0 ?? 1.0 } // fall back to 1.0 for empty fields
+    private func polygonCentroid(_ points: [CGPoint]) -> CGPoint {
+        guard !points.isEmpty else { return .zero }
+        let sx = points.map(\.x).reduce(0, +)
+        let sy = points.map(\.y).reduce(0, +)
+        return CGPoint(x: sx / CGFloat(points.count), y: sy / CGFloat(points.count))
+    }
 
-        switch templateType {
-        case .rectangle, .frontPorch, .freestanding:
-            let a = max(dims[safe: 0] ?? 1, 0.1)  // length
-            let b = max(dims[safe: 1] ?? 1, 0.1)  // depth
-            let r = b / a  // aspect ratio
-            return (
-                [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 1, y: r), CGPoint(x: 0, y: r)],
-                labels
-            )
-
-        case .lShape:
-            let a = max(dims[safe: 0] ?? 1, 0.1)
-            let b = max(dims[safe: 1] ?? 1, 0.1)
-            let c = max(dims[safe: 2] ?? 1, 0.1)
-            let d = max(dims[safe: 3] ?? 1, 0.1)
-            let rB = b / a, rC = c / a, rD = d / a
-            return (
-                [
-                    CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0),
-                    CGPoint(x: 1, y: rB), CGPoint(x: rC, y: rB),
-                    CGPoint(x: rC, y: rB + rD), CGPoint(x: 0, y: rB + rD),
-                ],
-                labels
-            )
-
-        case .wraparound:
-            let a = max(dims[safe: 0] ?? 1, 0.1)
-            let b = max(dims[safe: 1] ?? 1, 0.1)
-            let c = max(dims[safe: 2] ?? 1, 0.1)
-            let d = max(dims[safe: 3] ?? 1, 0.1)
-            let rB = b / a, rC = c / a, rD = d / a
-            return (
-                [
-                    CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0),
-                    CGPoint(x: 1, y: rB + rD), CGPoint(x: rC, y: rB + rD),
-                    CGPoint(x: rC, y: rB), CGPoint(x: 0, y: rB),
-                ],
-                labels
-            )
-
-        case .tShape:
-            let a = max(dims[safe: 0] ?? 1, 0.1)
-            let b = max(dims[safe: 1] ?? 1, 0.1)
-            let c = max(dims[safe: 2] ?? 1, 0.1)
-            let d = max(dims[safe: 3] ?? 1, 0.1)
-            let rB = b / a, rC = c / a, rD = d / a
-            let inset = (1.0 - rC) / 2  // center the stem
-            return (
-                [
-                    CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0),
-                    CGPoint(x: 1, y: rB), CGPoint(x: inset + rC, y: rB),
-                    CGPoint(x: inset + rC, y: rB + rD), CGPoint(x: inset, y: rB + rD),
-                    CGPoint(x: inset, y: rB), CGPoint(x: 0, y: rB),
-                ],
-                labels
-            )
-
-        case .multiLevel:
-            let a = max(dims[safe: 0] ?? 1, 0.1)
-            let b = max(dims[safe: 1] ?? 1, 0.1)
-            let r = b / a
-            return (
-                [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 1, y: r), CGPoint(x: 0, y: r)],
-                [labels[0], labels[1]]
-            )
-
-        case .poolDeck:
-            return (
-                [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 1, y: 0.7), CGPoint(x: 0, y: 0.7)],
-                labels
-            )
+    /// Pulls vertex positions from the engine when inputs are valid; otherwise
+    /// falls back to a "best guess" preview built from fields that ARE filled
+    /// so the user gets a live shape outline as they type rather than a
+    /// rectangle placeholder. Returns the polygon vertices plus an array of
+    /// per-edge label bindings (nil where the edge isn't user-named).
+    private func engineShape() -> (vertices: [(x: Double, y: Double)], edgeBindings: [EdgeBinding?]) {
+        // Fill in dummy values for unfilled fields so the preview still
+        // animates as the user types one field at a time. Use slightly
+        // asymmetric defaults so the L / T / wraparound shapes don't degenerate.
+        let defaults: [Double] = [240, 144, 96, 48]  // 20', 12', 8', 4'
+        let dims: [Double] = (0..<templateType.dimensionCount).map { i in
+            if let v = parsedInches[safe: i] ?? nil, v > 0 { return v }
+            return defaults[safe: i] ?? 120
         }
+
+        // Try engine geometry first — only succeeds when inputs satisfy all
+        // shape constraints. If they don't (and we used defaults for missing
+        // fields), substitute defaults wholesale so the user sees the
+        // canonical template until they fix the constraint violation.
+        let verts: [(x: Double, y: Double)]
+        if let engineVerts = DeckTemplateEngine.vertexPositions(template: templateType, dimensions: dims) {
+            verts = engineVerts
+        } else if let canonicalVerts = DeckTemplateEngine.vertexPositions(template: templateType, dimensions: defaults) {
+            verts = canonicalVerts
+        } else {
+            verts = []
+        }
+
+        // Build edge bindings using the template's label→edge index map.
+        let mapping = templateType.labelEdgeIndices
+        var bindings = Array<EdgeBinding?>(repeating: nil, count: verts.count)
+        for (labelIdx, edgeIdx) in mapping.enumerated() {
+            guard edgeIdx >= 0, edgeIdx < bindings.count, labelIdx < labels.count else { continue }
+            bindings[edgeIdx] = EdgeBinding(label: labels[labelIdx], labelIndex: labelIdx)
+        }
+        return (verts, bindings)
+    }
+
+    private struct EdgeBinding {
+        let label: DimensionLabel
+        let labelIndex: Int
     }
 
     // MARK: - Dimension Fields
@@ -410,6 +488,38 @@ struct TemplateDimensionInputView: View {
         case .imperial: return "ft/in"
         case .metric:   return "m/cm"
         }
+    }
+
+    // MARK: - Validation Banner
+
+    /// Inline error panel listing every constraint the current inputs violate.
+    /// Rose-tinted, hairline-bordered — matches the OPSStyle "rose = negative"
+    /// semantic. Copy is operator-voice: terse, no "please", no exclamation.
+    private var validationBanner: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.rose)
+                Text("CHECK DIMENSIONS")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .tracking(1.2)
+                    .foregroundColor(OPSStyle.Colors.rose)
+            }
+            ForEach(geometricErrors, id: \.self) { msg in
+                Text(msg)
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(OPSStyle.Layout.spacing2)
+        .background(OPSStyle.Colors.roseSoft)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.roseLine, lineWidth: 1)
+        )
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 
     // MARK: - Unit Toggle

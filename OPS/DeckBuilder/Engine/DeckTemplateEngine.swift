@@ -10,7 +10,13 @@ struct DeckTemplateEngine {
     static let canvasHeight: CGFloat = 400
     static let padding: CGFloat = 40
 
-    /// Generate a complete DeckDrawingData from a template type and user dimensions (in inches)
+    /// Generate a complete DeckDrawingData from a template type and user dimensions (in inches).
+    ///
+    /// Returns nil for any input that fails `template.validationErrors(for:)`.
+    /// **Never silently degrades a shape into a different shape** — bug 22577979
+    /// reported an L-shape import producing a rectangle because the engine fell
+    /// back to a rectangle when c≥a or d≥b. Callers must validate up front so
+    /// the user sees an inline message rather than a wrong-shape import.
     static func generate(
         template: DeckTemplateType,
         dimensions: [Double],
@@ -18,6 +24,7 @@ struct DeckTemplateEngine {
     ) -> DeckDrawingData? {
         guard dimensions.count >= template.dimensionCount else { return nil }
         guard dimensions.allSatisfy({ $0 > 0 }) else { return nil }
+        guard template.validationErrors(for: dimensions).isEmpty else { return nil }
 
         switch template {
         case .rectangle:
@@ -31,11 +38,80 @@ struct DeckTemplateEngine {
         case .wraparound:
             return generateWraparound(a: dimensions[0], b: dimensions[1], c: dimensions[2], d: dimensions[3], config: config)
         case .tShape:
-            return generateTShape(a: dimensions[0], b: dimensions[1], c: dimensions[2], d: dimensions[3], config: config)
+            // Bug 22577979 — input semantics: A=top width, B=stem depth (the
+            // stem's own length), C=stem width, D=top depth. Engine internals
+            // still expect total height (top depth + stem depth) for `b`, so
+            // we sum here. Validation guarantees both inputs are > 0.
+            let topWidth   = dimensions[0]
+            let stemDepth  = dimensions[1]
+            let stemWidth  = dimensions[2]
+            let topDepth   = dimensions[3]
+            let totalHeight = stemDepth + topDepth
+            return generateTShape(a: topWidth, b: totalHeight, c: stemWidth, d: topDepth, config: config)
         case .multiLevel:
             return generateMultiLevel(a: dimensions[0], b: dimensions[1], c: dimensions[2], d: dimensions[3], config: config)
         case .poolDeck:
             return generatePoolDeck(length: dimensions[0], depth: dimensions[1], poolDiameter: dimensions[2], config: config)
+        }
+    }
+
+    /// Vertex positions in real-world inches for the requested template + inputs.
+    ///
+    /// Used by the dimension-input diagram so the on-screen shape is the EXACT
+    /// shape the engine would emit, eliminating the legacy bug where the
+    /// preview drew an L one way and the engine generated it another way.
+    /// Returns nil under the same invalid-input conditions as `generate`.
+    static func vertexPositions(
+        template: DeckTemplateType,
+        dimensions: [Double]
+    ) -> [(x: Double, y: Double)]? {
+        guard dimensions.count >= template.dimensionCount else { return nil }
+        guard dimensions.allSatisfy({ $0 > 0 }) else { return nil }
+        guard template.validationErrors(for: dimensions).isEmpty else { return nil }
+
+        switch template {
+        case .rectangle, .frontPorch, .freestanding:
+            let a = dimensions[0], b = dimensions[1]
+            return [(0, 0), (a, 0), (a, b), (0, b)]
+        case .lShape:
+            let a = dimensions[0], b = dimensions[1], c = dimensions[2], d = dimensions[3]
+            return [(0, 0), (a, 0), (a, d), (a - c, d), (a - c, b), (0, b)]
+        case .wraparound:
+            let a = dimensions[0], b = dimensions[1], c = dimensions[2], d = dimensions[3]
+            return [(0, 0), (a, 0), (a, b), (c, b), (c, d), (0, d)]
+        case .tShape:
+            let a = dimensions[0]
+            let stemDepth = dimensions[1]
+            let c = dimensions[2]
+            let d = dimensions[3]
+            let totalH = stemDepth + d
+            let stemLeft = (a - c) / 2
+            let stemRight = stemLeft + c
+            return [
+                (0, 0), (a, 0), (a, d), (stemRight, d),
+                (stemRight, totalH), (stemLeft, totalH), (stemLeft, d), (0, d),
+            ]
+        case .multiLevel:
+            // Two stacked rectangles with a 24" gap. The diagram returns the
+            // outer hull around both so the preview is a single closed polygon
+            // the same way the engine arranges levels — both rectangles read
+            // as one shape to the user.
+            let a = dimensions[0], b = dimensions[1], c = dimensions[2], d = dimensions[3]
+            let gap: Double = 24.0
+            let totalW = max(a, c)
+            let upperX = (totalW - a) / 2
+            let lowerX = (totalW - c) / 2
+            // Outline traces around both rectangles + the gap so each edge of
+            // each level remains identifiable.
+            return [
+                (upperX, 0), (upperX + a, 0), (upperX + a, b),
+                (lowerX + c, b + gap), (lowerX + c, b + gap + d),
+                (lowerX, b + gap + d), (lowerX, b + gap),
+                (upperX, b),
+            ]
+        case .poolDeck:
+            let a = dimensions[0], b = dimensions[1]
+            return [(0, 0), (a, 0), (a, b), (0, b)]
         }
     }
 
@@ -166,9 +242,11 @@ struct DeckTemplateEngine {
         d: Double,
         config: DrawingConfig
     ) -> DeckDrawingData {
-        guard c < a, d < b else {
-            return generateRectangle(length: a, depth: b, hasHouseEdge: true, config: config)
-        }
+        // Bug 22577979 — the previous silent fallback to a rectangle when
+        // c≥a or d≥b is what caused "imported template, got a rectangle"
+        // reports. `generate(...)` now validates up front via
+        // `DeckTemplateType.validationErrors(for:)`, so by the time we get
+        // here the constraints are guaranteed. No fallback necessary.
 
         //  V0 ---------- V1
         //  |               |
@@ -213,9 +291,8 @@ struct DeckTemplateEngine {
         d: Double,
         config: DrawingConfig
     ) -> DeckDrawingData {
-        guard c < a, d < b else {
-            return generateRectangle(length: a, depth: b, hasHouseEdge: true, config: config)
-        }
+        // Bug 22577979 — see generateLShape; validation now guarantees
+        // c < a and d < b before we reach this point.
 
         //  V0 ---------- V1
         //  |               |
@@ -260,9 +337,10 @@ struct DeckTemplateEngine {
         d: Double,
         config: DrawingConfig
     ) -> DeckDrawingData {
-        guard c < a, d < b else {
-            return generateRectangle(length: a, depth: b, hasHouseEdge: true, config: config)
-        }
+        // Bug 22577979 — input semantics are now: a=top width, b=TOTAL
+        // height (caller computes b = topDepth + stemDepth), c=stem width,
+        // d=top depth. Validation in `generate(...)` checks c < a; b > d
+        // follows automatically because stemDepth > 0.
 
         let stemLeft = (a - c) / 2
         let stemRight = stemLeft + c

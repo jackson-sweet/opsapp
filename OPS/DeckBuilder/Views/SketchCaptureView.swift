@@ -199,7 +199,12 @@ private class ManualSketchCaptureVC: UIViewController, AVCapturePhotoCaptureDele
 
         Task { @MainActor in
             self.statusLabel?.text = "PROCESSING…"
-            let corrected = await SketchPerspectiveCorrector.perspectiveCorrect(image: image)
+            // Normalize EXIF orientation before perspective correction so Vision detection
+            // and the downstream pipeline operate on visual portrait pixels — not the raw
+            // landscape sensor frame. Without this, the auto-detected quad is rotated 90°
+            // relative to what the user just framed. Bug 46751f7f.
+            let normalized = image.normalizedOrientation()
+            let corrected = await SketchPerspectiveCorrector.perspectiveCorrect(image: normalized)
             // Success haptic on a clean capture — lets the user know the scan is good
             // without waiting for the review screen to render.
             UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -520,7 +525,9 @@ struct SketchCaptureView: View {
                     // (so the typical case is one tap to confirm) but lets
                     // the user drag corners to refine — replaces the previous
                     // silent SketchPerspectiveCorrector call. Bug 3ecfdbd4.
-                    pendingPerspectiveImage = image
+                    // Normalize EXIF orientation so handle drags map 1:1 to
+                    // cgImage pixels in PerspectiveCorrectionView (bug 46751f7f).
+                    pendingPerspectiveImage = image.normalizedOrientation()
                 },
                 onCancel: {
                     showingPhotoPicker = false

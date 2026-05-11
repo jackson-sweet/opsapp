@@ -2,6 +2,7 @@
 
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct DeckBuilderView: View {
     @StateObject private var viewModel: DeckBuilderViewModel
@@ -23,6 +24,25 @@ struct DeckBuilderView: View {
 
     let projectId: String?
     let companyId: String
+
+    /// Top safe-area inset for the current key window. Read at usage time so
+    /// devices with a Dynamic Island (top inset ~59pt) and notched iPhones
+    /// (~47pt) both clear the hardware cutout — `.statusBarHidden(true)`
+    /// only hides the clock, it does NOT shrink the system-reserved top
+    /// region. Bug 55083a46.
+    private var topSafeAreaInset: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let keyWindow = scenes.flatMap { $0.windows }.first(where: { $0.isKeyWindow })
+        return keyWindow?.safeAreaInsets.top ?? 0
+    }
+
+    /// Top padding applied to every floating canvas overlay (title pill,
+    /// edit cluster, live-dim pill, screenshot button). Uses the device
+    /// safe-area top so the header always sits below the Dynamic Island /
+    /// notch instead of being clipped by it.
+    private var floatingHeaderTopPadding: CGFloat {
+        max(OPSStyle.Layout.spacing3, topSafeAreaInset)
+    }
 
     init(deckDesign: DeckDesign, modelContext: ModelContext, syncEngine: SyncEngine? = nil) {
         // Bug ab554b5f — pass the SyncEngine to the view model so saves
@@ -56,7 +76,7 @@ struct DeckBuilderView: View {
                             .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
                     )
                     .padding(.horizontal, OPSStyle.Layout.spacing4)
-                    .padding(.top, OPSStyle.Layout.spacing2)
+                    .padding(.top, floatingHeaderTopPadding)
 
                 ZStack(alignment: .topTrailing) {
                     DeckScene3DView(drawingData: viewModel.drawingData, controller: scene3DController)
@@ -66,6 +86,7 @@ struct DeckBuilderView: View {
                         .padding(.trailing, OPSStyle.Layout.spacing4)
                         .padding(.top, OPSStyle.Layout.spacing2)
                 }
+                .ignoresSafeArea(edges: .horizontal)
 
                 CameraPresetBar { preset in
                     scene3DController.setCameraPreset(preset)
@@ -190,40 +211,45 @@ struct DeckBuilderView: View {
                         Spacer(minLength: 0)
                     }
                     // Floating header sits inside the safe area while the canvas
-                    // extends under it. Use spacing4 horizontal so the title pill
-                    // has breathing room from the screen edge (previously
-                    // spacing3, which read as flush once the canvas went full
-                    // bleed) and spacing3 top so it clears the dynamic island /
-                    // status bar without being smashed against it. Bug 0a5f3fe1.
+                    // extends under it. Horizontal: spacing4 from screen edge so
+                    // the title pill clears the rounded corners and never bleeds
+                    // off-screen. Top: `floatingHeaderTopPadding` reads the device
+                    // safe-area inset so the pill always sits below the Dynamic
+                    // Island / notch instead of being clipped by it (bug
+                    // 55083a46). spacing3 is the minimum on devices without a
+                    // hardware cutout (small iPhone SE).
                     .padding(.horizontal, OPSStyle.Layout.spacing4)
-                    .padding(.top, OPSStyle.Layout.spacing3)
+                    .padding(.top, floatingHeaderTopPadding)
                     .allowsHitTesting(true)
 
                     // Edit cluster (undo + redo + import) — floats below the
-                    // title bar at the trailing edge of the canvas. 2D edit
-                    // permission only. Sits on top of the canvas without
-                    // pushing other rows down.
-                    if PermissionStore.shared.can("deck_builder.edit") {
+                    // title bar at the trailing edge of the canvas. Hidden while
+                    // a draw is in flight: the live-dimension pill takes this
+                    // slot, undo/redo can't fire mid-stroke anyway, and stacking
+                    // both clusters at the same anchor caused the right-edge
+                    // bleed reported in bug 55083a46.
+                    if PermissionStore.shared.can("deck_builder.edit"),
+                       viewModel.liveDimensionLabel == nil {
                         editCluster2D
                             .padding(.trailing, OPSStyle.Layout.spacing4)
-                            .padding(.top, headerOverlayTopOffset)
+                            .padding(.top, floatingHeaderTopPadding + headerOverlayBelowTitleOffset)
                             .frame(maxWidth: .infinity, alignment: .topTrailing)
                             .allowsHitTesting(true)
                     }
 
-                    // Live dimension pill — canvas-floating, top-center,
-                    // tucked just below the title bar so it never overlaps
-                    // the bar even on smaller screens.
+                    // Live dimension pill — right-aligned, anchored just below
+                    // the title bar so it sits at the top of the canvas where
+                    // the user's drawing finger can't block it. Latitude matches
+                    // the (now-hidden) edit cluster so the layout doesn't shift
+                    // when drawing begins. Bugs 4e9057d2, 9c2b8866, bc9109ef.
                     if let liveLabel = viewModel.liveDimensionLabel {
-                        VStack(spacing: 0) {
-                            liveDimensionPill(label: liveLabel)
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.top, headerOverlayTopOffset)
-                        .frame(maxWidth: .infinity, alignment: .top)
-                        .transition(.opacity)
-                        .animation(OPSStyle.Animation.fast, value: viewModel.liveDimensionLabel)
-                        .allowsHitTesting(false)
+                        liveDimensionPill(label: liveLabel)
+                            .padding(.trailing, OPSStyle.Layout.spacing4)
+                            .padding(.top, floatingHeaderTopPadding + headerOverlayBelowTitleOffset)
+                            .frame(maxWidth: .infinity, alignment: .topTrailing)
+                            .transition(.opacity)
+                            .animation(OPSStyle.Animation.fast, value: viewModel.liveDimensionLabel)
+                            .allowsHitTesting(false)
                     }
                 } // end ZStack (top-aligned, floating title over canvas)
 
@@ -786,13 +812,14 @@ struct DeckBuilderView: View {
         )
     }
 
-    /// Vertical offset from the floating header's top edge to where canvas
-    /// overlays (edit cluster, live-dim pill) should anchor. Matches the
-    /// title bar's vertical extent: outer top padding + pill vertical pad +
-    /// touch-target height + small gap.
-    private var headerOverlayTopOffset: CGFloat {
-        OPSStyle.Layout.spacing3            // outer top padding
-            + OPSStyle.Layout.spacing2      // pill vertical pad (top)
+    /// Vertical offset from the BOTTOM of the title pill to where canvas
+    /// overlays (edit cluster, live-dim pill) anchor. The caller adds this
+    /// to `floatingHeaderTopPadding` so overlays stay aligned across the
+    /// Dynamic Island / notch / no-cutout devices alike. Matches the title
+    /// bar's intrinsic height: top pad + touch-target + bottom pad + small
+    /// gap between bar and overlay.
+    private var headerOverlayBelowTitleOffset: CGFloat {
+        OPSStyle.Layout.spacing2            // pill vertical pad (top)
             + OPSStyle.Layout.touchTargetMin
             + OPSStyle.Layout.spacing2      // pill vertical pad (bottom)
             + OPSStyle.Layout.spacing2      // gap to overlay

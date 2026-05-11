@@ -560,14 +560,33 @@ class DeckBuilderViewModel: ObservableObject {
     /// Start the 2-minute autosave loop. Each tick runs `save()` so the
     /// user can recover their work from a crash without having to manually
     /// commit. No-op if a timer is already running.
+    ///
+    /// Bug 14555d2c — gate the tick on `hasAnyCommittedGeometry` so a
+    /// blank-canvas builder that's left open never persists an empty
+    /// orphan deck design row (or enqueues an empty create op against
+    /// Supabase). The autosave loop only persists once the user has
+    /// actually drawn something.
     private func startAutosaveTimer() {
         guard autosaveTimer == nil else { return }
         autosaveTimer = Timer.scheduledTimer(withTimeInterval: Self.autosaveInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self, self.autosaveEnabled else { return }
+                guard self.hasAnyCommittedGeometry else { return }
                 self.save()
             }
         }
+    }
+
+    /// True when the design has at least one vertex or edge in either the
+    /// single-level or any multi-level form. Used as the gate for autosave
+    /// ticks and the close-button render-and-upload path so we never
+    /// persist or upload thumbnails for genuinely empty drawings.
+    /// Bug 14555d2c.
+    private var hasAnyCommittedGeometry: Bool {
+        if !drawingData.vertices.isEmpty || !drawingData.edges.isEmpty {
+            return true
+        }
+        return drawingData.levels.contains { !$0.vertices.isEmpty || !$0.edges.isEmpty }
     }
 
     private func stopAutosaveTimer() {
@@ -1396,6 +1415,21 @@ class DeckBuilderViewModel: ObservableObject {
         guard var edge = activeEdge(byId: edgeId) else { return }
         pushUndo("set edge type")
         edge.edgeType = type
+        // Clearing the house cladding when an edge is demoted back to a
+        // regular deck edge keeps the stored material from leaking back into
+        // the renderer if the user flips the toggle a second time. Bug 3d72ce0b.
+        if type != .houseEdge { edge.houseEdgeMaterial = nil }
+        activeUpdateEdge(edge)
+        save()
+    }
+
+    /// Set the cladding material on a house edge. Bug 3d72ce0b — drives the
+    /// 2D hatch color, 3D wall fill, and house-edge label. No-op when the
+    /// edge is not a house edge.
+    func setHouseEdgeMaterial(_ edgeId: String, material: HouseEdgeMaterial?) {
+        guard var edge = activeEdge(byId: edgeId), edge.edgeType == .houseEdge else { return }
+        pushUndo("set house cladding")
+        edge.houseEdgeMaterial = material
         activeUpdateEdge(edge)
         save()
     }
@@ -1594,6 +1628,32 @@ class DeckBuilderViewModel: ObservableObject {
             surfaces[i].label = value
         }
         activePersistedSurfaces = surfaces
+        save()
+    }
+
+    /// Sets the legacy footprint label — used from the property sheet so the
+    /// user can name the active deck surface ("BBQ pad", "Hot tub deck") when
+    /// no per-surface ids are selected (single closed shape). Bug 4a03f507.
+    func setLabelOnActiveFootprint(_ raw: String?) {
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value: String? = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        pushUndo("label footprint")
+        var fp = activeFootprint
+        fp.label = value
+        activeFootprint = fp
+        save()
+    }
+
+    /// Optional per-edge label. The model stores it on `DeckEdge.label`
+    /// — pre-existing — but there was no setter that re-routes through
+    /// `activeUpdateEdge` + undo/save. Bug 4a03f507.
+    func setEdgeLabel(_ edgeId: String, label raw: String?) {
+        guard var edge = activeEdge(byId: edgeId) else { return }
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value: String? = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        pushUndo("label edge")
+        edge.label = value
+        activeUpdateEdge(edge)
         save()
     }
 
@@ -2010,6 +2070,22 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Render + Save Thumbnail
 
     func renderAndSave() async {
+        // Bug 14555d2c — short-circuit when the user is exiting a drawing
+        // with no committed geometry. The previous flow always called
+        // `save()` (which inserts the deckDesign + enqueues a Supabase
+        // create op for an empty record) and then ran the renderer + S3
+        // upload (which produces a blank 1024×1024 white PNG and hangs
+        // the close-button spinner on the network upload, reading as a
+        // crash to the user). For a transient blank canvas there is
+        // genuinely nothing to persist or upload — drop everything and
+        // return so the dismiss happens immediately.
+        let hasGeometry = hasAnyCommittedGeometry
+        let isPersisted = deckDesign.modelContext != nil
+
+        if !hasGeometry && !isPersisted {
+            return
+        }
+
         // Bug a34a2fbe — persist the drawing FIRST, unconditionally. The
         // previous version gated `save()` behind a successful PNG render +
         // S3 thumbnail upload; if either step failed (renderToPNG returns
@@ -2025,6 +2101,15 @@ class DeckBuilderViewModel: ObservableObject {
         // best-effort enhancement; thumbnail failure must not block the
         // primary save.
         save()
+
+        // Bug 14555d2c — skip the thumbnail render + S3 upload when the
+        // drawing has no geometry. The renderer returns a blank white PNG
+        // for empty drawings (its inner draw block early-returns but the
+        // outer image renderer always emits a buffer), and shipping that
+        // to S3 costs a slow network round-trip on the close-button
+        // spinner for no user-facing benefit. The persisted record above
+        // still captures the cleared state so the deck tab updates.
+        guard hasGeometry else { return }
 
         guard let image = DeckRenderer.renderToPNG(drawingData: drawingData) else {
             print("[DeckBuilder] Thumbnail render returned nil — drawing already saved, skipping S3 upload")

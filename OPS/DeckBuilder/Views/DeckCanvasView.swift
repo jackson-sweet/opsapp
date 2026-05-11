@@ -761,7 +761,11 @@ struct DeckCanvasView: View {
         }
     }
 
-    /// Architectural wall hatch: short 45° lines on the interior side of a house edge + "HOUSE" label
+    /// Architectural wall hatch: short 45° lines on the interior side of a
+    /// house edge. The hatch alone reads as a wall in architectural drawings;
+    /// the redundant "HOUSE" caption that used to render here was sitting
+    /// behind the title badge / cladding pill (bug d10e8f5e). Cladding
+    /// material is communicated via the dimension-label pill instead.
     private func drawHouseHatch(context: GraphicsContext, start: CGPoint, end: CGPoint) {
         let dx = end.x - start.x, dy = end.y - start.y
         let len = sqrt(dx * dx + dy * dy)
@@ -784,19 +788,6 @@ struct DeckCanvasView: View {
         }
         let hatchStroke = scaledSize(1, min: 0.75, max: 2)
         context.stroke(hatchPath, with: .color(OPSStyle.Colors.secondaryText.opacity(0.35)), lineWidth: hatchStroke)
-
-        if len > 40 {
-            let labelOffset: CGFloat = scaledSize(12, min: 9, max: 20)
-            let midX = (start.x + end.x) / 2 + perpX * labelOffset
-            let midY = (start.y + end.y) / 2 + perpY * labelOffset
-            let fontSize = scaledSize(9, min: 7, max: 15)
-            context.draw(
-                Text("HOUSE")
-                    .font(.system(size: fontSize, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Color.white.opacity(0.7)),
-                at: CGPoint(x: midX, y: midY)
-            )
-        }
     }
 
     /// Draw stairs extending PERPENDICULAR from the edge, to scale.
@@ -1128,13 +1119,12 @@ struct DeckCanvasView: View {
             secondaryColor = OPSStyle.Colors.primaryAccent
         } else if let railing = edge.railingConfig {
             secondaryLabel = railing.railingType.displayName.uppercased()
-        } else if edge.edgeType == .houseEdge {
-            // Show cladding material if set, else "HOUSE". Bug 3d72ce0b.
-            if let mat = edge.houseEdgeMaterial {
-                secondaryLabel = mat.displayName.uppercased()
-            } else {
-                secondaryLabel = "HOUSE"
-            }
+        } else if edge.edgeType == .houseEdge, let mat = edge.houseEdgeMaterial {
+            // Cladding material identifies a house edge once the user picks
+            // one. Without a material the 45° hatch + edge styling already
+            // communicate "house" on its own — the redundant "HOUSE" caption
+            // was overlapping the title badge (bug d10e8f5e).
+            secondaryLabel = mat.displayName.uppercased()
         } else if let item = edge.assignedItems.first {
             secondaryLabel = item.name.uppercased()
         } else if edge.dimensionSource == .ar {

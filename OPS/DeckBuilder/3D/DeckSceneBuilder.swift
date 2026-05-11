@@ -55,8 +55,23 @@ struct DeckSceneBuilder {
                 // resolved against the level's persisted DeckSurface store.
                 let detected = level.detectedSurfaces
                 guard !detected.isEmpty || level.isClosed else { continue }
+                // Bug bc9109ef — every face / edge / vertex on this level must
+                // share ONE coordinate frame, otherwise multiple closed shapes
+                // re-center to their own bbox and stack at the origin. Build a
+                // shared centroid from the union of every position on the level
+                // (detected surfaces + the ordered fallback + raw vertices).
+                var levelUnion: [CGPoint] = level.orderedPositions
+                levelUnion.append(contentsOf: detected.flatMap { $0.positions })
+                levelUnion.append(contentsOf: level.vertices.map { $0.position })
+                let levelBounds = DeckMeshGenerator.boundingRect(for: levelUnion)
+                let levelCenter = CGPoint(x: levelBounds.midX, y: levelBounds.midY)
+
                 let surfacesIn3D: [SurfaceMesh3D]? = detected.isEmpty ? nil : detected.map { face in
-                    let metersPositions = convertToMeters(vertices: face.positions, scaleFactor: scaleFactor)
+                    let metersPositions = convertToMeters(
+                        vertices: face.positions,
+                        scaleFactor: scaleFactor,
+                        center: levelCenter
+                    )
                     let resolved = resolvedAssignedItems(for: face, in: level.surfaces)
                     return SurfaceMesh3D(
                         positionsInMeters: metersPositions,
@@ -64,7 +79,11 @@ struct DeckSceneBuilder {
                         assignedItems: resolved
                     )
                 }
-                let primaryFallback = convertToMeters(vertices: level.orderedPositions, scaleFactor: scaleFactor)
+                let primaryFallback = convertToMeters(
+                    vertices: level.orderedPositions,
+                    scaleFactor: scaleFactor,
+                    center: levelCenter
+                )
                 allPositions.append(contentsOf: detected.flatMap { $0.positions })
                 if detected.isEmpty { allPositions.append(contentsOf: level.orderedPositions) }
                 let elevationFeet = level.elevation ?? 2.5
@@ -94,8 +113,21 @@ struct DeckSceneBuilder {
                 addCamera(to: scene, fitting: allPositions, scaleFactor: scaleFactor, drawingData: drawingData)
                 return scene
             }
+            // Bug bc9109ef — shared centroid across detected faces, ordered
+            // fallback, and raw vertices so multiple closed shapes don't
+            // overlap at the origin.
+            var union: [CGPoint] = drawingData.orderedPositions
+            union.append(contentsOf: detected.flatMap { $0.positions })
+            union.append(contentsOf: drawingData.vertices.map { $0.position })
+            let bounds = DeckMeshGenerator.boundingRect(for: union)
+            let sharedCenter = CGPoint(x: bounds.midX, y: bounds.midY)
+
             let surfacesIn3D: [SurfaceMesh3D]? = detected.isEmpty ? nil : detected.map { face in
-                let metersPositions = convertToMeters(vertices: face.positions, scaleFactor: scaleFactor)
+                let metersPositions = convertToMeters(
+                    vertices: face.positions,
+                    scaleFactor: scaleFactor,
+                    center: sharedCenter
+                )
                 let resolved = resolvedAssignedItems(for: face, in: drawingData.surfaces)
                 return SurfaceMesh3D(
                     positionsInMeters: metersPositions,
@@ -103,7 +135,11 @@ struct DeckSceneBuilder {
                     assignedItems: resolved
                 )
             }
-            let primaryFallback = convertToMeters(vertices: drawingData.orderedPositions, scaleFactor: scaleFactor)
+            let primaryFallback = convertToMeters(
+                vertices: drawingData.orderedPositions,
+                scaleFactor: scaleFactor,
+                center: sharedCenter
+            )
             allPositions = detected.isEmpty ? drawingData.orderedPositions : detected.flatMap { $0.positions }
             let elevationFeet = drawingData.overallElevation ?? 2.5
             let elevationM = Float(elevationFeet) * feetToMeters
@@ -324,17 +360,21 @@ struct DeckSceneBuilder {
                     end: endPos3D,
                     stairConfig: stairConfig,
                     deckElevationM: elevationM,
-                    scaleFactor: scaleFactor
+                    scaleFactor: scaleFactor,
+                    polygon2DMeters: vertices2D
                 )
             }
 
-            // House wall
+            // House wall — driven by the edge's cladding material so house
+            // edges render with the user-picked stucco/hardie/wood-vertical
+            // tone instead of always-gray. Bug 3d72ce0b.
             if !skipHouseWall && edge.edgeType == .houseEdge {
                 buildHouseWall(
                     parent: deckGroup,
                     start: startPos3D,
                     end: endPos3D,
-                    deckElevationM: elevationM
+                    deckElevationM: elevationM,
+                    material: edge.houseEdgeMaterial
                 )
             }
         }
@@ -543,7 +583,8 @@ struct DeckSceneBuilder {
         end: SCNVector3,
         stairConfig: StairConfig,
         deckElevationM: Float,
-        scaleFactor: Double
+        scaleFactor: Double,
+        polygon2DMeters: [CGPoint] = []
     ) {
         let stairGroup = SCNNode()
         stairGroup.name = "stairGroup"
@@ -575,15 +616,23 @@ struct DeckSceneBuilder {
         let tx = edgeDx / edgeLen
         let tz = edgeDz / edgeLen
 
-        // Perpendicular unit vector. The canonical perpendicular is (-dz, dx)
-        // (left-hand rule — same convention as the 2D outwardPerpendicular
-        // heuristic). Apply the user's flipDirection toggle to match the 2D
-        // canvas rendering. Bug 8 — the 3D renderer previously ignored
-        // flipDirection, so stairs could appear inside the deck surface.
-        let rawNx = -edgeDz / edgeLen
-        let rawNz = edgeDx / edgeLen
-        let nx = stairConfig.flipDirection ? -rawNx : rawNx
-        let nz = stairConfig.flipDirection ? -rawNz : rawNz
+        // Outward perpendicular — same polygon-aware logic as 2D so 3D stairs
+        // also land OPPOSITE the filled deck surface by default. Falls back
+        // to the historic CCW perpendicular when the polygon isn't supplied
+        // (open sketches, AR builds with skipHouseWall). Bug a7429390.
+        let rawN: (x: Float, z: Float)
+        if polygon2DMeters.count >= 3 {
+            let outward = PolygonMath.outwardPerpendicular(
+                edgeStart: CGPoint(x: CGFloat(start.x), y: CGFloat(start.z)),
+                edgeEnd: CGPoint(x: CGFloat(end.x), y: CGFloat(end.z)),
+                polygonVertices: polygon2DMeters
+            )
+            rawN = (x: Float(outward.x), z: Float(outward.y))
+        } else {
+            rawN = (x: -edgeDz / edgeLen, z: edgeDx / edgeLen)
+        }
+        let nx = stairConfig.flipDirection ? -rawN.x : rawN.x
+        let nz = stairConfig.flipDirection ? -rawN.z : rawN.z
 
         // Position the stair along the edge using alignment + offset, matching
         // the 2D canvas logic. Bug 8 — 3D previously always centred on the
@@ -907,7 +956,8 @@ struct DeckSceneBuilder {
         parent: SCNNode,
         start: SCNVector3,
         end: SCNVector3,
-        deckElevationM: Float
+        deckElevationM: Float,
+        material: HouseEdgeMaterial? = nil
     ) {
         // The wall rises from the deck surface upward (not from the ground).
         // This makes house edges visually "rise above the deck plane" as a
@@ -917,12 +967,22 @@ struct DeckSceneBuilder {
         // lower half of the wall under the deck surface.
         let wallBottom = deckElevationM
         let wallTop = deckElevationM + houseWallHeightM
+
+        // Bug 3d72ce0b — cladding material drives wall color. Stucco / hardie
+        // / wood-vertical map to their `fillHex` tone (defined on the enum);
+        // unset edges fall back to the neutral gray so legacy designs still
+        // render.
+        let wallColor: UIColor = {
+            guard let mat = material else { return houseWallColor }
+            return UIColor(hex: mat.fillHex)
+        }()
+
         let wallNode = buildSpanningBox(
             from: start, to: end,
             yCenter: (wallBottom + wallTop) / 2,
             width: 0.05, // 2" thick wall representation
             height: houseWallHeightM,
-            material: makeMaterial(color: houseWallColor)
+            material: makeMaterial(color: wallColor)
         )
         wallNode.name = "houseWall"
         parent.addChildNode(wallNode)
@@ -1123,18 +1183,36 @@ struct DeckSceneBuilder {
 
     // MARK: - Coordinate Conversion
 
-    /// Convert 2D canvas positions to meters in XZ plane, centered at origin
+    /// Convert 2D canvas positions to meters in XZ plane, centered at origin.
+    /// Self-centering convenience overload — derives the centroid from the
+    /// input bounding box. **Do not use** when multiple polygons share a
+    /// scene: every call re-centers to its OWN bbox, so two surfaces would
+    /// stack at the same origin in 3D (bug bc9109ef). Use the explicit
+    /// `center` overload instead and share one centroid across all polygons.
     static func convertToMeters(vertices: [CGPoint], scaleFactor: Double) -> [CGPoint] {
         guard !vertices.isEmpty else { return [] }
-
-        // Convert canvas points → inches → meters
-        let metersPerCanvasPoint = 1.0 / scaleFactor / Double(39.3701)
-
-        // Find center to place deck at origin
         let bounds = DeckMeshGenerator.boundingRect(for: vertices)
-        let centerX = Double(bounds.midX)
-        let centerY = Double(bounds.midY)
+        return convertToMeters(
+            vertices: vertices,
+            scaleFactor: scaleFactor,
+            center: CGPoint(x: bounds.midX, y: bounds.midY)
+        )
+    }
 
+    /// Shared-frame conversion — every polygon in a multi-surface scene
+    /// must pass the SAME `center` so faces, posts, and edges line up. Bug
+    /// bc9109ef: the legacy self-centering form caused each detected
+    /// surface to render around its own origin, so multi-shape designs
+    /// drew every footprint stacked on top of each other.
+    static func convertToMeters(
+        vertices: [CGPoint],
+        scaleFactor: Double,
+        center: CGPoint
+    ) -> [CGPoint] {
+        guard !vertices.isEmpty else { return [] }
+        let metersPerCanvasPoint = 1.0 / scaleFactor / Double(39.3701)
+        let centerX = Double(center.x)
+        let centerY = Double(center.y)
         return vertices.map { v in
             CGPoint(
                 x: (Double(v.x) - centerX) * metersPerCanvasPoint,

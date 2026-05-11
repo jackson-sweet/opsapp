@@ -23,6 +23,15 @@ final class ProductBundleItem: Identifiable {
     var updatedAt: Date
     var deletedAt: Date?
 
+    /// Last successful round-trip to Supabase. Used by InboundProcessor merge
+    /// to dedupe re-fetches. Matches the ProductMaterial pattern.
+    var lastSyncedAt: Date?
+
+    /// Pending local-only changes that haven't pushed yet. Outbound sync uses
+    /// this; inbound merge skips rows where this is true so a stale server
+    /// read doesn't clobber an in-flight local edit.
+    var needsSync: Bool = false
+
     init(
         id: String = UUID().uuidString,
         companyId: String,

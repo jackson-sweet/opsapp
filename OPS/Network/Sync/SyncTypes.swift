@@ -184,12 +184,26 @@ enum SyncEntityType: String, CaseIterable {
     case productOptionValue
     case productPricingModifier
     case productMaterial
+    /// Bundle composition rows — a bundle product (kind='package') with its
+    /// children + quantities. See product_bundle_items table.
+    case productBundleItem
     case timeEntry
     case signatureCapture
     case formSubmission
     case localPhoto
     case deckDesign
     case wizardState
+    // Legacy inventory_* tables — distinct from catalog_* and still the
+    // tables backing the Inventory tab on iOS + Web (bug 2837ddae).
+    case inventoryItem
+    case inventoryUnit
+    case inventoryTag
+    case inventoryItemTag
+    case inventorySnapshot
+    case inventorySnapshotItem
+    // Task reminder templates + per-task instances (bug 4f00c2d7).
+    case taskTypeReminder
+    case taskReminder
 
     /// The corresponding Supabase table name for this entity type.
     var supabaseTable: String {
@@ -229,12 +243,21 @@ enum SyncEntityType: String, CaseIterable {
         case .productOptionValue:           return "product_option_values"
         case .productPricingModifier:       return "product_pricing_modifiers"
         case .productMaterial:              return "product_materials"
+        case .productBundleItem:            return "product_bundle_items"
         case .timeEntry:             return "time_entries"
         case .signatureCapture:      return "signature_captures"
         case .formSubmission:        return "form_submissions"
         case .localPhoto:            return "local_photos"
         case .deckDesign:            return "deck_designs"
         case .wizardState:           return "wizard_states"
+        case .inventoryItem:         return "inventory_items"
+        case .inventoryUnit:         return "inventory_units"
+        case .inventoryTag:          return "inventory_tags"
+        case .inventoryItemTag:      return "inventory_item_tags"
+        case .inventorySnapshot:     return "inventory_snapshots"
+        case .inventorySnapshotItem: return "inventory_snapshot_items"
+        case .taskTypeReminder:      return "task_type_reminders"
+        case .taskReminder:          return "task_reminders"
         }
     }
 
@@ -260,7 +283,8 @@ enum SyncEntityType: String, CaseIterable {
              .catalogItemTag:                               return 11
         case .catalogSnapshot, .catalogSnapshotItem:        return 12
         case .productOption, .productOptionValue,
-             .productPricingModifier, .productMaterial:     return 13
+             .productPricingModifier, .productMaterial,
+             .productBundleItem:                            return 13
         case .companyDefaultProduct,
              .catalogOrder, .catalogOrderItem:              return 14
         case .timeEntry, .signatureCapture,
@@ -268,6 +292,14 @@ enum SyncEntityType: String, CaseIterable {
         case .localPhoto:                                   return 16
         case .deckDesign:                                   return 7
         case .wizardState:                                  return 7
+        case .inventoryUnit, .inventoryTag,
+             .inventoryItem:                                return 10
+        case .inventoryItemTag:                             return 11
+        case .inventorySnapshot, .inventorySnapshotItem:    return 12
+        // Reminder templates depend on task_types (priority 4); instances
+        // depend on project_tasks (priority 6).
+        case .taskTypeReminder:                              return 5
+        case .taskReminder:                                  return 7
         }
     }
 }

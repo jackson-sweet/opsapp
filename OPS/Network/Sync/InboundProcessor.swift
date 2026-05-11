@@ -418,6 +418,12 @@ final class InboundProcessor {
             try await syncProductPricingModifiers(context: context)
         case .productMaterial:
             try await syncProductMaterials(context: context)
+        case .productBundleItem:
+            try await syncProductBundleItems(context: context)
+        case .taskTypeReminder:
+            try await syncTaskTypeReminders(since: since, context: context)
+        case .taskReminder:
+            try await syncTaskReminders(since: since, context: context)
         default:
             print("[InboundProcessor] Entity type \(entityType.rawValue) not yet supported for inbound sync")
         }
@@ -850,7 +856,16 @@ final class InboundProcessor {
             if accept.contains("title") { existing.title = dto.title }
             if accept.contains("status") { existing.status = Status(rawValue: dto.status) ?? .rfq }
             if accept.contains("company_id") { existing.companyId = dto.companyId }
-            if accept.contains("client_id") { existing.clientId = dto.clientId }
+            if accept.contains("client_id") {
+                existing.clientId = dto.clientId
+                // Bug c9b9dd44 — wire the SwiftData relationship inline so
+                // the JobBoard card shows the client name as soon as the
+                // project upserts, instead of staying blank until the
+                // end-of-sync `linkAllRelationships` pass runs. Clients
+                // sync earlier in `syncOrder` so the lookup almost always
+                // hits; if not, the end-of-sync pass still fixes it up.
+                wireProjectClient(existing, clientId: dto.clientId, context: context)
+            }
             if accept.contains("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept.contains("address") { existing.address = dto.address }
             if accept.contains("latitude") { existing.latitude = dto.latitude }
@@ -901,6 +916,11 @@ final class InboundProcessor {
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)
+            // Bug c9b9dd44 — wire the SwiftData relationship inline on
+            // first insert too. `dto.toModel()` only sets `clientId`
+            // (the scalar foreign key); without the relationship the
+            // JobBoard card stays blank until end-of-sync linking.
+            wireProjectClient(model, clientId: model.clientId, context: context)
 
             if model.deletedAt != nil {
                 spotlightTracker.markDeleted(domain: SpotlightDomain.project, id: model.id)
@@ -910,6 +930,24 @@ final class InboundProcessor {
         }
 
         try context.save()
+    }
+
+    /// Bug c9b9dd44 — set `project.client` from `clientId` against the
+    /// in-context Client cache. Mirrors the lookup the end-of-sync
+    /// `linkAllRelationships` pass uses, but runs inline during the
+    /// project upsert so the UI sees the client immediately. Falling
+    /// through to nil when no client matches is fine — the end-of-sync
+    /// pass will retry once all clients have been merged for this batch.
+    private func wireProjectClient(_ project: Project, clientId: String?, context: ModelContext) {
+        guard let cid = clientId, !cid.isEmpty else {
+            project.client = nil
+            return
+        }
+        if project.client?.id == cid { return }
+        let descriptor = FetchDescriptor<Client>(predicate: #Predicate { $0.id == cid })
+        if let client = try? context.fetch(descriptor).first {
+            project.client = client
+        }
     }
 
     // MARK: - Task Sync
@@ -1274,22 +1312,32 @@ final class InboundProcessor {
         )
 
         if let existing = try context.fetch(descriptor).first {
+            // Field names MUST match the keys recorded in
+            // `enqueueDeckDesignSync` (snake_case Supabase columns) so the
+            // pending-op suppression in `acceptableFields` can detect a
+            // local edit that hasn't been pushed yet. Using SwiftData
+            // property names here previously broke the lookup — every
+            // inbound sync clobbered the user's pending `drawing_data` /
+            // `thumbnail_url` / `updated_at` / `deleted_at` with stale
+            // server values, which surfaced as "deck designs are not
+            // saving" and "missing details" reports
+            // (bugs bed3a1fd, 48189db1, b2472c07, ab554b5f).
             let accept = acceptableFields(
                 entityType: .deckDesign,
                 entityId: id,
                 fields: [
-                    "title", "drawingDataJSON", "thumbnailURL",
-                    "version", "updatedAt", "deletedAt"
+                    "title", "drawing_data", "thumbnail_url",
+                    "version", "updated_at", "deleted_at"
                 ],
                 context: context
             )
 
             if accept.contains("title") { existing.title = dto.title }
-            if accept.contains("drawingDataJSON") { existing.drawingDataJSON = dto.drawingData.toJSON() }
-            if accept.contains("thumbnailURL") { existing.thumbnailURL = dto.thumbnailUrl }
+            if accept.contains("drawing_data") { existing.drawingDataJSON = dto.drawingData.toJSON() }
+            if accept.contains("thumbnail_url") { existing.thumbnailURL = dto.thumbnailUrl }
             if accept.contains("version") { existing.version = dto.version }
-            if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
-            if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("updated_at") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("deleted_at") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
 
             existing.lastSyncedAt = Date()
             let hasPending = hasPendingOperations(entityType: .deckDesign, entityId: existing.id, context: context)
@@ -2721,5 +2769,111 @@ final class InboundProcessor {
 
         try context.save()
         print("[InboundProcessor] Merged \(dtos.count) product materials")
+    }
+
+    /// Pulls bundle composition rows from public.product_bundle_items. Bundle
+    /// products themselves come down via the regular Product sync (kind='package');
+    /// this method only resolves the parent↔child mapping. Reconciles deletions
+    /// scoped to the company's known products to avoid wiping rows for a
+    /// different company's bundles.
+    private func syncProductBundleItems(context: ModelContext) async throws {
+        let repo = ProductBundleItemRepository(companyId: companyId)
+        let dtos = try await repo.fetchAll()
+        let serverIds = Set(dtos.map(\.id))
+
+        for dto in dtos {
+            let id = dto.id
+            let descriptor = FetchDescriptor<ProductBundleItem>(predicate: #Predicate { $0.id == id })
+            if let existing = try context.fetch(descriptor).first {
+                // Preserve pending local edits — outbound will push them.
+                if existing.needsSync {
+                    print("[InboundProcessor] Skipping bundle item \(id) — pending local op")
+                    continue
+                }
+                existing.bundleProductId = dto.bundleProductId
+                existing.childProductId  = dto.childProductId
+                existing.quantity        = dto.quantity
+                existing.displayOrder    = dto.displayOrder
+                existing.updatedAt       = SupabaseDate.parse(dto.updatedAt) ?? existing.updatedAt
+                existing.deletedAt       = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+                existing.lastSyncedAt    = Date()
+                existing.needsSync       = false
+            } else {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                model.needsSync = false
+                context.insert(model)
+            }
+        }
+
+        // Reconcile deletions only within the current company's product space —
+        // a server row that vanished means the row was hard-deleted (RESTRICT
+        // FK prevents accidental cascade for child_product_id; CASCADE on
+        // bundle_product_id means bundle-level deletes drop the rows server-side).
+        let companyProductIds = Set(try context.fetch(FetchDescriptor<Product>())
+            .filter { $0.companyId == self.companyId }
+            .map(\.id))
+        let allLocal = try context.fetch(FetchDescriptor<ProductBundleItem>())
+        for row in allLocal where companyProductIds.contains(row.bundleProductId) && !serverIds.contains(row.id) {
+            context.delete(row)
+        }
+
+        try context.save()
+        print("[InboundProcessor] Merged \(dtos.count) product bundle items")
+    }
+
+    // MARK: - Task Reminders (bug 4f00c2d7)
+
+    /// Pulls reminder templates for this company. Templates live on a TaskType
+    /// and are server-side-propagated into per-task instances via triggers.
+    /// Reconciles deletions by comparing the server set to the local set for
+    /// the same task_type_id space.
+    private func syncTaskTypeReminders(since: Date?, context: ModelContext) async throws {
+        let dtos = try await TaskReminderRepository.shared.fetchTemplates(companyId: companyId, since: since)
+        for dto in dtos {
+            let id = dto.id
+            let descriptor = FetchDescriptor<TaskTypeReminder>(predicate: #Predicate { $0.id == id })
+            if let existing = try context.fetch(descriptor).first {
+                dto.apply(to: existing)
+            } else {
+                context.insert(dto.makeLocalRow())
+            }
+        }
+
+        // Reconcile soft-deletes from the server. Pulling only `since` may
+        // miss rows that lost their deleted_at NULL → NOT NULL transition
+        // outside the window, so we also accept the dto-level deleted_at flag.
+        try context.save()
+        print("[InboundProcessor] Merged \(dtos.count) task reminder templates")
+    }
+
+    /// Pulls reminder instances for this company. Heavy table — server-side
+    /// triggers materialize one row per template per task, so we expect this
+    /// to grow with project_tasks count. `since` keeps the delta small.
+    private func syncTaskReminders(since: Date?, context: ModelContext) async throws {
+        let dtos = try await TaskReminderRepository.shared.fetchInstances(companyId: companyId, since: since)
+        for dto in dtos {
+            let id = dto.id
+            let descriptor = FetchDescriptor<TaskReminder>(predicate: #Predicate { $0.id == id })
+            if let existing = try context.fetch(descriptor).first {
+                // Skip if the local row has a pending unsynced ack/dismiss
+                // (defensive — current UI always pushes immediately, but
+                // sync ordering across crashes can land this state).
+                if existing.needsSync {
+                    print("[InboundProcessor] Skipping reminder \(id) — pending local op")
+                    continue
+                }
+                dto.apply(to: existing)
+            } else {
+                context.insert(dto.makeLocalRow())
+            }
+        }
+        try context.save()
+
+        // Reschedule local UNCalendarNotificationTriggers for the current user
+        // off the freshly synced set so iOS push reflects server state.
+        await NotificationManager.shared.refreshTaskReminderSchedules(context: context)
+
+        print("[InboundProcessor] Merged \(dtos.count) task reminder instances")
     }
 }

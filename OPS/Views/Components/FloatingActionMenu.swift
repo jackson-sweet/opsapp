@@ -118,6 +118,10 @@ struct FloatingActionMenu: View {
     @State private var showingCatalogAddFamily = false
     @State private var showingCatalogImport = false
     @State private var showingCatalogQuickAddProduct = false
+    @State private var showingProductKindPicker = false
+    @State private var showingNewServiceSheet = false
+    @State private var showingNewGoodSheet = false
+    @State private var showingNewBundleSheet = false
 
     // View models — lazily created only when their sheets open
     @StateObject private var expenseViewModel = ExpenseViewModel()
@@ -471,7 +475,8 @@ struct FloatingActionMenu: View {
                         disabledInTutorial: true,
                         action: {
                             showCreateMenu = false
-                            showingCatalogQuickAddProduct = true
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            showingProductKindPicker = true
                         }
                     ),
                     // "Full Setup" was a fake button that opened an alert
@@ -777,8 +782,32 @@ struct FloatingActionMenu: View {
             CatalogImportSheet()
                 .environmentObject(dataController)
         }
-        .sheet(isPresented: $showingCatalogQuickAddProduct) {
-            QuickAddProductSheet()
+        .sheet(isPresented: $showingProductKindPicker) {
+            ProductKindPickerSheet { picked in
+                // Chained sheets — flip the next flag after the picker
+                // dismiss settles so SwiftUI doesn't drop the second
+                // presentation. The 0.25s delay matches the system's
+                // presentation transition tail.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    switch picked {
+                    case .service:  showingNewServiceSheet = true
+                    case .material: showingNewGoodSheet = true
+                    case .bundle:   showingNewBundleSheet = true
+                    case .fee:      break // not offered in v1 picker
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showingNewServiceSheet) {
+            NewServiceSheet()
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingNewGoodSheet) {
+            NewGoodSheet()
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingNewBundleSheet) {
+            NewBundleSheet()
                 .environmentObject(dataController)
         }
         .sheet(isPresented: $showingCreateExpense) {

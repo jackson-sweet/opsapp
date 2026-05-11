@@ -66,7 +66,11 @@ struct CalendarDaySelector: View {
                         // Spanning event bars overlay
                         weekBarsOverlay(weekDays: weekDays)
                     }
-                    .padding(.vertical, 12)
+                    // Bug 2b61daa0 — bumped vertical padding from 12 → 16 so
+                    // the day labels and bottom event-bars overlay get real
+                    // breathing room from the card border instead of butting
+                    // up against it.
+                    .padding(.vertical, 16)
                     .padding(.horizontal, 6)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -107,7 +111,11 @@ struct CalendarDaySelector: View {
                 )
             }
         }
-        .frame(height: 86)
+        // Bug 2b61daa0 — bumped from 86 → 118 to honor the internal vertical
+        // padding (16 top + 16 bottom = 32) plus the 86pt WeekDayCell. The
+        // old 86pt outer frame compressed the cell and ate the padding,
+        // leaving the cards visually cramped against the card border.
+        .frame(height: 118)
         .wizardTarget("scroll_week")
         .onAppear {
             lastWeekStart = currentWeekStart()

@@ -30,8 +30,15 @@ struct CalendarSchedulerSheet: View {
     @State private var currentMonth: Date = Date()
     @State private var conflictingEvents: [ProjectTask] = []
     @State private var showingConflictWarning = false
-    @State private var showOnlyTeamEvents = true  // Filter by team members by default
-    @State private var showOnlyProjectTasks = true  // Filter by same project tasks - default ON
+
+    // Filter chips — independent, multi-select. Default state depends on
+    // itemType so the most useful signal is on without user effort:
+    //   • project / task with crew → MY CREW + THIS PROJECT both on
+    //   • draft task with crew but no project → MY CREW on
+    //   • everything else → both off (show all)
+    @State private var showThisProjectFilter: Bool = true
+    @State private var showMyCrewFilter: Bool = true
+
     @State private var allScheduledTasks: [ProjectTask] = []
     @State private var filteredScheduledTasks: [ProjectTask] = []
 
@@ -75,6 +82,32 @@ struct CalendarSchedulerSheet: View {
         if let monthStart = Calendar.current.dateInterval(of: .month, for: startDate)?.start {
             self._currentMonth = State(initialValue: monthStart)
         }
+
+        // Default filter state — MY CREW / THIS PROJECT both on when the
+        // itemType has both signals available. Otherwise turn off whichever
+        // signal isn't applicable so the user isn't seeing a lit chip that
+        // does nothing.
+        let hasProject: Bool = {
+            switch itemType {
+            case .project: return true
+            case .task: return true
+            case .draftTask(_, _, let projectId): return projectId != nil
+            }
+        }()
+        let hasCrew: Bool = {
+            switch itemType {
+            case .project(let project):
+                if let preselected = preselectedTeamMemberIds, !preselected.isEmpty { return true }
+                return !project.getTeamMemberIds().isEmpty
+            case .task(let task):
+                if let preselected = preselectedTeamMemberIds, !preselected.isEmpty { return true }
+                return !task.getTeamMemberIds().isEmpty
+            case .draftTask(_, let teamMemberIds, _):
+                return !teamMemberIds.isEmpty
+            }
+        }()
+        self._showThisProjectFilter = State(initialValue: hasProject)
+        self._showMyCrewFilter = State(initialValue: hasCrew)
     }
 
     // MARK: - Body
@@ -96,6 +129,11 @@ struct CalendarSchedulerSheet: View {
                         selectedDatesHeader
                             .padding(.top, 8)
 
+                        // Filter chips — above the grid so users actually find
+                        // them. They scope which events are encoded into day
+                        // cells and which appear in the day inspector below.
+                        filterChipStrip
+
                         // Quick push bar (only for tasks with existing dates)
                         if case .task = itemType, currentStartDate != nil {
                             quickPushBar
@@ -104,23 +142,20 @@ struct CalendarSchedulerSheet: View {
                         // Calendar Grid
                         calendarSectionFullWidth
 
-                        // Conflict Warning (show immediately after calendar when reviewing)
-                        if !conflictingEvents.isEmpty && viewMode == .reviewing {
-                            conflictWarningCard
-                                .padding(.horizontal, 20)
-                        }
+                        // Legend — explains the three signals so the first
+                        // session reads correctly without a tutorial.
+                        cellLegendStrip
+
+                        // Day inspector — lists actual events on the focused
+                        // day so the user can see WHAT is scheduled, not just
+                        // that something is. Replaces the old "conflict only"
+                        // warning card with an always-available detail panel.
+                        dayInspectorPanel
+                            .padding(.horizontal, 20)
 
                         // Action Button (always visible, disabled when no dates)
                         actionButtons
                             .padding(.horizontal, 20)
-
-                        // Filter toggles
-                        teamFilterToggle
-
-                        // Project tasks filter (only show for tasks)
-                        if case .task = itemType {
-                            projectTasksFilterToggle
-                        }
                     }
                     .padding(.bottom, 20)
                 }
@@ -278,81 +313,328 @@ struct CalendarSchedulerSheet: View {
         }
     }
 
-    // MARK: - Team Filter Toggle
-    private var teamFilterToggle: some View {
-        HStack {
-            Image(systemName: OPSStyle.Icons.crew)
-                .foregroundColor(showOnlyTeamEvents ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+    // MARK: - Filter Chip Strip
+    //
+    // Two independent chips above the calendar. Tapping toggles each on/off.
+    // Both off = "show everything," which is the most permissive filter.
+    // Multi-select (not mutually exclusive) so the user can see e.g. tasks
+    // that match either project OR crew at the same time.
+    private var filterChipStrip: some View {
+        let projectChipEnabled = itemType.projectId != nil
+        let crewChipEnabled = !currentItemTeamMemberIds.isEmpty
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("TEAM EVENTS")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Text("Show events with conflicting team assignments")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-            }
+        return HStack(spacing: OPSStyle.Layout.spacing2) {
+            filterChip(
+                label: "THIS PROJECT",
+                icon: OPSStyle.Icons.taskType,
+                isActive: showThisProjectFilter,
+                isEnabled: projectChipEnabled,
+                onTap: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showThisProjectFilter.toggle()
+                    filterScheduledTasks()
+                }
+            )
 
-            Spacer()
+            filterChip(
+                label: "MY CREW",
+                icon: OPSStyle.Icons.crew,
+                isActive: showMyCrewFilter,
+                isEnabled: crewChipEnabled,
+                onTap: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showMyCrewFilter.toggle()
+                    filterScheduledTasks()
+                }
+            )
 
-            Toggle("", isOn: $showOnlyTeamEvents)
-                .labelsHidden()
-                .tint(OPSStyle.Colors.primaryAccent)
-                .scaleEffect(0.8)
+            Spacer(minLength: 0)
+
+            // Live count of visible events in the current window — confirms
+            // filters actually do something and gives the user a sense of
+            // density before they start tapping days.
+            Text("\(filteredScheduledTasks.count)")
+                .font(OPSStyle.Typography.dataValue)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+            +
+            Text(" SHOWN")
+                .font(OPSStyle.Typography.category)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
-        .padding(14)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .padding(.horizontal, 20)
-        .onChange(of: showOnlyTeamEvents) { _ in
-            if showOnlyTeamEvents {
-                showOnlyProjectTasks = false
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+    }
+
+    private func filterChip(
+        label: String,
+        icon: String,
+        isActive: Bool,
+        isEnabled: Bool,
+        onTap: @escaping () -> Void
+    ) -> some View {
+        Button(action: { if isEnabled { onTap() } }) {
+            HStack(spacing: OPSStyle.Layout.spacing1 + 2) {
+                Image(systemName: icon)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                Text(label)
+                    .font(OPSStyle.Typography.category)
             }
-            filterScheduledTasks()
+            .foregroundColor(
+                !isEnabled ? OPSStyle.Colors.tertiaryText.opacity(0.4)
+                : isActive ? OPSStyle.Colors.invertedText
+                : OPSStyle.Colors.primaryText
+            )
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                    .fill(isActive ? OPSStyle.Colors.primaryText : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                    .strokeBorder(
+                        !isEnabled ? OPSStyle.Colors.cardBorderSubtle
+                        : isActive ? Color.clear
+                        : OPSStyle.Colors.cardBorder,
+                        lineWidth: OPSStyle.Layout.Border.standard
+                    )
+            )
+            .contentShape(Rectangle())
+        }
+        .disabled(!isEnabled)
+    }
+
+    // MARK: - Cell Legend Strip
+    //
+    // Three tiny inline samples that explain the cell encoding. Kept compact
+    // so first-time readers can decode the grid without a tour. Hidden in the
+    // tutorial flow because the tutorial has its own onboarding overlay.
+    private var cellLegendStrip: some View {
+        HStack(spacing: OPSStyle.Layout.spacing3) {
+            legendItem(swatch: AnyView(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
+                    .fill(OPSStyle.Colors.primaryText)
+                    .frame(width: 2, height: 16)
+            ), label: "PROJECT")
+
+            legendItem(swatch: AnyView(
+                Text("3")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
+                    .padding(.horizontal, OPSStyle.Layout.spacing1)
+                    .padding(.vertical, 1)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                            .strokeBorder(OPSStyle.Colors.warningStatus.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+            ), label: "CONFLICT")
+
+            legendItem(swatch: AnyView(
+                HStack(spacing: OPSStyle.Layout.spacing1 / 2) {
+                    Circle().fill(OPSStyle.Colors.primaryAccent).frame(
+                        width: OPSStyle.Layout.Indicator.dotSM,
+                        height: OPSStyle.Layout.Indicator.dotSM
+                    )
+                    Circle().fill(OPSStyle.Colors.successStatus).frame(
+                        width: OPSStyle.Layout.Indicator.dotSM,
+                        height: OPSStyle.Layout.Indicator.dotSM
+                    )
+                }
+            ), label: "CREW")
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .opacity(0.85)
+    }
+
+    private func legendItem(swatch: AnyView, label: String) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            swatch
+                .frame(minWidth: OPSStyle.Layout.IconSize.xs, alignment: .center)
+            Text(label)
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
     }
 
-    // MARK: - Project Tasks Filter Toggle
-    private var projectTasksFilterToggle: some View {
-        HStack {
-            Image(systemName: OPSStyle.Icons.taskType)
-                .foregroundColor(showOnlyProjectTasks ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+    // MARK: - Day Inspector Panel
+    //
+    // Shows the real list of events on the currently focused day. When a
+    // single day is selected we show that day's events; when a range is
+    // selected we show events grouped by day across the range. Replaces the
+    // old "only on conflict" warning card with a panel that's useful during
+    // exploration, not just after committing.
+    @ViewBuilder
+    private var dayInspectorPanel: some View {
+        let focused = inspectorEvents()
+        if !focused.events.isEmpty {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Text(focused.headline)
+                        .font(OPSStyle.Typography.category)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                    Spacer()
+                    Text("\(focused.events.count)")
+                        .font(OPSStyle.Typography.dataValue)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    +
+                    Text(focused.events.count == 1 ? " EVENT" : " EVENTS")
+                        .font(OPSStyle.Typography.category)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    ForEach(focused.events.prefix(5)) { task in
+                        dayInspectorRow(task: task)
+                    }
+                    if focused.events.count > 5 {
+                        Text("+ \(focused.events.count - 5) MORE")
+                            .font(OPSStyle.Typography.metadata)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 2)
+                    }
+                }
+            }
+            .padding(OPSStyle.Layout.spacing3)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        } else {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Text("//")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.inactiveText)
+                Text("NO EVENTS · \(focused.headline.uppercased())")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Spacer()
+            }
+            .padding(OPSStyle.Layout.spacing3)
+            .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.5))
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .strokeBorder(OPSStyle.Colors.cardBorderSubtle, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+    }
+
+    private func dayInspectorRow(task: ProjectTask) -> some View {
+        let isSameProject = (task.projectId == itemType.projectId) && itemType.projectId != nil
+        let isCrewConflict = !Set(task.getTeamMemberIds()).isDisjoint(with: currentItemTeamMemberIds)
+        let dayLabel: String = {
+            if let start = task.startDate {
+                return formatDate(start, short: true)
+            }
+            return "—"
+        }()
+
+        return HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            // Left stripe: white if same project, task color otherwise.
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
+                .fill(isSameProject ? OPSStyle.Colors.primaryText : task.swiftUIColor)
+                .frame(width: 3)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("PROJECT TASKS")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Text("Show other tasks from this project")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Text(task.displayTitle)
+                        .font(OPSStyle.Typography.cardSubtitle)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+                    if isSameProject {
+                        Text("THIS PROJECT")
+                            .font(OPSStyle.Typography.metadata)
+                            .foregroundColor(OPSStyle.Colors.invertedText)
+                            .padding(.horizontal, OPSStyle.Layout.spacing1)
+                            .padding(.vertical, 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                                    .fill(OPSStyle.Colors.primaryText)
+                            )
+                    }
+                }
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Text(dayLabel.uppercased())
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    if !task.teamMembers.isEmpty {
+                        Text("·")
+                            .font(OPSStyle.Typography.metadata)
+                            .foregroundColor(OPSStyle.Colors.inactiveText)
+                        HStack(spacing: OPSStyle.Layout.spacing1 / 2) {
+                            ForEach(task.teamMembers.prefix(4)) { user in
+                                Circle()
+                                    .fill(colorFor(user: user))
+                                    .frame(
+                                        width: OPSStyle.Layout.Indicator.dotMD - 1,
+                                        height: OPSStyle.Layout.Indicator.dotMD - 1
+                                    )
+                            }
+                            if task.teamMembers.count > 4 {
+                                Text("+\(task.teamMembers.count - 4)")
+                                    .font(OPSStyle.Typography.metadata)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                        }
+                    }
+                }
             }
 
-            Spacer()
+            Spacer(minLength: 0)
 
-            Toggle("", isOn: $showOnlyProjectTasks)
-                .labelsHidden()
-                .tint(OPSStyle.Colors.primaryAccent)
-                .scaleEffect(0.8)
+            if isCrewConflict {
+                Text("CONFLICT")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
+                    .padding(.horizontal, OPSStyle.Layout.spacing1)
+                    .padding(.vertical, 1)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                            .strokeBorder(OPSStyle.Colors.warningStatus.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+            }
         }
-        .padding(14)
-        .background(OPSStyle.Colors.cardBackgroundDark)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                .fill(OPSStyle.Colors.background.opacity(0.6))
         )
-        .padding(.horizontal, 20)
-        .onChange(of: showOnlyProjectTasks) { _ in
-            if showOnlyProjectTasks {
-                showOnlyTeamEvents = false
+    }
+
+    private struct InspectorContext {
+        let headline: String
+        let events: [ProjectTask]
+    }
+
+    private func inspectorEvents() -> InspectorContext {
+        switch viewMode {
+        case .selecting:
+            // Single tapped day — show that day's events.
+            let events = filteredScheduledTasks.filter { task in
+                task.spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: selectedStartDate) }
             }
-            filterScheduledTasks()
+            return InspectorContext(
+                headline: formatDate(selectedStartDate),
+                events: events.sorted { ($0.startDate ?? .distantPast) < ($1.startDate ?? .distantPast) }
+            )
+        case .reviewing:
+            // Range selected — show all events overlapping the range.
+            let range = selectedStartDate...selectedEndDate
+            let events = filteredScheduledTasks.filter { task in
+                guard let s = task.startDate, let e = task.endDate else { return false }
+                return (s...e).overlaps(range)
+            }
+            let days = daysBetween(selectedStartDate, selectedEndDate)
+            let headline = "\(formatDate(selectedStartDate, short: true).uppercased()) – \(formatDate(selectedEndDate, short: true).uppercased())  \(days)D"
+            return InspectorContext(
+                headline: headline,
+                events: events.sorted { ($0.startDate ?? .distantPast) < ($1.startDate ?? .distantPast) }
+            )
         }
     }
 
@@ -396,12 +678,15 @@ struct CalendarSchedulerSheet: View {
 
     // MARK: - Calendar Grid
     private var calendarGridView: some View {
-        LazyVGrid(columns: columns, spacing: 0) {
+        LazyVGrid(columns: columns, spacing: 2) {
             ForEach(daysInMonth(), id: \.self) { date in
+                let visibleEvents = getEventsForDate(date)
                 SchedulerDayCell(
                     date: date,
                     isInCurrentMonth: isInCurrentMonth(date),
-                    events: getEventsForDate(date),
+                    eventCount: visibleEvents.count,
+                    isThisProjectDay: isThisProjectDay(on: date, in: visibleEvents),
+                    crewColors: crewColorsForDate(visibleEvents),
                     isSelected: isDateSelected(date),
                     isInRange: isDateInRange(date),
                     isStartDate: isStartDate(date),
@@ -413,61 +698,6 @@ struct CalendarSchedulerSheet: View {
                 )
             }
         }
-    }
-
-    // MARK: - Conflict Warning Card
-    private var conflictWarningCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label {
-                Text("SCHEDULING CONFLICTS")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.warningStatus)
-            } icon: {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundColor(OPSStyle.Colors.warningStatus)
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-            }
-
-            Text("The following items overlap with your selected dates:")
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            VStack(spacing: 8) {
-                ForEach(conflictingEvents.prefix(3)) { task in
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(task.swiftUIColor)
-                            .frame(width: 8, height: 8)
-
-                        Text(task.displayTitle)
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .lineLimit(1)
-
-                        Spacer()
-
-                        let startDateStr = task.startDate.map { formatDate($0, short: true) } ?? "-"
-                        let endDateStr = task.endDate.map { formatDate($0, short: true) } ?? "-"
-                        Text("\(startDateStr) - \(endDateStr)")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-                }
-
-                if conflictingEvents.count > 3 {
-                    Text("+ \(conflictingEvents.count - 3) more conflicts")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-            }
-        }
-        .padding(16)
-        .background(OPSStyle.Colors.cardBackgroundDark.opacity(0.8))
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .strokeBorder(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
-        )
     }
 
     // MARK: - Action Buttons
@@ -674,59 +904,89 @@ struct CalendarSchedulerSheet: View {
     }
 
     private func getEventsForDate(_ date: Date) -> [ProjectTask] {
-        // Return tasks scheduled on this date based on filter
-        let tasks = (showOnlyTeamEvents || showOnlyProjectTasks) ? filteredScheduledTasks : allScheduledTasks
-        return tasks.filter { task in
+        filteredScheduledTasks.filter { task in
             task.spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
         }
     }
 
-    private func hasConflicts(on date: Date) -> Bool {
-        // Check if selected range would conflict with existing tasks on this date
-        guard viewMode == .reviewing else { return false }
+    /// True when at least one of the visible events on `date` belongs to the
+    /// current item's project. Powers the left-edge "this project" stripe on
+    /// the day cell.
+    private func isThisProjectDay(on date: Date, in events: [ProjectTask]) -> Bool {
+        guard let pid = itemType.projectId else { return false }
+        // Exclude the current task itself when editing — a task's own dates
+        // are already shown via the selection chrome and shouldn't double up
+        // as a "same project" signal.
+        let selfId: String? = {
+            if case .task(let t) = itemType { return t.id }
+            return nil
+        }()
+        return events.contains { task in
+            task.projectId == pid && task.id != selfId
+        }
+    }
 
+    /// Distinct crew-member colors for the visible events on a day, scoped to
+    /// crew that overlaps with the current item's assigned crew. Empty array
+    /// when no crew context exists (e.g. draft with no assignees).
+    private func crewColorsForDate(_ events: [ProjectTask]) -> [Color] {
+        let myCrew = currentItemTeamMemberIds
+        guard !myCrew.isEmpty else { return [] }
+
+        var seen = Set<String>()
+        var colors: [Color] = []
+        for task in events {
+            for user in task.teamMembers where myCrew.contains(user.id) {
+                if seen.insert(user.id).inserted {
+                    colors.append(colorFor(user: user))
+                }
+            }
+        }
+        return colors
+    }
+
+    private func colorFor(user: User) -> Color {
+        if let hex = user.userColor, !hex.isEmpty, let color = Color(hex: hex) {
+            return color
+        }
+        return user.roleColor
+    }
+
+    /// Set of team-member ids belonging to the item currently being scheduled.
+    /// Centralized so the filter chips, the day cell, and the inspector panel
+    /// all reason about the same crew.
+    private var currentItemTeamMemberIds: Set<String> {
+        if let preselected = preselectedTeamMemberIds, !preselected.isEmpty {
+            return preselected
+        }
+        switch itemType {
+        case .project(let project): return Set(project.getTeamMemberIds())
+        case .task(let task): return Set(task.getTeamMemberIds())
+        case .draftTask(_, let teamMemberIds, _): return Set(teamMemberIds)
+        }
+    }
+
+    private func hasConflicts(on date: Date) -> Bool {
+        guard viewMode == .reviewing else { return false }
         return conflictingEvents.contains { task in
             task.spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: date) }
         }
     }
 
     private func hasTeamConflicts(on date: Date) -> Bool {
-        // Check if this date has tasks with overlapping team members
-        let tasksToCheck = (showOnlyTeamEvents || showOnlyProjectTasks) ? filteredScheduledTasks : allScheduledTasks
+        let myCrew = currentItemTeamMemberIds
+        guard !myCrew.isEmpty else { return false }
 
-        // Get team members for the current item
-        let currentTeamMembers: Set<String>
-
-        if let preselectedIds = preselectedTeamMemberIds, !preselectedIds.isEmpty {
-            currentTeamMembers = preselectedIds
-        } else {
-            switch itemType {
-            case .project(let project):
-                currentTeamMembers = Set(project.getTeamMemberIds())
-            case .task(let task):
-                currentTeamMembers = Set(task.getTeamMemberIds())
-            case .draftTask(_, let teamMemberIds, _):
-                currentTeamMembers = Set(teamMemberIds)
-            }
-        }
-
-        // Check if any tasks on this date share team members (excluding current item)
-        return tasksToCheck.contains { scheduledTask in
+        return filteredScheduledTasks.contains { scheduledTask in
             let isSameItem: Bool
             switch itemType {
-            case .project:
-                isSameItem = false
-            case .task(let task):
-                isSameItem = scheduledTask.id == task.id
-            case .draftTask:
-                isSameItem = false
+            case .project: isSameItem = false
+            case .task(let task): isSameItem = scheduledTask.id == task.id
+            case .draftTask: isSameItem = false
             }
-
-            if !isSameItem && scheduledTask.spannedDates.contains(where: { Calendar.current.isDate($0, inSameDayAs: date) }) {
-                let taskTeamMembers = Set(scheduledTask.getTeamMemberIds())
-                return !currentTeamMembers.isDisjoint(with: taskTeamMembers)
-            }
-            return false
+            guard !isSameItem else { return false }
+            guard scheduledTask.spannedDates.contains(where: { Calendar.current.isDate($0, inSameDayAs: date) }) else { return false }
+            return !Set(scheduledTask.getTeamMemberIds()).isDisjoint(with: myCrew)
         }
     }
 
@@ -775,63 +1035,46 @@ struct CalendarSchedulerSheet: View {
     }
 
     private func filterScheduledTasks() {
-        // Handle project tasks filter (only for items with a project)
-        if showOnlyProjectTasks {
-            if let projectId = itemType.projectId {
-                let currentTaskId: String? = {
-                    if case .task(let task) = itemType { return task.id }
-                    return nil
-                }()
-
-                filteredScheduledTasks = allScheduledTasks.filter { scheduledTask in
-                    guard scheduledTask.projectId == projectId else { return false }
-                    if let taskId = currentTaskId, scheduledTask.id == taskId {
-                        return false
-                    }
-                    return true
-                }
-                return
-            } else {
-                filteredScheduledTasks = []
-                return
-            }
+        // Exclude the current task itself from the visible set — its dates
+        // are already shown via the selection chrome and shouldn't pollute
+        // counts or appear in the day inspector.
+        let selfId: String? = {
+            if case .task(let task) = itemType { return task.id }
+            return nil
+        }()
+        let pool = allScheduledTasks.filter { task in
+            if let id = selfId, task.id == id { return false }
+            return true
         }
 
-        // Handle team events filter
-        guard showOnlyTeamEvents else {
-            filteredScheduledTasks = allScheduledTasks
+        // Both filters off → show everything in the loaded window.
+        if !showThisProjectFilter && !showMyCrewFilter {
+            filteredScheduledTasks = pool
             return
         }
 
-        // Get team members for the current item
-        let currentTeamMembers: Set<String>
+        let projectId = itemType.projectId
+        let myCrew = currentItemTeamMemberIds
 
-        if let preselectedIds = preselectedTeamMemberIds, !preselectedIds.isEmpty {
-            currentTeamMembers = preselectedIds
-        } else {
-            switch itemType {
-            case .project(let project):
-                currentTeamMembers = Set(project.getTeamMemberIds())
-            case .task(let task):
-                currentTeamMembers = Set(task.getTeamMemberIds())
-            case .draftTask(_, let teamMemberIds, _):
-                currentTeamMembers = Set(teamMemberIds)
+        // Additive (OR) — a task is visible if it matches any lit chip.
+        filteredScheduledTasks = pool.filter { task in
+            if showThisProjectFilter, let pid = projectId, task.projectId == pid {
+                return true
             }
-        }
-
-        // Filter tasks that share at least one team member
-        filteredScheduledTasks = allScheduledTasks.filter { scheduledTask in
-            let taskTeamMembers = Set(scheduledTask.getTeamMemberIds())
-            return !currentTeamMembers.isDisjoint(with: taskTeamMembers)
+            if showMyCrewFilter, !myCrew.isEmpty {
+                let taskCrew = Set(task.getTeamMemberIds())
+                if !taskCrew.isDisjoint(with: myCrew) {
+                    return true
+                }
+            }
+            return false
         }
     }
 
     private func checkForConflicts() {
-        // Get tasks to check based on current filter
-        let tasksToCheck = (showOnlyTeamEvents || showOnlyProjectTasks) ? filteredScheduledTasks : allScheduledTasks
-
-        // Filter for tasks that overlap with the selected date range
-        conflictingEvents = tasksToCheck.filter { scheduledTask in
+        // Conflict review uses the visible (filtered) set so the conflict
+        // card aligns with what the user is looking at in the grid.
+        conflictingEvents = filteredScheduledTasks.filter { scheduledTask in
             let isSameItem: Bool
             switch itemType {
             case .project:
@@ -957,10 +1200,34 @@ struct CalendarSchedulerSheet: View {
 }
 
 // MARK: - Day Cell Component
+//
+// Encodes three independent signals into a 56pt-tall cell:
+//
+//   1. THIS PROJECT — 2px white stripe on the LEFT edge, present when at
+//      least one visible event on this day belongs to the item's project.
+//      Reads as a primary "ownership" marker without diluting the steel-blue
+//      accent (which is reserved for CTAs and focus rings per OPS spec v2).
+//
+//   2. EVENT COUNT — tabular count chip in the TOP-RIGHT corner. Outlined in
+//      a hairline when there are events; fills in tan when there's a crew
+//      conflict on this day. Empty days show no chip (consistent with the
+//      "empty = nothing" convention; the design system reserves "—" for
+//      empty inline values, not for empty grid cells).
+//
+//   3. CREW BUSY — up to 3 small dots along the BOTTOM, each in the user's
+//      `userColor` (or role color fallback). Tells the user WHO is busy on
+//      this day, not just that something is. `+N` overflow chip past 3.
+//
+// Selection chrome (start/end/range/today) overlays on top of these signals
+// and uses different visual channels (border vs fill) so the encodings stay
+// readable when a day is also selected.
+//
 private struct SchedulerDayCell: View {
     let date: Date
     let isInCurrentMonth: Bool
-    let events: [ProjectTask]
+    let eventCount: Int
+    let isThisProjectDay: Bool
+    let crewColors: [Color]
     let isSelected: Bool
     let isInRange: Bool
     let isStartDate: Bool
@@ -978,98 +1245,159 @@ private struct SchedulerDayCell: View {
 
     var body: some View {
         Button(action: onTap) {
-            ZStack {
-                // Background for today only
-                if isToday {
-                    // Today: always has primaryAccent background
+            ZStack(alignment: .topLeading) {
+                // TODAY indicator — hairline accent ring, not a fill. The
+                // OPS spec reserves steel-blue for "primary CTA + focus ring
+                // ONLY" so an outline reads as a focus marker, not a CTA.
+                if isToday && !isStartDate && !isEndDate && !isInRange {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .fill(OPSStyle.Colors.primaryAccent)
+                        .strokeBorder(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
                 }
 
-                // Border styling for selected dates with animation
-                Group {
-                    if isStartDate && isEndDate {
-                        // Single date selection: fully rounded border
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
-                    } else if isStartDate {
-                        // Start date: rounded left corners only
-                        UnevenRoundedRectangle(
-                            topLeadingRadius: 8,
-                            bottomLeadingRadius: 8,
-                            bottomTrailingRadius: 0,
-                            topTrailingRadius: 0
-                        )
-                        .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
-                    } else if isEndDate {
-                        // End date: rounded right corners only
-                        UnevenRoundedRectangle(
-                            topLeadingRadius: 0,
-                            bottomLeadingRadius: 0,
-                            bottomTrailingRadius: 8,
-                            topTrailingRadius: 8
-                        )
-                        .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
-                    } else if isInRange {
-                        // Top and bottom borders only for intermediate dates
-                        VStack(spacing: 0) {
-                            Rectangle()
-                                .fill(OPSStyle.Colors.primaryText)
-                                .frame(height: 2)
-                            Spacer()
-                            Rectangle()
-                                .fill(OPSStyle.Colors.primaryText)
-                                .frame(height: 2)
-                        }
+                // THIS PROJECT stripe — 2pt white bar on the leading edge.
+                if isThisProjectDay && isInCurrentMonth {
+                    HStack(spacing: 0) {
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
+                            .fill(OPSStyle.Colors.primaryText)
+                            .frame(width: 2)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
+                        Spacer(minLength: 0)
                     }
                 }
-                .opacity(isStartDate || isEndDate || isInRange ? 1 : 0)
-                .animation(OPSStyle.Animation.faster, value: isStartDate)
-                .animation(OPSStyle.Animation.faster, value: isEndDate)
-                .animation(OPSStyle.Animation.faster, value: isInRange)
 
-                // Conflict indicator overlay
-                if hasConflicts {
-                    Circle()
-                        .fill(OPSStyle.Colors.warningStatus.opacity(0.3))
-                        .padding(4)
+                // Day number — JetBrains Mono per OPS rule "Numbers are
+                // always mono, tabular-lining, slashed zero." Mohave is for
+                // body and hero numbers; calendar day numbers are data.
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(dayNumber)
+                        .font(OPSStyle.Typography.dataValue)
+                        .foregroundColor(textColor)
+                    Spacer(minLength: 0)
+                }
+                .padding(.leading, OPSStyle.Layout.spacing2)
+                .padding(.top, OPSStyle.Layout.spacing2)
+
+                // Event count chip — top-right.
+                if eventCount > 0 && isInCurrentMonth {
+                    VStack {
+                        HStack {
+                            Spacer(minLength: 0)
+                            countChip
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.trailing, OPSStyle.Layout.spacing1)
+                    .padding(.top, OPSStyle.Layout.spacing1)
                 }
 
-                VStack(spacing: 2) {
-                    Text(dayNumber)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(textColor)
-
-                    // Task dots with actual colors
-                    if !events.isEmpty {
-                        HStack(spacing: 1) {
-                            ForEach(Array(events.prefix(3).enumerated()), id: \.offset) { index, task in
+                // Crew dots — bottom row. Token-correct dot diameter.
+                if !crewColors.isEmpty && isInCurrentMonth {
+                    VStack {
+                        Spacer(minLength: 0)
+                        HStack(spacing: OPSStyle.Layout.spacing1 / 2) {
+                            ForEach(Array(crewColors.prefix(3).enumerated()), id: \.offset) { _, color in
                                 Circle()
-                                    .fill(task.swiftUIColor)
-                                    .frame(width: 4, height: 4)
+                                    .fill(color)
+                                    .frame(
+                                        width: OPSStyle.Layout.Indicator.dotSM,
+                                        height: OPSStyle.Layout.Indicator.dotSM
+                                    )
+                            }
+                            if crewColors.count > 3 {
+                                Text("+\(crewColors.count - 3)")
+                                    .font(OPSStyle.Typography.metadata)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
                         }
                     }
+                    .padding(.bottom, OPSStyle.Layout.spacing1)
+                }
+
+                // Selection chrome — drawn ON TOP so it stays the dominant
+                // signal whenever a date is part of the user's pick.
+                selectionOverlay
+                    .animation(OPSStyle.Animation.faster, value: isStartDate)
+                    .animation(OPSStyle.Animation.faster, value: isEndDate)
+                    .animation(OPSStyle.Animation.faster, value: isInRange)
+
+                // Conflict halo in reviewing mode — tan ring on dates that
+                // overlap the picked range.
+                if hasConflicts {
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .strokeBorder(OPSStyle.Colors.warningStatus.opacity(0.5), lineWidth: OPSStyle.Layout.Border.thick)
+                        .padding(OPSStyle.Layout.Border.thick)
                 }
             }
-            .frame(height: 44)
+            .frame(height: 56)
+            .contentShape(Rectangle())
         }
         .disabled(!isInCurrentMonth)
     }
 
-    private var textColor: Color {
-        if isToday {
-            // White text on today's primaryAccent background
-            return .white
-        } else if !isInCurrentMonth {
-            return OPSStyle.Colors.tertiaryText.opacity(0.3)
-        } else if hasTeamConflicts {
-            // Gray out dates with team conflicts
-            return OPSStyle.Colors.primaryText.opacity(0.7)
-        } else {
-            // Normal text color for all dates including selected ones
-            return OPSStyle.Colors.primaryText
+    private var countChip: some View {
+        let conflict = hasTeamConflicts && !isStartDate && !isEndDate && !isInRange
+        let fg = conflict ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.secondaryText
+        let border = conflict ? OPSStyle.Colors.warningStatus.opacity(0.6) : OPSStyle.Colors.cardBorder
+        return Text("\(eventCount)")
+            .font(OPSStyle.Typography.metadata)
+            .monospacedDigit()
+            .foregroundColor(fg)
+            .padding(.horizontal, OPSStyle.Layout.spacing1)
+            .padding(.vertical, 1)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                    .strokeBorder(border, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+    }
+
+    @ViewBuilder
+    private var selectionOverlay: some View {
+        Group {
+            if isStartDate && isEndDate {
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
+            } else if isStartDate {
+                UnevenRoundedRectangle(
+                    topLeadingRadius: OPSStyle.Layout.cardCornerRadius,
+                    bottomLeadingRadius: OPSStyle.Layout.cardCornerRadius,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 0
+                )
+                .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
+            } else if isEndDate {
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 0,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: OPSStyle.Layout.cardCornerRadius,
+                    topTrailingRadius: OPSStyle.Layout.cardCornerRadius
+                )
+                .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
+            } else if isInRange {
+                VStack(spacing: 0) {
+                    Rectangle()
+                        .fill(OPSStyle.Colors.primaryText)
+                        .frame(height: OPSStyle.Layout.Border.thick)
+                    Spacer()
+                    Rectangle()
+                        .fill(OPSStyle.Colors.primaryText)
+                        .frame(height: OPSStyle.Layout.Border.thick)
+                }
+            }
         }
+        .opacity(isStartDate || isEndDate || isInRange ? 1 : 0)
+    }
+
+    private var textColor: Color {
+        if !isInCurrentMonth {
+            return OPSStyle.Colors.tertiaryText.opacity(0.3)
+        }
+        // Today's day number wears the accent foreground to pair with the
+        // hairline accent ring around the cell — only when not part of an
+        // active selection (selection chrome takes priority).
+        if isToday && !isStartDate && !isEndDate && !isInRange {
+            return OPSStyle.Colors.primaryAccent
+        }
+        return OPSStyle.Colors.primaryText
     }
 }
 

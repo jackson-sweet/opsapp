@@ -22,6 +22,16 @@ protocol SchedulableTask {
     var displayOrder: Int { get }
     var schedulingTeamMemberIds: Set<String> { get }
     var schedulingProjectId: String { get }
+    /// True when the user has manually edited this task's start date.
+    /// Cascade logic skips locked tasks — they no longer auto-shift when a
+    /// predecessor moves. Defaults to false for value-typed VirtualTask.
+    var schedulingLocked: Bool { get }
+}
+
+extension SchedulableTask {
+    /// Default conformance for types that don't track manual edits (the
+    /// scheduling engine's internal VirtualTask). Real ProjectTask overrides.
+    var schedulingLocked: Bool { false }
 }
 
 // MARK: - SchedulingEngine
@@ -100,6 +110,9 @@ struct SchedulingEngine {
 
         for task in sorted {
             if task.id == pushedTaskId { continue }
+            // Respect manual schedule lock — once a user has hand-edited a
+            // paired task's date, predecessor movements no longer auto-shift it.
+            if task.schedulingLocked { continue }
 
             // Check if any of this task's dependencies have moved
             var latestEarliestStart: Date? = nil

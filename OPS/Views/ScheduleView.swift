@@ -49,7 +49,6 @@ struct ScheduleView: View {
     @State private var syncedProjectsCount = 0
     @State private var showScopeMessage = false
     @State private var scopeMessageText = ""
-    @State private var showScopeSheet = false
     @State private var showScheduleBanner = false
     @State private var scheduleBannerText = ""
     
@@ -67,9 +66,17 @@ struct ScheduleView: View {
                             showFilterSheet = true
                         },
                         onMonthTapped: { viewModel.toggleMonthExpanded() },
+                        // Bug 294ea224 — quick in-place ALL/MINE flip. The
+                        // legacy ScheduleTeamScopeSheet was removed; team
+                        // member multi-select lives in the unified filter
+                        // sheet now. Long-press could open it but a single
+                        // tap should always be fast.
                         onScopeToggled: {
-                            showScopeSheet = true
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            let isCurrentlyAll = viewModel.scheduleScope == .all && viewModel.selectedTeamMemberIds.isEmpty
+                            viewModel.updateScheduleScope(isCurrentlyAll ? .mine : .all)
+                            scopeMessageText = isCurrentlyAll ? "[ MY TASKS ]" : "[ ALL TEAM ]"
+                            showScopeMessage = true
                         },
                         isScopeAll: viewModel.scheduleScope == .all && viewModel.selectedTeamMemberIds.isEmpty,
                         hasActiveFilters: viewModel.hasActiveFilters,
@@ -261,18 +268,13 @@ struct ScheduleView: View {
             }
         }
 
-        // Filter sheet
+        // Filter sheet — collapsible dropdowns (bug 294ea224). Detents bumped
+        // off the half-height default so the compact dropdown header sits
+        // visually in the top half without leaving a giant empty void.
         .sheet(isPresented: $showFilterSheet) {
             CalendarFilterView(viewModel: viewModel)
                 .environmentObject(dataController)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-        }
-        // Team member scope sheet
-        .sheet(isPresented: $showScopeSheet) {
-            ScheduleTeamScopeSheet(viewModel: viewModel)
-                .environmentObject(dataController)
-                .presentationDetents([.medium])
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
         // Refresh user events when created from FAB (which owns the sheets)

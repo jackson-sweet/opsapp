@@ -29,6 +29,12 @@ struct VariantDetailView: View {
     @State private var isAdjusting: Bool = false
     @State private var errorMessage: String? = nil
 
+    // USED IN reverse-link queries — surfaces every active Product that
+    // references either this variant directly (recipe row) or this
+    // variant's family head (recipe row or stock-linked product).
+    @Query private var allProductMaterials: [ProductMaterial]
+    @Query private var allProductsForUsage: [Product]
+
     init(row: EnrichedVariantRow) {
         self.row = row
         _localQuantity = State(initialValue: row.variant.quantity)
@@ -91,6 +97,7 @@ struct VariantDetailView: View {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
                         header
                         quantityCard
+                        usedInCard
                         if canManage {
                             thresholdsCard
                             skuCard
@@ -368,6 +375,103 @@ struct VariantDetailView: View {
                 }
             }
         }
+    }
+
+    // MARK: - USED IN reverse links
+
+    /// One row in the USED IN card. Either a recipe reference (qty per
+    /// unit text) or a direct stock-linked product (stock-linked label).
+    private struct UsedInRow: Identifiable {
+        let id: String         // product.id
+        let product: Product
+        let detail: String
+    }
+
+    /// Every active company product that consumes this variant or family.
+    /// Two sources: recipe rows in `product_materials` (where the row
+    /// pins this variant OR the family head) and direct stock links on
+    /// the product itself (`linked_catalog_item_id`).
+    private var usedInRows: [UsedInRow] {
+        let variantId = row.variant.id
+        let familyId = row.family.id
+        let recipeMaterials = allProductMaterials.filter { mat in
+            mat.catalogVariantId == variantId || mat.catalogItemId == familyId
+        }
+        let productsById = Dictionary(uniqueKeysWithValues:
+            allProductsForUsage
+                .filter { $0.companyId == companyId && $0.isActive }
+                .map { ($0.id, $0) }
+        )
+        var rows: [UsedInRow] = []
+        var seen = Set<String>()
+
+        for mat in recipeMaterials {
+            guard let product = productsById[mat.productId], !seen.contains(product.id) else { continue }
+            let qty = formatThreshold(mat.quantityPerUnit)
+            rows.append(UsedInRow(id: product.id, product: product, detail: "\(qty) per unit"))
+            seen.insert(product.id)
+        }
+        for product in productsById.values where product.linkedCatalogItemId == familyId {
+            if seen.contains(product.id) { continue }
+            rows.append(UsedInRow(id: product.id, product: product, detail: "stock-linked"))
+            seen.insert(product.id)
+        }
+        return rows.sorted { $0.product.name.localizedCaseInsensitiveCompare($1.product.name) == .orderedAscending }
+    }
+
+    private var usedInCard: some View {
+        let rows = usedInRows
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("// USED IN · \(rows.count) PRODUCT\(rows.count == 1 ? "" : "S")")
+                .font(OPSStyle.Typography.panelTitle)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            if rows.isEmpty {
+                Text("// NOT USED IN ANY PRODUCT YET — RECIPE LINKS WILL APPEAR HERE")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(rows) { usedRow in
+                    NavigationLink {
+                        ProductDetailView(product: usedRow.product)
+                    } label: {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            Image(systemName: usedRow.product.category3Way.iconName)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .frame(width: 24)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(usedRow.product.name)
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    .lineLimit(1)
+                                Text(usedRow.detail)
+                                    .font(OPSStyle.Typography.metadata)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    }
+                    .buttonStyle(.plain)
+                    .simultaneousGesture(TapGesture().onEnded { _ in
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    })
+                }
+            }
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
 
     // MARK: - Quantity adjustment

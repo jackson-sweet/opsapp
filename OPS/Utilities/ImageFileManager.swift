@@ -103,17 +103,116 @@ class ImageFileManager {
     }
 
     /// Save image data to file system
+    ///
+    /// For remote-image caches (URLs / pre-encoded `remote_` keys) this enforces
+    /// the photo storage budget by evicting the oldest cached remote images,
+    /// skipping pinned ones, until the incoming write fits. Local upload-pending
+    /// images (`local://project_images/...`) bypass the budget — they can't be
+    /// re-fetched from the cloud and are the user's only copy until upload.
     func saveImage(data: Data, localID: String) -> Bool {
         guard let fileURL = getFileURL(for: localID) else {
             return false
         }
-        
+
+        if isRemoteCacheKey(localID) {
+            let budget = StorageProfiler.shared.budgetBytes
+            evictRemoteImagesIfNeeded(bytesNeeded: Int64(data.count), budget: budget)
+        }
+
         do {
             try data.write(to: fileURL)
             return true
         } catch {
             return false
         }
+    }
+
+    /// True if `localID` represents a remote (server-side) photo that's been
+    /// downloaded into the local cache. These are subject to the photo storage
+    /// budget; local upload-pending images are not.
+    private func isRemoteCacheKey(_ localID: String) -> Bool {
+        localID.hasPrefix("http") || localID.hasPrefix("//") || localID.hasPrefix("remote_")
+    }
+
+    /// Pinned URLs serialised by PhotoDownloadManager. Stored as a Set<String>
+    /// of remote URLs; we hash them to the on-disk filename so callers can ask
+    /// "is the file currently on disk pinned by the user?". Direct UserDefaults
+    /// read keeps ImageFileManager free of an actor dependency on
+    /// PhotoDownloadManager (which is @MainActor).
+    private func loadPinnedRemoteFilenames() -> Set<String> {
+        guard let data = UserDefaults.standard.data(forKey: "photoPinnedURLs"),
+              let urls = try? JSONDecoder().decode(Set<String>.self, from: data) else {
+            return []
+        }
+        var filenames = Set<String>()
+        for url in urls {
+            let normalized = url.hasPrefix("//") ? "https:" + url : url
+            filenames.insert(encodeRemoteURL(normalized))
+        }
+        return filenames
+    }
+
+    /// Walks `imagesDirectory` for cached remote photos (`remote_*` files),
+    /// oldest-mtime first, and deletes them until on-disk usage plus
+    /// `bytesNeeded` fits under `budget`. Skips pinned files. Idempotent —
+    /// returns immediately when there is already enough headroom.
+    ///
+    /// Why this lives here, not in PhotoDownloadManager: PhotoDownloadManager is
+    /// @MainActor, and the file-system walk + delete needs to run nonisolated
+    /// alongside `saveImage` so any save path (sync, gallery viewer, comment
+    /// viewer, etc.) gets the same enforcement without an actor hop.
+    @discardableResult
+    func evictRemoteImagesIfNeeded(bytesNeeded: Int64, budget: Int64) -> Int64 {
+        let fm = FileManager.default
+        let currentUsage = StorageProfiler.shared.currentUsageBytes()
+        guard currentUsage + bytesNeeded > budget else { return 0 }
+
+        guard let enumerator = fm.enumerator(
+            at: imagesDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey, .totalFileAllocatedSizeKey],
+            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
+        ) else { return 0 }
+
+        let pinned = loadPinnedRemoteFilenames()
+
+        struct Candidate {
+            let url: URL
+            let modified: Date
+            let size: Int64
+        }
+
+        var candidates: [Candidate] = []
+        for case let fileURL as URL in enumerator {
+            let name = fileURL.lastPathComponent
+            guard name.hasPrefix("remote_"), !pinned.contains(name) else { continue }
+            guard let values = try? fileURL.resourceValues(
+                forKeys: [.contentModificationDateKey, .totalFileAllocatedSizeKey]
+            ) else { continue }
+            let modified = values.contentModificationDate ?? .distantPast
+            let size = Int64(values.totalFileAllocatedSize ?? 0)
+            guard size > 0 else { continue }
+            candidates.append(Candidate(url: fileURL, modified: modified, size: size))
+        }
+
+        candidates.sort { $0.modified < $1.modified }
+
+        var freed: Int64 = 0
+        var projectedUsage = currentUsage
+        for candidate in candidates {
+            if projectedUsage + bytesNeeded <= budget { break }
+            do {
+                try fm.removeItem(at: candidate.url)
+                projectedUsage -= candidate.size
+                freed += candidate.size
+            } catch {
+                continue
+            }
+        }
+
+        if freed > 0 {
+            print("[ImageFileManager] Budget evict: freed \(freed) bytes across \(candidates.count) candidate(s) to make room for \(bytesNeeded) byte write")
+        }
+        return freed
     }
     
     /// Load image data from file system

@@ -180,10 +180,21 @@ struct SubClientEditSheet: View {
                             )
                         }
                         .padding(.horizontal)
-                        .padding(.bottom, 40)
+                        // Bug acad081d — extra bottom slack so the phone field
+                        // (the last focusable input before the Import button)
+                        // doesn't end up flush against the .phonePad keyboard
+                        // when SwiftUI's automatic keyboard avoidance pushes
+                        // content up. 120pt clears both the keyboard's top
+                        // edge and the system suggestion bar.
+                        .padding(.bottom, 120)
                     }
                 }
-                .ignoresSafeArea(.keyboard)
+                // Bug acad081d — drop the previous `.ignoresSafeArea(.keyboard)`.
+                // Disabling the system keyboard inset left the phone field
+                // sitting underneath the .phonePad keyboard with no way to
+                // see what was being typed. Default behaviour now lifts the
+                // ScrollView so the focused field stays visible.
+                .scrollDismissesKeyboard(.interactively)
             }
             .standardSheetToolbar(
                 title: isCreating ? "New Sub Contact" : "Edit Sub Contact",

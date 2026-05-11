@@ -55,6 +55,26 @@ struct TaskTypeSheet: View {
     @State private var showingDependencyPicker = false
     @State private var editingDependencyId: String?
 
+    // Linked products state — bug 4dadd96c. Surfaces every product whose
+    // `task_type_ref` points at this task type so the operator can see and
+    // manage the link from the type side instead of having to chase it
+    // through every product detail. Edit-mode only because the row needs a
+    // persisted id before products can pin to it.
+    @State private var linkedProducts: [Product] = []
+    @State private var isLoadingLinkedProducts: Bool = false
+    @State private var showingAttachProductSheet: Bool = false
+    @State private var showingNewLinkedProductSheet: Bool = false
+    @State private var linkedProductsExpanded: Bool = true
+
+    // Default sub-tasks (task_templates) state — same bug. Edit-mode only
+    // for the same reason; templates carry a FK back to the parent task
+    // type via task_type_ref and the row needs to exist first.
+    @State private var subTasks: [TaskTemplate] = []
+    @State private var isLoadingSubTasks: Bool = false
+    @State private var showingNewSubTaskSheet: Bool = false
+    @State private var editingSubTask: TaskTemplate? = nil
+    @State private var subTasksExpanded: Bool = true
+
     // Bug 6aa8182e — delete/merge from inside the edit sheet. When the type
     // is in use, deleting is blocked and the alert routes to the merge sheet.
     @State private var showDeleteConfirmation = false
@@ -158,6 +178,14 @@ struct TaskTypeSheet: View {
                         // Dependencies section
                         dependenciesSection
 
+                        // Linked Products + Default Sub-Tasks live in
+                        // edit mode only — both pin to the persisted task
+                        // type id, which doesn't exist until first save.
+                        if case .edit(let taskType, _) = mode {
+                            linkedProductsSection(for: taskType)
+                            subTasksSection(for: taskType)
+                        }
+
                         // Delete — edit mode only, and only for non-default
                         // types. Default types ship with the app and can't be
                         // removed (would orphan tasks across every company).
@@ -189,6 +217,8 @@ struct TaskTypeSheet: View {
                     taskTypeColor = color
                 }
                 dependencies = taskType.dependencies
+                loadLinkedProducts(taskTypeId: taskType.id)
+                loadSubTasks(taskTypeId: taskType.id)
             }
             loadExistingTaskTypes()
         }
@@ -264,6 +294,57 @@ struct TaskTypeSheet: View {
                 )
                 .environmentObject(dataController)
             }
+        }
+        .sheet(isPresented: $showingAttachProductSheet) {
+            if let taskType = editTaskType {
+                LinkedProductsAttachSheet(
+                    targetTaskTypeId: taskType.id,
+                    targetTaskTypeName: taskType.display,
+                    onAttach: { _ in
+                        // Re-read the local store rather than mutating the
+                        // in-memory array — keeps display order + soft-delete
+                        // filtering consistent with the page load path.
+                        loadLinkedProducts(taskTypeId: taskType.id)
+                    }
+                )
+                .environmentObject(dataController)
+            }
+        }
+        .sheet(isPresented: $showingNewLinkedProductSheet) {
+            if let taskType = editTaskType {
+                NewLinkedProductSheet(
+                    taskTypeId: taskType.id,
+                    companyId: companyId,
+                    onSave: { _ in
+                        loadLinkedProducts(taskTypeId: taskType.id)
+                    }
+                )
+                .environmentObject(dataController)
+            }
+        }
+        .sheet(isPresented: $showingNewSubTaskSheet) {
+            if let taskType = editTaskType {
+                TaskTemplateEditSheet(
+                    mode: .create(
+                        taskTypeId: taskType.id,
+                        companyId: companyId,
+                        onSave: { _ in
+                            loadSubTasks(taskTypeId: taskType.id)
+                        }
+                    )
+                )
+                .environmentObject(dataController)
+            }
+        }
+        .sheet(item: $editingSubTask) { template in
+            TaskTemplateEditSheet(
+                mode: .edit(template: template, onSave: {
+                    if let taskType = editTaskType {
+                        loadSubTasks(taskTypeId: taskType.id)
+                    }
+                })
+            )
+            .environmentObject(dataController)
         }
         .loadingOverlay(isPresented: $isSaving, message: "Saving...")
         .loadingOverlay(isPresented: $isDeleting, message: "Deleting…")
@@ -522,6 +603,316 @@ struct TaskTypeSheet: View {
         }
     }
 
+    // MARK: - Linked Products Section (bug 4dadd96c)
+
+    @ViewBuilder
+    private func linkedProductsSection(for taskType: TaskType) -> some View {
+        ExpandableSection(
+            title: "LINKED PRODUCTS · \(linkedProducts.count)",
+            icon: "shippingbox.fill",
+            isExpanded: $linkedProductsExpanded,
+            onDelete: nil,
+            collapsible: true
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                if isLoadingLinkedProducts {
+                    HStack(spacing: 8) {
+                        ProgressView().tint(OPSStyle.Colors.primaryAccent)
+                        Text("LOADING…")
+                            .font(OPSStyle.Typography.metadata)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else if linkedProducts.isEmpty {
+                    Text("No products linked yet — products tagged with this task type will appear here.")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ForEach(linkedProducts, id: \.id) { product in
+                        linkedProductRow(product)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showingAttachProductSheet = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "link.badge.plus")
+                            Text("ATTACH EXISTING")
+                        }
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showingNewLinkedProductSheet = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus.circle.fill")
+                            Text("NEW PRODUCT")
+                        }
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .padding(.top, 4)
+            }
+        }
+    }
+
+    private func linkedProductRow(_ product: Product) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(product.name)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .lineLimit(1)
+                Spacer()
+                Text("• \(product.type.rawValue.uppercased())")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            HStack(spacing: 8) {
+                Text(formatLinkedProductPrice(product))
+                    .font(OPSStyle.Typography.metadata)
+                    .monospacedDigit()
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                if !product.isActive {
+                    Text("· INACTIVE")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.warningStatus)
+                }
+                Spacer()
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
+    private func formatLinkedProductPrice(_ product: Product) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        f.minimumFractionDigits = 0
+        f.maximumFractionDigits = 2
+        let priceStr = f.string(from: NSNumber(value: product.basePrice)) ?? "$\(product.basePrice)"
+        return "\(priceStr)/\(product.pricingUnit.rawValue)".uppercased()
+    }
+
+    // MARK: - Default Sub-Tasks Section (bug 4dadd96c)
+
+    @ViewBuilder
+    private func subTasksSection(for taskType: TaskType) -> some View {
+        ExpandableSection(
+            title: "DEFAULT SUB-TASKS · \(subTasks.count)",
+            icon: "list.bullet.indent",
+            isExpanded: $subTasksExpanded,
+            onDelete: nil,
+            collapsible: true
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                if isLoadingSubTasks {
+                    HStack(spacing: 8) {
+                        ProgressView().tint(OPSStyle.Colors.primaryAccent)
+                        Text("LOADING…")
+                            .font(OPSStyle.Typography.metadata)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else if subTasks.isEmpty {
+                    Text("No sub-tasks yet — when an estimate approves, one generic task will be created. Add sub-tasks to break work into steps.")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ForEach(subTasks, id: \.id) { template in
+                        subTaskRow(template)
+                    }
+                }
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showingNewSubTaskSheet = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                        Text("ADD SUB-TASK")
+                    }
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.top, 4)
+            }
+        }
+    }
+
+    private func subTaskRow(_ template: TaskTemplate) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            editingSubTask = template
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(template.title)
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+                    if let hours = template.estimatedHours, hours > 0 {
+                        Text("\(formatSubTaskHours(hours)) HR ESTIMATE".uppercased())
+                            .font(OPSStyle.Typography.metadata)
+                            .monospacedDigit()
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                    if let desc = template.templateDescription, !desc.isEmpty {
+                        Text(desc)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .lineLimit(2)
+                    }
+                }
+                Spacer()
+                Image(systemName: "pencil")
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel("Edit sub-task \(template.title)")
+    }
+
+    private func formatSubTaskHours(_ value: Double) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.minimumFractionDigits = 0
+        f.maximumFractionDigits = 2
+        return f.string(from: NSNumber(value: value)) ?? String(value)
+    }
+
+    // MARK: - Loaders for linked products + sub-tasks
+
+    private func loadLinkedProducts(taskTypeId: String) {
+        let descriptor = FetchDescriptor<Product>(
+            predicate: #Predicate<Product> { product in
+                (product.taskTypeRef == taskTypeId || product.taskTypeId == taskTypeId)
+                && product.companyId == companyId
+            },
+            sortBy: [SortDescriptor(\.name)]
+        )
+        if let local = try? modelContext.fetch(descriptor) {
+            linkedProducts = local
+        }
+
+        guard !companyId.isEmpty else { return }
+        isLoadingLinkedProducts = true
+        Task {
+            defer { Task { @MainActor in isLoadingLinkedProducts = false } }
+            let repo = ProductRepository(companyId: companyId)
+            if let remote = try? await repo.fetchForTaskType(taskTypeId, includeInactive: true) {
+                await MainActor.run {
+                    for dto in remote {
+                        let id = dto.id
+                        let existingDescriptor = FetchDescriptor<Product>(
+                            predicate: #Predicate<Product> { $0.id == id }
+                        )
+                        if let existing = try? modelContext.fetch(existingDescriptor).first {
+                            existing.taskTypeId = dto.taskTypeId
+                            existing.taskTypeRef = dto.taskTypeRef
+                        } else {
+                            modelContext.insert(dto.toModel())
+                        }
+                    }
+                    try? modelContext.save()
+                    if let merged = try? modelContext.fetch(descriptor) {
+                        linkedProducts = merged
+                    }
+                }
+            }
+        }
+    }
+
+    private func loadSubTasks(taskTypeId: String) {
+        let descriptor = FetchDescriptor<TaskTemplate>(
+            predicate: #Predicate<TaskTemplate> { template in
+                (template.taskTypeRef == taskTypeId || template.taskTypeId == taskTypeId)
+                && template.deletedAt == nil
+            },
+            sortBy: [SortDescriptor(\.displayOrder), SortDescriptor(\.title)]
+        )
+        if let local = try? modelContext.fetch(descriptor) {
+            subTasks = local
+        }
+
+        guard !companyId.isEmpty else { return }
+        isLoadingSubTasks = true
+        Task {
+            defer { Task { @MainActor in isLoadingSubTasks = false } }
+            let repo = TaskTemplateRepository(companyId: companyId)
+            if let remote = try? await repo.fetchForTaskType(taskTypeId) {
+                await MainActor.run {
+                    for dto in remote {
+                        let id = dto.id
+                        let existingDescriptor = FetchDescriptor<TaskTemplate>(
+                            predicate: #Predicate<TaskTemplate> { $0.id == id }
+                        )
+                        if let existing = try? modelContext.fetch(existingDescriptor).first {
+                            existing.title = dto.title
+                            existing.templateDescription = dto.description
+                            existing.estimatedHours = dto.estimatedHours
+                            existing.displayOrder = dto.displayOrder
+                        } else {
+                            modelContext.insert(dto.toModel())
+                        }
+                    }
+                    try? modelContext.save()
+                    if let merged = try? modelContext.fetch(descriptor) {
+                        subTasks = merged
+                    }
+                }
+            }
+        }
+    }
+
     // Constant overlap presets: (label, days)
     private let constantOverlapSteps: [(label: String, days: Double)] = [
         ("1 DAY", 1),
@@ -532,6 +923,21 @@ struct TaskTypeSheet: View {
         ("2 WEEKS", 14)
     ]
 
+    /// After-end gap presets (days) for the snap slider in `after_end` mode.
+    private let afterEndGapSteps: [Int] = [0, 1, 3, 7, 14, 21, 28]
+
+    /// Weekday segments for after_end mode. ISO 1=Mon ... 7=Sun. nil = no constraint.
+    private let weekdayOptions: [(label: String, value: Int?)] = [
+        ("ANY", nil),
+        ("M",  1),
+        ("T",  2),
+        ("W",  3),
+        ("TH", 4),
+        ("F",  5),
+        ("SA", 6),
+        ("SU", 7)
+    ]
+
     // MARK: - Dependency Row
 
     @ViewBuilder
@@ -539,20 +945,39 @@ struct TaskTypeSheet: View {
         let isEditing = editingDependencyId == dep.dependsOnTaskTypeId
         let depColor = depTaskTypeColor(for: dep.dependsOnTaskTypeId)
         let depName = taskTypeName(for: dep.dependsOnTaskTypeId)
-        let isConstant = dep.overlapMode == "constant"
+        let mode = dep.overlapMode
+        let isConstant = mode == "constant"
+        let isAfterEnd = mode == "after_end"
         let overlapFraction = overlapToFraction(dep)
 
         VStack(spacing: 14) {
-            // Overlap visualization bars (always visible) — EDIT button top-right in view mode
+            // Visualization bars (always visible) — EDIT button top-right in view mode
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 14) {
-                    overlapBars(fraction: overlapFraction, depColor: depColor, depName: depName)
+                    if isAfterEnd {
+                        afterEndBars(dep: dep, depColor: depColor, depName: depName)
+                    } else {
+                        overlapBars(fraction: overlapFraction, depColor: depColor, depName: depName)
+                    }
 
                     // Description text
                     Text(overlapDescription(dep))
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .animation(.none, value: dep.overlapPercentage)
+
+                    // Auto-create badge in view mode — quick signal that this
+                    // dependency carries pair behavior beyond pure scheduling.
+                    if dep.autoCreate && !isEditing {
+                        HStack(spacing: 6) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                            Text("AUTO-CREATED FROM \(depName.uppercased())")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .tracking(0.3)
+                        }
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    }
                 }
 
                 if !isEditing {
@@ -571,11 +996,14 @@ struct TaskTypeSheet: View {
             }
 
             if isEditing {
-                // Mode toggle (sliding underline tabs)
-                overlapModeToggle(dep: dep, index: index, isConstant: isConstant)
+                // Mode toggle (sliding underline tabs) — 3-way
+                overlapModeToggle(dep: dep, index: index, mode: mode)
 
-                // Custom snap slider
-                if isConstant {
+                // Mode-specific controls
+                if isAfterEnd {
+                    afterEndControls(dep: dep, index: index)
+                        .id("after-end-\(dep.dependsOnTaskTypeId)")
+                } else if isConstant {
                     let currentIdx = constantOverlapSteps.firstIndex(where: { $0.days == dep.overlapConstantDays }) ?? 0
                     snapSlider(
                         stepCount: constantOverlapSteps.count,
@@ -583,9 +1011,8 @@ struct TaskTypeSheet: View {
                         startLabel: "1 DAY",
                         endLabel: "2 WEEKS"
                     ) { newIndex in
-                        dependencies[index] = TaskTypeDependency(
-                            dependsOnTaskTypeId: dep.dependsOnTaskTypeId,
-                            overlapPercentage: dep.overlapPercentage,
+                        dependencies[index] = updatedDependency(
+                            from: dep,
                             overlapMode: "constant",
                             overlapConstantDays: constantOverlapSteps[newIndex].days
                         )
@@ -598,15 +1025,17 @@ struct TaskTypeSheet: View {
                         startLabel: "0%",
                         endLabel: "100%"
                     ) { newIndex in
-                        dependencies[index] = TaskTypeDependency(
-                            dependsOnTaskTypeId: dep.dependsOnTaskTypeId,
-                            overlapPercentage: newIndex * 10,
+                        dependencies[index] = updatedDependency(
+                            from: dep,
                             overlapMode: "percentage",
-                            overlapConstantDays: dep.overlapConstantDays
+                            overlapPercentage: newIndex * 10
                         )
                     }
                     .id("percentage-\(dep.dependsOnTaskTypeId)")
                 }
+
+                // Pair behavior toggles — shown for every mode.
+                pairToggles(dep: dep, index: index, predecessorName: depName)
 
                 // Edit mode buttons: DONE + REMOVE DEPENDENCY
                 HStack(spacing: 12) {
@@ -712,66 +1141,337 @@ struct TaskTypeSheet: View {
     }
 
     private func overlapToFraction(_ dep: TaskTypeDependency) -> CGFloat {
-        if dep.overlapMode == "constant" {
+        switch dep.overlapMode {
+        case "after_end":
+            // Visualization fraction is 0 for after_end (predecessor leads, no overlap).
+            // The afterEndBars() variant renders gap explicitly.
+            return 0
+        case "constant":
             return CGFloat(min(dep.overlapConstantDays / 14.0, 1.0))
-        } else {
+        default:
             return CGFloat(dep.overlapPercentage) / 100.0
         }
     }
 
-    // MARK: - Mode Toggle (Sliding Underline)
+    // MARK: - Helper: Update dependency preserving fields not changed by callers
 
-    private func overlapModeToggle(dep: TaskTypeDependency, index: Int, isConstant: Bool) -> some View {
-        VStack(spacing: 0) {
+    /// Returns a new `TaskTypeDependency` based on `original`, applying any of
+    /// the named overrides. Used by mode-switch buttons + slider callbacks so
+    /// changing one field never silently zeroes the others (pair toggles,
+    /// after_end fields, etc.). Weekday updates use a dedicated helper since
+    /// the field is itself optional and a double-optional would muddle the API.
+    private func updatedDependency(
+        from original: TaskTypeDependency,
+        overlapPercentage: Int? = nil,
+        overlapMode: String? = nil,
+        overlapConstantDays: Double? = nil,
+        autoCreate: Bool? = nil,
+        inheritCrew: Bool? = nil,
+        minGapDaysAfterEnd: Int? = nil
+    ) -> TaskTypeDependency {
+        TaskTypeDependency(
+            dependsOnTaskTypeId: original.dependsOnTaskTypeId,
+            overlapPercentage: overlapPercentage ?? original.overlapPercentage,
+            overlapMode: overlapMode ?? original.overlapMode,
+            overlapConstantDays: overlapConstantDays ?? original.overlapConstantDays,
+            autoCreate: autoCreate ?? original.autoCreate,
+            inheritCrew: inheritCrew ?? original.inheritCrew,
+            minGapDaysAfterEnd: minGapDaysAfterEnd ?? original.minGapDaysAfterEnd,
+            weekdayConstraint: original.weekdayConstraint
+        )
+    }
+
+    /// Update only the weekday constraint, preserving all other fields.
+    private func updatedDependencyWeekday(
+        from original: TaskTypeDependency,
+        weekdayConstraint: Int?
+    ) -> TaskTypeDependency {
+        TaskTypeDependency(
+            dependsOnTaskTypeId: original.dependsOnTaskTypeId,
+            overlapPercentage: original.overlapPercentage,
+            overlapMode: original.overlapMode,
+            overlapConstantDays: original.overlapConstantDays,
+            autoCreate: original.autoCreate,
+            inheritCrew: original.inheritCrew,
+            minGapDaysAfterEnd: original.minGapDaysAfterEnd,
+            weekdayConstraint: weekdayConstraint
+        )
+    }
+
+    // MARK: - After-End Visualization
+
+    /// Bars for `after_end` mode — predecessor on the left, a hairline-and-arrow
+    /// gap in the middle showing the wait, then the dependent on the right.
+    /// Highlights the weekday constraint if one is set.
+    private func afterEndBars(dep: TaskTypeDependency, depColor: Color, depName: String) -> some View {
+        GeometryReader { geo in
+            let totalWidth = geo.size.width
+            let barWidth: CGFloat = totalWidth * 0.38
+            let barHeight: CGFloat = 22
+
             HStack(spacing: 0) {
-                Button {
-                    withAnimation(OPSStyle.Animation.springFast) {
-                        dependencies[index] = TaskTypeDependency(
-                            dependsOnTaskTypeId: dep.dependsOnTaskTypeId,
-                            overlapPercentage: dep.overlapPercentage,
-                            overlapMode: "percentage",
-                            overlapConstantDays: dep.overlapConstantDays
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(depColor.opacity(0.2))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .stroke(depColor.opacity(0.4), lineWidth: 1)
                         )
-                    }
-                } label: {
-                    Text("PERCENTAGE")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(!isConstant ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                    Text(depName.uppercased())
+                        .font(OPSStyle.Typography.tagLabel)
+                        .tracking(0.3)
+                        .foregroundColor(depColor)
+                        .lineLimit(1)
+                        .padding(.horizontal, 6)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .frame(width: barWidth, height: barHeight)
 
-                Button {
-                    withAnimation(OPSStyle.Animation.springFast) {
-                        dependencies[index] = TaskTypeDependency(
-                            dependsOnTaskTypeId: dep.dependsOnTaskTypeId,
-                            overlapPercentage: dep.overlapPercentage,
-                            overlapMode: "constant",
-                            overlapConstantDays: dep.overlapConstantDays > 0 ? dep.overlapConstantDays : 1
-                        )
-                    }
-                } label: {
-                    Text("CONSTANT")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(isConstant ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                // Gap visualization — dashed hairline + day count
+                ZStack {
+                    Rectangle()
+                        .stroke(OPSStyle.Colors.cardBorder, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .frame(height: 1)
+                    Text("+\(dep.minGapDaysAfterEnd)D")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .tracking(0.3)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .padding(.horizontal, 4)
+                        .background(OPSStyle.Colors.cardBackgroundDark)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .frame(maxWidth: .infinity)
+
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(taskTypeColor.opacity(0.2))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .stroke(taskTypeColor.opacity(0.4), lineWidth: 1)
+                        )
+                    let label: String = {
+                        let base = (taskTypeName.isEmpty ? "This task" : taskTypeName).uppercased()
+                        if let wd = dep.weekdayConstraint,
+                           let entry = weekdayOptions.first(where: { $0.value == wd }) {
+                            return "\(entry.label) · \(base)"
+                        }
+                        return base
+                    }()
+                    Text(label)
+                        .font(OPSStyle.Typography.tagLabel)
+                        .tracking(0.3)
+                        .foregroundColor(taskTypeColor)
+                        .lineLimit(1)
+                        .padding(.horizontal, 6)
+                }
+                .frame(width: barWidth, height: barHeight)
+            }
+        }
+        .frame(height: 48)
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: dep.minGapDaysAfterEnd)
+    }
+
+    // MARK: - After-End Controls
+
+    /// Snap-slider for gap days + segmented picker for weekday constraint.
+    @ViewBuilder
+    private func afterEndControls(dep: TaskTypeDependency, index: Int) -> some View {
+        let currentGapIdx = afterEndGapSteps.firstIndex(of: dep.minGapDaysAfterEnd) ?? closestGapIndex(to: dep.minGapDaysAfterEnd)
+
+        VStack(alignment: .leading, spacing: 14) {
+            // Gap days
+            Text("// GAP AFTER PREDECESSOR ENDS")
+                .font(OPSStyle.Typography.smallCaption)
+                .tracking(0.3)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            snapSlider(
+                stepCount: afterEndGapSteps.count,
+                currentIndex: currentGapIdx,
+                startLabel: "0 DAYS",
+                endLabel: "4 WEEKS"
+            ) { newIndex in
+                dependencies[index] = updatedDependency(
+                    from: dep,
+                    overlapMode: "after_end",
+                    minGapDaysAfterEnd: afterEndGapSteps[newIndex]
+                )
+            }
+
+            // Weekday constraint
+            Text("// WEEKDAY")
+                .font(OPSStyle.Typography.smallCaption)
+                .tracking(0.3)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .padding(.top, 4)
+
+            HStack(spacing: 4) {
+                ForEach(weekdayOptions.indices, id: \.self) { i in
+                    let entry = weekdayOptions[i]
+                    let isSelected = entry.value == dep.weekdayConstraint
+                    Button {
+                        withAnimation(OPSStyle.Animation.springFast) {
+                            dependencies[index] = updatedDependencyWeekday(from: dep, weekdayConstraint: entry.value)
+                            UISelectionFeedbackGenerator().selectionChanged()
+                        }
+                    } label: {
+                        Text(entry.label)
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.25) : Color.white.opacity(0.04))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(isSelected ? OPSStyle.Colors.primaryAccent : Color.clear, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+        }
+    }
+
+    /// Find the gap-preset index nearest to an arbitrary day count. Used when
+    /// a stored value (e.g. legacy migrated data) doesn't match a preset.
+    private func closestGapIndex(to days: Int) -> Int {
+        guard !afterEndGapSteps.isEmpty else { return 0 }
+        var bestIdx = 0
+        var bestDist = Int.max
+        for (i, step) in afterEndGapSteps.enumerated() {
+            let dist = abs(step - days)
+            if dist < bestDist {
+                bestDist = dist
+                bestIdx = i
+            }
+        }
+        return bestIdx
+    }
+
+    // MARK: - Pair Behavior Toggles
+
+    /// Two toggles for the pair behavior: auto-create the owning task when
+    /// the predecessor is created, and inherit the predecessor's crew. The
+    /// crew toggle is disabled when auto-create is off (nothing to inherit).
+    @ViewBuilder
+    private func pairToggles(dep: TaskTypeDependency, index: Int, predecessorName: String) -> some View {
+        let inheritEnabled = dep.autoCreate
+
+        VStack(alignment: .leading, spacing: 10) {
+            Text("// PAIR BEHAVIOR")
+                .font(OPSStyle.Typography.smallCaption)
+                .tracking(0.3)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            // AUTO-CREATE
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("AUTO-CREATE THIS TASK")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    Text("when \(predecessorName) is created")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { dep.autoCreate },
+                    set: { newValue in
+                        withAnimation(OPSStyle.Animation.spring) {
+                            dependencies[index] = updatedDependency(from: dep, autoCreate: newValue)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                    }
+                ))
+                .labelsHidden()
+                .tint(OPSStyle.Colors.primaryAccent)
+            }
+
+            // INHERIT CREW
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("INHERIT CREW FROM \(predecessorName.uppercased())")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(inheritEnabled ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                    Text(inheritEnabled
+                         ? "spawn copies predecessor's team_member_ids"
+                         : "enable auto-create to use")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { dep.inheritCrew },
+                    set: { newValue in
+                        dependencies[index] = updatedDependency(from: dep, inheritCrew: newValue)
+                    }
+                ))
+                .labelsHidden()
+                .tint(OPSStyle.Colors.primaryAccent)
+                .disabled(!inheritEnabled)
+                .opacity(inheritEnabled ? 1.0 : 0.4)
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    // MARK: - Mode Toggle (Sliding Underline) — 3-way
+
+    private func overlapModeToggle(dep: TaskTypeDependency, index: Int, mode: String) -> some View {
+        let modes: [(label: String, value: String)] = [
+            ("PERCENTAGE", "percentage"),
+            ("CONSTANT",   "constant"),
+            ("AFTER END",  "after_end")
+        ]
+        let selectedIndex = modes.firstIndex(where: { $0.value == mode }) ?? 0
+
+        return VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                ForEach(modes.indices, id: \.self) { i in
+                    let entry = modes[i]
+                    let isSelected = i == selectedIndex
+                    Button {
+                        withAnimation(OPSStyle.Animation.springFast) {
+                            // Switching INTO a mode applies a sensible default
+                            // value while preserving the other modes' fields so
+                            // toggling back doesn't lose user input.
+                            let switched: TaskTypeDependency
+                            switch entry.value {
+                            case "constant":
+                                let days = dep.overlapConstantDays > 0 ? dep.overlapConstantDays : 1
+                                switched = updatedDependency(from: dep, overlapMode: "constant", overlapConstantDays: days)
+                            case "after_end":
+                                // Default to 7-day gap on first entry to give
+                                // users a meaningful starting point.
+                                let gap = dep.minGapDaysAfterEnd > 0 ? dep.minGapDaysAfterEnd : 7
+                                switched = updatedDependency(from: dep, overlapMode: "after_end", minGapDaysAfterEnd: gap)
+                            default:
+                                switched = updatedDependency(from: dep, overlapMode: "percentage")
+                            }
+                            dependencies[index] = switched
+                        }
+                    } label: {
+                        Text(entry.label)
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
             }
 
             // Sliding underline
             GeometryReader { geo in
-                let halfW = geo.size.width / 2
+                let segW = geo.size.width / CGFloat(modes.count)
                 Rectangle()
                     .fill(OPSStyle.Colors.primaryAccent)
-                    .frame(width: halfW, height: 2)
-                    .offset(x: isConstant ? halfW : 0)
+                    .frame(width: segW, height: 2)
+                    .offset(x: segW * CGFloat(selectedIndex))
             }
             .frame(height: 2)
 
-            // Divider below
             Rectangle()
                 .fill(Color.white.opacity(0.06))
                 .frame(height: 1)
@@ -875,7 +1575,10 @@ struct TaskTypeSheet: View {
         let depName = taskTypeName(for: dep.dependsOnTaskTypeId)
         let thisName = taskTypeName.isEmpty ? "This task" : taskTypeName
 
-        if dep.overlapMode == "constant" {
+        switch dep.overlapMode {
+        case "after_end":
+            return afterEndDescription(dep: dep, depName: depName, thisName: thisName)
+        case "constant":
             let days = dep.overlapConstantDays
             if days <= 0 {
                 return "\(depName) must finish before \(thisName) starts"
@@ -888,7 +1591,7 @@ struct TaskTypeSheet: View {
             } else {
                 return "\(thisName) can start \(Int(days)) days before \(depName) finishes"
             }
-        } else {
+        default:
             let pct = dep.overlapPercentage
             if pct == 0 {
                 return "\(depName) must finish before \(thisName) starts"
@@ -897,6 +1600,47 @@ struct TaskTypeSheet: View {
             } else {
                 return "\(thisName) can start when \(depName) is \(pct)% complete"
             }
+        }
+    }
+
+    private func afterEndDescription(dep: TaskTypeDependency, depName: String, thisName: String) -> String {
+        let gap = dep.minGapDaysAfterEnd
+        let weekday = dep.weekdayConstraint.flatMap { wd in
+            weekdayOptions.first(where: { $0.value == wd })?.label
+        }
+
+        let gapText: String
+        switch gap {
+        case 0:  gapText = "the day after \(depName) ends"
+        case 1:  gapText = "1 day after \(depName) ends"
+        case 7:  gapText = "1 week after \(depName) ends"
+        case 14: gapText = "2 weeks after \(depName) ends"
+        case 21: gapText = "3 weeks after \(depName) ends"
+        case 28: gapText = "4 weeks after \(depName) ends"
+        default: gapText = "\(gap) days after \(depName) ends"
+        }
+
+        let weekdayPhrase: String
+        if let wd = weekday, wd != "ANY" {
+            weekdayPhrase = ", on first \(weekdayLong(wd))"
+        } else {
+            weekdayPhrase = ""
+        }
+
+        let autoPhrase = dep.autoCreate ? " · auto-created" : ""
+        return "\(thisName) starts \(gapText)\(weekdayPhrase)\(autoPhrase)"
+    }
+
+    private func weekdayLong(_ short: String) -> String {
+        switch short {
+        case "M":  return "Monday"
+        case "T":  return "Tuesday"
+        case "W":  return "Wednesday"
+        case "TH": return "Thursday"
+        case "F":  return "Friday"
+        case "SA": return "Saturday"
+        case "SU": return "Sunday"
+        default:   return short
         }
     }
 

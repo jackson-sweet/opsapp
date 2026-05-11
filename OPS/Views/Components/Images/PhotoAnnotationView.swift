@@ -23,7 +23,8 @@ struct PhotoAnnotationView: View {
     @State private var drawing = PKDrawing()
     @State private var noteText: String = ""
     @State private var isSaving = false
-    @State private var imageSize: CGSize = .zero
+    @State private var loadedImage: UIImage? = nil
+    @State private var loadFailed: Bool = false
     @State private var error: String? = nil
 
     init(photoURL: String, projectId: String, existingAnnotation: PhotoAnnotation? = nil) {
@@ -50,41 +51,25 @@ struct PhotoAnnotationView: View {
                 // Photo + annotation canvas
                 GeometryReader { geometry in
                     ZStack {
-                        // Layer 1: Original photo
-                        AsyncImage(url: URL(string: photoURL)) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
-                                    .background(
-                                        GeometryReader { imageGeometry in
-                                            Color.clear
-                                                .onAppear {
-                                                    imageSize = imageGeometry.size
-                                                }
-                                                .onChange(of: imageGeometry.size) { _, newSize in
-                                                    imageSize = newSize
-                                                }
-                                        }
-                                    )
-                            case .failure:
-                                Image(systemName: OPSStyle.Icons.photo)
-                                    .font(OPSStyle.Typography.largeTitle)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            case .empty:
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                            @unknown default:
-                                EmptyView()
-                            }
-                        }
-
-                        // Layer 2: PencilKit canvas — only appears once image size is known
-                        if imageSize.width > 0 && imageSize.height > 0 {
-                            AnnotationCanvas(drawing: $drawing)
-                                .frame(width: imageSize.width, height: imageSize.height)
+                        if let image = loadedImage {
+                            // Bug 8824a41c — photo + PencilKit live inside a
+                            // single UIScrollView so the user can two-finger
+                            // pinch to zoom (matching the system Photos
+                            // markup behaviour). One-finger touches still
+                            // route to PencilKit for drawing; the scroll
+                            // view's pan only engages with two fingers.
+                            ZoomablePhotoAnnotationCanvas(
+                                image: image,
+                                drawing: $drawing
+                            )
+                            .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
+                        } else if loadFailed {
+                            Image(systemName: OPSStyle.Icons.photo)
+                                .font(OPSStyle.Typography.largeTitle)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        } else {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -93,6 +78,30 @@ struct PhotoAnnotationView: View {
                 // Bottom bar with note field
                 bottomBar
             }
+        }
+        .task {
+            await loadImage()
+        }
+    }
+
+    /// Bug 8824a41c — load the photo as a UIImage up-front so we can hand
+    /// it to a UIScrollView-backed canvas. AsyncImage's SwiftUI Image
+    /// can't be sized into a UIView's content area, so we own the load.
+    private func loadImage() async {
+        guard loadedImage == nil, !loadFailed else { return }
+        guard let url = URL(string: photoURL) else {
+            loadFailed = true
+            return
+        }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let image = UIImage(data: data) {
+                await MainActor.run { self.loadedImage = image }
+            } else {
+                await MainActor.run { self.loadFailed = true }
+            }
+        } catch {
+            await MainActor.run { self.loadFailed = true }
         }
     }
 
@@ -196,12 +205,19 @@ struct PhotoAnnotationView: View {
         isSaving = true
         error = nil
 
+        // Bug 8824a41c — pass the loaded image's natural pixel size as the
+        // canonical canvas size. Annotations are saved against the source
+        // photo's coordinate space (so they re-align when the photo loads
+        // at a different fitted size on another device); the loaded UIImage
+        // gives us that authoritative size directly.
+        let canvasSize = loadedImage?.size ?? .zero
+
         do {
             _ = try await PhotoAnnotationSyncManager.shared.saveAnnotation(
                 drawing: drawing,
                 note: noteText,
                 photoURL: photoURL,
-                imageSize: imageSize,
+                imageSize: canvasSize,
                 projectId: projectId,
                 companyId: companyId,
                 authorId: user.id,
@@ -215,6 +231,205 @@ struct PhotoAnnotationView: View {
         }
 
         isSaving = false
+    }
+}
+
+// MARK: - ZoomablePhotoAnnotationCanvas (Bug 8824a41c)
+
+/// UIScrollView wrapper around an aspect-fit photo + a transparent
+/// PencilKit canvas, layered so they zoom and pan as one unit. Mirrors
+/// the iOS Photos.app markup interaction model:
+///
+/// - Single-finger touches go to PencilKit for drawing.
+/// - Two-finger touches drive scrollView pan + pinch-to-zoom (1×–5×).
+/// - Drawing coordinates are stored in the canvas's own (unscaled) space,
+///   so strokes laid down at any zoom level remain perfectly aligned with
+///   the underlying pixels of the photo.
+struct ZoomablePhotoAnnotationCanvas: UIViewRepresentable {
+    let image: UIImage
+    @Binding var drawing: PKDrawing
+
+    func makeUIView(context: Context) -> UIScrollView {
+        let scrollView = UIScrollView()
+        scrollView.minimumZoomScale = 1.0
+        scrollView.maximumZoomScale = 5.0
+        scrollView.bouncesZoom = true
+        scrollView.delegate = context.coordinator
+        scrollView.backgroundColor = .clear
+        scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.showsVerticalScrollIndicator = false
+        // Critical — drawing is one finger, pan/zoom is two. Without
+        // this clamp the scroll view eats every touch and PencilKit
+        // never sees a stroke.
+        scrollView.panGestureRecognizer.minimumNumberOfTouches = 2
+
+        let container = UIView()
+        container.backgroundColor = .clear
+
+        let imageView = UIImageView(image: image)
+        imageView.contentMode = .scaleAspectFit
+        imageView.isUserInteractionEnabled = false
+
+        let canvas = PKCanvasView()
+        canvas.backgroundColor = .clear
+        canvas.isOpaque = false
+        canvas.drawing = drawing
+        canvas.drawingPolicy = .anyInput
+        canvas.tool = PKInkingTool(.pen, color: .white, width: 3)
+        canvas.delegate = context.coordinator
+        canvas.contentInsetAdjustmentBehavior = .never
+        canvas.showsVerticalScrollIndicator = false
+        canvas.showsHorizontalScrollIndicator = false
+        canvas.overrideUserInterfaceStyle = .dark
+        // PKCanvasView is itself a UIScrollView; disable its own scroll
+        // so the outer scroll view owns zoom/pan. Otherwise both fight
+        // over pinch gestures.
+        canvas.isScrollEnabled = false
+
+        container.addSubview(imageView)
+        container.addSubview(canvas)
+        scrollView.addSubview(container)
+
+        context.coordinator.scrollView = scrollView
+        context.coordinator.container = container
+        context.coordinator.imageView = imageView
+        context.coordinator.canvas = canvas
+
+        // Defer initial layout + tool picker until the scroll view has
+        // a real bounds rect from autolayout.
+        DispatchQueue.main.async {
+            context.coordinator.layoutForCurrentBounds()
+            context.coordinator.showToolPicker()
+        }
+
+        return scrollView
+    }
+
+    func updateUIView(_ scrollView: UIScrollView, context: Context) {
+        guard let canvas = context.coordinator.canvas else { return }
+
+        // Re-fit if the scroll bounds changed (rotation, sheet resize).
+        context.coordinator.layoutForCurrentBounds()
+
+        if context.coordinator.isInternalUpdate {
+            context.coordinator.isInternalUpdate = false
+            return
+        }
+        context.coordinator.isProgrammaticUpdate = true
+        canvas.drawing = drawing
+        context.coordinator.isProgrammaticUpdate = false
+    }
+
+    static func dismantleUIView(_ scrollView: UIScrollView, coordinator: Coordinator) {
+        coordinator.hideToolPicker()
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    class Coordinator: NSObject, UIScrollViewDelegate, PKCanvasViewDelegate {
+        let parent: ZoomablePhotoAnnotationCanvas
+        weak var scrollView: UIScrollView?
+        weak var container: UIView?
+        weak var imageView: UIImageView?
+        weak var canvas: PKCanvasView?
+
+        private var toolPicker: PKToolPicker?
+        var isInternalUpdate = false
+        var isProgrammaticUpdate = false
+        private var lastFittedBounds: CGSize = .zero
+
+        init(parent: ZoomablePhotoAnnotationCanvas) {
+            self.parent = parent
+        }
+
+        // MARK: Layout
+
+        func layoutForCurrentBounds() {
+            guard let scrollView = scrollView,
+                  let container = container,
+                  let imageView = imageView,
+                  let canvas = canvas else { return }
+
+            let bounds = scrollView.bounds.size
+            guard bounds.width > 0, bounds.height > 0 else { return }
+            // Skip when bounds haven't changed (avoids resetting zoom on
+            // every SwiftUI re-render).
+            if bounds == lastFittedBounds { return }
+            lastFittedBounds = bounds
+
+            let imgSize = parent.image.size
+            guard imgSize.width > 0, imgSize.height > 0 else { return }
+
+            let imageAspect = imgSize.width / imgSize.height
+            let frameAspect = bounds.width / bounds.height
+            let fitted: CGSize
+            if imageAspect > frameAspect {
+                let w = bounds.width
+                let h = w / imageAspect
+                fitted = CGSize(width: w, height: h)
+            } else {
+                let h = bounds.height
+                let w = h * imageAspect
+                fitted = CGSize(width: w, height: h)
+            }
+
+            container.frame = CGRect(origin: .zero, size: fitted)
+            imageView.frame = container.bounds
+            canvas.frame = container.bounds
+
+            scrollView.contentSize = fitted
+            scrollView.zoomScale = 1.0
+            centerContainer()
+        }
+
+        private func centerContainer() {
+            guard let scrollView = scrollView, let container = container else { return }
+            let boundsSize = scrollView.bounds.size
+            var frame = container.frame
+            frame.origin.x = max(0, (boundsSize.width - frame.size.width) / 2)
+            frame.origin.y = max(0, (boundsSize.height - frame.size.height) / 2)
+            container.frame = frame
+        }
+
+        // MARK: UIScrollViewDelegate
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+            return container
+        }
+
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            centerContainer()
+        }
+
+        // MARK: Tool picker
+
+        func showToolPicker() {
+            guard let canvas = canvas else { return }
+            let picker = PKToolPicker()
+            picker.setVisible(true, forFirstResponder: canvas)
+            picker.addObserver(canvas)
+            canvas.becomeFirstResponder()
+            self.toolPicker = picker
+        }
+
+        func hideToolPicker() {
+            guard let canvas = canvas else { return }
+            toolPicker?.setVisible(false, forFirstResponder: canvas)
+            toolPicker?.removeObserver(canvas)
+            canvas.resignFirstResponder()
+            toolPicker = nil
+        }
+
+        // MARK: PKCanvasViewDelegate
+
+        func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            guard !isProgrammaticUpdate else { return }
+            isInternalUpdate = true
+            parent.drawing = canvasView.drawing
+        }
     }
 }
 

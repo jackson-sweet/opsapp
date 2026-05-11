@@ -277,44 +277,41 @@ struct EstimateFormSheet: View {
     // MARK: - Sticky Footer
 
     private var stickyFooter: some View {
-        VStack(spacing: OPSStyle.Layout.spacing1) {
-            HStack {
-                Text("Subtotal \(subtotal, format: .currency(code: "USD").precision(.fractionLength(0)))")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Spacer()
-                if (estimate?.taxRate ?? 0) > 0 {
-                    Text("Tax \(taxAmount, format: .currency(code: "USD").precision(.fractionLength(0)))")
+        OPSFloatingButtonBar(horizontalPadding: OPSStyle.Layout.spacing3, verticalPadding: OPSStyle.Layout.spacing2) {
+            VStack(spacing: OPSStyle.Layout.spacing1) {
+                HStack {
+                    Text("Subtotal \(subtotal, format: .currency(code: "USD").precision(.fractionLength(0)))")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-            }
-
-            HStack {
-                Text("TOTAL")
-                    .font(OPSStyle.Typography.body)
-                    .fontWeight(.semibold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Text(total, format: .currency(code: "USD").precision(.fractionLength(0)))
-                    .font(OPSStyle.Typography.subtitle)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Spacer()
-                if let est = estimate, est.status == .draft, !lineItems.isEmpty {
-                    Button("SEND EST") {
-                        Task {
-                            await viewModel.sendEstimate(est)
-                            if viewModel.error == nil { dismiss() }
-                        }
+                    Spacer()
+                    if (estimate?.taxRate ?? 0) > 0 {
+                        Text("Tax \(taxAmount, format: .currency(code: "USD").precision(.fractionLength(0)))")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
-                    .opsPrimaryButtonStyle()
+                }
+
+                HStack {
+                    Text("TOTAL")
+                        .font(OPSStyle.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    Text(total, format: .currency(code: "USD").precision(.fractionLength(0)))
+                        .font(OPSStyle.Typography.subtitle)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    Spacer()
+                    if let est = estimate, est.status == .draft, !lineItems.isEmpty {
+                        Button("SEND EST") {
+                            Task {
+                                await viewModel.sendEstimate(est)
+                                if viewModel.error == nil { dismiss() }
+                            }
+                        }
+                        .opsPrimaryButtonStyle()
+                    }
                 }
             }
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(
-            OPSStyle.Colors.background
-        )
     }
 
     // MARK: - Components

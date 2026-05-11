@@ -76,6 +76,12 @@ class AppState: ObservableObject {
     @Published var showingBugReport: Bool = false
     @Published var bugReportScreenshot: UIImage?
 
+    // MARK: - Projects Needing Tasks Review
+    /// Sheet presented when the user taps the rail notification for the
+    /// "accepted projects with no tasks" alert. Mounted at MainTabView so
+    /// it survives notification-rail dismissal.
+    @Published var showProjectsNeedingTasksReview: Bool = false
+
     /// Refresh unread notification count from Supabase
     func refreshUnreadCount() {
         guard let userId = UserDefaults.standard.string(forKey: "user_id"), !userId.isEmpty else { return }
@@ -284,6 +290,7 @@ class AppState: ObservableObject {
         self.showingNotifications = false
         self.showingBugReport = false
         self.bugReportScreenshot = nil
+        self.showProjectsNeedingTasksReview = false
         // Purge any pending deep link so the next signed-in user cannot
         // inherit a link that was sent to the previous account. The
         // coordinator is MainActor-isolated; resetForLogout is called
@@ -351,11 +358,39 @@ class AppState: ObservableObject {
         // quote" problem where a quote is sent and never followed up.
         checkStaleEstimates(dataController: dataController, frequencyDays: frequency)
 
+        // Check for accepted/in-progress projects with zero tasks — work
+        // committed to but never broken down for the crew.
+        checkProjectsNeedingTasks(dataController: dataController, frequencyDays: frequency)
+
         // Stacked-review rail notifications: upsert a persistent rail entry
         // whenever any review queue crosses the 5-item threshold, auto-clear
         // when it drops below. Runs after all other review checks so the
         // condensed stack notification reflects the freshest data.
         ReviewThresholdService.evaluate(dataController: dataController)
+    }
+
+    // MARK: - Projects Needing Tasks Check
+
+    /// Find accepted/in-progress projects with zero tasks attached and surface
+    /// an in-app rail notification so the admin can plan the work before the
+    /// crew shows up empty-handed. Throttled by the standard review-frequency
+    /// window so it doesn't pile up daily entries for the same backlog.
+    func checkProjectsNeedingTasks(dataController: DataController, frequencyDays: Int) {
+        let allProjects = dataController.getProjects()
+        let needsTasks = ProjectsWithoutTasksDetector.projectsWithoutTasks(from: allProjects)
+        let count = needsTasks.count
+        guard count > 0 else { return }
+
+        let plural = count == 1 ? "" : "s"
+        createInAppReviewNotification(
+            dataController: dataController,
+            throttleKey: "lastProjectsNeedingTasksInAppNotification",
+            frequencyDays: frequencyDays,
+            type: "projects_needing_tasks",
+            title: "TASKS MISSING",
+            body: "\(count) accepted job\(plural) with no tasks. Crew can't see it.",
+            deepLinkType: "projectsNeedingTasks"
+        )
     }
 
     // MARK: - Stale Estimate Check

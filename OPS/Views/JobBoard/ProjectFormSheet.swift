@@ -41,6 +41,11 @@ struct ProjectFormSheet: View {
     @Query private var allClients: [Client]
     @Query private var allTeamMembers: [TeamMember]
     @Query private var allTaskTypes: [TaskType]
+    // Bug 9d5c2535 — feeds the "start from recent" suggestions strip.
+    // Filtered locally in `recentSuggestedProjects` rather than via a
+    // SwiftData predicate so the tutorial-mode `DEMO_` filter and the
+    // current-user scoping live in one place.
+    @Query private var allProjects: [Project]
 
     // Tutorial mode filtering - only show DEMO_ entities when in tutorial
     private var availableClients: [Client] {
@@ -103,6 +108,35 @@ struct ProjectFormSheet: View {
     @State private var showingTaskForm = false
     @State private var editingTaskIndex: Int?
 
+    // MARK: - Inline task row state
+    //
+    // Bug 2daf95f2 — task creation inside the project form sheet is now an
+    // inline table of `InlineTaskRow`s. Each row exposes type / team / date
+    // as in-line chips that present the SAME sheets used by `TaskFormSheet`,
+    // so the data flow and persistence are unchanged. Status / notes /
+    // dependencies remain accessible via long-press → "Open full editor".
+    //
+    /// Resolved `User` objects for the team-member picker presented from a row.
+    /// Fetched once on appear via `dataController.getTeamMembers(companyId:)`
+    /// because `TeamMemberPickerSheet` wants full `User`s for avatar rendering,
+    /// while the rest of this form continues to use the lightweight
+    /// `[TeamMember]` `@Query` for counts and team rollups.
+    @State private var fetchedTeamUsers: [User] = []
+    /// LocalTask whose chip is currently driving a presented sheet (team or
+    /// scheduler). Lookup by id so a list edit (insert/delete) doesn't shift
+    /// the sheet onto the wrong row.
+    @State private var rowEditingTaskId: UUID?
+    @State private var showingRowTeamPicker = false
+    @State private var showingRowScheduler = false
+    @State private var showingRowCreateTaskType = false
+    /// Local mirror of the row's dates while the scheduler sheet is open.
+    /// Bound into `CalendarSchedulerSheet`, then written back to the row on
+    /// confirm. Mirrors the pattern used by `TaskFormSheet`.
+    @State private var rowSchedulerStart: Date = Date()
+    @State private var rowSchedulerEnd: Date = Date()
+    @State private var rowDatesExistedBeforeScheduler = false
+    @State private var rowSchedulerConfirmed = false
+
     // Expanded sections tracking
     @State private var isBasicInfoExpanded = true // New: for client and project name
     @State private var isDescriptionExpanded = false
@@ -153,6 +187,12 @@ struct ProjectFormSheet: View {
 
     // Tutorial highlight animation state
     @State private var tutorialHighlightPulse: Bool = false
+
+    // Bug 9d5c2535 — once the user has either tapped a recent-suggestion card
+    // or typed into the form, hide the strip for the rest of the session even
+    // if they clear inputs. Prevents flicker as fields toggle in and out of
+    // empty.
+    @State private var hasInteractedWithRecentSuggestions: Bool = false
 
     enum FormField: Hashable, CaseIterable {
         case client
@@ -273,6 +313,172 @@ struct ProjectFormSheet: View {
     private var addTaskButtonHighlight: TutorialInputHighlight {
         let isHighlighted = tutorialMode && tutorialPhase == .projectFormAddTask && isTasksExpanded
         return TutorialInputHighlight(isHighlighted: isHighlighted, animatePulse: tutorialHighlightPulse)
+    }
+
+    // MARK: - Inline task row helpers
+
+    /// Task types ordered most-recently-used first across the company, then
+    /// alphabetical for the remainder. Mirrors `TaskFormSheet`'s ordering so
+    /// the inline `Menu` shows the user's usual types at the top.
+    private var recencyOrderedTaskTypes: [TaskType] {
+        let alphaSorted = allTaskTypes.sorted { $0.display < $1.display }
+
+        guard let companyId = dataController.currentUser?.companyId else {
+            return alphaSorted
+        }
+
+        let recentIds = dataController.recentTaskTypeIds(companyId: companyId)
+        guard !recentIds.isEmpty else { return alphaSorted }
+
+        let recencyIndex = Dictionary(
+            uniqueKeysWithValues: recentIds.enumerated().map { ($1, $0) }
+        )
+        let recentSet = Set(recentIds)
+
+        let recentTier = alphaSorted
+            .filter { recentSet.contains($0.id) }
+            .sorted { lhs, rhs in
+                (recencyIndex[lhs.id] ?? Int.max) < (recencyIndex[rhs.id] ?? Int.max)
+            }
+        let restTier = alphaSorted.filter { !recentSet.contains($0.id) }
+        return recentTier + restTier
+    }
+
+    /// Tutorial-mode filtered + recency-ordered task types. The inline `Menu`
+    /// inside a row reads from this so tutorial sessions only see DEMO_ types.
+    private var availableInlineTaskTypes: [TaskType] {
+        if tutorialMode {
+            return recencyOrderedTaskTypes.filter { $0.id.hasPrefix("DEMO_") }
+        }
+        return recencyOrderedTaskTypes
+    }
+
+    /// Team-member `User` list ordered alphabetically, recency-promoted by the
+    /// row's selected task type when available. Used to seed
+    /// `TeamMemberPickerSheet` when launched from a row.
+    private func teamUsersOrdered(forTaskTypeId taskTypeId: String?) -> [User] {
+        let alphaSorted = fetchedTeamUsers.sorted {
+            $0.fullName.localizedCompare($1.fullName) == .orderedAscending
+        }
+
+        guard let taskTypeId, !taskTypeId.isEmpty,
+              let companyId = dataController.currentUser?.companyId else {
+            return alphaSorted
+        }
+
+        let recentIds = dataController.recentTeamMemberIds(
+            forTaskType: taskTypeId,
+            companyId: companyId
+        )
+        guard !recentIds.isEmpty else { return alphaSorted }
+
+        let recencyIndex = Dictionary(
+            uniqueKeysWithValues: recentIds.enumerated().map { ($1, $0) }
+        )
+        let recentSet = Set(recentIds)
+        let recentTier = alphaSorted
+            .filter { recentSet.contains($0.id) }
+            .sorted { lhs, rhs in
+                (recencyIndex[lhs.id] ?? Int.max) < (recencyIndex[rhs.id] ?? Int.max)
+            }
+        let restTier = alphaSorted.filter { !recentSet.contains($0.id) }
+        return recentTier + restTier
+    }
+
+    /// `Set<String>` binding into a specific row's `teamMemberIds`, looked up
+    /// by `LocalTask.id` so insertions/deletions during sheet presentation
+    /// can't shift the binding onto the wrong row.
+    private func teamSelectionBinding(forTaskId id: UUID) -> Binding<Set<String>> {
+        Binding(
+            get: {
+                guard let idx = localTasks.firstIndex(where: { $0.id == id }) else {
+                    return []
+                }
+                return Set(localTasks[idx].teamMemberIds)
+            },
+            set: { newValue in
+                guard let idx = localTasks.firstIndex(where: { $0.id == id }) else { return }
+                localTasks[idx].teamMemberIds = Array(newValue)
+            }
+        )
+    }
+
+    /// Local index for the row currently driving the presented sheets.
+    private var rowEditingIndex: Int? {
+        guard let id = rowEditingTaskId else { return nil }
+        return localTasks.firstIndex(where: { $0.id == id })
+    }
+
+    /// Append a new blank row and immediately scroll attention to it.
+    private func appendBlankTaskRow() {
+        let defaultStatus: TaskStatus = .active
+        withAnimation(.accessibleEaseInOut(duration: OPSStyle.Animation.durationPanel)) {
+            localTasks.append(
+                LocalTask(
+                    id: UUID(),
+                    taskTypeId: "",
+                    status: defaultStatus
+                )
+            )
+        }
+        #if !targetEnvironment(simulator)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
+    }
+
+    /// Duplicate an existing row with a fresh id (mirrors the long-press
+    /// "Duplicate" context-menu action).
+    private func duplicateTaskRow(at index: Int) {
+        guard localTasks.indices.contains(index) else { return }
+        var copy = localTasks[index]
+        copy = LocalTask(
+            id: UUID(),
+            taskTypeId: copy.taskTypeId,
+            customTitle: copy.customTitle,
+            status: copy.status,
+            teamMemberIds: copy.teamMemberIds,
+            startDate: copy.startDate,
+            endDate: copy.endDate
+        )
+        withAnimation(.accessibleEaseInOut(duration: OPSStyle.Animation.durationPanel)) {
+            localTasks.insert(copy, at: index + 1)
+        }
+        #if !targetEnvironment(simulator)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        #endif
+    }
+
+    /// Remove a row with the standard collapse animation. Mirrors the
+    /// existing `localTasks.remove(at:)` callsite but adds the animation +
+    /// haptic in a single place.
+    private func removeTaskRow(at index: Int) {
+        guard localTasks.indices.contains(index) else { return }
+        withAnimation(.accessibleEaseInOut(duration: OPSStyle.Animation.durationPanel)) {
+            _ = localTasks.remove(at: index)
+        }
+        #if !targetEnvironment(simulator)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        #endif
+    }
+
+    /// Open the team picker sheet for a specific row.
+    private func presentTeamPicker(forTaskId id: UUID) {
+        rowEditingTaskId = id
+        showingRowTeamPicker = true
+    }
+
+    /// Open the scheduler sheet for a specific row, mirroring its current
+    /// dates into the local scheduler state.
+    private func presentScheduler(forTaskId id: UUID) {
+        guard let idx = localTasks.firstIndex(where: { $0.id == id }) else { return }
+        rowEditingTaskId = id
+        let existingStart = localTasks[idx].startDate
+        let existingEnd = localTasks[idx].endDate ?? existingStart
+        rowDatesExistedBeforeScheduler = existingStart != nil
+        rowSchedulerConfirmed = false
+        rowSchedulerStart = existingStart ?? Date()
+        rowSchedulerEnd = existingEnd ?? rowSchedulerStart
+        showingRowScheduler = true
     }
 
     init(mode: Mode, preselectedClient: Client? = nil, initialTitle: String? = nil, onSave: @escaping (Project) -> Void) {
@@ -443,6 +649,13 @@ struct ProjectFormSheet: View {
                     tutorialHighlightPulse = true
                 }
             }
+            // Bug 2daf95f2 — preload full `User` records for the inline
+            // task-row team picker. The lightweight `[TeamMember]` `@Query`
+            // is fine for counts, but `TeamMemberPickerSheet` wants `[User]`
+            // so avatars resolve correctly.
+            if let companyId = dataController.currentUser?.companyId {
+                fetchedTeamUsers = dataController.getTeamMembers(companyId: companyId)
+            }
         }
         .onChange(of: tutorialPhase) { _, newPhase in
             // Only auto-focus on phase change to project name (after client selection)
@@ -455,6 +668,84 @@ struct ProjectFormSheet: View {
                     break
                 }
             }
+        }
+        // MARK: - Inline task row sheets (bug 2daf95f2)
+        .sheet(isPresented: $showingRowTeamPicker, onDismiss: {
+            rowEditingTaskId = nil
+        }) {
+            if let id = rowEditingTaskId,
+               let idx = localTasks.firstIndex(where: { $0.id == id }) {
+                let typeId = localTasks[idx].taskTypeId
+                let ordered = teamUsersOrdered(forTaskTypeId: typeId)
+                let recentIds: Set<String> = {
+                    guard !typeId.isEmpty,
+                          let companyId = dataController.currentUser?.companyId else {
+                        return []
+                    }
+                    return Set(dataController.recentTeamMemberIds(
+                        forTaskType: typeId,
+                        companyId: companyId
+                    ))
+                }()
+                TeamMemberPickerSheet(
+                    selectedTeamMemberIds: teamSelectionBinding(forTaskId: id),
+                    allTeamMembers: ordered,
+                    recentMemberIds: recentIds
+                )
+                .environmentObject(dataController)
+            }
+        }
+        .sheet(isPresented: $showingRowScheduler, onDismiss: {
+            // Mirror TaskFormSheet behaviour: if the scheduler was dismissed
+            // without an explicit confirm AND no dates existed before opening,
+            // clear the row's dates back out.
+            if !rowSchedulerConfirmed && !rowDatesExistedBeforeScheduler,
+               let id = rowEditingTaskId,
+               let idx = localTasks.firstIndex(where: { $0.id == id }) {
+                localTasks[idx].startDate = nil
+                localTasks[idx].endDate = nil
+            }
+            rowEditingTaskId = nil
+        }) {
+            if let id = rowEditingTaskId,
+               let idx = localTasks.firstIndex(where: { $0.id == id }) {
+                let typeId = localTasks[idx].taskTypeId
+                let teamIds = Set(localTasks[idx].teamMemberIds)
+                CalendarSchedulerSheet(
+                    isPresented: $showingRowScheduler,
+                    itemType: .draftTask(
+                        taskTypeId: typeId,
+                        teamMemberIds: localTasks[idx].teamMemberIds,
+                        projectId: nil
+                    ),
+                    currentStartDate: rowSchedulerStart,
+                    currentEndDate: rowSchedulerEnd,
+                    onScheduleUpdate: { newStart, newEnd in
+                        rowSchedulerConfirmed = true
+                        guard let editIdx = localTasks.firstIndex(where: { $0.id == id }) else { return }
+                        localTasks[editIdx].startDate = newStart
+                        localTasks[editIdx].endDate = newEnd
+                    },
+                    onClearDates: {
+                        guard let editIdx = localTasks.firstIndex(where: { $0.id == id }) else { return }
+                        localTasks[editIdx].startDate = nil
+                        localTasks[editIdx].endDate = nil
+                    },
+                    preselectedTeamMemberIds: teamIds.isEmpty ? nil : teamIds
+                )
+                .environmentObject(dataController)
+            }
+        }
+        .sheet(isPresented: $showingRowCreateTaskType, onDismiss: {
+            rowEditingTaskId = nil
+        }) {
+            TaskTypeSheet(mode: .create { newType in
+                if let id = rowEditingTaskId,
+                   let idx = localTasks.firstIndex(where: { $0.id == id }) {
+                    localTasks[idx].taskTypeId = newType.id
+                }
+            })
+            .environmentObject(dataController)
         }
         .loadingOverlay(isPresented: $isSaving, message: "Saving...")
     }
@@ -613,6 +904,14 @@ struct ProjectFormSheet: View {
                                 .opacity(tutorialMode ? 0.3 : 1.0)
                                 .allowsHitTesting(false)
 
+                            // RECENT SUGGESTIONS — empty-state-only, one-tap structural clone.
+                            // Bug 9d5c2535 — surfaces the operator's last-5 created projects
+                            // so a duplicate job is a single tap instead of a full re-entry.
+                            if shouldShowRecentSuggestions {
+                                recentSuggestionsStrip
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
+
                             // MANDATORY FIELDS (always visible)
                             mandatoryFieldsSection
 
@@ -683,6 +982,16 @@ struct ProjectFormSheet: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                             withAnimation {
                                 proxy.scrollTo(wizardId, anchor: .top)
+                            }
+                        }
+                    }
+                    // Bug 9d5c2535 — once the user types into the title, hide
+                    // the recent-suggestions strip for the rest of the session.
+                    // Clearing the title back to empty should not bring it back.
+                    .onChange(of: title) { _, newValue in
+                        if !newValue.isEmpty, !hasInteractedWithRecentSuggestions {
+                            withAnimation(.accessibleEaseInOut()) {
+                                hasInteractedWithRecentSuggestions = true
                             }
                         }
                     }
@@ -1416,8 +1725,8 @@ struct ProjectFormSheet: View {
             icon: "checklist",
             isExpanded: $isTasksExpanded,
             onDelete: {
-                localTasks.removeAll()
-                withAnimation(.accessibleEaseInOut()) {
+                withAnimation(.accessibleEaseInOut(duration: OPSStyle.Animation.durationPanel)) {
+                    localTasks.removeAll()
                     isTasksExpanded = false
                 }
                 #if !targetEnvironment(simulator)
@@ -1426,76 +1735,118 @@ struct ProjectFormSheet: View {
                 #endif
             }
         ) {
-            VStack(spacing: 12) {
+            VStack(spacing: OPSStyle.Layout.spacing2_5) {
                 if !localTasks.isEmpty {
-                    VStack(spacing: 12) {
+                    VStack(spacing: OPSStyle.Layout.spacing2_5) {
                         ForEach(Array(localTasks.enumerated()), id: \.element.id) { index, task in
-                            taskRow(task: task, index: index)
+                            inlineRow(for: task, at: index)
+                                .transition(
+                                    .asymmetric(
+                                        insertion: .opacity.combined(with: .move(edge: .top)),
+                                        removal: .opacity
+                                    )
+                                )
                         }
                     }
                 }
 
-                Button(action: {
-                    editingTaskIndex = nil
-                    // Tutorial mode: post notification for wrapper to show inline sheet
-                    if tutorialMode {
-                        NotificationCenter.default.post(
-                            name: Notification.Name("TutorialAddTaskTapped"),
-                            object: nil
-                        )
-                    } else {
-                        showingTaskForm = true
-                    }
-                }) {
-                    HStack {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        Text(localTasks.isEmpty ? "Add Task" : "Add Another Task")
-                            .font(OPSStyle.Typography.body)
-                    }
-                    .foregroundColor(addTaskButtonHighlight.isHighlighted ? addTaskButtonHighlight.labelColor : OPSStyle.Colors.primaryAccent)
-                    .modifier(TutorialPulseModifier(isHighlighted: addTaskButtonHighlight.isHighlighted))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(
-                                addTaskButtonHighlight.isHighlighted ? addTaskButtonHighlight.borderColor : OPSStyle.Colors.primaryAccent.opacity(0.3),
-                                style: addTaskButtonHighlight.isHighlighted ? StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick) : StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [5])
-                            )
-                            .modifier(TutorialPulseModifier(isHighlighted: addTaskButtonHighlight.isHighlighted))
-                    )
-                }
-                .wizardTarget("add_task")
-                .allowsHitTesting(isAddTaskEnabled)
-                .opacity(tutorialMode && !isAddTaskEnabled ? 0.5 : 1.0)
-                .id("addTaskButton")
+                addRowButton
             }
         }
     }
 
-    private func taskRow(task: LocalTask, index: Int) -> some View {
-        let taskType = allTaskTypes.first { $0.id == task.taskTypeId }
-        let taskColor = (taskType.flatMap { Color(hex: $0.color) }) ?? OPSStyle.Colors.primaryText
-        let taskTeamMembers = uniqueTeamMembers.filter { task.teamMemberIds.contains($0.id) }
-
-        return TaskLineItem(
-            title: taskType?.display ?? "Unknown Task",
-            color: taskColor,
-            status: task.status,
-            startDate: task.startDate,
-            teamMemberCount: taskTeamMembers.count,
-            onTap: {
+    private func inlineRow(for task: LocalTask, at index: Int) -> some View {
+        InlineTaskRow(
+            task: task,
+            availableTaskTypes: availableInlineTaskTypes,
+            teamMemberCount: uniqueTeamMembers.filter { task.teamMemberIds.contains($0.id) }.count,
+            isEnabled: !tutorialMode,
+            onTaskTypeChange: { newTypeId in
+                guard localTasks.indices.contains(index) else { return }
+                localTasks[index].taskTypeId = newTypeId
+            },
+            onCreateNewTaskType: {
+                rowEditingTaskId = task.id
+                showingRowCreateTaskType = true
+            },
+            onTeamTap: {
+                presentTeamPicker(forTaskId: task.id)
+            },
+            onDateTap: {
+                presentScheduler(forTaskId: task.id)
+            },
+            onStatusChange: { newStatus in
+                guard localTasks.indices.contains(index) else { return }
+                localTasks[index].status = newStatus
+            },
+            onOpenFullEditor: {
                 editingTaskIndex = index
                 showingTaskForm = true
             },
+            onDuplicate: {
+                duplicateTaskRow(at: index)
+            },
             onDelete: {
-                localTasks.remove(at: index)
+                removeTaskRow(at: index)
             }
         )
+    }
+
+    /// "Add row" button — dashed-bordered, primary-accent, matches the
+    /// previous "+ Add Task" affordance so the tutorial highlight and
+    /// `wizardTarget("add_task")` keep working unchanged.
+    private var addRowButton: some View {
+        Button(action: handleAddRowTap) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: OPSStyle.Icons.plusCircleFill)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                Text(localTasks.isEmpty ? "Add Task" : "Add Another Task")
+                    .font(OPSStyle.Typography.body)
+            }
+            .foregroundColor(
+                addTaskButtonHighlight.isHighlighted
+                    ? addTaskButtonHighlight.labelColor
+                    : OPSStyle.Colors.opsAccent
+            )
+            .modifier(TutorialPulseModifier(isHighlighted: addTaskButtonHighlight.isHighlighted))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(
+                        addTaskButtonHighlight.isHighlighted
+                            ? addTaskButtonHighlight.borderColor
+                            : OPSStyle.Colors.opsAccent.opacity(OPSStyle.Layout.Opacity.light),
+                        style: addTaskButtonHighlight.isHighlighted
+                            ? StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick)
+                            : StrokeStyle(lineWidth: OPSStyle.Layout.Border.thick, dash: [5])
+                    )
+                    .modifier(TutorialPulseModifier(isHighlighted: addTaskButtonHighlight.isHighlighted))
+            )
+        }
+        .wizardTarget("add_task")
+        .allowsHitTesting(isAddTaskEnabled)
+        .opacity(tutorialMode && !isAddTaskEnabled ? OPSStyle.Layout.Opacity.medium : 1.0)
+        .id("addTaskButton")
+    }
+
+    /// Tutorial-aware tap handler for the add-row button. In tutorial mode
+    /// the wrapper still opens the legacy `TaskFormSheet` so the scripted
+    /// task-creation phase has its expected target; outside tutorial we
+    /// append a blank inline row.
+    private func handleAddRowTap() {
+        if tutorialMode {
+            editingTaskIndex = nil
+            NotificationCenter.default.post(
+                name: Notification.Name("TutorialAddTaskTapped"),
+                object: nil
+            )
+            return
+        }
+        appendBlankTaskRow()
     }
 
     private var photosSection: some View {
@@ -1778,6 +2129,138 @@ struct ProjectFormSheet: View {
             )
         }
         .opacity(0.7) // Slightly faded to indicate it's a preview
+    }
+
+    // MARK: - Recent Suggestions (Bug 9d5c2535)
+
+    /// Empty-state gate. The strip is for first-action friction reduction;
+    /// once anything has been entered or a card tapped, it stays hidden.
+    private var shouldShowRecentSuggestions: Bool {
+        guard mode.isCreate,
+              !tutorialMode,
+              !hasInteractedWithRecentSuggestions,
+              title.isEmpty,
+              selectedClientId == nil,
+              localTasks.isEmpty,
+              address.isEmpty,
+              description.isEmpty,
+              notes.isEmpty
+        else { return false }
+        return !recentSuggestedProjects.isEmpty
+    }
+
+    /// Last 5 projects created by the current user, newest first, scoped to
+    /// tutorial mode when active. Excludes pre-migration rows (createdAt nil)
+    /// and soft-deleted rows.
+    private var recentSuggestedProjects: [Project] {
+        guard let userId = dataController.currentUser?.id else { return [] }
+        let candidates = tutorialMode
+            ? allProjects.filter { $0.id.hasPrefix("DEMO_") }
+            : Array(allProjects)
+        return dataController.recentlyCreatedProjects(
+            by: userId,
+            from: candidates,
+            limit: 5
+        )
+    }
+
+    private var recentSuggestionsStrip: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("START FROM RECENT")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .padding(.horizontal, 4)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(recentSuggestedProjects) { project in
+                        recentSuggestionCard(for: project)
+                            .contentShape(Rectangle())
+                            .onTapGesture { applyStructuralClone(from: project) }
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
+        }
+    }
+
+    private func recentSuggestionCard(for project: Project) -> some View {
+        let taskCount = project.tasks.filter { $0.deletedAt == nil }.count
+        let relative: String = {
+            guard let created = project.createdAt else { return "" }
+            let formatter = RelativeDateTimeFormatter()
+            formatter.unitsStyle = .abbreviated
+            return formatter.localizedString(for: created, relativeTo: Date()).uppercased()
+        }()
+
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(project.title.uppercased())
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 8) {
+                if taskCount > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: OPSStyle.Icons.task)
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Text("\(taskCount) TASK\(taskCount == 1 ? "" : "S")")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                }
+                if !relative.isEmpty {
+                    Text(relative)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(12)
+        .frame(width: 160, height: 80, alignment: .topLeading)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
+    /// One-tap structural clone (C2 — "same shape, new job"). Copies tasks
+    /// only — title, client, address, dates, notes, description, images all
+    /// stay blank. After the copy the title field is focused so the operator
+    /// can name the new job immediately.
+    private func applyStructuralClone(from source: Project) {
+        #if !targetEnvironment(simulator)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
+
+        let taskPayload: [[String: Any]] = source.tasks
+            .filter { $0.deletedAt == nil }
+            .map { task in
+                return [
+                    "taskTypeId": task.taskTypeId,
+                    "status": TaskStatus.active.rawValue,
+                    "teamMemberIds": task.getTeamMemberIds()
+                ]
+            }
+
+        withAnimation(.accessibleEaseInOut()) {
+            hasInteractedWithRecentSuggestions = true
+        }
+
+        // Reuse the existing copy-from apply logic so animations, expansion,
+        // and haptics stay consistent with the deep copy-from sheet flow.
+        handleCopyFromProject(["tasks": taskPayload])
+
+        // Focus the title field so the operator's next move is to name it.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            focusedField = .title
+        }
     }
 
     // MARK: - Helper Methods
@@ -2067,8 +2550,13 @@ struct ProjectFormSheet: View {
 
         var savedOffline = false
 
-        // Build DTO outside do block so catch blocks can access it
+        // Build DTO outside do block so catch blocks can access it.
+        // Stamp createdAt/createdBy on insert so the new "start from recent"
+        // suggestions strip can scope to projects the current user created.
         let isoFormatter = ISO8601DateFormatter()
+        let now = Date()
+        project.createdAt = now
+        project.createdBy = dataController.currentUser?.id
         let dto = SupabaseProjectDTO(
                 id: project.id,
                 bubbleId: nil,
@@ -2089,7 +2577,9 @@ struct ProjectFormSheet: View {
                 teamMemberIds: Array(allTeamMemberIds),
                 projectImages: nil,
                 completedAt: nil,
-                deletedAt: nil
+                deletedAt: nil,
+                createdAt: isoFormatter.string(from: now),
+                createdBy: dataController.currentUser?.id
             )
 
         do {
@@ -2417,8 +2907,13 @@ struct ProjectFormSheet: View {
                 dependencyOverrides: nil,
                 startTime: nil,
                 endTime: nil,
-                deletedAt: nil
+                deletedAt: nil,
+                createdAt: ISO8601DateFormatter().string(from: Date())
             )
+
+            await MainActor.run {
+                task.createdAt = Date()
+            }
 
             let createdTaskId = try await dataController.createTask(dto: supabaseTaskDTO)
             remoteTaskId = createdTaskId

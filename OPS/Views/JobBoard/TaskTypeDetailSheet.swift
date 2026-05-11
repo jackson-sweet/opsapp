@@ -88,6 +88,14 @@ struct TaskTypeDetailSheet: View {
                             }
                         }
 
+                        // Reminders templates (bug 4f00c2d7)
+                        SectionCard(
+                            icon: "bell.badge",
+                            title: "Reminders"
+                        ) {
+                            TaskTypeReminderListSection(taskType: taskType)
+                        }
+
                         // Usage Stats
                         SectionCard(
                             icon: "chart.bar.fill",

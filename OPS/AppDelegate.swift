@@ -499,9 +499,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 name: Notification.Name("OpenManageTeam"),
                 object: nil
             )
-        case "expense_submitted", "invoice_approved", "invoice_revisions":
+        case "expense_submitted", "expense_approved", "expense_rejected":
             NotificationCenter.default.post(
                 name: Notification.Name("OpenExpenses"),
+                object: nil
+            )
+        case "invoice_approved", "invoice_revisions", "invoice_overdue":
+            // Bug bb63c37e — invoice notifications were previously routed
+            // to OpenExpenses, which landed the user on the wrong list.
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenInvoices"),
                 object: nil
             )
         case "role_assigned":
@@ -519,9 +526,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 name: Notification.Name("OpenSchedule"),
                 object: nil
             )
-        case "invoice_overdue":
+        case "projects_needing_tasks":
+            // Bug 78309d78 — push variant of the rail notification for
+            // accepted projects with no tasks.
             NotificationCenter.default.post(
-                name: Notification.Name("OpenExpenses"),
+                name: Notification.Name("OpenProjectsNeedingTasks"),
                 object: nil
             )
         case "advanceNotice":

@@ -318,19 +318,23 @@ struct ExpenseFormSheet: View {
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 }
 
-                // Thumbnail with retake
+                // Receipt preview — full receipt visible (no crop), capped height so it
+                // doesn't dominate the form. Receipts are typically tall (1:3+ aspect),
+                // so we use scaledToFit and cap at 360pt to keep the rest of the
+                // form reachable while showing every line item.
                 ZStack(alignment: .bottomTrailing) {
                     Image(uiImage: image)
                         .resizable()
-                        .scaledToFill()
+                        .scaledToFit()
                         .frame(maxWidth: .infinity)
-                        .frame(height: 160)
-                        .clipped()
+                        .frame(maxHeight: 360)
+                        .background(OPSStyle.Colors.cardBackgroundDark)
                         .cornerRadius(OPSStyle.Layout.cardCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
+                        .contentShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
 
                     if ocrUsed {
                         Text("AUTO-FILLED FROM RECEIPT")
@@ -765,24 +769,25 @@ struct ExpenseFormSheet: View {
     }
 
     private var stickyFooter: some View {
-        VStack(spacing: OPSStyle.Layout.spacing2) {
-            if !validationErrors.isEmpty {
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                    ForEach(validationErrors, id: \.self) { error in
-                        HStack(spacing: OPSStyle.Layout.spacing1) {
-                            Image(systemName: OPSStyle.Icons.exclamationmarkCircleFill)
-                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                .foregroundColor(OPSStyle.Colors.errorStatus)
-                            Text(error)
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.errorStatus)
+        OPSFloatingButtonBar {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                if !validationErrors.isEmpty {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                        ForEach(validationErrors, id: \.self) { error in
+                            HStack(spacing: OPSStyle.Layout.spacing1) {
+                                Image(systemName: OPSStyle.Icons.exclamationmarkCircleFill)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                    .foregroundColor(OPSStyle.Colors.errorStatus)
+                                Text(error)
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.errorStatus)
+                            }
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-            }
 
-            HStack(spacing: OPSStyle.Layout.spacing3) {
+                HStack(spacing: OPSStyle.Layout.spacing3) {
                 if isSaving {
                     ProgressView()
                         .tint(OPSStyle.Colors.primaryAccent)
@@ -895,10 +900,9 @@ struct ExpenseFormSheet: View {
                         .opsPrimaryButtonStyle()
                     }
                 }
+                }
             }
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-        .padding(.vertical, OPSStyle.Layout.spacing3)
     }
 
     // MARK: - Approval Banner

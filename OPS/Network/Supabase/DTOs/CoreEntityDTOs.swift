@@ -189,6 +189,7 @@ struct SupabaseTaskTypeDTO: Codable, Identifiable {
     let displayOrder: Int?
     let dependencies: [TaskTypeDependency]?
     let defaultTeamMemberIds: [String]?
+    let defaultDuration: Int?
     let deletedAt: String?
 
     enum CodingKeys: String, CodingKey {
@@ -198,6 +199,7 @@ struct SupabaseTaskTypeDTO: Codable, Identifiable {
         case isDefault              = "is_default"
         case displayOrder           = "display_order"
         case defaultTeamMemberIds   = "default_team_member_ids"
+        case defaultDuration        = "default_duration"
         case deletedAt              = "deleted_at"
     }
 }
@@ -225,6 +227,8 @@ struct SupabaseProjectDTO: Codable, Identifiable {
     let projectImages: [String]?
     let completedAt: String?
     let deletedAt: String?
+    let createdAt: String?
+    let createdBy: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, status, address, latitude, longitude, notes, description, duration
@@ -239,6 +243,8 @@ struct SupabaseProjectDTO: Codable, Identifiable {
         case projectImages  = "project_images"
         case completedAt    = "completed_at"
         case deletedAt      = "deleted_at"
+        case createdAt      = "created_at"
+        case createdBy      = "created_by"
     }
 }
 
@@ -264,7 +270,10 @@ struct SupabaseProjectTaskDTO: Codable, Identifiable {
     let dependencyOverrides: [TaskTypeDependency]?
     let startTime: String?   // "HH:mm" format
     let endTime: String?     // "HH:mm" format
+    let pairedFromTaskId: String?
+    let scheduleLocked: Bool?
     let deletedAt: String?
+    let createdAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id, status, duration
@@ -284,7 +293,10 @@ struct SupabaseProjectTaskDTO: Codable, Identifiable {
         case dependencyOverrides  = "dependency_overrides"
         case startTime            = "start_time"
         case endTime              = "end_time"
+        case pairedFromTaskId     = "paired_from_task_id"
+        case scheduleLocked       = "schedule_locked"
         case deletedAt            = "deleted_at"
+        case createdAt            = "created_at"
     }
 }
 

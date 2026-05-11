@@ -416,7 +416,7 @@ class ExpenseViewModel: ObservableObject {
                 noteId: nil,
                 expenseId: expense.id,
                 batchId: batch.id,
-                deepLinkType: "invoice_detail"
+                deepLinkType: "expense"
             )
             try? await notificationRepo.createNotification(dto)
         }

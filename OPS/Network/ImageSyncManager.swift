@@ -34,6 +34,16 @@ class ImageSyncManager: ObservableObject {
     /// once S3 returns the public URL.
     @Published var inFlightUploads: [String: [InFlightUpload]] = [:]
 
+    /// Bug b171536b — periodic retry timer for the pending-upload queue.
+    /// `connectivityChanged` only fires on a binary connected/disconnected
+    /// edge, but a weak-connection upload that silently times out at the
+    /// HTTP layer never causes that edge — so the queued image would sit
+    /// untouched until the next app launch. This timer kicks in whenever
+    /// the queue is non-empty and retries every 30 seconds, regardless of
+    /// the connectivity state vector. Stops itself once the queue drains.
+    private var retryTimer: Timer?
+    private static let retryInterval: TimeInterval = 30
+
     /// Initialize the ImageSyncManager with required dependencies
     init(modelContext: ModelContext?, connectivity: ConnectivityManager) {
         self.modelContext = modelContext
@@ -56,6 +66,11 @@ class ImageSyncManager: ObservableObject {
                 await syncPendingImages()
             }
         }
+
+        // Bug b171536b — if a previous session left items in the queue,
+        // keep the periodic retry running so they get a fair shake even
+        // without a connectivity edge.
+        startRetryTimerIfNeeded()
     }
 
     /// Setup observer for connectivity changes to trigger syncs when coming online
@@ -256,45 +271,93 @@ class ImageSyncManager: ObservableObject {
     private func saveImageLocally(_ image: UIImage, for project: Project, index: Int) async -> String? {
         // Resize image if it's too large
         let resizedImage = resizeImageIfNeeded(image)
-        
+
         // Use adaptive compression based on image size
         let compressionQuality = getAdaptiveCompressionQuality(for: resizedImage)
-        
+
         guard let imageData = resizedImage.jpegData(compressionQuality: compressionQuality) else {
             return nil
         }
-        
+
         // Log image size
         let sizeInMB = Double(imageData.count) / (1024 * 1024)
-        
+
         let timestamp = Date().timeIntervalSince1970
         let filename = "local_project_\(project.id)_\(timestamp)_\(index).jpg"
         let localURL = "local://project_images/\(filename)"
-        
+
         // Store the image in file system
         let success = ImageFileManager.shared.saveImage(data: imageData, localID: localURL)
         if success {
-            
+
             // Create pending upload
             let pendingUpload = PendingImageUpload(
                 localURL: localURL,
                 projectId: project.id,
                 companyId: project.companyId,
                 timestamp: Date()
-               
+
             )
-            
+
             // Add to pending uploads
             pendingUploads.append(pendingUpload)
             savePendingUploads()
-            
+
             // Mark the image as unsynced in the project
             project.addUnsyncedImage(localURL)
-            
+
+            // Bug b171536b — also append the local URL to the project's
+            // visible image list so the carousel renders the photo
+            // immediately, even when the upload's still queued. Local
+            // URLs render via ImageFileManager, and `syncImagesForProject`
+            // swaps each local URL out for the S3 URL once the upload
+            // succeeds, so the substitution is invisible to the user.
+            // Without this, a weak-connection failure left the photo
+            // saved on disk but missing from the UI — making the user
+            // think the upload had silently dropped it.
+            var currentImages = project.getProjectImages()
+            if !currentImages.contains(localURL) {
+                currentImages.append(localURL)
+                project.setProjectImageURLs(currentImages)
+            }
+
+            // Bug b171536b — kick the periodic retry timer so the queue
+            // gets reattempted even if connectivity never toggles.
+            startRetryTimerIfNeeded()
+
             return localURL
         }
-        
+
         return nil
+    }
+
+    // MARK: - Periodic Retry Timer (Bug b171536b)
+
+    private func startRetryTimerIfNeeded() {
+        guard retryTimer == nil, !pendingUploads.isEmpty else { return }
+        retryTimer = Timer.scheduledTimer(
+            withTimeInterval: Self.retryInterval,
+            repeats: true
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                if self.pendingUploads.isEmpty {
+                    self.stopRetryTimer()
+                    return
+                }
+                if self.connectivity.isConnected {
+                    await self.syncPendingImages()
+                }
+                if self.pendingUploads.isEmpty {
+                    self.stopRetryTimer()
+                }
+            }
+        }
+    }
+
+    private func stopRetryTimer() {
+        retryTimer?.invalidate()
+        retryTimer = nil
     }
     
     /// Delete an image from S3 and locally
@@ -431,8 +494,20 @@ class ImageSyncManager: ObservableObject {
                 try? modelContext.save()
             }
 
+            // Bug b171536b — drop the periodic retry timer once the
+            // queue is empty so we're not waking up the runloop every
+            // 30s for nothing.
+            if pendingUploads.isEmpty {
+                stopRetryTimer()
+            }
+
         } catch {
             print("[IMAGE_SYNC] Failed to sync images for project \(projectId): \(error)")
+            // Bug b171536b — failure path: keep the queue intact and
+            // make sure the retry timer is alive so the next pass fires
+            // automatically. Weak connections often need several tries
+            // before succeeding.
+            startRetryTimerIfNeeded()
         }
     }
     

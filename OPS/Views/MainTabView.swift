@@ -116,6 +116,18 @@ struct MainTabView: View {
     private let openAppFromWebObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenAppFromWeb"))
 
+    // Bug 8ed0d2ed — wire the OpenExpenses notification (posted by AppDelegate
+    // for push and by NotificationListView for in-app expense rows). Without
+    // this listener, both paths posted into the void.
+    private let openExpensesObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenExpenses"))
+
+    private let openInvoicesObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenInvoices"))
+
+    private let openProjectsNeedingTasksObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenProjectsNeedingTasks"))
+
     // Keyboard observers
     private let keyboardWillShow = NotificationCenter.default
         .publisher(for: UIResponder.keyboardWillShowNotification)
@@ -223,6 +235,33 @@ struct MainTabView: View {
         pipelineTabIndex != nil && selectedTab == pipelineTabIndex
     }
 
+    /// Bug 706a4d32 — single search button rendered outside the sliding tab
+    /// content so it stays visually stationary during tab swaps. Behavior
+    /// branches on the current tab so Settings still gets its expand-in-place
+    /// input while every other tab opens the universal search sheet.
+    @ViewBuilder
+    private var persistentSearchButton: some View {
+        Button {
+            let onSettings = isSettingsTab
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            if onSettings {
+                withAnimation(OPSStyle.Animation.spring) {
+                    appState.isSettingsSearchActive = true
+                }
+            } else {
+                appState.showingUniversalSearch = true
+            }
+        } label: {
+            Image(systemName: "magnifyingglass")
+                .font(OPSStyle.Typography.bodyBold)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .frame(width: 44, height: 44)
+                .background(OPSStyle.Colors.cardBackground)
+                .clipShape(Circle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
     private var slideTransition: AnyTransition {
         if selectedTab > previousTab {
             return .asymmetric(
@@ -275,13 +314,38 @@ struct MainTabView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea(.all, edges: .bottom)
             // Bug 706a4d32 — inject the shared header namespace so each tab's
-            // AppHeader can match-geometry its persistent buttons (search,
-            // filter, scope, review) and keep them visually still while the
-            // rest of the content slides during a tab swap.
+            // AppHeader can match-geometry its tab-specific persistent buttons
+            // (filter, scope, month, review). The universal search button is
+            // hosted by the overlay below instead — matchedGeometryEffect with
+            // two simultaneous isSource=true views during a tab swap doesn't
+            // reliably keep the element stationary, so we lift the only truly
+            // cross-tab element out of the sliding container entirely. Tab
+            // content reserves layout space so the other right-aligned buttons
+            // keep their horizontal position.
             .environment(\.persistentHeaderNamespace, persistentHeaderNamespace)
+            .environment(\.hostsPersistentSearchButton, selectedTab != 0)
             .transition(slideTransition)
             .animation(.spring(response: 0.3, dampingFraction: 0.85), value: selectedTab)
-            
+
+            // Persistent search button overlay — rendered OUTSIDE the sliding
+            // .transition above so it stays visually still while tab content
+            // slides. Position matches AppHeader's right-aligned button slot
+            // (20pt horizontal padding, 12pt vertical padding). Hidden on
+            // the home tab where AppHeader doesn't show a search button.
+            VStack(spacing: 0) {
+                HStack {
+                    Spacer()
+                    if selectedTab != 0 {
+                        persistentSearchButton
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                Spacer()
+            }
+            .allowsHitTesting(selectedTab != 0)
+            .zIndex(3)
+
             // Image sync progress bar and sync status at top
             VStack(spacing: 8) {
                 ImageSyncProgressView(syncManager: imageSyncProgressManager)
@@ -584,6 +648,53 @@ struct MainTabView: View {
             }
         }
 
+        // Bug 8ed0d2ed — Open expenses from notification rail / push.
+        // Switch to the BOOKS tab (where Expenses lives), then ask BooksTabView
+        // to select the expenses segment. For users without books access (rare,
+        // but possible if expenses.view is the only finance permission), the
+        // booksAutoSkipDestination already routes them straight to the right
+        // expenses list, so flipping the tab is enough.
+        .onReceive(openExpensesObserver) { _ in
+            print("[PUSH_NAVIGATION] Opening expenses")
+            guard hasBooksAccess, let idx = pipelineTabIndex else {
+                print("[PUSH_NAVIGATION] No books access — expense deep link suppressed")
+                return
+            }
+            withAnimation(OPSStyle.Animation.fast) {
+                selectedTab = idx
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                NotificationCenter.default.post(
+                    name: Notification.Name("BooksSelectSegment"),
+                    object: nil,
+                    userInfo: ["segment": BooksSection.expenses.rawValue]
+                )
+            }
+        }
+
+        .onReceive(openInvoicesObserver) { _ in
+            print("[PUSH_NAVIGATION] Opening invoices")
+            guard hasBooksAccess, let idx = pipelineTabIndex else { return }
+            withAnimation(OPSStyle.Animation.fast) {
+                selectedTab = idx
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                NotificationCenter.default.post(
+                    name: Notification.Name("BooksSelectSegment"),
+                    object: nil,
+                    userInfo: ["segment": BooksSection.invoices.rawValue]
+                )
+            }
+        }
+
+        // Bug 78309d78 — Open the "projects needing tasks" review sheet from
+        // a push deep link. The in-app rail uses appState directly, so this
+        // path only runs when the user lands here via a push tap.
+        .onReceive(openProjectsNeedingTasksObserver) { _ in
+            print("[PUSH_NAVIGATION] Opening projects-needing-tasks review")
+            appState.showProjectsNeedingTasksReview = true
+        }
+
         // Handle member_joined push → present AssignMemberRoleSheet
         .onReceive(openMemberRoleAssignmentObserver) { notification in
             guard let userInfo = notification.userInfo,
@@ -598,6 +709,16 @@ struct MainTabView: View {
                 AssignMemberRoleSheet(memberId: memberId, wasSeated: assignRoleWasSeated)
                     .environmentObject(dataController)
             }
+        }
+
+        // Bug 78309d78 — sheet for the "accepted projects with no tasks"
+        // rail notification. Mounted at MainTabView so it presents reliably
+        // after the notification rail dismisses, regardless of which tab the
+        // user was on when they tapped the rail entry.
+        .sheet(isPresented: $appState.showProjectsNeedingTasksReview) {
+            ProjectsWithoutTasksReviewView()
+                .environmentObject(dataController)
+                .environmentObject(appState)
         }
 
 
@@ -736,12 +857,12 @@ struct MainTabView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardOpenManageTeam"))) { _ in
+            // Bug 4014b472 — Manage Team is a top-level Settings row in the new
+            // IA, so wizards can land there directly instead of the previous
+            // two-hop dance through Organization → ManageTeamFromOrg.
             withAnimation { selectedTab = settingsTabIndex }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                NotificationCenter.default.post(name: Notification.Name("SettingsOpenOrganization"), object: nil)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    NotificationCenter.default.post(name: Notification.Name("WizardOpenManageTeamFromOrg"), object: nil)
-                }
+                NotificationCenter.default.post(name: Notification.Name("SettingsOpenManageTeam"), object: nil)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardOpenPermissions"))) { _ in

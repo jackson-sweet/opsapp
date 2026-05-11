@@ -93,6 +93,88 @@ struct TaskFormSheet: View {
         }
     }
 
+    /// Bug 9d5c2535 — team members sorted by who has most recently been
+    /// assigned to the currently-selected task type. Members never assigned
+    /// to this type fall to the bottom alphabetically. Fallback to plain
+    /// alphabetical when no task type is selected (e.g. user opens the
+    /// team picker before picking a type).
+    private var recencyOrderedTeamMembers: [User] {
+        let alphaSorted = uniqueTeamMembers.sorted {
+            $0.fullName.localizedCompare($1.fullName) == .orderedAscending
+        }
+
+        guard let taskTypeId = selectedTaskTypeId, !taskTypeId.isEmpty,
+              let companyId = dataController.currentUser?.companyId else {
+            return alphaSorted
+        }
+
+        let recentIds = dataController.recentTeamMemberIds(
+            forTaskType: taskTypeId,
+            companyId: companyId
+        )
+        guard !recentIds.isEmpty else { return alphaSorted }
+
+        let recencyIndex = Dictionary(
+            uniqueKeysWithValues: recentIds.enumerated().map { ($1, $0) }
+        )
+        let recentSet = Set(recentIds)
+
+        let recentTier = alphaSorted
+            .filter { recentSet.contains($0.id) }
+            .sorted { lhs, rhs in
+                (recencyIndex[lhs.id] ?? Int.max) < (recencyIndex[rhs.id] ?? Int.max)
+            }
+        let restTier = alphaSorted.filter { !recentSet.contains($0.id) }
+        return recentTier + restTier
+    }
+
+    /// Set of team-member IDs that qualify as "recent" for the active task
+    /// type. Used by the picker to draw a RECENT tag on those rows.
+    private var recentTeamMemberIdSet: Set<String> {
+        guard let taskTypeId = selectedTaskTypeId, !taskTypeId.isEmpty,
+              let companyId = dataController.currentUser?.companyId else {
+            return []
+        }
+        return Set(dataController.recentTeamMemberIds(
+            forTaskType: taskTypeId,
+            companyId: companyId
+        ))
+    }
+
+    /// Bug 9d5c2535 — task types sorted by most-recently used across the
+    /// company, with a divider between recent and the alphabetical rest.
+    private var recencyOrderedTaskTypes: [TaskType] {
+        let alphaSorted = availableTaskTypes.sorted { $0.display < $1.display }
+
+        guard let companyId = dataController.currentUser?.companyId else {
+            return alphaSorted
+        }
+
+        let recentIds = dataController.recentTaskTypeIds(companyId: companyId)
+        guard !recentIds.isEmpty else { return alphaSorted }
+
+        let recencyIndex = Dictionary(
+            uniqueKeysWithValues: recentIds.enumerated().map { ($1, $0) }
+        )
+        let recentSet = Set(recentIds)
+
+        let recentTier = alphaSorted
+            .filter { recentSet.contains($0.id) }
+            .sorted { lhs, rhs in
+                (recencyIndex[lhs.id] ?? Int.max) < (recencyIndex[rhs.id] ?? Int.max)
+            }
+        let restTier = alphaSorted.filter { !recentSet.contains($0.id) }
+        return recentTier + restTier
+    }
+
+    /// Number of "recent" task types so the picker knows where to draw
+    /// the divider between recent and alphabetical-rest tiers.
+    private var recentTaskTypeCount: Int {
+        guard let companyId = dataController.currentUser?.companyId else { return 0 }
+        let recentSet = Set(dataController.recentTaskTypeIds(companyId: companyId))
+        return availableTaskTypes.filter { recentSet.contains($0.id) }.count
+    }
+
     @State private var selectedProjectId: String?
     @State private var selectedTaskTypeId: String?
     @State private var newTaskTypeName: String = ""
@@ -224,8 +306,19 @@ struct TaskFormSheet: View {
         }.sorted(by: { $0.title < $1.title })
     }
 
-    // Regular init for ProjectTask mode
-    init(mode: Mode, preselectedProjectId: String? = nil, onSave: @escaping (ProjectTask) -> Void) {
+    // Regular init for ProjectTask mode.
+    //
+    // `prefilledTaskTypeId` / `prefilledTeamMemberIds` are optional create-mode
+    // hints — used by QuickAddSuggestionsRail's long-press "Edit Before
+    // Adding" path so the form opens with the suggestion preselected. Ignored
+    // in edit mode (the task's own values win).
+    init(
+        mode: Mode,
+        preselectedProjectId: String? = nil,
+        prefilledTaskTypeId: String? = nil,
+        prefilledTeamMemberIds: [String]? = nil,
+        onSave: @escaping (ProjectTask) -> Void
+    ) {
         self.mode = mode
         self.preselectedProjectId = preselectedProjectId
         self.onSave = onSave
@@ -240,8 +333,16 @@ struct TaskFormSheet: View {
             _endDate = State(initialValue: task.endDate)
             _selectedStatus = State(initialValue: task.status)
             _dependencyOverrides = State(initialValue: task.dependencyOverridesJSON != nil ? task.effectiveDependencies : nil)
-        } else if let projectId = preselectedProjectId {
-            _selectedProjectId = State(initialValue: projectId)
+        } else {
+            if let projectId = preselectedProjectId {
+                _selectedProjectId = State(initialValue: projectId)
+            }
+            if let taskTypeId = prefilledTaskTypeId {
+                _selectedTaskTypeId = State(initialValue: taskTypeId)
+            }
+            if let teamMemberIds = prefilledTeamMemberIds {
+                _selectedTeamMemberIds = State(initialValue: Set(teamMemberIds))
+            }
         }
     }
 
@@ -374,7 +475,8 @@ struct TaskFormSheet: View {
         .sheet(isPresented: $showingTeamPicker) {
             TeamMemberPickerSheet(
                 selectedTeamMemberIds: $selectedTeamMemberIds,
-                allTeamMembers: uniqueTeamMembers
+                allTeamMembers: recencyOrderedTeamMembers,
+                recentMemberIds: recentTeamMemberIdSet
             )
         }
         .onChange(of: selectedTeamMemberIds) { oldValue, newValue in
@@ -982,8 +1084,14 @@ struct TaskFormSheet: View {
                 .cornerRadius(showingTaskTypeList ? 0 : OPSStyle.Layout.cornerRadius)
 
                 if showingTaskTypeList {
+                    // Bug 9d5c2535 — recency-first ordering. Recently-used
+                    // task types appear at top, then a tier divider, then
+                    // all remaining types alphabetically.
+                    let orderedTypes = recencyOrderedTaskTypes
+                    let recentCount = recentTaskTypeCount
+
                     VStack(spacing: 0) {
-                        ForEach(availableTaskTypes.sorted(by: { $0.display < $1.display })) { taskType in
+                        ForEach(Array(orderedTypes.enumerated()), id: \.element.id) { index, taskType in
                             Button(action: {
                                 withAnimation(OPSStyle.Animation.fast) {
                                     selectedTaskTypeId = taskType.id
@@ -1021,8 +1129,18 @@ struct TaskFormSheet: View {
                             }
                             .buttonStyle(PlainButtonStyle())
 
-                            Divider()
-                                .background(OPSStyle.Colors.cardBorder)
+                            // Tier separator: thicker divider after the last
+                            // "recent" task type so the boundary between
+                            // "your usual" and "everything else" is visible.
+                            // Otherwise standard 1pt divider.
+                            if index == recentCount - 1 && recentCount > 0 && recentCount < orderedTypes.count {
+                                Rectangle()
+                                    .fill(OPSStyle.Colors.cardBorder)
+                                    .frame(height: 2)
+                            } else if index < orderedTypes.count - 1 {
+                                Divider()
+                                    .background(OPSStyle.Colors.cardBorder)
+                            }
                         }
                     }
                     .background(OPSStyle.Colors.cardBackgroundDark)
@@ -1523,6 +1641,7 @@ struct TaskFormSheet: View {
                 }
 
                 if !isEditMode {
+                    if task.createdAt == nil { task.createdAt = Date() }
                     let supabaseTaskDTO = SupabaseProjectTaskDTO(
                         id: task.id,
                         bubbleId: nil,
@@ -1543,7 +1662,8 @@ struct TaskFormSheet: View {
                         dependencyOverrides: snapshotDependencyOverrides,
                         startTime: nil,
                         endTime: nil,
-                        deletedAt: nil
+                        deletedAt: nil,
+                        createdAt: task.createdAt.map { ISO8601DateFormatter().string(from: $0) }
                     )
                     // DataController.createTask is idempotent: it detects the
                     // task we just inserted and only records the sync op.
@@ -1719,8 +1839,15 @@ struct TaskFormSheet: View {
 struct TeamMemberPickerSheet: View {
     @Binding var selectedTeamMemberIds: Set<String>
     /// Full `User` objects so each row renders a real avatar (profile photo
-    /// or cached local bytes) rather than the initials placeholder.
+    /// or cached local bytes) rather than the initials placeholder. Caller
+    /// is responsible for ordering (recency-first when a task type is
+    /// selected, alphabetical otherwise).
     let allTeamMembers: [User]
+    /// Bug 9d5c2535 — IDs that have been assigned to the current task type
+    /// before. Rendered with a RECENT tag to mark the boundary between
+    /// "your usual crew" and the rest. Empty when no task type is selected
+    /// or no prior assignments exist.
+    var recentMemberIds: Set<String> = []
     @Environment(\.dismiss) private var dismiss
     @Environment(\.tutorialMode) private var isTutorialMode
 
@@ -1732,7 +1859,13 @@ struct TeamMemberPickerSheet: View {
 
                 ScrollView {
                     VStack(spacing: 1) {
-                        ForEach(allTeamMembers) { member in
+                        ForEach(Array(allTeamMembers.enumerated()), id: \.element.id) { index, member in
+                            let isRecent = recentMemberIds.contains(member.id)
+                            let nextIsRecent = (index + 1) < allTeamMembers.count
+                                ? recentMemberIds.contains(allTeamMembers[index + 1].id)
+                                : false
+                            let isLastRecentRow = isRecent && !nextIsRecent && !recentMemberIds.isEmpty
+
                             Button(action: {
                                 if selectedTeamMemberIds.contains(member.id) {
                                     selectedTeamMemberIds.remove(member.id)
@@ -1768,11 +1901,33 @@ struct TeamMemberPickerSheet: View {
                                     }
 
                                     Spacer()
+
+                                    // RECENT tag for members who've been
+                                    // assigned to this task type before.
+                                    if isRecent {
+                                        Text("RECENT")
+                                            .font(OPSStyle.Typography.smallCaption)
+                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                                            )
+                                    }
                                 }
                                 .padding()
                                 .background(OPSStyle.Colors.cardBackgroundDark)
                             }
                             .buttonStyle(PlainButtonStyle())
+
+                            // Tier separator after the last "recent" row.
+                            if isLastRecentRow {
+                                Rectangle()
+                                    .fill(OPSStyle.Colors.cardBorder)
+                                    .frame(height: 2)
+                                    .padding(.vertical, 4)
+                            }
                         }
                     }
                     .padding()

@@ -3017,6 +3017,10 @@ class DataController: ObservableObject {
             changedFields: ["id": taskId]
         )
 
+        // Cascade soft-delete to paired tasks BEFORE hard-deleting predecessor
+        // so the fetch by `pairedFromTaskId == taskId` still resolves.
+        await cascadeSoftDeleteToPaired(predecessorId: taskId)
+
         // Delete from local SwiftData
         modelContext.delete(task)
         try modelContext.save()
@@ -3424,6 +3428,7 @@ class DataController: ObservableObject {
     func updateTaskStatus(task: ProjectTask, to newStatus: TaskStatus) async throws {
         let oldStatus = task.status
         let project = task.project
+        let predecessorId = task.id
 
         // Apply locally
         task.status = newStatus
@@ -3437,6 +3442,12 @@ class DataController: ObservableObject {
             operationType: "update",
             changedFields: ["status": newStatus.rawValue]
         )
+
+        // Cascade cancel to paired tasks (one-way — uncancelling does NOT
+        // reactivate the children; user must do that manually).
+        if newStatus == .cancelled && oldStatus != .cancelled {
+            await cascadeCancelToPaired(predecessorId: predecessorId)
+        }
 
         // Track task status change for analytics
         AnalyticsManager.shared.trackTaskStatusChanged(
@@ -3737,7 +3748,7 @@ class DataController: ObservableObject {
 
     /// Update task schedule dates - SINGLE SOURCE OF TRUTH for task scheduling updates
     @MainActor
-    func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date) async throws {
+    func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date, manualEdit: Bool = true) async throws {
         let project = task.project
 
         // Capture previous dates to detect actual changes
@@ -3752,6 +3763,10 @@ class DataController: ObservableObject {
         task.endDate = endDate
         let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
         task.duration = daysDiff + 1
+        // Manual edits lock the cascade — predecessor movements no longer
+        // touch this task. System-driven calls (auto-schedule, cascade
+        // application) pass manualEdit: false to preserve auto-tracking.
+        if manualEdit { task.scheduleLocked = true }
         task.needsSync = true
         try? modelContext?.save()
 
@@ -3761,15 +3776,18 @@ class DataController: ObservableObject {
         }
 
         // Record for async sync
+        var changedFields: [String: Any] = [
+            "start_date": formatter.string(from: startDate),
+            "end_date": formatter.string(from: endDate),
+            "duration": task.duration
+        ]
+        if manualEdit { changedFields["schedule_locked"] = true }
+
         syncEngine.recordOperation(
             entityType: .projectTask,
             entityId: task.id,
             operationType: "update",
-            changedFields: [
-                "start_date": formatter.string(from: startDate),
-                "end_date": formatter.string(from: endDate),
-                "duration": task.duration
-            ]
+            changedFields: changedFields
         )
 
         // Send schedule change notification if dates actually changed
@@ -3881,7 +3899,7 @@ class DataController: ObservableObject {
         // Apply cascade changes
         for change in cascade.changes {
             if let affectedTask = projectTasks.first(where: { $0.id == change.id }) {
-                try await updateTaskSchedule(task: affectedTask, startDate: change.newStartDate, endDate: change.newEndDate)
+                try await updateTaskSchedule(task: affectedTask, startDate: change.newStartDate, endDate: change.newEndDate, manualEdit: false)
             }
         }
 
@@ -3906,7 +3924,7 @@ class DataController: ObservableObject {
             if let task = projectTasks.first(where: { $0.id == change.id }),
                let oldStart = change.oldStartDate,
                let oldEnd = change.oldEndDate {
-                try await updateTaskSchedule(task: task, startDate: oldStart, endDate: oldEnd)
+                try await updateTaskSchedule(task: task, startDate: oldStart, endDate: oldEnd, manualEdit: false)
             }
         }
     }
@@ -3927,7 +3945,7 @@ class DataController: ObservableObject {
 
         for placement in result.placements {
             if let task = unscheduled.first(where: { $0.id == placement.id }) {
-                try await updateTaskSchedule(task: task, startDate: placement.startDate, endDate: placement.endDate)
+                try await updateTaskSchedule(task: task, startDate: placement.startDate, endDate: placement.endDate, manualEdit: false)
             }
         }
 
@@ -4532,6 +4550,8 @@ class DataController: ObservableObject {
             operationType: "create",
             changedFields: changedFields
         )
+
+        await spawnPairsForPredecessor(task)
     }
 
     /// Create task from DTO - SINGLE SOURCE OF TRUTH
@@ -4597,6 +4617,16 @@ class DataController: ObservableObject {
             changedFields: changedFields
         )
 
+        // Spawn paired tasks per type-level auto-create rules (no-op when
+        // none configured). Looks up the just-inserted ProjectTask by id —
+        // covers both fresh inserts and the "already exists" branch above.
+        let insertedDescriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { $0.id == taskId }
+        )
+        if let insertedTask = (try? context.fetch(insertedDescriptor))?.first {
+            await spawnPairsForPredecessor(insertedTask)
+        }
+
         return dto.id
     }
 
@@ -4624,7 +4654,154 @@ class DataController: ObservableObject {
             changedFields: ["deleted_at": formatter.string(from: Date())]
         )
 
+        // Cascade soft-delete to any tasks auto-spawned from this one.
+        await cascadeSoftDeleteToPaired(predecessorId: taskId)
+
         print("[DataController] Task deleted: \(taskId)")
+    }
+
+    // MARK: - Task Pair Spawning / Cascading
+
+    /// Invoke `TaskPairSpawner` for a freshly-created task and record sync ops
+    /// for each spawned task. No-op when the user has no auto-create rules.
+    @MainActor
+    private func spawnPairsForPredecessor(_ predecessor: ProjectTask) async {
+        guard let context = modelContext else { return }
+        guard let companyId = currentUser?.companyId, !companyId.isEmpty else { return }
+
+        let result = TaskPairSpawner.spawnPairs(
+            forPredecessor: predecessor,
+            in: context,
+            companyId: companyId
+        )
+
+        guard !result.spawned.isEmpty else { return }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+
+        for spawn in result.spawned {
+            var fields: [String: Any] = [
+                "id": spawn.id,
+                "company_id": companyId,
+                "project_id": spawn.projectId,
+                "task_type_id": spawn.taskTypeId,
+                "status": spawn.status.rawValue,
+                "task_color": spawn.taskColor,
+                "schedule_locked": spawn.scheduleLocked,
+                "all_day": true
+            ]
+            if let pairedFrom = spawn.pairedFromTaskId { fields["paired_from_task_id"] = pairedFrom }
+            let memberIds = spawn.getTeamMemberIds()
+            if !memberIds.isEmpty { fields["team_member_ids"] = memberIds }
+            if let start = spawn.startDate { fields["start_date"] = formatter.string(from: start) }
+            if let end = spawn.endDate { fields["end_date"] = formatter.string(from: end) }
+            fields["duration"] = spawn.duration
+
+            syncEngine.recordOperation(
+                entityType: .projectTask,
+                entityId: spawn.id,
+                operationType: "create",
+                changedFields: fields
+            )
+        }
+
+        // In-app notification per spawn (rail entry). Doesn't block return.
+        let companyIdForNotif = companyId
+        let predecessorTitle = predecessor.displayTitle
+        let assignees: Set<String> = Set(predecessor.getTeamMemberIds())
+        Task { @MainActor in
+            let repo = NotificationRepository()
+            for entry in result.configs {
+                let spawn = entry.task
+                let typeName = entry.dependentType.display
+                let dateBlurb: String = {
+                    if let start = spawn.startDate {
+                        let fmt = DateFormatter()
+                        fmt.dateFormat = "EEE MMM d"
+                        return " for \(fmt.string(from: start))"
+                    }
+                    return ""
+                }()
+                let body = "Auto-scheduled \(typeName.uppercased())\(dateBlurb) — paired from \(predecessorTitle)"
+                let recipients = assignees.isEmpty
+                    ? (currentUser.map { [$0.id] } ?? [])
+                    : Array(assignees)
+                for userId in recipients {
+                    let dto = NotificationRepository.CreateNotificationDTO(
+                        userId: userId,
+                        companyId: companyIdForNotif,
+                        type: "task_pair_spawned",
+                        title: "// NEW TASK",
+                        body: body,
+                        projectId: spawn.projectId,
+                        noteId: nil,
+                        expenseId: nil,
+                        batchId: nil,
+                        deepLinkType: "projectDetails"
+                    )
+                    try? await repo.createNotification(dto)
+                }
+            }
+        }
+    }
+
+    /// Soft-delete any tasks whose `pairedFromTaskId` matches `predecessorId`.
+    /// Used when the predecessor itself is soft-deleted — orphaned pair tasks
+    /// would otherwise stay on the calendar with no logical owner.
+    @MainActor
+    private func cascadeSoftDeleteToPaired(predecessorId: String) async {
+        guard let context = modelContext else { return }
+        let descriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { t in
+                t.pairedFromTaskId == predecessorId && t.deletedAt == nil
+            }
+        )
+        guard let paired = try? context.fetch(descriptor), !paired.isEmpty else { return }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        let now = Date()
+
+        for child in paired {
+            child.deletedAt = now
+            child.needsSync = true
+            syncEngine.recordOperation(
+                entityType: .projectTask,
+                entityId: child.id,
+                operationType: "delete",
+                changedFields: ["deleted_at": formatter.string(from: now)]
+            )
+        }
+        try? context.save()
+        print("[DataController] Cascaded delete to \(paired.count) paired task(s) from predecessor \(predecessorId)")
+    }
+
+    /// Cascade a status transition (cancellation) from a predecessor to any
+    /// paired tasks. Only applies when transitioning to `.cancelled` —
+    /// reactivation does not auto-reactivate paired tasks (one-way cascade).
+    @MainActor
+    private func cascadeCancelToPaired(predecessorId: String) async {
+        guard let context = modelContext else { return }
+        let descriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { t in
+                t.pairedFromTaskId == predecessorId && t.deletedAt == nil && t.status != .cancelled
+            }
+        )
+        guard let paired = try? context.fetch(descriptor), !paired.isEmpty else { return }
+
+        for child in paired {
+            child.status = .cancelled
+            child.needsSync = true
+            syncEngine.recordOperation(
+                entityType: .projectTask,
+                entityId: child.id,
+                operationType: "update",
+                changedFields: ["status": TaskStatus.cancelled.rawValue]
+            )
+        }
+        try? context.save()
+        print("[DataController] Cascaded cancel to \(paired.count) paired task(s) from predecessor \(predecessorId)")
     }
 
     // MARK: - Restore Operations (Trash / Undo)

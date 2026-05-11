@@ -128,29 +128,49 @@ struct ClientSheet: View {
                                         .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                                    TextField("Client name", text: $name)
-                                        .font(OPSStyle.Typography.body)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                        .autocorrectionDisabled(true)
-                                        .textInputAutocapitalization(.words)
-                                        .focused($focusedField, equals: .name)
-                                        .padding(.vertical, 12)
-                                        .padding(.horizontal, 16)
-                                        .background(Color.clear)
-                                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                                .stroke(
-                                                    focusedField == .name ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
-                                                    lineWidth: OPSStyle.Layout.Border.standard
-                                                )
-                                        )
-                                        .wizardTarget("fill_client_name", style: .input)
-                                        .onChange(of: name) { _, newValue in
-                                            if mode.isCreate {
-                                                checkForDuplicates()
+                                    HStack(spacing: 0) {
+                                        TextField("Client name", text: $name)
+                                            .font(OPSStyle.Typography.body)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
+                                            .autocorrectionDisabled(true)
+                                            .textInputAutocapitalization(.words)
+                                            .focused($focusedField, equals: .name)
+                                            .padding(.vertical, 12)
+                                            .padding(.leading, 16)
+                                            .padding(.trailing, 8)
+                                            .onChange(of: name) { _, _ in
+                                                if mode.isCreate {
+                                                    checkForDuplicates()
+                                                }
                                             }
+
+                                        Rectangle()
+                                            .fill(OPSStyle.Colors.inputFieldBorder)
+                                            .frame(width: 1, height: 28)
+
+                                        Button(action: {
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            showingContactPicker = true
+                                        }) {
+                                            Image(systemName: "person.crop.circle.badge.plus")
+                                                .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .regular))
+                                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                                .frame(width: 44, height: 44)
+                                                .contentShape(Rectangle())
                                         }
+                                        .accessibilityLabel("Import from contacts")
+                                        .accessibilityHint("Opens your device contacts to fill in client details")
+                                    }
+                                    .background(Color.clear)
+                                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(
+                                                focusedField == .name ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.inputFieldBorder,
+                                                lineWidth: OPSStyle.Layout.Border.standard
+                                            )
+                                    )
+                                    .wizardTarget("fill_client_name", style: .input)
 
                                     if let duplicate = duplicateCheckResult {
                                         DuplicateWarning(duplicate: duplicate) {

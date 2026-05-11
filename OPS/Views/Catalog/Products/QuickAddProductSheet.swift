@@ -602,7 +602,7 @@ struct QuickAddProductSheet: View {
             Image(systemName: "info.circle")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Text("Need product options or pricing modifiers? Edit on web after saving.")
+            Text("Need options or pricing modifiers? Save here, then open this product on web → Options.")
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .fixedSize(horizontal: false, vertical: true)

@@ -30,6 +30,9 @@ struct ProductDetailView: View {
     @Query private var allMaterials: [ProductMaterial]
     @Query private var allCategories: [CatalogCategory]
     @Query private var allUnits: [CatalogUnit]
+    @Query private var allTaskTypes: [TaskType]
+    @Query private var allBundleItems: [ProductBundleItem]
+    @Query private var allProductsForBundle: [Product]
 
     // Editable mirror of product base fields. Reset when `product.id`
     // changes so navigating between detail screens picks up the right
@@ -47,6 +50,13 @@ struct ProductDetailView: View {
     /// `product.categoryId` on init.
     @State private var selectedCategoryId: String?
 
+    /// Task type link. Hydrated from `product.taskTypeRef` (or its legacy
+    /// `taskTypeId` text mirror if the row predates the FK column). The
+    /// picker writes both columns in lockstep on save so reads from any
+    /// path land on the same parent.
+    @State private var selectedTaskTypeId: String?
+    @State private var showingTaskTypePicker: Bool = false
+
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
     @State private var priceParseError: Bool = false
@@ -55,6 +65,11 @@ struct ProductDetailView: View {
     /// `RecipeReadOnlyView` remains; this sheet supplements it for users
     /// who can manage products.
     @State private var showingRecipeManageSheet: Bool = false
+
+    /// Drives presentation of the bundle composition edit sheet. Only
+    /// surfaced when `product.kind == .package` and the operator can
+    /// manage products.
+    @State private var showingBundleEditSheet: Bool = false
 
     /// Inline create sheets — opened from the "+ NEW …" menu items so the
     /// user never has to leave the detail screen, navigate elsewhere, then
@@ -77,6 +92,15 @@ struct ProductDetailView: View {
         _isActive = State(initialValue: product.isActive)
         _selectedUnitId = State(initialValue: product.unitId)
         _selectedCategoryId = State(initialValue: product.categoryId)
+        // Prefer the uuid FK; fall back to the legacy text column for rows
+        // synced before the FK was added. Empty strings round-trip through
+        // Supabase as nil — coerce explicitly.
+        let hydratedTaskTypeId: String? = {
+            if let ref = product.taskTypeRef, !ref.isEmpty { return ref }
+            if let legacy = product.taskTypeId, !legacy.isEmpty { return legacy }
+            return nil
+        }()
+        _selectedTaskTypeId = State(initialValue: hydratedTaskTypeId)
     }
 
     private var companyId: String {
@@ -93,6 +117,35 @@ struct ProductDetailView: View {
         allUnits
             .filter { $0.companyId == companyId && $0.deletedAt == nil }
             .sorted { ($0.sortOrder, $0.display) < ($1.sortOrder, $1.display) }
+    }
+
+    private var companyTaskTypes: [TaskType] {
+        allTaskTypes
+            .filter { $0.companyId == companyId && $0.deletedAt == nil }
+            .sorted { ($0.displayOrder, $0.display) < ($1.displayOrder, $1.display) }
+    }
+
+    private var selectedTaskType: TaskType? {
+        guard let id = selectedTaskTypeId else { return nil }
+        return companyTaskTypes.first(where: { $0.id == id })
+    }
+
+    /// LABOR-type products require a task type to participate in the
+    /// estimate→tasks pipeline. Material and Fee products can save
+    /// without one — their `taskTypeRef` stays nil (or carries a stale
+    /// reference from a previous LABOR life, harmlessly).
+    private var requiresTaskType: Bool {
+        product.type == .labor
+    }
+
+    /// Truth check for the persisted product's task type, normalized so an
+    /// empty string compares equal to nil. Used inside `hasChanges` so the
+    /// SAVE button doesn't activate on a no-op selection that round-trips
+    /// the same FK.
+    private var persistedTaskTypeId: String? {
+        if let ref = product.taskTypeRef, !ref.isEmpty { return ref }
+        if let legacy = product.taskTypeId, !legacy.isEmpty { return legacy }
+        return nil
     }
 
     /// Current CatalogUnit selection resolved against the local @Query.
@@ -133,6 +186,7 @@ struct ProductDetailView: View {
         if let parsed = Double(trimmedPrice), parsed != product.basePrice { return true }
         if selectedUnitId != product.unitId { return true }
         if selectedCategoryId != product.categoryId { return true }
+        if selectedTaskTypeId != persistedTaskTypeId { return true }
         if taxable != product.taxable { return true }
         if isActive != product.isActive { return true }
         return false
@@ -144,6 +198,7 @@ struct ProductDetailView: View {
         if trimmedName.isEmpty { return false }
         let trimmedPrice = basePriceString.trimmingCharacters(in: .whitespacesAndNewlines)
         if Double(trimmedPrice) == nil { return false }
+        if requiresTaskType && selectedTaskTypeId == nil { return false }
         return true
     }
 
@@ -156,17 +211,19 @@ struct ProductDetailView: View {
                     headerSection
                     coreCard
                     categoryCard
+                    taskTypeCard
                     if !productOptions.isEmpty {
                         optionsSection
                     }
                     if !productModifiers.isEmpty {
                         modifiersSection
                     }
-                    // Show the recipe section any time there are materials,
-                    // OR when the operator can manage products — managers
-                    // need the EDIT entry point even on an empty recipe so
-                    // they can add the first row.
-                    if !productMaterials.isEmpty || canManageProducts {
+                    // Branch on kind: bundles replace the recipe section
+                    // with a BUNDLE COMPOSITION section. Everything else
+                    // keeps the recipe affordance.
+                    if product.kind == .package {
+                        bundleCompositionSection
+                    } else if !productMaterials.isEmpty || canManageProducts {
                         recipeSection
                     }
                     if let errorMessage = errorMessage {
@@ -179,7 +236,7 @@ struct ProductDetailView: View {
                 .padding(OPSStyle.Layout.spacing3)
             }
         }
-        .navigationTitle("PRODUCT")
+        .navigationTitle(product.category3Way.navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if hasChanges && canManageProducts {
@@ -202,6 +259,10 @@ struct ProductDetailView: View {
             RecipeManageSheet(product: product)
                 .environmentObject(dataController)
         }
+        .sheet(isPresented: $showingBundleEditSheet) {
+            BundleCompositionEditSheet(product: product)
+                .environmentObject(dataController)
+        }
         .sheet(isPresented: $showingNewCategorySheet) {
             InlineCreateCategorySheet(companyId: companyId) { newId in
                 selectedCategoryId = newId
@@ -212,6 +273,16 @@ struct ProductDetailView: View {
             InlineCreateUnitSheet(companyId: companyId) { newId in
                 selectedUnitId = newId
             }
+            .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingTaskTypePicker) {
+            TaskTypePickerSheet(
+                selectedTaskTypeId: selectedTaskTypeId,
+                onSelect: { picked in
+                    selectedTaskTypeId = picked.id
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            )
             .environmentObject(dataController)
         }
     }
@@ -425,7 +496,7 @@ struct ProductDetailView: View {
     }
 
     private var kindChip: some View {
-        Text(product.kind.rawValue.uppercased())
+        Text(product.category3Way.displayLabel)
             .font(OPSStyle.Typography.metadata)
             .foregroundColor(OPSStyle.Colors.secondaryText)
             .padding(.horizontal, OPSStyle.Layout.spacing2)
@@ -504,6 +575,111 @@ struct ProductDetailView: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
+    }
+
+    // MARK: - Task type card (required when product type is LABOR)
+
+    /// Surface the task-type linkage that previously lived only in the
+    /// DTO / Supabase column. Without this card, operators editing a
+    /// LABOR product had no way to see or change which workflow it feeds
+    /// — task generation just silently fell through to the unset path.
+    private var taskTypeCard: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                CatalogSectionHeader("TASK TYPE")
+                if requiresTaskType {
+                    Text("· REQUIRED")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.errorText)
+                } else {
+                    Text("· OPTIONAL")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                Spacer()
+            }
+            if canManageProducts {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showingTaskTypePicker = true
+                } label: {
+                    taskTypeMenuLabel
+                }
+                .buttonStyle(PlainButtonStyle())
+            } else {
+                taskTypeMenuLabel
+            }
+            taskTypeHelperRow
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
+    private var taskTypeMenuLabel: some View {
+        let display = selectedTaskType?.display ?? "Pick a task type"
+        let swatch: Color? = {
+            guard let hex = selectedTaskType?.color else { return nil }
+            return Color(hex: hex)
+        }()
+        return HStack(spacing: OPSStyle.Layout.spacing2) {
+            if let swatch {
+                Circle()
+                    .fill(swatch)
+                    .frame(width: 14, height: 14)
+                    .overlay(Circle().stroke(swatch.opacity(0.6), lineWidth: 1))
+            }
+            Text(display)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(selectedTaskTypeId == nil
+                                 ? OPSStyle.Colors.tertiaryText
+                                 : OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+            Spacer()
+            if canManageProducts {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+        }
+        .padding(OPSStyle.Layout.spacing2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(
+                    (requiresTaskType && selectedTaskTypeId == nil)
+                        ? OPSStyle.Colors.errorText
+                        : OPSStyle.Colors.cardBorder,
+                    lineWidth: OPSStyle.Layout.Border.standard
+                )
+        )
+    }
+
+    @ViewBuilder
+    private var taskTypeHelperRow: some View {
+        if requiresTaskType {
+            Text(selectedTaskTypeId == nil
+                 ? "Pick the workflow this product belongs to — required for LABOR. Tasks on the schedule will inherit this type."
+                 : "Tasks generated from this product land under this task type on the schedule.")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(selectedTaskTypeId == nil
+                                 ? OPSStyle.Colors.errorText
+                                 : OPSStyle.Colors.tertiaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Text("Optional — only LABOR products drive task generation. Set it if you want this product grouped on the schedule.")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     // MARK: - Category card (CatalogCategory-backed)
@@ -704,6 +880,59 @@ struct ProductDetailView: View {
         }
     }
 
+    // MARK: - Bundle composition
+
+    /// Active bundle child rows for this product, sorted by display order.
+    private var bundleItemsForProduct: [ProductBundleItem] {
+        allBundleItems
+            .filter { $0.bundleProductId == product.id && $0.deletedAt == nil }
+            .sorted { $0.displayOrder < $1.displayOrder }
+    }
+
+    /// Lookup map of every product the operator can reach — used by the
+    /// read-only renderer to render child names + per-unit prices.
+    private var childProductsByIdMap: [String: Product] {
+        Dictionary(uniqueKeysWithValues: allProductsForBundle.map { ($0.id, $0) })
+    }
+
+    private var bundleChildCount: Int { bundleItemsForProduct.count }
+
+    @ViewBuilder
+    private var bundleCompositionSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            bundleCompositionHeader
+            BundleCompositionReadOnlyView(
+                bundleProduct: product,
+                bundleItems: bundleItemsForProduct,
+                childProductsById: childProductsByIdMap
+            )
+        }
+    }
+
+    private var bundleCompositionHeader: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text("// COMPOSITION · \(bundleChildCount) ITEM\(bundleChildCount == 1 ? "" : "S")")
+                .font(OPSStyle.Typography.panelTitle)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Spacer()
+            if canManageProducts {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showingBundleEditSheet = true
+                } label: {
+                    Text("EDIT")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, 4)
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin / 2)
+                }
+                .accessibilityLabel("Edit bundle composition")
+            }
+            viewOnWebLink
+        }
+    }
+
     /// Recipe-specific header. Mirrors `sectionHeader(title:)` but slots an
     /// EDIT affordance in for users with `catalog.products.manage`. The
     /// read-only renderer below stays visible; the sheet is supplemental.
@@ -794,6 +1023,16 @@ struct ProductDetailView: View {
             fields.category = category?.name
         }
 
+        // Task type changed: write both the legacy text column and the
+        // uuid FK so old code paths (web app pre-Phase 13, in-flight
+        // estimates) and new code paths (Service-category resolver) see
+        // the same parent. The empty-string → nil coercion lives in the
+        // model accessor; here we just hand the raw uuid through.
+        if selectedTaskTypeId != persistedTaskTypeId {
+            fields.taskTypeRef = selectedTaskTypeId
+            fields.taskTypeId = selectedTaskTypeId
+        }
+
         let repo = ProductRepository(companyId: companyId)
         do {
             let dto = try await repo.update(product.id, fields: fields)
@@ -832,6 +1071,8 @@ struct ProductDetailView: View {
         product.minimumCharge = dto.minimumCharge
         product.minimumQuantity = dto.minimumQuantity
         product.taskTypeId = dto.taskTypeId
+        product.taskTypeRef = dto.taskTypeRef
+        product.bundlePricingMode = dto.bundlePricingMode
         try? modelContext.save()
     }
 

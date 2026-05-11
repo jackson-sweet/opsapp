@@ -26,6 +26,7 @@ enum OPSSchemaCommon {
         SubClient.self,
         ProjectTask.self,
         TaskType.self,
+        TaskTemplate.self,
         TaskStatusOption.self,
         SyncOperation.self,
         OpsContact.self,
@@ -67,6 +68,12 @@ enum OPSSchemaCommon {
         InventorySnapshotItem.self
     ]
 
+    /// V4 reminder entities. Layered on top of V3 (additive) — bug 4f00c2d7.
+    static let v4ReminderModels: [any PersistentModel.Type] = [
+        TaskTypeReminder.self,
+        TaskReminder.self
+    ]
+
     /// V3-only models: catalog & variant model + configurable Products +
     /// the company-defaults adapter map. Replaces the V2 inventory entities.
     static let v3CatalogModels: [any PersistentModel.Type] = [
@@ -88,6 +95,7 @@ enum OPSSchemaCommon {
         ProductOption.self,
         ProductOptionValue.self,
         ProductPricingModifier.self,
-        ProductMaterial.self
+        ProductMaterial.self,
+        ProductBundleItem.self
     ]
 }

@@ -118,6 +118,18 @@ struct BooksTabView: View {
                 selectedSegmentRaw = first.rawValue
             }
         }
+        // Bug 8ed0d2ed — let MainTabView (or any caller) request a specific
+        // BOOKS segment via NotificationCenter. Used by expense / invoice
+        // notification rail deep links to land the user directly on the
+        // right tab content after the books tab is selected.
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("BooksSelectSegment"))) { notification in
+            guard let raw = notification.userInfo?["segment"] as? String,
+                  let segment = BooksSection(rawValue: raw),
+                  visibleSegments.contains(segment) else { return }
+            withAnimation(OPSStyle.Animation.fast) {
+                selectedSegmentRaw = segment.rawValue
+            }
+        }
     }
 
     // MARK: - Segmented control

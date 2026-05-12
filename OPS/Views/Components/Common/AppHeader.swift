@@ -78,6 +78,7 @@ struct AppHeader: View {
         case inventory
         case pipeline
         case books
+        case leads
     }
 
     @EnvironmentObject private var dataController: DataController
@@ -144,6 +145,8 @@ struct AppHeader: View {
             return "PIPELINE"
         case .books:
             return "BOOKS"
+        case .leads:
+            return "LEADS"
         }
     }
     

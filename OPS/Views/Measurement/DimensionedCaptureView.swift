@@ -82,11 +82,41 @@ public struct DimensionedCaptureView: View {
                 set: { presented in if !presented { pendingAnnotation = nil } }
             )
         ) {
-            // Phase E will replace this stub with the real annotation view.
-            // Dismissing the cover returns to the capture view; dismissing the
-            // capture view (the parent of this cover) closes the whole modal.
+            // Phase E annotation view. Closure routing (onRequestCalibrate /
+            // onSaveToProject) is Phase G integration — see plan §G "wire MEASURE
+            // button into ProjectActionBar, add notification types, wire feature
+            // flag." The no-op closures here are PLACEHOLDERS and must be replaced
+            // before the feature flag flips ON.
             if let assets = pendingAnnotation {
-                DimensionedAnnotationView(assets: assets)
+                let capability = coordinatorBox.coordinator?.capability ?? .noDepth
+                DimensionedAnnotationView(
+                    assets: assets,
+                    preloadedPhoto: nil,
+                    preloadedDepthMap: nil,
+                    anchors: nil,
+                    detectedOpenings: [],
+                    initialCalibration: DimensionsData.Calibration(
+                        method: capability == .lidar ? .lidar : .none,
+                        referenceObject: nil,
+                        scaleFactor: 1.0,
+                        estimatedAccuracyMeters: capability == .lidar ? 0.025 : 0.05
+                    ),
+                    capability: capability,
+                    coplanarOnly: false,
+                    existingDimensions: nil,
+                    onRequestCalibrate: {
+                        // TODO(Phase G): re-enter capture view in calibration mode
+                        assertionFailure("Calibrate route not wired — Phase G integration pending")
+                    },
+                    onSaveToProject: { _ in
+                        // TODO(Phase G): persist DimensionsData via PhotoAnnotationRepository
+                        assertionFailure("Save route not wired — Phase G integration pending")
+                    },
+                    onDismiss: {
+                        pendingAnnotation = nil
+                        dismiss()
+                    }
+                )
             }
         }
     }

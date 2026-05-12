@@ -117,4 +117,10 @@ final class PipelineViewModelTests: XCTestCase {
         ]
         XCTAssertTrue(vm.isPipelineEmpty)
     }
+
+    func test_currentUserId_canBeSetAfterSetup() {
+        let vm = PipelineViewModel()
+        vm.setup(companyId: "co", currentUserId: "user-123")
+        XCTAssertEqual(vm.currentUserId, "user-123")
+    }
 }

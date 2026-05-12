@@ -17,13 +17,19 @@ class PipelineViewModel: ObservableObject {
     @Published var loadError: String? = nil
     @Published var selectedStage: PipelineStage = .newLead
 
+    /// Identity of the operator whose pipeline this is. Used by in-court
+    /// computations to scope "ball in your court" leads to the current user.
+    /// nil → in-court counts return 0.
+    @Published var currentUserId: String?
+
     private var repository: OpportunityRepository?
     private var companyId: String?
 
     // MARK: - Setup
 
-    func setup(companyId: String) {
+    func setup(companyId: String, currentUserId: String? = nil) {
         self.companyId = companyId
+        self.currentUserId = currentUserId
         self.repository = OpportunityRepository(companyId: companyId)
     }
 

@@ -592,6 +592,7 @@ struct NotificationListView: View {
                             case "invoice", "invoices":            return "VIEW INVOICES"
                             case "projectsNeedingTasks":           return "PLAN THE WORK"
                             case "inbox", "email_sync_complete":   return "VIEW DETAILS"
+                            case "cashflow":                       return notification.actionLabel ?? "REVIEW FORECAST"
                             default:                               return notification.actionLabel ?? "OPEN"
                             }
                         }()
@@ -872,6 +873,17 @@ struct NotificationListView: View {
             dismiss()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 NotificationCenter.default.post(name: Notification.Name("OpenExpenses"), object: nil)
+            }
+        case "cashflow":
+            // Cashflow forecast dip / cleared notification. Switch to Books,
+            // then post OpenCashflowForecast so BooksTabView presents the
+            // forecast screen after the tab swap has settled.
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("OpenBooks"), object: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    NotificationCenter.default.post(name: Notification.Name("OpenCashflowForecast"), object: nil)
+                }
             }
         default:
             // Bug bb63c37e — when deep_link_type is missing, fall back to the

@@ -125,6 +125,12 @@ struct MainTabView: View {
     private let openInvoicesObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenInvoices"))
 
+    // Cashflow forecast deep-link. Posted by NotificationListView for
+    // forecast_dip / forecast_cleared rail entries. Switches to BOOKS, then
+    // posts OpenCashflowForecast so BooksTabView presents the forecast screen.
+    private let openBooksObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenBooks"))
+
     private let openProjectsNeedingTasksObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenProjectsNeedingTasks"))
 
@@ -684,6 +690,19 @@ struct MainTabView: View {
                     object: nil,
                     userInfo: ["segment": BooksSection.invoices.rawValue]
                 )
+            }
+        }
+
+        // Cashflow forecast — switch to BOOKS so BooksTabView's secondary
+        // OpenCashflowForecast listener can present the forecast screen.
+        .onReceive(openBooksObserver) { _ in
+            print("[PUSH_NAVIGATION] Opening books for cashflow forecast")
+            guard hasBooksAccess, let idx = pipelineTabIndex else {
+                print("[PUSH_NAVIGATION] No books access — cashflow deep link suppressed")
+                return
+            }
+            withAnimation(OPSStyle.Animation.fast) {
+                selectedTab = idx
             }
         }
 

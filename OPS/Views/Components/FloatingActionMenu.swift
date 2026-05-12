@@ -242,13 +242,21 @@ struct FloatingActionMenu: View {
     /// `new-expense` lives in the EXPENSES group, not MONEY, so when EXPENSES
     /// is the active segment the MONEY group falls back to its natural order.
     private func orderedMoneyItems(rawItems: [FABMenuItem]) -> [FABMenuItem] {
+        // LEADS tab overrides the persisted Books segment ordering — when the
+        // user is in LEADS, "Add Lead" is always the primary regardless of
+        // which Books segment they last viewed. Falls back to segment-driven
+        // ordering everywhere else (so BOOKS tab keeps its existing behavior).
         let primaryId: String
-        switch booksSelectedSegmentRaw {
-        case "PIPELINE":  primaryId = "add-lead"
-        case "ESTIMATES": primaryId = "new-estimate"
-        case "INVOICES":  primaryId = "new-invoice"
-        case "EXPENSES":  primaryId = "new-expense"
-        default:          primaryId = "new-estimate"
+        if isLeadsTab {
+            primaryId = "add-lead"
+        } else {
+            switch booksSelectedSegmentRaw {
+            case "PIPELINE":  primaryId = "add-lead"
+            case "ESTIMATES": primaryId = "new-estimate"
+            case "INVOICES":  primaryId = "new-invoice"
+            case "EXPENSES":  primaryId = "new-expense"
+            default:          primaryId = "new-estimate"
+            }
         }
         if let idx = rawItems.firstIndex(where: { $0.id == primaryId }), idx > 0 {
             var reordered = rawItems

@@ -1,9 +1,23 @@
 # BOOKS Tab — Phase 2 Design Spec (Ship-Ready Completion)
 
+> ⚠️ **STATUS: DEFERRED — pending rewrite (2026-05-11, user choice — option B).**
+>
+> This spec was written assuming Phase 1's 4-segment Books hub stays in place. After it landed, two parallel-session designs surfaced:
+> - `2026-05-11-books-ui-reconstruction-design.md` — replaces the 4-segment hub with a swipeable 5-card hero carousel + 3 segments (Invoices/Estimates/Expenses); **removes Pipeline from Books entirely**.
+> - `2026-05-11-pipeline-tab-design.md` — promotes Pipeline to a standalone top-level LEADS tab.
+>
+> User picked option B: **Pipeline-tab → Reconstruction → leaner Phase 2.** When this spec is resumed:
+> 1. Verify HEAD has both Pipeline-tab + Reconstruction merged. The Books shell will look fundamentally different.
+> 2. Chunks 2A (InvoiceFormSheet), 2B (PaymentRecordSheet refactor), 2F (segment-scoped search) survive mostly intact — they touch the Books Invoices/Estimates segments which exist in both shapes.
+> 3. Chunks 2C (per-company stages), 2D (AI lead fields), 2E (lead images + lat/lng), 2G (import contacts) need their file paths retargeted from `OPS/Views/Books/Pipeline/` to `OPS/Views/Leads/` and view-model paths checked against the post-Reconstruction `MoneyDashboardViewModel`.
+> 4. Chunk 2C's `MoneyDashboardViewModel` extension to load opportunities is mooted — Reconstruction reshapes that VM and Pipeline data goes elsewhere. The per-company `pipeline_stage_configs` refactor itself stays valid (slug-based storage, registry pattern, server-side seed trigger).
+>
+> Do NOT execute this spec or its plan until the rewrite is complete. The plan file (`2026-05-11-books-tab-phase-2-implementation.md`) carries the same warning.
+
 | | |
 |---|---|
 | **Date** | 2026-05-11 |
-| **Status** | Brainstorming complete; pending implementation plan |
+| **Status** | Deferred pending rewrite (see banner above) |
 | **Scope** | iOS only (`ops-ios/`) |
 | **Builds on** | Phase 1 spec (`2026-05-07-books-tab-design.md`) — assumes all Phase 1 commits in HEAD |
 | **Phase** | 2 of 2 — final phase before customer-facing release |

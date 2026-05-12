@@ -1,15 +1,21 @@
 # Pipeline Tab Promotion Implementation Plan
 
-> ⚠️ **STATUS: BLOCKED — DO NOT EXECUTE.**
+> **STATUS: UNBLOCKED — READY TO EXECUTE (PM-coordinated).**
 >
-> Pipeline tab work is gated on Books Phase 2 (`2026-05-11-books-tab-phase-2-design.md`) landing first. User decision 2026-05-11. See § "Resumption checklist" at the bottom of this file before any execution.
+> **Sequencing decision (2026-05-11, user choice — option B):** Reconstruction-first path is now active. Books Phase 2 is DEFERRED until after this Pipeline-tab plan AND the Books reconstruction plan land on main. Order: **Pipeline-tab → Books-UI-Reconstruction → leaner Phase 2.**
 >
-> Known issues to fix when resuming:
-> 1. Books Phase 2 chunk 2C refactors `PipelineStage` from enum to struct + repository — invalidates Task 1's `PipelineStage+Color.swift` enum extension and changes the data shape used by Tasks 3-4, 7, 8, 10, 11.
-> 2. Books Phase 2 chunks 2D / 2E / 2G add new Pipeline UX files in `Books/Pipeline/` that Task 13's file move must enumerate.
-> 3. **Every `xcodebuild` command in this plan must be removed** — saved feedback "Don't run xcodebuild" forbids it; the user runs builds themselves to avoid parallel-session collisions. Replace build verification steps with manual checkpoints ("ask user to verify build before continuing").
+> Implications for the previous "BLOCKED" warnings:
+> 1. ~~Books Phase 2 chunk 2C refactors `PipelineStage` to struct + repository — invalidates Task 1~~ → **OBSOLETE.** Phase 2 is no longer landing first; `PipelineStage` stays as the existing enum. Task 1's `PipelineStage+Color.swift` extension is valid as written.
+> 2. ~~Books Phase 2 chunks 2D / 2E / 2G add files in `Books/Pipeline/` that Task 13 must enumerate~~ → **OBSOLETE.** Those chunks land AFTER this plan + Reconstruction; no extra files to move.
+> 3. ~~Every `xcodebuild` command must be removed~~ → **OBSOLETE.** The "Don't run xcodebuild" memory was updated 2026-05-11: xcodebuild is now permitted in this project. Standing PM caveat: ask the user to confirm no other terminals are mid-build before invoking, to avoid `DerivedData/build.db` collisions. Use `-destination 'generic/platform=iOS'` (never simulator).
+>
+> **Coordination with Reconstruction (`2026-05-11-books-ui-reconstruction.md`):** The two plans share these touch points and must land in this order:
+> - Pipeline-tab Task 13 moves files OUT of `OPS/Views/Books/Pipeline/` to `OPS/Views/Leads/`
+> - Pipeline-tab Task 16 adds the LEADS tab to `MainTabView` while leaving Books's Pipeline-segment infrastructure in place (transient duplication; both build green)
+> - Reconstruction Phase C2/C4 then drops Books's `.pipeline` segment + `pipeline.view` from `hasBooksAccess`, removing the duplication
+> - Net: brief intentional duplication between this plan landing and Reconstruction landing; ~no broken state at any commit boundary
 
-> **For agentic workers (when unblocked):** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Promote Pipeline from a Books-tab segment to a standalone top-level `LEADS` tab in the OPS iOS app, with redesigned primary surface (carousel of stage pages, ball-in-court bar, redesigned cards, 5-card stat carousel header).
 
@@ -33,7 +39,7 @@ xcodebuild -scheme OPS -destination 'generic/platform=iOS' build
 xcodebuild test -scheme OPS -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:OPSTests/PipelineViewModelTests
 ```
 
-(Tests run on simulator — only the *app build* must use generic device per `ops-ios/CLAUDE.md`.)
+(Tests run on simulator — only the *app build* must use generic device per `ops-ios/CLAUDE.md`. Per the standing PM caveat, ask the user before invoking xcodebuild from a spawn so concurrent terminals don't race on `DerivedData/build.db`.)
 
 ---
 
@@ -1301,10 +1307,10 @@ struct LeadsHeaderCarousel: View {
             cardChrome {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("WEIGHTED FORECAST")
-                        .font(OPSStyle.Typography.categoryLabel)
+                        .font(OPSStyle.Typography.category)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Text(formatCurrency(weightedForecast))
-                        .font(OPSStyle.Typography.dataValueLarge)
+                        .font(OPSStyle.Typography.dataValueLg)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                     if let delta = weightedForecastDelta {
                         deltaLine(amount: delta, label: "vs LAST 30D")
@@ -1325,11 +1331,11 @@ struct LeadsHeaderCarousel: View {
             cardChrome {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("ACTIVE PIPELINE")
-                        .font(OPSStyle.Typography.categoryLabel)
+                        .font(OPSStyle.Typography.category)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     HStack(spacing: 6) {
                         Text("\(activeLeadCount)")
-                            .font(OPSStyle.Typography.dataValueLarge)
+                            .font(OPSStyle.Typography.dataValueLg)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                         Text("LEADS")
                             .font(OPSStyle.Typography.captionBold)
@@ -1362,18 +1368,18 @@ struct LeadsHeaderCarousel: View {
         cardChrome {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text("CLOSE RATE")
-                    .font(OPSStyle.Typography.categoryLabel)
+                    .font(OPSStyle.Typography.category)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 if let rate = closeRate {
                     Text("\(Int((rate * 100).rounded()))%")
-                        .font(OPSStyle.Typography.dataValueLarge)
+                        .font(OPSStyle.Typography.dataValueLg)
                         .foregroundColor(closeRateColor(rate))
                     Text("\(closeRateWonCount) WON · \(closeRateLostCount) LOST · LAST 90D")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 } else {
                     Text("—")
-                        .font(OPSStyle.Typography.dataValueLarge)
+                        .font(OPSStyle.Typography.dataValueLg)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Text("INSUFFICIENT DATA · LAST 90D")
                         .font(OPSStyle.Typography.smallCaption)
@@ -1393,12 +1399,12 @@ struct LeadsHeaderCarousel: View {
         cardChrome {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text("VELOCITY")
-                    .font(OPSStyle.Typography.categoryLabel)
+                    .font(OPSStyle.Typography.category)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                 if let days = avgVelocityDays {
                     HStack(spacing: 4) {
                         Text("\(days)")
-                            .font(OPSStyle.Typography.dataValueLarge)
+                            .font(OPSStyle.Typography.dataValueLg)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                         Text("D AVG")
                             .font(OPSStyle.Typography.captionBold)
@@ -1415,7 +1421,7 @@ struct LeadsHeaderCarousel: View {
                     }
                 } else {
                     Text("—")
-                        .font(OPSStyle.Typography.dataValueLarge)
+                        .font(OPSStyle.Typography.dataValueLg)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Text("INSUFFICIENT DATA")
                         .font(OPSStyle.Typography.smallCaption)
@@ -1430,11 +1436,11 @@ struct LeadsHeaderCarousel: View {
             cardChrome(railColor: OPSStyle.Colors.warningStatus) {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("STALE RISK")
-                        .font(OPSStyle.Typography.categoryLabel)
+                        .font(OPSStyle.Typography.category)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     HStack(spacing: 4) {
                         Text("\(staleLeadsCount)")
-                            .font(OPSStyle.Typography.dataValueLarge)
+                            .font(OPSStyle.Typography.dataValueLg)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                         Text("LEADS")
                             .font(OPSStyle.Typography.captionBold)
@@ -1839,11 +1845,35 @@ xcodebuild -scheme OPS -destination 'generic/platform=iOS' build 2>&1 | tail -10
 
 Expected: BUILD SUCCEEDED.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Commit the deletion**
 
 ```bash
 git add -A
 git commit -m "refactor(leads): delete legacy PipelineSectionView, StageStripView, LeadCardView in Books/Pipeline"
+```
+
+- [ ] **Step 5: Rename-back from P1-1 workaround**
+
+P1-1 had to rename two new structs to avoid filename/struct collisions with the legacy files we just deleted. Now that the legacy files are gone, restore the canonical names:
+
+```bash
+# Rename file basenames
+git mv OPS/Views/Leads/Components/LeadStageStrip.swift OPS/Views/Leads/Components/StageStripView.swift
+git mv OPS/Views/Leads/Components/LeadCard.swift OPS/Views/Leads/Components/LeadCardView.swift
+```
+
+Then update the struct names + headers + the consumer call site:
+- `OPS/Views/Leads/Components/StageStripView.swift`: change `struct LeadStageStrip` → `struct StageStripView`. Remove the temporary-name header comment.
+- `OPS/Views/Leads/Components/LeadCardView.swift`: change `struct LeadCard` → `struct LeadCardView`. Remove the temporary-name header comment.
+- `OPS/Views/Leads/LeadListPage.swift`: line 38 (per P1-1 report) — change `LeadCard(...)` → `LeadCardView(...)`.
+- Any other call sites — `grep -rn "LeadStageStrip\b\|LeadCard\b" OPS --include='*.swift'` should return only the type definitions and the `LeadListPage` call site after this update.
+
+Verify build, then commit:
+
+```bash
+xcodebuild -scheme OPS -destination 'generic/platform=iOS' build 2>&1 | tail -10
+git add -A
+git commit -m "refactor(leads): restore canonical names (StageStripView, LeadCardView) after legacy deletion"
 ```
 
 ---

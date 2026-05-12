@@ -1,6 +1,10 @@
 # BOOKS Tab — Phase 2 Implementation Plan (Ship-Ready Completion)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> ⚠️ **STATUS: DEFERRED — DO NOT EXECUTE.**
+>
+> This plan was written against Phase 1's 4-segment Books hub. User picked option B (2026-05-11): Pipeline-tab promotion + Books reconstruction land FIRST, then this plan gets rewritten against the new shape. See the corresponding spec (`2026-05-11-books-tab-phase-2-design.md`) for the full deferral note. Resume only after both Pipeline-tab and Reconstruction merge to main.
+
+> **For agentic workers (when unblocked):** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Bring the BOOKS tab to 100% feature-complete for customer launch. Close dead FAB TODOs (InvoiceFormSheet + PaymentRecordSheet refactor), retrofit per-company `pipeline_stage_configs`, and ship deferred Pipeline UX surfaces (AI fields, images/lat-lng, scoped search, contact import).
 

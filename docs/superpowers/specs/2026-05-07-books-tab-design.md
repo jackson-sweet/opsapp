@@ -1,3 +1,7 @@
+> **Superseded by [2026-05-11-books-ui-reconstruction-design.md](2026-05-11-books-ui-reconstruction-design.md).** The Phase 1 4-segment hub described below is no longer the shipped shape — Books was reconstructed around a 5-card hero carousel and Pipeline was elevated to its own top-level tab (see `PIPELINE TAB - P1-1`).
+
+---
+
 # BOOKS Tab — Design Spec (Phase 1)
 
 | | |

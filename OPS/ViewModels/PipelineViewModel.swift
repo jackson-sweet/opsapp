@@ -99,6 +99,65 @@ class PipelineViewModel: ObservableObject {
         allOpportunities.allSatisfy { $0.isDeleted || $0.isArchived }
     }
 
+    // MARK: - Ball-in-court derivations
+
+    /// Severity buckets — each in-court lead lands in exactly one bucket,
+    /// highest severity wins. `followUp`-stage-only signal rolls into stale.
+    struct InCourtBuckets: Equatable {
+        var overdue: Int
+        var stale: Int
+        var untouched: Int
+
+        var total: Int { overdue + stale + untouched }
+    }
+
+    /// Filtered list — leads where the next move is the current user's.
+    /// Returns empty when `currentUserId == nil`.
+    private var inCourtOpportunities: [Opportunity] {
+        guard let me = currentUserId else { return [] }
+        let now = Date()
+        return allOpportunities.filter { opp in
+            guard opp.assignedTo == me else { return false }
+            guard !opp.stage.isTerminal else { return false }
+            guard !opp.isDeleted, !opp.isArchived else { return false }
+
+            let isOverdue = (opp.nextFollowUpAt.map { $0 <= now }) ?? false
+            let isStale = opp.isStale
+            let isFollowUpStage = opp.stage == .followUp
+            let isUntouched = (opp.stage == .newLead && opp.lastActivityAt == nil)
+
+            return isOverdue || isStale || isFollowUpStage || isUntouched
+        }
+    }
+
+    var inCourtCount: Int {
+        inCourtOpportunities.count
+    }
+
+    var inCourtBuckets: InCourtBuckets {
+        let now = Date()
+        var b = InCourtBuckets(overdue: 0, stale: 0, untouched: 0)
+        for opp in inCourtOpportunities {
+            let isOverdue = (opp.nextFollowUpAt.map { $0 <= now }) ?? false
+            if isOverdue {
+                b.overdue += 1
+            } else if opp.isStale || opp.stage == .followUp {
+                b.stale += 1
+            } else if opp.stage == .newLead && opp.lastActivityAt == nil {
+                b.untouched += 1
+            }
+        }
+        return b
+    }
+
+    var inCourtTotalValue: Double {
+        inCourtOpportunities.reduce(0) { $0 + ($1.estimatedValue ?? 0) }
+    }
+
+    var inCourtOpportunityIds: Set<String> {
+        Set(inCourtOpportunities.map { $0.id })
+    }
+
     // MARK: - Mutations
 
     func moveToStage(opportunityId: String, to stage: PipelineStage, userId: String?) async throws {

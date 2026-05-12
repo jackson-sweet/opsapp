@@ -94,6 +94,7 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
             captured: captured,
             dimensions: fixtureDimensions(),
             projectId: "project-123",
+            projectName: "Smith Residence",
             companyId: "company-abc",
             userId: "user-xyz"
         )
@@ -142,6 +143,7 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
             captured: captured,
             dimensions: fixtureDimensions(),
             projectId: "p",
+            projectName: "n",
             companyId: "c",
             userId: "u"
         )

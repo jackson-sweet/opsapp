@@ -38,10 +38,12 @@
 //  `PhotoAnnotationSyncManager` patterns for queue + retry logic — mirror,
 //  don't reinvent."
 //
-//  Public API per brief:
+//  Public API per brief (updated 2026-05-12 for Phase G coordination —
+//  added `projectName` for notification body formatting per spec §6):
 //      func sync(captured: CapturedAssets,
 //                dimensions: DimensionsData,
 //                projectId: String,
+//                projectName: String,
 //                companyId: String,
 //                userId: String) async throws -> PhotoAnnotation
 //
@@ -324,9 +326,18 @@ public final class DimensionedPhotoSyncManager {
         captured: CapturedAssets,
         dimensions: DimensionsData,
         projectId: String,
+        projectName: String,
         companyId: String,
         userId: String
     ) async throws -> PhotoAnnotation {
+
+        // `projectName` is accepted for API parity with Phase G's `dispatchSave`
+        // call site (DimensionedCaptureView). Notification firing per spec §6
+        // (which needs the human-readable project name for the body string)
+        // lands as a follow-up commit on main once both Phase F and Phase G
+        // have merged — Phase G's `MeasurementNotificationCopy` helpers are on
+        // a different branch and cherry-picking would create a merge conflict.
+        _ = projectName  // silence unused warning until follow-up wires it in
 
         // 1. Read all three assets off disk up front. If any file is missing
         // we fail fast — this is a capture-pipeline bug, not a sync condition.

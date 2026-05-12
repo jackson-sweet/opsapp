@@ -30,6 +30,20 @@ class ExpenseRepository {
             .value
     }
 
+    /// Fetches every `expense_project_allocations` row whose parent expense
+    /// belongs to this company and is not soft-deleted. Used by the Books
+    /// Phase 2 Jobs card to compute per-project cost rollups without
+    /// re-hydrating every expense's nested allocation array.
+    func fetchAllAllocations() async throws -> [ExpenseAllocationDTO] {
+        try await client
+            .from("expense_project_allocations")
+            .select("*, expense:expenses!inner(company_id, deleted_at)")
+            .eq("expense.company_id", value: companyId)
+            .is("expense.deleted_at", value: nil)
+            .execute()
+            .value
+    }
+
     func fetchOne(_ expenseId: String) async throws -> ExpenseDTO {
         try await client
             .from("expenses")

@@ -15,31 +15,69 @@ class MoneyDashboardViewModel: ObservableObject {
     // MARK: - Period
 
     enum Period: String, CaseIterable {
-        case month     = "30D"
-        case quarter   = "90D"
-        case sixMonths = "6M"
-        case year      = "1Y"
+        case month       = "30D"      // Trailing 30 days
+        case quarter     = "90D"      // Trailing 90 days
+        case sixMonths   = "6M"
+        case year        = "1Y"
+        case thisMonth   = "MTD"      // Calendar month-to-date
+        case lastMonth   = "LAST"     // Previous calendar month
+        case thisQuarter = "QTD"
+        case ytd         = "YTD"
 
         var label: String { rawValue }
 
-        /// Number of calendar days this period spans.
-        var days: Int {
+        /// Inclusive start of the period.
+        var startDate: Date {
+            let cal = Calendar.current
+            let now = Date()
             switch self {
-            case .month:     return 30
-            case .quarter:   return 90
-            case .sixMonths: return 180
-            case .year:      return 365
+            case .month:        return cal.date(byAdding: .day, value: -30, to: now) ?? now
+            case .quarter:      return cal.date(byAdding: .day, value: -90, to: now) ?? now
+            case .sixMonths:    return cal.date(byAdding: .day, value: -180, to: now) ?? now
+            case .year:         return cal.date(byAdding: .day, value: -365, to: now) ?? now
+            case .thisMonth:    return cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? now
+            case .lastMonth:
+                let firstOfThisMonth = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? now
+                return cal.date(byAdding: .month, value: -1, to: firstOfThisMonth) ?? now
+            case .thisQuarter:
+                let month = cal.component(.month, from: now)
+                let qStartMonth = ((month - 1) / 3) * 3 + 1
+                return cal.date(from: DateComponents(year: cal.component(.year, from: now), month: qStartMonth, day: 1)) ?? now
+            case .ytd:
+                return cal.date(from: DateComponents(year: cal.component(.year, from: now), month: 1, day: 1)) ?? now
             }
         }
 
-        /// Start date for the current period, measured backwards from now.
-        var startDate: Date {
-            Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+        /// Inclusive end of the period (now for trailing windows; first-of-this-month for lastMonth).
+        var endDate: Date {
+            let cal = Calendar.current
+            let now = Date()
+            switch self {
+            case .lastMonth:
+                return cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? now
+            default:
+                return now
+            }
         }
 
-        /// Start date for the *prior* period (used for trend comparisons).
+        /// Start of the *prior* equivalent period (used for trend comparisons).
         var priorPeriodStartDate: Date {
-            Calendar.current.date(byAdding: .day, value: -(days * 2), to: Date()) ?? Date()
+            let cal = Calendar.current
+            let now = Date()
+            switch self {
+            case .month:     return cal.date(byAdding: .day, value: -60, to: now) ?? now
+            case .quarter:   return cal.date(byAdding: .day, value: -180, to: now) ?? now
+            case .sixMonths: return cal.date(byAdding: .day, value: -360, to: now) ?? now
+            case .year:      return cal.date(byAdding: .day, value: -730, to: now) ?? now
+            case .thisMonth:
+                return cal.date(byAdding: .month, value: -1, to: startDate) ?? now
+            case .lastMonth:
+                return cal.date(byAdding: .month, value: -1, to: startDate) ?? now
+            case .thisQuarter:
+                return cal.date(byAdding: .month, value: -3, to: startDate) ?? now
+            case .ytd:
+                return cal.date(from: DateComponents(year: cal.component(.year, from: now) - 1, month: 1, day: 1)) ?? now
+            }
         }
     }
 
@@ -98,6 +136,29 @@ class MoneyDashboardViewModel: ObservableObject {
     @Published var expenseBreakdown: [BreakdownItem] = []
     @Published var outstandingInvoiceBreakdown: [BreakdownItem] = []
 
+    // Books Phase 2 — Card 2 (Cash Flow) weekly bucketing
+    /// Payments-in bucketed by ISO week start (Monday). Card 2 consumer.
+    @Published var paymentsByWeek: [(weekStart: Date, amount: Double)] = []
+    /// Expenses-out bucketed by ISO week start. Card 2 consumer.
+    @Published var expensesByWeek: [(weekStart: Date, amount: Double)] = []
+
+    // Books Phase 2 — Card 4 (Forecast) per-stage breakdown
+    /// Weighted pipeline value broken out per active stage. Card 4 consumer.
+    @Published var weightedForecastByStage: [(stage: PipelineStage, value: Double)] = []
+
+    // Books Phase 2 — Card 5 (Jobs) per-project profitability
+    struct JobNet: Identifiable {
+        let id: String      // projectId
+        let title: String
+        let revenue: Double
+        let cost: Double
+        var net: Double { revenue - cost }
+    }
+    @Published var topProjectsByNet: [JobNet] = []
+    @Published var profitableProjectCount: Int = 0
+    @Published var avgProjectMargin: Double = 0
+    @Published var losersProjectCount: Int = 0
+
     // MARK: - Private State
 
     private var estimateRepository: EstimateRepository?
@@ -112,6 +173,7 @@ class MoneyDashboardViewModel: ObservableObject {
     private var allInvoices: [InvoiceDTO] = []
     private var allExpenses: [ExpenseDTO] = []
     private var allOpportunities: [OpportunityDTO] = []
+    private var allAllocations: [ExpenseAllocationDTO] = []
 
     // MARK: - Setup
 
@@ -143,13 +205,15 @@ class MoneyDashboardViewModel: ObservableObject {
         async let invoicesTask = fetchInvoices()
         async let expensesTask = fetchExpenses()
         async let oppsTask: [OpportunityDTO] = canSeePipeline ? fetchOpportunities() : []
+        async let allocationsTask = fetchAllocations()
 
-        let (estimates, invoices, expenses, opps) = await (estimatesTask, invoicesTask, expensesTask, oppsTask)
+        let (estimates, invoices, expenses, opps, allocations) = await (estimatesTask, invoicesTask, expensesTask, oppsTask, allocationsTask)
 
         allEstimates = estimates
         allInvoices = invoices
         allExpenses = expenses
         allOpportunities = opps
+        allAllocations = allocations
 
         recalculate()
     }
@@ -158,12 +222,13 @@ class MoneyDashboardViewModel: ObservableObject {
     func recalculate() {
         let now = Date()
         let periodStart = selectedPeriod.startDate
+        let periodEnd = selectedPeriod.endDate
         let priorStart = selectedPeriod.priorPeriodStartDate
 
         // ── Invoices in period (by createdAt) ──
         let invoicesInPeriod = allInvoices.filter { dto in
             guard let ca = dto.createdAt, let created = SupabaseDate.parse(ca) else { return false }
-            return created >= periodStart && created <= now && dto.status != InvoiceStatus.void.rawValue
+            return created >= periodStart && created <= periodEnd && dto.status != InvoiceStatus.void.rawValue
         }
         totalSales = invoicesInPeriod.reduce(0) { $0 + ($1.total ?? 0) }
 
@@ -171,7 +236,7 @@ class MoneyDashboardViewModel: ObservableObject {
         let paymentsInPeriod = allInvoices.flatMap { dto -> [PaymentDTO] in
             (dto.payments ?? []).filter { payment in
                 guard let dateStr = payment.paymentDate, let paidAt = SupabaseDate.parse(dateStr) else { return false }
-                return paidAt >= periodStart && paidAt <= now && !(payment.isVoid ?? false)
+                return paidAt >= periodStart && paidAt <= periodEnd && !(payment.isVoid ?? false)
             }
         }
         totalPayments = paymentsInPeriod.reduce(0) { $0 + ($1.amount ?? 0) }
@@ -181,7 +246,7 @@ class MoneyDashboardViewModel: ObservableObject {
             guard dto.deletedAt == nil else { return false }
             let dateString = dto.expenseDate ?? dto.createdAt
             guard let date = SupabaseDate.parse(dateString) else { return false }
-            return date >= periodStart && date <= now
+            return date >= periodStart && date <= periodEnd
         }
         totalExpenses = expensesInPeriod.reduce(0) { $0 + $1.amount }
 
@@ -209,7 +274,7 @@ class MoneyDashboardViewModel: ObservableObject {
         // ── Close rate (estimates in period) ──
         let estimatesInPeriod = allEstimates.filter { dto in
             guard let created = SupabaseDate.parse(dto.createdAt) else { return false }
-            return created >= periodStart && created <= now
+            return created >= periodStart && created <= periodEnd
         }
         let closedInPeriod = estimatesInPeriod.filter { dto in
             let status = EstimateStatus(rawValue: dto.status)
@@ -263,6 +328,37 @@ class MoneyDashboardViewModel: ObservableObject {
             .compactMap { $0.nextFollowUpAt.flatMap { SupabaseDate.parse($0) } }
             .filter { $0 >= now }
             .min()
+
+        // ── Books Phase 2 — per-stage weighted forecast ──
+        var perStage: [PipelineStage: Double] = [:]
+        for dto in activeOpps {
+            guard let stage = PipelineStage(rawValue: dto.stage) else { continue }
+            let pct = dto.winProbability ?? stage.winProbability
+            let est = dto.estimatedValue ?? 0
+            perStage[stage, default: 0] += est * Double(pct) / 100.0
+        }
+        weightedForecastByStage = PipelineStage.allCases
+            .filter { !$0.isTerminal }
+            .compactMap { stage in
+                guard let value = perStage[stage], value > 0 else { return nil }
+                return (stage: stage, value: value)
+            }
+            .sorted { $0.value > $1.value }
+
+        // ── Books Phase 2 — weekly bucketing for Card 2 (Cash Flow) ──
+        paymentsByWeek = bucketByWeek(
+            paymentsInPeriod,
+            dateOf: { $0.paymentDate.flatMap { SupabaseDate.parse($0) } },
+            amountOf: { $0.amount ?? 0 }
+        )
+        expensesByWeek = bucketByWeek(
+            expensesInPeriod,
+            dateOf: { SupabaseDate.parse($0.expenseDate ?? $0.createdAt) },
+            amountOf: { $0.amount }
+        )
+
+        // ── Books Phase 2 — per-project profitability for Card 5 (Jobs) ──
+        computeJobNets(periodStart: periodStart, periodEnd: periodEnd)
     }
 
     // MARK: - Private Helpers
@@ -449,5 +545,106 @@ class MoneyDashboardViewModel: ObservableObject {
     /// Look up the invoice number for a given invoice ID from cached data.
     private func invoiceNumber(for invoiceId: String) -> String {
         allInvoices.first(where: { $0.id == invoiceId })?.invoiceNumber ?? "INV"
+    }
+
+    // MARK: - Books Phase 2 — Helpers (weekly buckets, job nets, allocations)
+
+    private func fetchAllocations() async -> [ExpenseAllocationDTO] {
+        guard let repo = expenseRepository else { return [] }
+        do { return try await repo.fetchAllAllocations() }
+        catch {
+            print("[MoneyDashboard] Failed to fetch allocations: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    private func weekStart(for date: Date) -> Date {
+        var cal = Calendar(identifier: .iso8601)
+        cal.firstWeekday = 2 // Monday
+        let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+        return cal.date(from: comps) ?? date
+    }
+
+    private func bucketByWeek<T>(_ items: [T], dateOf: (T) -> Date?, amountOf: (T) -> Double) -> [(weekStart: Date, amount: Double)] {
+        var buckets: [Date: Double] = [:]
+        for item in items {
+            guard let d = dateOf(item) else { continue }
+            let ws = weekStart(for: d)
+            buckets[ws, default: 0] += amountOf(item)
+        }
+        return buckets.sorted { $0.key < $1.key }.map { (weekStart: $0.key, amount: $0.value) }
+    }
+
+    private func computeJobNets(periodStart: Date, periodEnd: Date) {
+        // Revenue per project: sum of voided-excluded payments tied to invoices with a projectId, paid in-period.
+        var revenuePerProject: [String: Double] = [:]
+        for inv in allInvoices {
+            guard let pid = inv.projectId,
+                  inv.deletedAt == nil,
+                  inv.status != InvoiceStatus.void.rawValue else { continue }
+            for payment in inv.payments ?? [] {
+                guard let dStr = payment.paymentDate,
+                      let d = SupabaseDate.parse(dStr),
+                      d >= periodStart, d <= periodEnd,
+                      !(payment.isVoid ?? false) else { continue }
+                revenuePerProject[pid, default: 0] += payment.amount ?? 0
+            }
+        }
+
+        // Cost per project: sum of allocation.amount (or expense.amount * pct/100) for non-deleted expenses in period.
+        var costPerProject: [String: Double] = [:]
+        let expenseById = Dictionary(uniqueKeysWithValues: allExpenses.map { ($0.id, $0) })
+        for alloc in allAllocations {
+            guard let expense = expenseById[alloc.expenseId],
+                  expense.deletedAt == nil else { continue }
+            let dateStr = expense.expenseDate ?? expense.createdAt
+            guard let d = SupabaseDate.parse(dateStr), d >= periodStart, d <= periodEnd else { continue }
+            let amount = alloc.amount ?? (expense.amount * alloc.percentage / 100.0)
+            costPerProject[alloc.projectId, default: 0] += amount
+        }
+
+        let projectIds = Array(Set(revenuePerProject.keys).union(costPerProject.keys))
+        let projectTitles = projectTitleLookup(for: projectIds)
+
+        var rows: [JobNet] = projectIds.map { pid in
+            JobNet(
+                id: pid,
+                title: projectTitles[pid] ?? "Untitled",
+                revenue: revenuePerProject[pid] ?? 0,
+                cost: costPerProject[pid] ?? 0
+            )
+        }
+        rows.sort { $0.net > $1.net }
+
+        // Top 5 = top 4 by net + worst loser if not already present
+        var top = Array(rows.prefix(4))
+        if let worst = rows.last, worst.net < 0, !top.contains(where: { $0.id == worst.id }) {
+            top.append(worst)
+        } else if rows.count >= 5 {
+            top.append(rows[4])
+        }
+        topProjectsByNet = top
+
+        profitableProjectCount = rows.filter { $0.net > 0 }.count
+        losersProjectCount = rows.filter { $0.net < 0 }.count
+        let withRevenue = rows.filter { $0.revenue > 0 }
+        avgProjectMargin = withRevenue.isEmpty
+            ? 0
+            : withRevenue.map { $0.net / $0.revenue }.reduce(0, +) / Double(withRevenue.count)
+    }
+
+    private func projectTitleLookup(for projectIds: [String]) -> [String: String] {
+        guard let context = modelContext, !projectIds.isEmpty else { return [:] }
+        var result: [String: String] = [:]
+        do {
+            let descriptor = FetchDescriptor<Project>()
+            let allProjects = try context.fetch(descriptor)
+            for p in allProjects where projectIds.contains(p.id) {
+                result[p.id] = p.title
+            }
+        } catch {
+            print("[MoneyDashboard] Failed to fetch projects: \(error.localizedDescription)")
+        }
+        return result
     }
 }

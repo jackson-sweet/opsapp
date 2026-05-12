@@ -54,6 +54,13 @@ struct MainTabView: View {
     private var hasCatalogAccess: Bool {
         permissionStore.can("catalog.view", requiredScope: "all")
     }
+
+    // LEADS tab is gated by `pipeline.view` permission AND the `pipeline` feature
+    // flag. When the flag is off, the entire tab is hidden — even for users
+    // with the permission.
+    private var hasLeadsAccess: Bool {
+        permissionStore.can("pipeline.view") && permissionStore.isFeatureEnabled("pipeline")
+    }
     
     // Observer for fetch active project notifications
     private let fetchProjectObserver = NotificationCenter.default
@@ -139,8 +146,7 @@ struct MainTabView: View {
     // permissions. The hub itself filters segments per-permission; users with a
     // single visible segment auto-skip the hub via `booksAutoSkipDestination`.
     private var hasBooksAccess: Bool {
-        permissionStore.can("pipeline.view")
-            || permissionStore.can("finances.view")
+        permissionStore.can("finances.view")
             || permissionStore.can("estimates.view")
             || permissionStore.can("expenses.view")
     }
@@ -173,10 +179,15 @@ struct MainTabView: View {
         }
     }
 
-    // Computed tab indices that adapt based on visible tabs (BOOKS + inventory)
-    private var pipelineTabIndex: Int? { hasBooksAccess ? 1 : nil }
+    // Computed tab indices that adapt based on visible tabs (LEADS + BOOKS + catalog).
+    private var leadsTabIndex: Int? { hasLeadsAccess ? 1 : nil }
+    private var booksTabIndex: Int? {
+        guard hasBooksAccess else { return nil }
+        return hasLeadsAccess ? 2 : 1
+    }
     private var jobBoardTabIndex: Int {
         var idx = 1
+        if hasLeadsAccess { idx += 1 }
         if hasBooksAccess { idx += 1 }
         return idx
     }
@@ -199,7 +210,15 @@ struct MainTabView: View {
             TabItem(iconName: "house.fill", wizardStepId: "welcome_home")
         ]
 
-        // Add BOOKS tab for users with any of the four financial-area perms
+        // Add LEADS tab for users with pipeline.view + pipeline feature flag
+        if hasLeadsAccess {
+            baseTabs.append(TabItem(
+                iconName: "point.3.connected.trianglepath.dotted",
+                wizardStepId: "welcome_leads"
+            ))
+        }
+
+        // Add BOOKS tab for users with any of the three financial-area perms
         if hasBooksAccess {
             baseTabs.append(TabItem(iconName: "chart.line.uptrend.xyaxis", wizardStepId: "welcome_books"))
         }
@@ -230,9 +249,19 @@ struct MainTabView: View {
         return selectedTab == (tabCount - 1)
     }
 
-    // Check if currently on Pipeline tab (has its own FAB)
-    private var isPipelineTab: Bool {
-        pipelineTabIndex != nil && selectedTab == pipelineTabIndex
+    // Check if currently on BOOKS tab (Pipeline section lives inside Books until
+    // Reconstruction lands; this flag tracks the financial hub, not the new
+    // standalone LEADS tab).
+    private var isBooksTab: Bool {
+        if let idx = booksTabIndex { return selectedTab == idx }
+        return false
+    }
+
+    // Check if currently on the new standalone LEADS tab. Used by
+    // FloatingActionMenu to surface "Add Lead" first in the MONEY group.
+    private var isLeadsTab: Bool {
+        if let idx = leadsTabIndex { return selectedTab == idx }
+        return false
     }
 
     /// Bug 706a4d32 — single search button rendered outside the sliding tab
@@ -276,6 +305,71 @@ struct MainTabView: View {
         }
     }
 
+    // FAB visibility expression hoisted out of the modifier chain so the
+    // view-builder type-checker isn't asked to resolve the same 6-term
+    // boolean twice inline. Stays in lockstep with `allowsHitTesting`.
+    private var isFABVisible: Bool {
+        !isSettingsTab
+            && !dataController.isPerformingInitialSync
+            && !appState.isLoadingProjects
+            && !appState.isScheduleSelectionMode
+            && !appState.isShowingMapOverlay
+            && !appState.isInProjectMode
+    }
+
+    // Floating action menu wrapper — extracted from `body` to stay under
+    // the SwiftUI view-builder type-check complexity budget once the LEADS
+    // tab landed.
+    @ViewBuilder
+    private var floatingActionMenu: some View {
+        FloatingActionMenu(
+            currentTab: selectedTab,
+            hasCatalogAccess: hasCatalogAccess,
+            isScheduleTab: selectedTab == scheduleTabIndex,
+            isCatalogTab: catalogTabIndex != nil && selectedTab == catalogTabIndex,
+            isLeadsTab: isLeadsTab
+        )
+        .environmentObject(dataController)
+        .environmentObject(appState)
+        .opacity(isFABVisible ? 1 : 0)
+        .allowsHitTesting(isFABVisible)
+        .animation(OPSStyle.Animation.fast, value: isSettingsTab)
+        .animation(OPSStyle.Animation.fast, value: dataController.isPerformingInitialSync)
+        .animation(OPSStyle.Animation.fast, value: appState.isLoadingProjects)
+        .animation(OPSStyle.Animation.fast, value: appState.isInventorySelectionMode)
+        .animation(OPSStyle.Animation.fast, value: appState.isScheduleSelectionMode)
+        .animation(OPSStyle.Animation.fast, value: appState.isShowingMapOverlay)
+        .animation(OPSStyle.Animation.fast, value: appState.isInProjectMode)
+    }
+
+    // Tab content router — extracted from `body` so the compiler can
+    // type-check the if/else chain (each new tab added to the chain
+    // multiplies the type-check work, hence the extraction).
+    @ViewBuilder
+    private var tabContent: some View {
+        if selectedTab == 0 {
+            HomeView()
+        } else if selectedTab == leadsTabIndex {
+            LeadsTabView()
+        } else if selectedTab == booksTabIndex {
+            if let destination = booksAutoSkipDestination {
+                destination
+            } else {
+                BooksTabView()
+            }
+        } else if selectedTab == jobBoardTabIndex {
+            JobBoardView()
+        } else if selectedTab == catalogTabIndex {
+            CatalogView()
+        } else if selectedTab == scheduleTabIndex {
+            ScheduleView()
+        } else if selectedTab == settingsTabIndex {
+            SettingsView()
+        } else {
+            HomeView()
+        }
+    }
+
     var body: some View {
         ZStack {
             // Main content structure with sliding transitions
@@ -289,26 +383,7 @@ struct MainTabView: View {
             // Without the `.id`, the outer container is re-used across tabs and
             // the inner if/else branches just fade in/out (the bug we're fixing).
             Group {
-                // Tab content — indices adapt based on role and permissions
-                if selectedTab == 0 {
-                    HomeView()
-                } else if selectedTab == pipelineTabIndex {
-                    if let destination = booksAutoSkipDestination {
-                        destination
-                    } else {
-                        BooksTabView()
-                    }
-                } else if selectedTab == jobBoardTabIndex {
-                    JobBoardView()
-                } else if selectedTab == catalogTabIndex {
-                    CatalogView()
-                } else if selectedTab == scheduleTabIndex {
-                    ScheduleView()
-                } else if selectedTab == settingsTabIndex {
-                    SettingsView()
-                } else {
-                    HomeView()
-                }
+                tabContent
             }
             .id(selectedTab)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -380,18 +455,7 @@ struct MainTabView: View {
             // Floating action menu - visible across all tabs except Settings and during initial sync/loading
             // IMPORTANT: Always render to preserve @State (sheet presentation) when app goes to background
             // Use opacity and allowsHitTesting instead of conditional rendering to prevent sheet dismissal
-            FloatingActionMenu(currentTab: selectedTab, hasCatalogAccess: hasCatalogAccess, isScheduleTab: selectedTab == scheduleTabIndex, isCatalogTab: catalogTabIndex != nil && selectedTab == catalogTabIndex)
-                .environmentObject(dataController)
-                .environmentObject(appState)
-                .opacity(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects && !appState.isScheduleSelectionMode && !appState.isShowingMapOverlay && !appState.isInProjectMode ? 1 : 0)
-                .allowsHitTesting(!isSettingsTab && !dataController.isPerformingInitialSync && !appState.isLoadingProjects && !appState.isScheduleSelectionMode && !appState.isShowingMapOverlay && !appState.isInProjectMode)
-                .animation(OPSStyle.Animation.fast, value: isSettingsTab)
-                .animation(OPSStyle.Animation.fast, value: dataController.isPerformingInitialSync)
-                .animation(OPSStyle.Animation.fast, value: appState.isLoadingProjects)
-                .animation(OPSStyle.Animation.fast, value: appState.isInventorySelectionMode)
-                .animation(OPSStyle.Animation.fast, value: appState.isScheduleSelectionMode)
-                .animation(OPSStyle.Animation.fast, value: appState.isShowingMapOverlay)
-                .animation(OPSStyle.Animation.fast, value: appState.isInProjectMode)
+            floatingActionMenu
 
             // Project sheet container that overlays the whole app
             ProjectSheetContainer()
@@ -656,7 +720,7 @@ struct MainTabView: View {
         // expenses list, so flipping the tab is enough.
         .onReceive(openExpensesObserver) { _ in
             print("[PUSH_NAVIGATION] Opening expenses")
-            guard hasBooksAccess, let idx = pipelineTabIndex else {
+            guard hasBooksAccess, let idx = booksTabIndex else {
                 print("[PUSH_NAVIGATION] No books access — expense deep link suppressed")
                 return
             }
@@ -674,7 +738,7 @@ struct MainTabView: View {
 
         .onReceive(openInvoicesObserver) { _ in
             print("[PUSH_NAVIGATION] Opening invoices")
-            guard hasBooksAccess, let idx = pipelineTabIndex else { return }
+            guard hasBooksAccess, let idx = booksTabIndex else { return }
             withAnimation(OPSStyle.Animation.fast) {
                 selectedTab = idx
             }
@@ -739,16 +803,7 @@ struct MainTabView: View {
         // Track tab changes for slide transitions and analytics
         .onChange(of: selectedTab) { oldValue, newValue in
             previousTab = oldValue
-
-            // Track tab selection for analytics — use computed indices for role-adaptive mapping
-            let tabName: TabName = {
-                if newValue == 0 { return .home }
-                if newValue == pipelineTabIndex { return .pipeline }
-                if newValue == jobBoardTabIndex { return .jobBoard }
-                if newValue == scheduleTabIndex { return .schedule }
-                if newValue == settingsTabIndex { return .settings }
-                return .home
-            }()
+            let tabName = analyticsTabName(for: newValue)
             AnalyticsManager.shared.trackTabSelected(tabName: tabName)
             AnalyticsService.shared.track(
                 eventType: .action,
@@ -777,47 +832,7 @@ struct MainTabView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardOpenMostRecentProject"))) { _ in
-            if let modelContext = dataController.modelContext {
-                // Check if we have a stored project ID from a previous deep-nav (CONTINUE GUIDE)
-                if let storedId = wizardStateManager?.deepNavProjectId {
-                    let storedDescriptor = FetchDescriptor<Project>(
-                        predicate: #Predicate<Project> { $0.id == storedId }
-                    )
-                    if let existing = (try? modelContext.fetch(storedDescriptor))?.first {
-                        appState.viewProjectDetails(existing)
-                        return
-                    }
-                }
-
-                let companyId = dataController.currentUser?.companyId ?? ""
-                let userId = dataController.currentUser?.id ?? ""
-                let isFieldRole = dataController.currentUser?.role == .crew || dataController.currentUser?.role == .operator
-
-                // Scope-aware fetch: crew/operator see only assigned projects
-                let descriptor: FetchDescriptor<Project>
-                if isFieldRole {
-                    descriptor = FetchDescriptor<Project>(
-                        predicate: #Predicate<Project> { project in
-                            project.companyId == companyId &&
-                            project.teamMemberIdsString.contains(userId)
-                        },
-                        sortBy: [SortDescriptor(\.startDate, order: .reverse)]
-                    )
-                } else {
-                    descriptor = FetchDescriptor<Project>(
-                        predicate: #Predicate<Project> { project in
-                            project.companyId == companyId
-                        },
-                        sortBy: [SortDescriptor(\.startDate, order: .reverse)]
-                    )
-                }
-
-                if let project = (try? modelContext.fetch(descriptor))?.first {
-                    // Store the project ID so CONTINUE GUIDE reopens the same project
-                    wizardStateManager?.deepNavProjectId = project.id
-                    appState.viewProjectDetails(project)
-                }
-            }
+            handleWizardOpenMostRecentProject()
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardNavigateToTarget"))) { notification in
             guard let tabTarget = notification.userInfo?["tabTarget"] as? String else { return }
@@ -825,7 +840,11 @@ struct MainTabView: View {
             case "Home":
                 withAnimation { selectedTab = 0 }
             case "Pipeline":
-                if let idx = pipelineTabIndex {
+                if let idx = leadsTabIndex {
+                    withAnimation { selectedTab = idx }
+                }
+            case "Books":
+                if let idx = booksTabIndex {
                     withAnimation { selectedTab = idx }
                 }
             case "JobBoard":
@@ -923,22 +942,10 @@ struct MainTabView: View {
             }
         }
         .onChange(of: selectedTab) { _, newTab in
-            // Broadcast current tab name for wizard context tracking
-            let tabName: String
-            switch newTab {
-            case 0: tabName = "Home"
-            case jobBoardTabIndex: tabName = "JobBoard"
-            case scheduleTabIndex: tabName = "Schedule"
-            case settingsTabIndex: tabName = "Settings"
-            default:
-                if let cat = catalogTabIndex, newTab == cat { tabName = "Catalog" }
-                else if let pip = pipelineTabIndex, newTab == pip { tabName = "Pipeline" }
-                else { tabName = "Unknown" }
-            }
             NotificationCenter.default.post(
                 name: Notification.Name("WizardCurrentTabChanged"),
                 object: nil,
-                userInfo: ["tabName": tabName]
+                userInfo: ["tabName": wizardTabName(for: newTab)]
             )
         }
         .onChange(of: dataController.currentUser?.role) { oldRole, newRole in
@@ -987,6 +994,84 @@ struct MainTabView: View {
     }
     
     // handlePermissionRefresh moved to PINGatedView (ContentView.swift)
+
+    /// Maps a tab index to its `TabName` for analytics. Extracted from `body`
+    /// because the inline closure form pushed the type-checker over its
+    /// complexity budget once the LEADS tab was added.
+    private func analyticsTabName(for index: Int) -> TabName {
+        if index == 0 { return .home }
+        if index == leadsTabIndex { return .pipeline }
+        if index == booksTabIndex { return .books }
+        if index == jobBoardTabIndex { return .jobBoard }
+        if index == scheduleTabIndex { return .schedule }
+        if index == settingsTabIndex { return .settings }
+        if let cat = catalogTabIndex, index == cat { return .inventory }
+        return .home
+    }
+
+    /// Maps a tab index to the string name broadcast via
+    /// `WizardCurrentTabChanged` for wizard context tracking. The "Pipeline"
+    /// string is intentionally retained for the LEADS tab so existing wizard
+    /// scripts that target Pipeline continue to work post-rename.
+    private func wizardTabName(for index: Int) -> String {
+        switch index {
+        case 0: return "Home"
+        case jobBoardTabIndex: return "JobBoard"
+        case scheduleTabIndex: return "Schedule"
+        case settingsTabIndex: return "Settings"
+        default:
+            if let cat = catalogTabIndex, index == cat { return "Catalog" }
+            if let leads = leadsTabIndex, index == leads { return "Pipeline" }
+            if let books = booksTabIndex, index == books { return "Books" }
+            return "Unknown"
+        }
+    }
+
+    /// Handles the `WizardOpenMostRecentProject` deep-nav: prefer a stored
+    /// project id (CONTINUE GUIDE), otherwise fetch the most recent project
+    /// scoped to crew/operator assignment when applicable. Extracted from the
+    /// `body` closure to keep the SwiftUI view-builder under the type-check
+    /// complexity budget.
+    private func handleWizardOpenMostRecentProject() {
+        guard let modelContext = dataController.modelContext else { return }
+
+        if let storedId = wizardStateManager?.deepNavProjectId {
+            let storedDescriptor = FetchDescriptor<Project>(
+                predicate: #Predicate<Project> { $0.id == storedId }
+            )
+            if let existing = (try? modelContext.fetch(storedDescriptor))?.first {
+                appState.viewProjectDetails(existing)
+                return
+            }
+        }
+
+        let companyId = dataController.currentUser?.companyId ?? ""
+        let userId = dataController.currentUser?.id ?? ""
+        let isFieldRole = dataController.currentUser?.role == .crew || dataController.currentUser?.role == .operator
+
+        let descriptor: FetchDescriptor<Project>
+        if isFieldRole {
+            descriptor = FetchDescriptor<Project>(
+                predicate: #Predicate<Project> { project in
+                    project.companyId == companyId &&
+                    project.teamMemberIdsString.contains(userId)
+                },
+                sortBy: [SortDescriptor(\.startDate, order: .reverse)]
+            )
+        } else {
+            descriptor = FetchDescriptor<Project>(
+                predicate: #Predicate<Project> { project in
+                    project.companyId == companyId
+                },
+                sortBy: [SortDescriptor(\.startDate, order: .reverse)]
+            )
+        }
+
+        if let project = (try? modelContext.fetch(descriptor))?.first {
+            wizardStateManager?.deepNavProjectId = project.id
+            appState.viewProjectDetails(project)
+        }
+    }
 
     /// Evaluate wizard triggers based on current data state.
     /// Checks both sequenced wizards (project lifecycle) and data-condition wizards (task/payment review).

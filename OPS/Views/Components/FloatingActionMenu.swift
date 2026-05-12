@@ -138,6 +138,10 @@ struct FloatingActionMenu: View {
     let hasCatalogAccess: Bool
     var isScheduleTab: Bool = false
     var isCatalogTab: Bool = false
+    // When true (user is on the standalone LEADS tab), the MONEY group
+    // promotes "Add Lead" to position 0 regardless of the persisted Books
+    // segment selection. Falls back to segment-driven ordering otherwise.
+    var isLeadsTab: Bool = false
 
     private let dragRowHeight: CGFloat = 64
 

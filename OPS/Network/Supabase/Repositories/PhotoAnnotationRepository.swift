@@ -20,21 +20,22 @@ class PhotoAnnotationRepository {
 
     // MARK: - Fetch All (for InboundProcessor)
 
+    // Sync pulls go through the `get_photo_annotations_since` SECURITY DEFINER
+    // RPC so tombstones (deleted_at IS NOT NULL) flow through to local
+    // SwiftData. The table's SELECT policy filters them out per spec §13.1.
     func fetchAll(since: Date? = nil) async throws -> [PhotoAnnotationDTO] {
-        var query = client
-            .from("project_photo_annotations")
-            .select()
-            .eq("company_id", value: companyId)
-
-        if let since = since {
-            query = query.gte("updated_at", value: ISO8601DateFormatter().string(from: since))
-        }
-
-        let response: [PhotoAnnotationDTO] = try await query
-            .order("created_at", ascending: false)
+        let params = GetPhotoAnnotationsSinceParams(
+            p_since: since.map { ISO8601DateFormatter().string(from: $0) }
+        )
+        let response: [PhotoAnnotationDTO] = try await client
+            .rpc("get_photo_annotations_since", params: params)
             .execute()
             .value
         return response
+    }
+
+    private struct GetPhotoAnnotationsSinceParams: Encodable {
+        let p_since: String?
     }
 
     // MARK: - Fetch

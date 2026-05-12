@@ -139,4 +139,71 @@ final class PipelineViewModelInCourtTests: XCTestCase {
         vm.allOpportunities = [a, b]
         XCTAssertEqual(vm.inCourtOpportunityIds, Set(["a"]))
     }
+
+    // MARK: - Stat-card computeds
+
+    func test_staleLeadsTotalValue_sumsStaleEstimates() {
+        let vm = PipelineViewModel()
+        let tenDaysAgo = Calendar.current.date(byAdding: .day, value: -10, to: Date())!
+        let stale1 = makeOpp(stage: .quoting, stageEnteredAt: tenDaysAgo, estimatedValue: 5_000)
+        let stale2 = makeOpp(stage: .quoting, stageEnteredAt: tenDaysAgo, estimatedValue: 13_400)
+        let fresh = makeOpp(stage: .quoting, stageEnteredAt: Date(), estimatedValue: 1_000_000)
+        vm.allOpportunities = [stale1, stale2, fresh]
+        XCTAssertEqual(vm.staleLeadsTotalValue, 18_400, accuracy: 0.01)
+    }
+
+    func test_oldestStaleDescription_returnsOldestStaleSummary() {
+        let vm = PipelineViewModel()
+        let fiveDaysAgo = Calendar.current.date(byAdding: .day, value: -5, to: Date())!
+        let twelveDaysAgo = Calendar.current.date(byAdding: .day, value: -12, to: Date())!
+        let older = makeOpp(stage: .quoting, stageEnteredAt: twelveDaysAgo)
+        let newer = makeOpp(stage: .qualifying, stageEnteredAt: fiveDaysAgo)
+        vm.allOpportunities = [newer, older]
+        XCTAssertEqual(vm.oldestStaleDescription, "12D IN QUOTING")
+    }
+
+    func test_oldestStaleDescription_nilWhenNoStale() {
+        let vm = PipelineViewModel()
+        vm.allOpportunities = [makeOpp(stage: .quoting, stageEnteredAt: Date())]
+        XCTAssertNil(vm.oldestStaleDescription)
+    }
+
+    func test_closeRate_returnsNilWhenInsufficientData() {
+        let vm = PipelineViewModel()
+        let recently = Calendar.current.date(byAdding: .day, value: -10, to: Date())!
+        let won = makeOpp(stage: .won)
+        won.actualCloseDate = recently
+        let lost = makeOpp(stage: .lost)
+        lost.actualCloseDate = recently
+        let lost2 = makeOpp(stage: .lost)
+        lost2.actualCloseDate = recently
+        vm.allOpportunities = [won, lost, lost2]
+        XCTAssertNil(vm.closeRate(periodDays: 90))
+    }
+
+    func test_closeRate_computesAcrossPeriod() {
+        let vm = PipelineViewModel()
+        let recently = Calendar.current.date(byAdding: .day, value: -10, to: Date())!
+        var opps: [Opportunity] = []
+        for _ in 0..<3 {
+            let o = makeOpp(stage: .won); o.actualCloseDate = recently; opps.append(o)
+        }
+        for _ in 0..<5 {
+            let o = makeOpp(stage: .lost); o.actualCloseDate = recently; opps.append(o)
+        }
+        vm.allOpportunities = opps
+        XCTAssertEqual(vm.closeRate(periodDays: 90) ?? 0, 0.375, accuracy: 0.001)
+    }
+
+    func test_closeRate_excludesClosesOutsidePeriod() {
+        let vm = PipelineViewModel()
+        let oldClose = Calendar.current.date(byAdding: .day, value: -120, to: Date())!
+        let recentClose = Calendar.current.date(byAdding: .day, value: -10, to: Date())!
+        var opps: [Opportunity] = []
+        for _ in 0..<3 { let o = makeOpp(stage: .won); o.actualCloseDate = recentClose; opps.append(o) }
+        for _ in 0..<2 { let o = makeOpp(stage: .lost); o.actualCloseDate = recentClose; opps.append(o) }
+        for _ in 0..<5 { let o = makeOpp(stage: .won); o.actualCloseDate = oldClose; opps.append(o) }
+        vm.allOpportunities = opps
+        XCTAssertEqual(vm.closeRate(periodDays: 90) ?? 0, 0.6, accuracy: 0.001)
+    }
 }

@@ -158,6 +158,37 @@ class PipelineViewModel: ObservableObject {
         Set(inCourtOpportunities.map { $0.id })
     }
 
+    // MARK: - Stat-card computeds
+
+    var staleLeadsTotalValue: Double {
+        allOpportunities
+            .filter { !$0.stage.isTerminal && !$0.isDeleted && !$0.isArchived && $0.isStale }
+            .reduce(0) { $0 + ($1.estimatedValue ?? 0) }
+    }
+
+    /// Summary string for the STALE RISK card sub-line, or nil when no stale leads.
+    /// Format: `"12D IN QUOTING"` — oldest stale lead's days-in-stage and stage display name.
+    var oldestStaleDescription: String? {
+        let stale = allOpportunities
+            .filter { !$0.stage.isTerminal && !$0.isDeleted && !$0.isArchived && $0.isStale }
+        guard let oldest = stale.max(by: { $0.daysInStage < $1.daysInStage }) else { return nil }
+        return "\(oldest.daysInStage)D IN \(oldest.stage.displayName)"
+    }
+
+    /// Win rate over the given period. Returns nil if fewer than 5 closes in the window.
+    /// Period bounded by `actualCloseDate`. Closed = won OR lost.
+    func closeRate(periodDays: Int) -> Double? {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -periodDays, to: Date()) ?? Date.distantPast
+        let closed = allOpportunities.filter { opp in
+            guard !opp.isDeleted else { return false }
+            guard let closeDate = opp.actualCloseDate else { return false }
+            return closeDate >= cutoff && (opp.stage == .won || opp.stage == .lost)
+        }
+        guard closed.count >= 5 else { return nil }
+        let wonCount = closed.filter { $0.stage == .won }.count
+        return Double(wonCount) / Double(closed.count)
+    }
+
     // MARK: - Mutations
 
     func moveToStage(opportunityId: String, to stage: PipelineStage, userId: String?) async throws {

@@ -94,11 +94,14 @@ public struct DimensionBadgeOverlay: View {
 
 // MARK: - Convenience helper for the parent grid view
 
-public extension DimensionBadgeOverlay {
+extension DimensionBadgeOverlay {
     /// Returns the set of photo URLs that should display the badge, given a
     /// list of `PhotoAnnotation` SwiftData models. A photo is "dimensioned"
     /// if there exists an annotation for it with non-nil `dimensionsData`.
     /// Parent views compute this once and pass a containment check down.
+    ///
+    /// Internal because `PhotoAnnotation` is a SwiftData @Model with internal
+    /// access. The view itself stays public.
     static func dimensionedURLs(in annotations: [PhotoAnnotation]) -> Set<String> {
         var result = Set<String>()
         for a in annotations where a.dimensionsData != nil && a.deletedAt == nil {

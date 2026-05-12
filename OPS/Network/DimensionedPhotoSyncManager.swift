@@ -176,9 +176,9 @@ public struct LiveDimensionedAnnotationPersister: DimensionedAnnotationPersister
     ) async throws -> InsertedAnnotation {
         // Build the insert payload manually so the nested `dimensions` value is
         // emitted as JSONB (a Postgres object), not as base64-encoded Data. The
-        // `JSONValue` round-trip uses `DimensionsData.jsonEncoder` (snake_case)
+        // `DimensionsJSONValue` round-trip uses `DimensionsData.jsonEncoder` (snake_case)
         // so the persisted keys match the spec §4.1 schema verbatim.
-        let dimensionsJSON = try Self.encodeDimensionsAsJSONValue(dimensions)
+        let dimensionsJSON = try Self.encodeDimensionsAsDimensionsJSONValue(dimensions)
         let payload = AnnotationInsert(
             project_id: projectId,
             company_id: companyId,
@@ -208,7 +208,7 @@ public struct LiveDimensionedAnnotationPersister: DimensionedAnnotationPersister
         let annotation_url: String?
         let note: String
         let author_id: String
-        let dimensions: JSONValue
+        let dimensions: DimensionsJSONValue
     }
 
     private struct AnnotationInsertResponse: Decodable {
@@ -216,9 +216,9 @@ public struct LiveDimensionedAnnotationPersister: DimensionedAnnotationPersister
         let created_at: String
     }
 
-    static func encodeDimensionsAsJSONValue(_ dimensions: DimensionsData) throws -> JSONValue {
+    static func encodeDimensionsAsDimensionsJSONValue(_ dimensions: DimensionsData) throws -> DimensionsJSONValue {
         let data = try DimensionsData.jsonEncoder.encode(dimensions)
-        return try JSONDecoder().decode(JSONValue.self, from: data)
+        return try JSONDecoder().decode(DimensionsJSONValue.self, from: data)
     }
 }
 
@@ -228,13 +228,13 @@ public struct LiveDimensionedAnnotationPersister: DimensionedAnnotationPersister
 /// `DimensionsData` blob through the outer Postgrest Encodable container
 /// without losing the snake_case key encoding `DimensionsData.jsonEncoder`
 /// applied.
-public indirect enum JSONValue: Codable, Equatable {
+public indirect enum DimensionsJSONValue: Codable, Equatable {
     case null
     case bool(Bool)
     case number(Double)
     case string(String)
-    case array([JSONValue])
-    case object([String: JSONValue])
+    case array([DimensionsJSONValue])
+    case object([String: DimensionsJSONValue])
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
@@ -242,10 +242,10 @@ public indirect enum JSONValue: Codable, Equatable {
         if let b = try? c.decode(Bool.self) { self = .bool(b); return }
         if let n = try? c.decode(Double.self) { self = .number(n); return }
         if let s = try? c.decode(String.self) { self = .string(s); return }
-        if let a = try? c.decode([JSONValue].self) { self = .array(a); return }
-        if let o = try? c.decode([String: JSONValue].self) { self = .object(o); return }
+        if let a = try? c.decode([DimensionsJSONValue].self) { self = .array(a); return }
+        if let o = try? c.decode([String: DimensionsJSONValue].self) { self = .object(o); return }
         throw DecodingError.typeMismatch(
-            JSONValue.self,
+            DimensionsJSONValue.self,
             .init(codingPath: decoder.codingPath, debugDescription: "Unrecognised JSON value")
         )
     }
@@ -322,7 +322,10 @@ public final class DimensionedPhotoSyncManager {
     /// `modelContext.insert(_:)` and `modelContext.save()` after success — this
     /// keeps the manager free of SwiftData store coupling and lets the caller
     /// roll back if surrounding state changes need to abort.
-    public func sync(
+    ///
+    /// Internal because the return type `PhotoAnnotation` is a SwiftData @Model
+    /// class with internal access. Same-module callers use `.shared.sync(...)`.
+    func sync(
         captured: CapturedAssets,
         dimensions: DimensionsData,
         projectId: String,
@@ -653,7 +656,11 @@ private extension DimensionedSyncError {
     /// Stored via associated thread-local so the public error type stays a
     /// plain enum (Equatable, Codable-friendly).
     func attach(annotation: PhotoAnnotation) -> Self {
-        DimensionedPhotoSyncManager.lastQueuedAnnotation = annotation
+        // `lastQueuedAnnotation` is @MainActor isolated; hop onto MainActor
+        // since `attach(_:)` is called from nonisolated throw paths.
+        Task { @MainActor in
+            DimensionedPhotoSyncManager.lastQueuedAnnotation = annotation
+        }
         return self
     }
 }
@@ -663,6 +670,10 @@ extension DimensionedPhotoSyncManager {
     /// can pluck it after catching a `DimensionedSyncError.queuedForRetry`.
     /// Single slot — overwritten on each failure. Cleared by the caller after
     /// the local insert.
+    ///
+    /// Internal because `PhotoAnnotation` is a SwiftData @Model with internal
+    /// access. The `.shared` singleton API stays public; same-module callers
+    /// (view layer) read this slot to surface the queued stub.
     @MainActor
-    public static var lastQueuedAnnotation: PhotoAnnotation?
+    static var lastQueuedAnnotation: PhotoAnnotation?
 }

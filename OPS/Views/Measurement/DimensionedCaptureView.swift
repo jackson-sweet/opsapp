@@ -57,9 +57,9 @@ public struct DimensionedCaptureView: View {
     // the sync call; the parent owns dismissal + error UX so the action bar
     // can route the user back to the project on success and re-present the
     // capture view in calibration mode on a calibrate request.
-    public let onSavedSuccessfully: (PhotoAnnotation) -> Void
-    public let onError: (Error) -> Void
-    public let onRequestCalibrationMode: () -> Void
+    let onSavedSuccessfully: (PhotoAnnotation) -> Void
+    let onError: (Error) -> Void
+    let onRequestCalibrationMode: () -> Void
 
     @StateObject private var coordinatorBox = CoordinatorBox()
     @State private var availability: ARAvailability = .checking
@@ -73,7 +73,7 @@ public struct DimensionedCaptureView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(
+    init(
         coordinator: LiDARCaptureCoordinator? = nil,
         mode: CaptureMode = .normal,
         projectId: String = "",

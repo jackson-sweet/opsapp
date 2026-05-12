@@ -32,7 +32,7 @@ struct OPSApp: App {
     @StateObject private var permissionStore = PermissionStore.shared
 
     // Create the model container for SwiftData.
-    // Schema is driven by the current VersionedSchema (`OPSSchemaV3`) and the
+    // Schema is driven by the current VersionedSchema (`OPSSchemaV6`) and the
     // container runs `OPSMigrationPlan` on launch so stores written by earlier
     // builds (e.g. pre-`WizardState.id`) are migrated in place.
     //
@@ -41,7 +41,7 @@ struct OPSApp: App {
     // schema in the migration plan, so it refuses to open it. We delete the store
     // and start fresh — Supabase sync will re-hydrate all data on next launch.
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: OPSSchemaV3.self)
+        let schema = Schema(versionedSchema: OPSSchemaV6.self)
 
         let modelConfiguration = ModelConfiguration(
             schema: schema,

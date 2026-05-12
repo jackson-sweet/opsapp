@@ -33,18 +33,30 @@
 //  Calendar Mirror feature. Originally landed as V3 on the calendar-mirror
 //  branch; renumbered to V5 during the catalog-variant-model merge.
 //
+//  V5 → V6 stage: lightweight additive — PaymentMilestone (iOS parity for
+//  the existing server table) and RecurringExpense (new) for the Cashflow
+//  Forecast feature. Spec at docs/superpowers/specs/2026-05-11-cashflow-forecast-design.md.
+//
 
 import Foundation
 import SwiftData
 
 enum OPSMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [OPSSchemaV1.self, OPSSchemaV2.self, OPSSchemaV3.self, OPSSchemaV4.self, OPSSchemaV5.self]
+        [OPSSchemaV1.self, OPSSchemaV2.self, OPSSchemaV3.self, OPSSchemaV4.self, OPSSchemaV5.self, OPSSchemaV6.self]
     }
 
     static var stages: [MigrationStage] {
-        [migrateWizardStateIdV1toV2, migrateInventoryToCatalogV2toV3, migrateAddTaskRemindersV3toV4, addCalendarMirrorMapV4toV5]
+        [migrateWizardStateIdV1toV2, migrateInventoryToCatalogV2toV3, migrateAddTaskRemindersV3toV4, addCalendarMirrorMapV4toV5, addForecastModelsV5toV6]
     }
+
+    /// V5 → V6: purely additive — `PaymentMilestone` and `RecurringExpense` are
+    /// new models with no pre-existing rows to transform. SwiftData lightweight
+    /// migration handles the schema diff transparently.
+    static let addForecastModelsV5toV6 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV5.self,
+        toVersion: OPSSchemaV6.self
+    )
 
     /// V4 → V5: purely additive — `CalendarMirrorMap` is a brand-new model
     /// with no pre-existing rows to transform. SwiftData lightweight migration

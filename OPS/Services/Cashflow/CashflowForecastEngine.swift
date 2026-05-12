@@ -141,7 +141,91 @@ struct CashflowForecastEngine {
             }
         }
 
-        // Additional layers wired up in Tasks 10–12.
+        // Layer: contracted (payment milestones)
+        if inputs.layers.contains(.contracted) {
+            for ms in inputs.milestones where !ms.isPaid {
+                let baseDate = ms.expectedDate ?? ms.fallbackDate
+                guard let baseDate else { continue }
+                let projected = offsetByPaymentDays(baseDate, days: inputs.avgDaysToPayment, calendar: inputs.calendar)
+                if let w = weekIndex(for: projected, in: weekRanges) {
+                    weeklyInflows[w] += ms.amount
+                    weeklyContrib[w].append(.init(
+                        id: ms.id,
+                        layer: .contracted,
+                        label: ms.label,
+                        amount: ms.amount,
+                        sourceKind: .milestone,
+                        probabilityHint: nil
+                    ))
+                }
+            }
+
+            // Estimates without milestones — treat as one lump-sum inflow on project.endDate
+            // (or approvedAt + 30 days if no linked project), then offset by avgDaysToPayment.
+            for est in inputs.estimates where !est.hasMilestones {
+                let baseDate: Date? = est.projectEndDate
+                    ?? est.approvedAt.flatMap { inputs.calendar.date(byAdding: .day, value: 30, to: $0) }
+                guard let baseDate else { continue }
+                let projected = offsetByPaymentDays(baseDate, days: inputs.avgDaysToPayment, calendar: inputs.calendar)
+                if let w = weekIndex(for: projected, in: weekRanges) {
+                    weeklyInflows[w] += est.total
+                    weeklyContrib[w].append(.init(
+                        id: est.id,
+                        layer: .contracted,
+                        label: est.clientLabel,
+                        amount: est.total,
+                        sourceKind: .estimate,
+                        probabilityHint: nil
+                    ))
+                }
+            }
+        }
+
+        // Layer: pipeline (weighted opportunities)
+        if inputs.layers.contains(.pipeline) {
+            for opp in inputs.opportunities {
+                let weighted = opp.estimatedValue * Double(opp.winProbability) / 100.0
+                let projected = offsetByPaymentDays(opp.expectedCloseDate, days: inputs.avgDaysToPayment, calendar: inputs.calendar)
+                if let w = weekIndex(for: projected, in: weekRanges) {
+                    weeklyInflows[w] += weighted
+                    weeklyContrib[w].append(.init(
+                        id: opp.id,
+                        layer: .pipeline,
+                        label: opp.label,
+                        amount: weighted,
+                        sourceKind: .opportunity,
+                        probabilityHint: opp.winProbability
+                    ))
+                }
+            }
+        }
+
+        // Layer: recurring (outflows). Cadence-iterated across horizon.
+        if inputs.layers.contains(.recurring) {
+            let horizon = weekRanges.last?.end ?? inputs.today
+            for r in inputs.recurringExpenses {
+                let occurrences = CashflowCadence.occurrences(
+                    from: r.nextDueDate,
+                    until: horizon,
+                    cadence: r.cadence,
+                    endDate: r.endDate,
+                    calendar: inputs.calendar
+                )
+                for occ in occurrences {
+                    if let w = weekIndex(for: occ, in: weekRanges) {
+                        weeklyOutflows[w] += r.amount
+                        weeklyContrib[w].append(.init(
+                            id: r.id,
+                            layer: .recurring,
+                            label: r.label,
+                            amount: -r.amount,
+                            sourceKind: .recurring,
+                            probabilityHint: nil
+                        ))
+                    }
+                }
+            }
+        }
 
         return buildResult(
             inputs: inputs,

@@ -28,9 +28,38 @@ import ARKit
 
 public struct DimensionedCaptureView: View {
 
+    /// Distinguishes a fresh capture from a re-entry triggered by the
+    /// annotation view's calibrate flow (spec §5.2 — round-trip preserves
+    /// existing measurements; `.calibration` re-frames the reference object).
+    public enum CaptureMode: Equatable {
+        case normal
+        case calibration
+    }
+
     /// Optional injection point for previews and unit tests. Production
     /// callers omit this — the view builds a fresh coordinator on first appear.
     private let injectedCoordinator: LiDARCaptureCoordinator?
+
+    /// Capture mode — `.normal` for first-time capture, `.calibration` for a
+    /// round-trip from the annotation view to re-establish reference scale.
+    public let mode: CaptureMode
+
+    // Project context — flows in from `ProjectActionBar`/`MeasureActionButton`
+    // and is captured by the save closure when dispatching to Phase F's
+    // `DimensionedPhotoSyncManager`. Defaults preserve back-compat with the
+    // Phase D preview path that injects a coordinator only.
+    public let projectId: String
+    public let projectName: String
+    public let companyId: String
+    public let userId: String
+
+    // Parent-injected closures for post-save routing. The capture view owns
+    // the sync call; the parent owns dismissal + error UX so the action bar
+    // can route the user back to the project on success and re-present the
+    // capture view in calibration mode on a calibrate request.
+    public let onSavedSuccessfully: (PhotoAnnotation) -> Void
+    public let onError: (Error) -> Void
+    public let onRequestCalibrationMode: () -> Void
 
     @StateObject private var coordinatorBox = CoordinatorBox()
     @State private var availability: ARAvailability = .checking
@@ -40,11 +69,30 @@ public struct DimensionedCaptureView: View {
     @State private var errorToast: ErrorToast?
     @State private var levelIndicatorEnabled = true
     @State private var pendingAnnotation: CapturedAssets?
+    @State private var saveInFlight = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(coordinator: LiDARCaptureCoordinator? = nil) {
+    public init(
+        coordinator: LiDARCaptureCoordinator? = nil,
+        mode: CaptureMode = .normal,
+        projectId: String = "",
+        projectName: String = "",
+        companyId: String = "",
+        userId: String = "",
+        onSavedSuccessfully: @escaping (PhotoAnnotation) -> Void = { _ in },
+        onError: @escaping (Error) -> Void = { _ in },
+        onRequestCalibrationMode: @escaping () -> Void = {}
+    ) {
         self.injectedCoordinator = coordinator
+        self.mode = mode
+        self.projectId = projectId
+        self.projectName = projectName
+        self.companyId = companyId
+        self.userId = userId
+        self.onSavedSuccessfully = onSavedSuccessfully
+        self.onError = onError
+        self.onRequestCalibrationMode = onRequestCalibrationMode
     }
 
     public var body: some View {
@@ -82,11 +130,18 @@ public struct DimensionedCaptureView: View {
                 set: { presented in if !presented { pendingAnnotation = nil } }
             )
         ) {
-            // Phase E annotation view. Closure routing (onRequestCalibrate /
-            // onSaveToProject) is Phase G integration — see plan §G "wire MEASURE
-            // button into ProjectActionBar, add notification types, wire feature
-            // flag." The no-op closures here are PLACEHOLDERS and must be replaced
-            // before the feature flag flips ON.
+            // Phase E annotation view — Phase G wires the save + calibrate
+            // closures to real implementations.
+            //
+            // onSaveToProject  → DimensionedPhotoSyncManager.sync(...) (Phase F).
+            //                    Success → parent's onSavedSuccessfully + dismiss.
+            //                    Failure → parent's onError + leave annotation
+            //                    view open so the user can retry without losing
+            //                    measurements.
+            // onRequestCalibrate → dismiss annotation, call parent's
+            //                      onRequestCalibrationMode so the action bar
+            //                      can re-present the capture view in
+            //                      calibration mode.
             if let assets = pendingAnnotation {
                 let capability = coordinatorBox.coordinator?.capability ?? .noDepth
                 DimensionedAnnotationView(
@@ -105,12 +160,15 @@ public struct DimensionedCaptureView: View {
                     coplanarOnly: false,
                     existingDimensions: nil,
                     onRequestCalibrate: {
-                        // TODO(Phase G): re-enter capture view in calibration mode
-                        assertionFailure("Calibrate route not wired — Phase G integration pending")
+                        pendingAnnotation = nil
+                        onRequestCalibrationMode()
                     },
-                    onSaveToProject: { _ in
-                        // TODO(Phase G): persist DimensionsData via PhotoAnnotationRepository
-                        assertionFailure("Save route not wired — Phase G integration pending")
+                    onSaveToProject: { dimensions in
+                        guard !saveInFlight else { return }
+                        saveInFlight = true
+                        Task {
+                            await dispatchSave(assets: assets, dimensions: dimensions)
+                        }
                     },
                     onDismiss: {
                         pendingAnnotation = nil
@@ -463,6 +521,39 @@ public struct DimensionedCaptureView: View {
                     dismiss()
                 }
             }
+    }
+
+    // MARK: - Save dispatch (Phase G integration)
+
+    /// Delegates the 3-asset upload + PhotoAnnotation row creation to Phase F's
+    /// `DimensionedPhotoSyncManager`. The manager itself fires the three rail
+    /// notifications per spec §6 — this call site only routes the success or
+    /// error back to the parent so the action bar can dismiss / surface UX.
+    ///
+    /// Until Phase F (P3-1) lands, this call references a symbol that does not
+    /// exist on `main` — the PR description marks this as the merge dependency.
+    private func dispatchSave(assets: CapturedAssets, dimensions: DimensionsData) async {
+        defer { Task { @MainActor in saveInFlight = false } }
+        do {
+            let annotation = try await DimensionedPhotoSyncManager.shared.sync(
+                captured: assets,
+                dimensions: dimensions,
+                projectId: projectId,
+                projectName: projectName,
+                companyId: companyId,
+                userId: userId
+            )
+            await MainActor.run {
+                pendingAnnotation = nil
+                onSavedSuccessfully(annotation)
+                dismiss()
+            }
+        } catch {
+            await MainActor.run {
+                onError(error)
+                showError(toast: ErrorToast(copy: "// SAVE FAILED · RETRY"))
+            }
+        }
     }
 
     // MARK: - Bootstrapping

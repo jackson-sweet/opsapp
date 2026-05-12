@@ -707,6 +707,15 @@ struct NotificationListView: View {
                 return ("checkmark.seal", OPSStyle.Colors.successStatus)
             case "expense_rejected":
                 return ("xmark.seal", OPSStyle.Colors.errorStatus)
+            // LiDAR Dimensioned Photo Capture — spec §6 / Phase G.
+            // `ruler` matches the MEASURE entry on `ProjectActionBar` so the
+            // user can trace a rail card back to the originating capture flow.
+            case "measurement_captured":
+                return ("ruler", OPSStyle.Colors.successStatus)
+            case "measurement_pending_sync":
+                return ("ruler.fill", OPSStyle.Colors.warningStatus)
+            case "measurement_sync_failed":
+                return ("ruler", OPSStyle.Colors.errorStatus)
             case "update":
                 return (OPSStyle.Icons.sync, OPSStyle.Colors.secondaryText)
             default:

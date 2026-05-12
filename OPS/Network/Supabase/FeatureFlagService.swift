@@ -33,6 +33,11 @@ enum FeatureFlagService {
 
     /// Hardcoded flag → permission mappings used when the fetch fails.
     /// Must be kept in sync with the feature_flags table.
+    ///
+    /// Flags with no associated permissions (empty array) still participate in
+    /// the disabled-slug set via `failClosedResult()`, so feature gates that
+    /// rely on `PermissionStore.isFeatureEnabled(...)` fail-close correctly when
+    /// the live fetch is unavailable.
     static let staticFlagDefinitions: [String: [String]] = [
         "pipeline": [
             "pipeline.view",
@@ -56,7 +61,13 @@ enum FeatureFlagService {
             "deck_builder.view",
             "deck_builder.create",
             "deck_builder.edit"
-        ]
+        ],
+        // LiDAR dimensioned photo capture rollout flag.
+        // Default OFF in v1.x.0; flips ON in v1.x.1 after 48 hrs crash-free.
+        // Spec: ops-software-bible/specs/2026-05-10-lidar-dimensioned-photo-capture-design.md §10.3
+        // Slug name matches spec verbatim — read on iOS via
+        // `PermissionStore.shared.isFeatureEnabled(MeasurementFlag.dimensionedCapture)`.
+        "feature.measurement.dimensioned_capture": []
     ]
 
     // MARK: - Fetch

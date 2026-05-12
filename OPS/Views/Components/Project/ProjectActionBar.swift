@@ -16,6 +16,7 @@ struct ProjectActionBar: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var locationManager: LocationManager
     @ObservedObject private var inProgressManager = InProgressManager.shared
+    @ObservedObject private var permissionStore = PermissionStore.shared
 
     // Tutorial environment
     @Environment(\.tutorialMode) private var tutorialMode
@@ -45,6 +46,17 @@ struct ProjectActionBar: View {
     private var activeTask: ProjectTask? {
         guard let activeTaskID = appState.activeTaskID else { return nil }
         return project.tasks.first(where: { $0.id == activeTaskID })
+    }
+
+    /// Whether the MEASURE entry should render in the bar. Pure function of
+    /// (feature flag, device capability) — same gate exercised by
+    /// `MeasureActionButton.shouldRender(...)`, evaluated here so the divider
+    /// layout has access to the same answer.
+    private var showMeasureEntry: Bool {
+        MeasureActionButton.shouldRender(
+            flagEnabled: permissionStore.isFeatureEnabled(MeasurementFlag.dimensionedCapture),
+            capability: CaptureCapability.detect().capability
+        )
     }
 
     private var orderedActions: [ProjectAction] {
@@ -110,12 +122,26 @@ struct ProjectActionBar: View {
                     .frame(maxWidth: .infinity)
                     .modifier(ActionButtonHighlightModifier(action: action))
 
-                    // Vertical divider between buttons (not after last one)
-                    if index < orderedActions.count - 1 {
+                    // Vertical divider between buttons (not after last one).
+                    // When the MEASURE entry is visible, this divider always
+                    // renders after the last `ProjectAction` and a second one
+                    // appears between MEASURE and the trailing edge — see the
+                    // measure block below.
+                    if index < orderedActions.count - 1 || showMeasureEntry {
                         Rectangle()
                             .fill(OPSStyle.Colors.cardBorderSubtle)
                             .frame(width: 1, height: 32)
                     }
+                }
+
+                // Phase G — MEASURE entry. Renders only when the LiDAR feature
+                // flag is enabled AND the device supports depth-aware capture
+                // (LiDAR or visual SLAM). Hidden by default; flips visible
+                // once `feature.measurement.dimensioned_capture` is flipped ON
+                // remotely. Spec §3.1 + §10.3.
+                if showMeasureEntry {
+                    MeasureActionButton(project: project)
+                        .frame(maxWidth: .infinity)
                 }
             }
         }

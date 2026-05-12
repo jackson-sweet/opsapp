@@ -64,7 +64,12 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
 
     // MARK: - AR + AVCapture infrastructure
 
-    private let arSession = ARSession()
+    /// Live ARKit session. Exposed read-only so the view layer can bind a
+    /// `UIViewRepresentable` AR preview to it (the README documents the view
+    /// "binds the SwiftUI preview to its AR session" — this property is that
+    /// hook). All mutation goes through `startLiveAim()` / `capture()` /
+    /// `reset()`; the view must not call `arSession.run/pause` directly.
+    public let arSession = ARSession()
     private let avSession = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
     private let depthOutput = AVCaptureDepthDataOutput()

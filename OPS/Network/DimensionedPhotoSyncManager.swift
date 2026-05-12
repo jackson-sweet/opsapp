@@ -306,13 +306,20 @@ public final class DimensionedPhotoSyncManager {
 
     private let uploader: DimensionedAssetUploader
     private let persister: DimensionedAnnotationPersister
+    private let notifier: DimensionedNotificationDispatcher
 
-    public init(
+    /// Internal because the new `notifier` parameter type
+    /// `DimensionedNotificationDispatcher` references
+    /// `MeasurementNotificationCopy.CapturedBodySummary` which is internal
+    /// to the module. Same-module callers use `.shared` (still public).
+    init(
         uploader: DimensionedAssetUploader = LivePresignedAssetUploader(),
-        persister: DimensionedAnnotationPersister = LiveDimensionedAnnotationPersister()
+        persister: DimensionedAnnotationPersister = LiveDimensionedAnnotationPersister(),
+        notifier: DimensionedNotificationDispatcher = LiveDimensionedNotificationDispatcher()
     ) {
         self.uploader = uploader
         self.persister = persister
+        self.notifier = notifier
     }
 
     // MARK: - Public API (per brief)
@@ -333,14 +340,6 @@ public final class DimensionedPhotoSyncManager {
         companyId: String,
         userId: String
     ) async throws -> PhotoAnnotation {
-
-        // `projectName` is accepted for API parity with Phase G's `dispatchSave`
-        // call site (DimensionedCaptureView). Notification firing per spec §6
-        // (which needs the human-readable project name for the body string)
-        // lands as a follow-up commit on main once both Phase F and Phase G
-        // have merged — Phase G's `MeasurementNotificationCopy` helpers are on
-        // a different branch and cherry-picking would create a merge conflict.
-        _ = projectName  // silence unused warning until follow-up wires it in
 
         // 1. Read all three assets off disk up front. If any file is missing
         // we fail fast — this is a capture-pipeline bug, not a sync condition.
@@ -397,6 +396,12 @@ public final class DimensionedPhotoSyncManager {
                 companyId: companyId,
                 authorId: userId
             )
+            await notifier.dispatchPendingSync(
+                userId: userId,
+                companyId: companyId,
+                projectId: projectId,
+                queueDepth: 1
+            )
             throw DimensionedSyncError.queuedForRetry(
                 reason: failureReason ?? "unknown upload failure"
             ).attach(annotation: stub)
@@ -445,6 +450,12 @@ public final class DimensionedPhotoSyncManager {
             // Override the photoURL since the upload DID succeed — re-sync only
             // needs to retry the annotation row, not the asset uploads.
             stub.photoURL = heicURLString
+            await notifier.dispatchPendingSync(
+                userId: userId,
+                companyId: companyId,
+                projectId: projectId,
+                queueDepth: 1
+            )
             throw DimensionedSyncError.annotationInsertFailed(
                 reason: "\(error)"
             ).attach(annotation: stub)
@@ -466,7 +477,100 @@ public final class DimensionedPhotoSyncManager {
         model.localCaptureFinishedAt = captured.captureFinishedAt
         model.lastSyncedAt = Date()
         model.needsSync = false
+
+        // 7. Spec §6: fire `measurement_captured` when a body summary can be
+        // derived from the dimensions. Manual-only captures with no opening +
+        // fewer than two linear measurements skip the notification silently —
+        // the UI dismissal back to the project view is sufficient feedback.
+        if let summary = Self.capturedBodySummary(from: enriched) {
+            await notifier.dispatchCaptured(
+                userId: userId,
+                companyId: companyId,
+                projectId: projectId,
+                projectName: projectName,
+                summary: summary,
+                photoAnnotationId: inserted.id
+            )
+        }
         return model
+    }
+
+    // MARK: - Internal — captured-body summary derivation (spec §6)
+
+    /// Derive a `CapturedBodySummary` from a `DimensionsData` blob for the
+    /// `measurement_captured` notification body. Returns `nil` when the capture
+    /// is too sparse to produce a meaningful summary (no openings + < 2 linear
+    /// measurements) — the caller skips firing in that case.
+    static func capturedBodySummary(
+        from dimensions: DimensionsData
+    ) -> MeasurementNotificationCopy.CapturedBodySummary? {
+        if let opening = dimensions.openings.first {
+            switch opening.type {
+            case .window, .door:
+                return openingSummary(for: opening, in: dimensions)
+            case .wallSection:
+                return wallSectionSummary(for: opening, in: dimensions)
+            }
+        }
+        // No opening detected — fall back to wall-section heuristic when we
+        // have at least two linear measurements to interpret as width × height.
+        if dimensions.measurements.filter({ $0.type == .linear }).count >= 2 {
+            return wallSectionSummary(for: nil, in: dimensions)
+        }
+        return nil
+    }
+
+    private static func openingSummary(
+        for opening: DimensionsData.Opening,
+        in dimensions: DimensionsData
+    ) -> MeasurementNotificationCopy.CapturedBodySummary? {
+        let related = dimensions.measurements.filter { opening.measurementIds.contains($0.id) }
+        guard !related.isEmpty else { return nil }
+
+        let width = related.first { $0.label.range(of: "width", options: .caseInsensitive) != nil }
+        let height = related.first { $0.label.range(of: "height", options: .caseInsensitive) != nil }
+        let sill = related.first { $0.label.range(of: "sill", options: .caseInsensitive) != nil }
+
+        guard let width, let height else { return nil }
+
+        let widthInches = inchesRounded(metres: width.valueMeters)
+        let heightInches = inchesRounded(metres: height.valueMeters)
+        let sillInches = sill.map { inchesRounded(metres: $0.valueMeters) } ?? 0
+        let type: MeasurementNotificationCopy.CapturedBodySummary.OpeningType =
+            opening.type == .door ? .door : .window
+
+        return .opening(
+            widthInches: widthInches,
+            heightInches: heightInches,
+            type: type,
+            sillInches: sillInches
+        )
+    }
+
+    private static func wallSectionSummary(
+        for opening: DimensionsData.Opening?,
+        in dimensions: DimensionsData
+    ) -> MeasurementNotificationCopy.CapturedBodySummary? {
+        let pool: [DimensionsData.Measurement] = {
+            if let opening {
+                return dimensions.measurements.filter { opening.measurementIds.contains($0.id) }
+            }
+            return dimensions.measurements.filter { $0.type == .linear }
+        }()
+        guard pool.count >= 2 else { return nil }
+        let sorted = pool.sorted { $0.valueMeters > $1.valueMeters }
+        let widthInches = inchesRounded(metres: sorted[0].valueMeters)
+        let heightInches = inchesRounded(metres: sorted[1].valueMeters)
+        return .wallSection(
+            widthFeet: widthInches / 12,
+            widthInches: widthInches % 12,
+            heightFeet: heightInches / 12
+        )
+    }
+
+    /// Meters → integer inches, rounded to the nearest inch.
+    private static func inchesRounded(metres: Double) -> Int {
+        Int((metres / 0.0254).rounded())
     }
 
     // MARK: - Retry pass for queued captures
@@ -676,4 +780,135 @@ extension DimensionedPhotoSyncManager {
     /// (view layer) read this slot to surface the queued stub.
     @MainActor
     static var lastQueuedAnnotation: PhotoAnnotation?
+}
+
+// MARK: - Notification dispatch (spec §6)
+
+/// Side-channel for the three measurement notifications. Behind a protocol so
+/// tests can verify the DTO contracts without coupling to a live Supabase
+/// client. The live implementation calls `NotificationRepository.shared` and
+/// swallows-and-logs any error — a missing notification is never worth failing
+/// a successful capture over.
+protocol DimensionedNotificationDispatcher: Sendable {
+    func dispatchCaptured(
+        userId: String,
+        companyId: String,
+        projectId: String,
+        projectName: String,
+        summary: MeasurementNotificationCopy.CapturedBodySummary,
+        photoAnnotationId: String
+    ) async
+
+    func dispatchPendingSync(
+        userId: String,
+        companyId: String,
+        projectId: String?,
+        queueDepth: Int
+    ) async
+
+    func dispatchSyncFailed(
+        userId: String,
+        companyId: String,
+        projectId: String,
+        projectName: String,
+        photoAnnotationId: String
+    ) async
+}
+
+/// No-op dispatcher for unit tests that don't care about notification firing.
+/// `RecordingNotifier` in the test target handles the observed-call cases.
+struct NoopDimensionedNotificationDispatcher: DimensionedNotificationDispatcher {
+    init() {}
+
+    func dispatchCaptured(
+        userId: String,
+        companyId: String,
+        projectId: String,
+        projectName: String,
+        summary: MeasurementNotificationCopy.CapturedBodySummary,
+        photoAnnotationId: String
+    ) async {}
+
+    func dispatchPendingSync(
+        userId: String,
+        companyId: String,
+        projectId: String?,
+        queueDepth: Int
+    ) async {}
+
+    func dispatchSyncFailed(
+        userId: String,
+        companyId: String,
+        projectId: String,
+        projectName: String,
+        photoAnnotationId: String
+    ) async {}
+}
+
+/// Production dispatcher — talks to Supabase via `NotificationRepository`.
+struct LiveDimensionedNotificationDispatcher: DimensionedNotificationDispatcher {
+    init() {}
+
+    func dispatchCaptured(
+        userId: String,
+        companyId: String,
+        projectId: String,
+        projectName: String,
+        summary: MeasurementNotificationCopy.CapturedBodySummary,
+        photoAnnotationId: String
+    ) async {
+        let dto = NotificationRepository.CreateNotificationDTO.measurementCaptured(
+            userId: userId,
+            companyId: companyId,
+            projectId: projectId,
+            projectName: projectName,
+            summary: summary,
+            photoAnnotationId: photoAnnotationId
+        )
+        do {
+            try await NotificationRepository.shared.createNotification(dto)
+        } catch {
+            print("[DIMENSIONED_SYNC] measurement_captured notification failed (continuing): \(error)")
+        }
+    }
+
+    func dispatchPendingSync(
+        userId: String,
+        companyId: String,
+        projectId: String?,
+        queueDepth: Int
+    ) async {
+        let dto = NotificationRepository.CreateNotificationDTO.measurementPendingSync(
+            userId: userId,
+            companyId: companyId,
+            projectId: projectId,
+            queueDepth: queueDepth
+        )
+        do {
+            try await NotificationRepository.shared.createNotification(dto)
+        } catch {
+            print("[DIMENSIONED_SYNC] measurement_pending_sync notification failed (continuing): \(error)")
+        }
+    }
+
+    func dispatchSyncFailed(
+        userId: String,
+        companyId: String,
+        projectId: String,
+        projectName: String,
+        photoAnnotationId: String
+    ) async {
+        let dto = NotificationRepository.CreateNotificationDTO.measurementSyncFailed(
+            userId: userId,
+            companyId: companyId,
+            projectId: projectId,
+            projectName: projectName,
+            photoAnnotationId: photoAnnotationId
+        )
+        do {
+            try await NotificationRepository.shared.createNotification(dto)
+        } catch {
+            print("[DIMENSIONED_SYNC] measurement_sync_failed notification failed (continuing): \(error)")
+        }
+    }
 }

@@ -88,7 +88,7 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
         let captured = try fixtureCaptured(captureID: captureID)
         let uploader = RecordingUploader(plan: .alwaysSucceed)
         let persister = RecordingPersister()
-        let manager = DimensionedPhotoSyncManager(uploader: uploader, persister: persister)
+        let manager = DimensionedPhotoSyncManager(uploader: uploader, persister: persister, notifier: NoopDimensionedNotificationDispatcher())
 
         let annotation = try await manager.sync(
             captured: captured,
@@ -137,7 +137,7 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
         let captured = try fixtureCaptured()
         let uploader = RecordingUploader(plan: .failThenSucceed(failCount: 1))
         let persister = RecordingPersister()
-        let manager = DimensionedPhotoSyncManager(uploader: uploader, persister: persister)
+        let manager = DimensionedPhotoSyncManager(uploader: uploader, persister: persister, notifier: NoopDimensionedNotificationDispatcher())
 
         let annotation = try await manager.sync(
             captured: captured,
@@ -161,13 +161,14 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
         let captured = try fixtureCaptured()
         let uploader = RecordingUploader(plan: .alwaysFail)
         let persister = RecordingPersister()
-        let manager = DimensionedPhotoSyncManager(uploader: uploader, persister: persister)
+        let manager = DimensionedPhotoSyncManager(uploader: uploader, persister: persister, notifier: NoopDimensionedNotificationDispatcher())
 
         do {
             _ = try await manager.sync(
                 captured: captured,
                 dimensions: fixtureDimensions(),
                 projectId: "p",
+                projectName: "n",
                 companyId: "c",
                 userId: "u"
             )
@@ -199,13 +200,14 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
         let captured = try fixtureCaptured()
         let uploader = RecordingUploader(plan: .alwaysSucceed)
         let persister = RecordingPersister(failAnnotationInsert: true)
-        let manager = DimensionedPhotoSyncManager(uploader: uploader, persister: persister)
+        let manager = DimensionedPhotoSyncManager(uploader: uploader, persister: persister, notifier: NoopDimensionedNotificationDispatcher())
 
         do {
             _ = try await manager.sync(
                 captured: captured,
                 dimensions: fixtureDimensions(),
                 projectId: "p",
+                projectName: "n",
                 companyId: "c",
                 userId: "u"
             )
@@ -222,6 +224,137 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
         XCTAssertEqual(queued.photoURL, uploader.calls[0].returnedURL,
                        "Once the HEIC has uploaded, the queued stub should reference the remote URL so retry only re-inserts the annotation row")
         DimensionedPhotoSyncManager.lastQueuedAnnotation = nil
+    }
+
+    // MARK: - 4. Notification firing (spec §6)
+
+    @MainActor
+    func test_sync_firesCapturedNotification_onSuccessWithDetectedOpening() async throws {
+        let captureID = UUID()
+        let captured = try fixtureCaptured(captureID: captureID)
+        let uploader = RecordingUploader(plan: .alwaysSucceed)
+        let persister = RecordingPersister()
+        let notifier = RecordingNotifier()
+        let manager = DimensionedPhotoSyncManager(
+            uploader: uploader,
+            persister: persister,
+            notifier: notifier
+        )
+
+        let dims = fixtureDimensionsWithOpening()
+
+        _ = try await manager.sync(
+            captured: captured,
+            dimensions: dims,
+            projectId: "project-123",
+            projectName: "Smith Residence",
+            companyId: "company-abc",
+            userId: "user-xyz"
+        )
+
+        let capturedCalls = await notifier.capturedCalls()
+        XCTAssertEqual(capturedCalls.count, 1)
+        let call = try XCTUnwrap(capturedCalls.first)
+        XCTAssertEqual(call.projectName, "Smith Residence")
+        XCTAssertEqual(call.projectId, "project-123")
+        XCTAssertEqual(call.userId, "user-xyz")
+        XCTAssertEqual(call.companyId, "company-abc")
+        if case let .opening(w, h, type, sill) = call.summary {
+            XCTAssertEqual(w, 36)
+            XCTAssertEqual(h, 60)
+            XCTAssertEqual(type, .window)
+            XCTAssertEqual(sill, 28)
+        } else {
+            XCTFail("Expected opening summary, got \(call.summary)")
+        }
+        let pendingSyncCalls = await notifier.pendingSyncCalls()
+        XCTAssertEqual(pendingSyncCalls.count, 0)
+    }
+
+    @MainActor
+    func test_sync_firesPendingSync_whenUploadFailsCompletely() async throws {
+        let captured = try fixtureCaptured()
+        let uploader = RecordingUploader(plan: .alwaysFail)
+        let persister = RecordingPersister()
+        let notifier = RecordingNotifier()
+        let manager = DimensionedPhotoSyncManager(
+            uploader: uploader,
+            persister: persister,
+            notifier: notifier
+        )
+
+        do {
+            _ = try await manager.sync(
+                captured: captured,
+                dimensions: fixtureDimensions(),
+                projectId: "p",
+                projectName: "n",
+                companyId: "c",
+                userId: "u"
+            )
+            XCTFail("Expected queuedForRetry")
+        } catch is DimensionedSyncError {
+            let pendingSyncCalls = await notifier.pendingSyncCalls()
+            XCTAssertEqual(pendingSyncCalls.count, 1)
+            XCTAssertEqual(pendingSyncCalls.first?.queueDepth, 1)
+            XCTAssertEqual(pendingSyncCalls.first?.projectId, "p")
+            let capturedCalls = await notifier.capturedCalls()
+            XCTAssertEqual(capturedCalls.count, 0)
+        }
+        DimensionedPhotoSyncManager.lastQueuedAnnotation = nil
+    }
+
+    // MARK: - Fixture: dimensions with one detected opening
+    //
+    // A 36"×60" window with a 28" sill, rounded to whole inches at the metre
+    // boundary. Matches the spec §6 example body
+    // `[PROJECT] · 36″×60″ WINDOW · SILL 28″` so the captured-fires test
+    // exercises the same path live code uses.
+
+    private func fixtureDimensionsWithOpening() -> DimensionsData {
+        let widthMeters = 36.0 * 0.0254
+        let heightMeters = 60.0 * 0.0254
+        let sillMeters = 28.0 * 0.0254
+
+        let widthMeasurement = DimensionsData.Measurement(
+            type: .linear, label: "Width",
+            worldPoints: [.init(x: 0, y: 0, z: 0), .init(x: widthMeters, y: 0, z: 0)],
+            imagePoints: [.init(x: 100, y: 500), .init(x: 800, y: 500)],
+            valueMeters: widthMeters,
+            labelPlacement: .init(side: .north, leaderLengthPx: 60),
+            source: .auto
+        )
+        let heightMeasurement = DimensionsData.Measurement(
+            type: .linear, label: "Height",
+            worldPoints: [.init(x: 0, y: 0, z: 0), .init(x: 0, y: heightMeters, z: 0)],
+            imagePoints: [.init(x: 100, y: 500), .init(x: 100, y: 200)],
+            valueMeters: heightMeters,
+            labelPlacement: .init(side: .east, leaderLengthPx: 60),
+            source: .auto
+        )
+        let sillMeasurement = DimensionsData.Measurement(
+            type: .linear, label: "Sill height",
+            worldPoints: [.init(x: 0, y: 0, z: 0), .init(x: 0, y: sillMeters, z: 0)],
+            imagePoints: [.init(x: 100, y: 600), .init(x: 100, y: 500)],
+            valueMeters: sillMeters,
+            labelPlacement: .init(side: .south, leaderLengthPx: 60),
+            source: .auto
+        )
+        let opening = DimensionsData.Opening(
+            type: .window,
+            boundingPolygon: [.init(x: 0, y: 0), .init(x: 1, y: 0), .init(x: 1, y: 1), .init(x: 0, y: 1)],
+            classificationConfidence: 0.95,
+            measurementIds: [widthMeasurement.id, heightMeasurement.id, sillMeasurement.id]
+        )
+        return DimensionsData(
+            captureMode: .lidar,
+            calibration: .init(method: .lidar, estimatedAccuracyMeters: 0.025),
+            intrinsics: .init(fx: 1593.4, fy: 1593.4,
+                              cx: 1015.5, cy: 762.0,
+                              imageWidth: 4032, imageHeight: 3024),
+            measurements: [widthMeasurement, heightMeasurement, sillMeasurement],
+            openings: [opening]
+        )
     }
 
     @MainActor
@@ -241,13 +374,14 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
         )
         let uploader = RecordingUploader(plan: .alwaysSucceed)
         let persister = RecordingPersister()
-        let manager = DimensionedPhotoSyncManager(uploader: uploader, persister: persister)
+        let manager = DimensionedPhotoSyncManager(uploader: uploader, persister: persister, notifier: NoopDimensionedNotificationDispatcher())
 
         do {
             _ = try await manager.sync(
                 captured: captured,
                 dimensions: fixtureDimensions(),
                 projectId: "p",
+                projectName: "n",
                 companyId: "c",
                 userId: "u"
             )
@@ -380,5 +514,85 @@ private final class RecordingPersister: DimensionedAnnotationPersister, @uncheck
             id: "server-id-\(annotationInserts.count)",
             createdAt: Date(timeIntervalSince1970: 1_747_166_400)
         )
+    }
+}
+
+// MARK: - RecordingNotifier (spec §6 verification)
+
+/// Records each dispatcher call into typed arrays for assertion. Implemented as
+/// an `actor` so the Sendable protocol can be satisfied without unchecked
+/// concurrency annotations — matches the lightweight test-double style used
+/// elsewhere in this file.
+private actor RecordingNotifier: DimensionedNotificationDispatcher {
+
+    struct CapturedCall: Equatable {
+        let userId: String
+        let companyId: String
+        let projectId: String
+        let projectName: String
+        let summary: MeasurementNotificationCopy.CapturedBodySummary
+        let photoAnnotationId: String
+    }
+    struct PendingSyncCall: Equatable {
+        let userId: String
+        let companyId: String
+        let projectId: String?
+        let queueDepth: Int
+    }
+    struct SyncFailedCall: Equatable {
+        let userId: String
+        let companyId: String
+        let projectId: String
+        let projectName: String
+        let photoAnnotationId: String
+    }
+
+    private var _capturedCalls: [CapturedCall] = []
+    private var _pendingSyncCalls: [PendingSyncCall] = []
+    private var _syncFailedCalls: [SyncFailedCall] = []
+
+    func capturedCalls() -> [CapturedCall] { _capturedCalls }
+    func pendingSyncCalls() -> [PendingSyncCall] { _pendingSyncCalls }
+    func syncFailedCalls() -> [SyncFailedCall] { _syncFailedCalls }
+
+    func dispatchCaptured(
+        userId: String,
+        companyId: String,
+        projectId: String,
+        projectName: String,
+        summary: MeasurementNotificationCopy.CapturedBodySummary,
+        photoAnnotationId: String
+    ) async {
+        _capturedCalls.append(.init(
+            userId: userId, companyId: companyId,
+            projectId: projectId, projectName: projectName,
+            summary: summary, photoAnnotationId: photoAnnotationId
+        ))
+    }
+
+    func dispatchPendingSync(
+        userId: String,
+        companyId: String,
+        projectId: String?,
+        queueDepth: Int
+    ) async {
+        _pendingSyncCalls.append(.init(
+            userId: userId, companyId: companyId,
+            projectId: projectId, queueDepth: queueDepth
+        ))
+    }
+
+    func dispatchSyncFailed(
+        userId: String,
+        companyId: String,
+        projectId: String,
+        projectName: String,
+        photoAnnotationId: String
+    ) async {
+        _syncFailedCalls.append(.init(
+            userId: userId, companyId: companyId,
+            projectId: projectId, projectName: projectName,
+            photoAnnotationId: photoAnnotationId
+        ))
     }
 }

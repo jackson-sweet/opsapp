@@ -649,6 +649,7 @@ enum ScreenName: String {
 enum TabName: String {
     case home = "home"
     case pipeline = "pipeline"
+    case books = "books"
     case jobBoard = "job_board"
     case inventory = "inventory"
     case schedule = "schedule"
@@ -660,10 +661,11 @@ enum TabName: String {
         switch self {
         case .home: return 0
         case .pipeline: return 1
-        case .jobBoard: return 2
-        case .inventory: return 3
-        case .schedule: return 4
-        case .settings: return 5
+        case .books: return 2
+        case .jobBoard: return 3
+        case .inventory: return 4
+        case .schedule: return 5
+        case .settings: return 6
         }
     }
 }

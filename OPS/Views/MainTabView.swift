@@ -135,12 +135,14 @@ struct MainTabView: View {
     private let keyboardWillHide = NotificationCenter.default
         .publisher(for: UIResponder.keyboardWillHideNotification)
     
-    // BOOKS tab is visible to anyone with at least one of the four financial-area
+    // BOOKS tab is visible to anyone with at least one of the three financial-area
     // permissions. The hub itself filters segments per-permission; users with a
     // single visible segment auto-skip the hub via `booksAutoSkipDestination`.
+    //
+    // Books Phase 2 (2026-05-11): `pipeline.view` no longer gates BOOKS — Pipeline
+    // is its own top-level tab (see `PIPELINE TAB - P1-1`).
     private var hasBooksAccess: Bool {
-        permissionStore.can("pipeline.view")
-            || permissionStore.can("finances.view")
+        permissionStore.can("finances.view")
             || permissionStore.can("estimates.view")
             || permissionStore.can("expenses.view")
     }
@@ -149,20 +151,18 @@ struct MainTabView: View {
         BooksSection.allCases.filter { permissionStore.can($0.requiredPermission) }
     }
 
-    /// When the user has exactly one visible BOOKS segment (and it's not pipeline),
-    /// route them straight to that segment's list view instead of the hub.
-    /// Pipeline-only users still see the hub because the pipeline section needs
-    /// the segmented chrome around it.
+    /// When the user has exactly one visible BOOKS segment, route them straight
+    /// to that segment's list view instead of the hub. This matters most for
+    /// Crew, who only have `expenses.view` (own scope) and never need to see
+    /// the carousel or the segmented chrome.
     private var booksAutoSkipDestination: AnyView? {
         let segs = visibleBooksSegments
         guard segs.count == 1, let only = segs.first else { return nil }
         switch only {
-        case .pipeline:
-            return nil
-        case .estimates:
-            return AnyView(NavigationStack { EstimatesListView() })
         case .invoices:
             return AnyView(NavigationStack { InvoicesListView() })
+        case .estimates:
+            return AnyView(NavigationStack { EstimatesListView() })
         case .expenses:
             let scopeIsOwn = !permissionStore.hasFullAccess("expenses.view")
             if scopeIsOwn {

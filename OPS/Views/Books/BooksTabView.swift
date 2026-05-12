@@ -2,10 +2,10 @@
 //  BooksTabView.swift
 //  OPS
 //
-//  Hub container for BOOKS tab. Replaces MoneyTabView.
-//  Top: AppHeader + MoneyDashboardHeader (collapsible).
-//  Below: 4-segment underline control (Pipeline · Estimates · Invoices · Expenses).
-//  Routes to existing list views for the latter three; new PipelineSectionView for the first.
+//  Books Phase 2 (2026-05-11) — money command center.
+//  Top: AppHeader + PeriodPill + swipeable 5-card HeroCarousel.
+//  Below: 3-segment underline control (Invoices · Estimates · Expenses).
+//  Pipeline has moved to its own top-level tab (see `PIPELINE TAB - P1-1`).
 //
 
 import SwiftUI
@@ -29,23 +29,34 @@ struct BooksTabView: View {
     @Environment(\.modelContext) private var modelContext
 
     // Active segment persisted across sessions and visible to FloatingActionMenu.
-    @AppStorage("books.selectedSegment") private var selectedSegmentRaw: String = BooksSection.pipeline.rawValue
+    @AppStorage("books.selectedSegment") private var selectedSegmentRaw: String = BooksSection.invoices.rawValue
+    @AppStorage("books.lastViewedCard") private var lastViewedCardRaw: String = HeroCarousel.CardID.pl.rawValue
 
     @State private var headerCollapsed = false
     @State private var showARDetail = false
 
     private var selectedSegment: BooksSection {
-        BooksSection(rawValue: selectedSegmentRaw) ?? .pipeline
+        BooksSection(rawValue: selectedSegmentRaw) ?? .invoices
     }
 
     private var visibleSegments: [BooksSection] {
         BooksSection.allCases.filter { permissionStore.can($0.requiredPermission) }
     }
 
-    private var hasFinances: Bool { permissionStore.can("finances.view") }
-    private var hasPipelineView: Bool { permissionStore.can("pipeline.view") }
+    private var carouselVisible: Bool {
+        permissionStore.can("finances.view") || permissionStore.can("pipeline.view")
+    }
+
+    private var visibleCarouselCards: [HeroCarousel.CardID] {
+        HeroCarousel.CardID.allCases.filter { permissionStore.can($0.permission) }
+    }
+
+    private var activeCarouselCard: HeroCarousel.CardID {
+        let restored = HeroCarousel.CardID(rawValue: lastViewedCardRaw) ?? .pl
+        return visibleCarouselCards.contains(restored) ? restored : (visibleCarouselCards.first ?? .pl)
+    }
+
     private var expensesScopeIsOwn: Bool {
-        // If user has expenses.view but not at "all" scope, treat as own.
         permissionStore.can("expenses.view") && !permissionStore.hasFullAccess("expenses.view")
     }
 
@@ -55,6 +66,15 @@ struct BooksTabView: View {
                 AppHeader(headerType: .books)
                     .padding(.bottom, 8)
 
+                if headerCollapsed && carouselVisible {
+                    CollapsedCarouselStrip(
+                        viewModel: dashboardVM,
+                        activeCard: activeCarouselCard,
+                        visibleCards: visibleCarouselCards
+                    )
+                    .transition(.opacity)
+                }
+
                 if headerCollapsed {
                     underlineSegmentedControl
                         .background(OPSStyle.Colors.background)
@@ -63,27 +83,45 @@ struct BooksTabView: View {
 
                 ScrollView {
                     VStack(spacing: 0) {
-                        // Dashboard — only when user has SOMETHING to put in it
-                        if hasFinances || hasPipelineView {
-                            MoneyDashboardHeader(viewModel: dashboardVM, onStatTap: { stat in
-                                switch stat {
-                                case .overdue:
-                                    showARDetail = true
-                                case .activeLeads, .staleLeads, .nextFollowUp:
-                                    // Jump to Pipeline segment so the user can see the leads.
-                                    selectedSegmentRaw = BooksSection.pipeline.rawValue
-                                default:
-                                    break
-                                }
-                            })
-                                .background(
-                                    GeometryReader { geo in
-                                        Color.clear.preference(
-                                            key: HeaderBottomKey.self,
-                                            value: geo.frame(in: .named("scroll")).maxY
-                                        )
-                                    }
+                        // Hero: PeriodPill + HeroCarousel — only when the user
+                        // can see at least one card. Operator role lands here
+                        // with zero permitted cards and skips the whole hero.
+                        if carouselVisible {
+                            VStack(spacing: OPSStyle.Layout.spacing3) {
+                                PeriodPill(
+                                    selected: $dashboardVM.selectedPeriod,
+                                    momTrend: dashboardVM.totalExpenses > 0 ? dashboardVM.expensesTrend : nil
                                 )
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
+
+                                HeroCarousel(
+                                    viewModel: dashboardVM,
+                                    onDrillOutstanding: {
+                                        selectedSegmentRaw = BooksSection.invoices.rawValue
+                                        invoiceVM.selectedFilter = .overdue
+                                    },
+                                    onDrillForecast: {
+                                        selectedSegmentRaw = BooksSection.estimates.rawValue
+                                        estimateVM.selectedFilter = .sent
+                                    },
+                                    onDrillCashFlowDays: { /* Cash-flow report — deferred per spec §10 */ },
+                                    onDrillTopChase: { showARDetail = true },
+                                    onDrillCloseRate: { /* Pipeline tab drill — see PIPELINE TAB - P1-1 */ },
+                                    onDrillStale: { /* Pipeline tab drill — see PIPELINE TAB - P1-1 */ },
+                                    onDrillProfitable: { /* Jobs report — deferred per spec §10 */ },
+                                    onDrillLosers: { /* Jobs report — deferred per spec §10 */ }
+                                )
+                                .environmentObject(permissionStore)
+                            }
+                            .padding(.vertical, OPSStyle.Layout.spacing3)
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear.preference(
+                                        key: HeaderBottomKey.self,
+                                        value: geo.frame(in: .named("scroll")).maxY
+                                    )
+                                }
+                            )
                         }
 
                         if !headerCollapsed {
@@ -113,15 +151,12 @@ struct BooksTabView: View {
         .task {
             setupViewModels()
             await dashboardVM.loadData()
-            // Default segment fallback: if persisted segment is no longer permitted, jump to first visible.
+            // If the persisted segment is no longer permitted, snap to first visible.
             if !visibleSegments.contains(selectedSegment), let first = visibleSegments.first {
                 selectedSegmentRaw = first.rawValue
             }
         }
-        // Bug 8ed0d2ed — let MainTabView (or any caller) request a specific
-        // BOOKS segment via NotificationCenter. Used by expense / invoice
-        // notification rail deep links to land the user directly on the
-        // right tab content after the books tab is selected.
+        // Bug 8ed0d2ed — segment routing from notification rail / push deep links.
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("BooksSelectSegment"))) { notification in
             guard let raw = notification.userInfo?["segment"] as? String,
                   let segment = BooksSection(rawValue: raw),
@@ -175,14 +210,10 @@ struct BooksTabView: View {
     private var contentForSegment: some View {
         Group {
             switch selectedSegment {
-            case .pipeline:
-                PipelineSectionView()
-                    .environmentObject(dataController)
-                    .environmentObject(permissionStore)
-            case .estimates:
-                EstimatesListView(embedded: true)
             case .invoices:
                 InvoicesListView(embedded: true)
+            case .estimates:
+                EstimatesListView(embedded: true)
             case .expenses:
                 if expensesScopeIsOwn {
                     MyExpensesView()

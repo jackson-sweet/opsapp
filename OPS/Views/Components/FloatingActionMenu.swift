@@ -111,7 +111,11 @@ struct FloatingActionMenu: View {
 
     // BOOKS FAB state — adapts MONEY group ordering based on selected segment in
     // BooksTabView. Mirrors the catalog pattern above.
-    @AppStorage("books.selectedSegment") private var booksSelectedSegmentRaw: String = "PIPELINE"
+    //
+    // Books Phase 2 (2026-05-11): default changed from PIPELINE → INVOICES.
+    // Pipeline is its own top-level tab now (see `PIPELINE TAB - P1-1`);
+    // `add-lead` stays in the MONEY group because the FAB is global.
+    @AppStorage("books.selectedSegment") private var booksSelectedSegmentRaw: String = "INVOICES"
     @State private var showingAddLead = false
 
     @State private var showingCatalogAddVariant = false
@@ -247,15 +251,20 @@ struct FloatingActionMenu: View {
         // which Books segment they last viewed. Falls back to segment-driven
         // ordering everywhere else (so BOOKS tab keeps its existing behavior).
         let primaryId: String
+        // Merge resolution (2026-05-12): Pipeline-tab P1-2's `isLeadsTab` branch
+        // wraps the segment switch (so LEADS always promotes "add-lead"); the
+        // inner switch uses Reconstruction's post-Pipeline-split shape — no
+        // "PIPELINE" segment case anymore (Pipeline lives in its own LEADS tab),
+        // and the default fallback is "new-invoice" (the new BOOKS default
+        // segment is INVOICES, not the now-removed PIPELINE).
         if isLeadsTab {
             primaryId = "add-lead"
         } else {
             switch booksSelectedSegmentRaw {
-            case "PIPELINE":  primaryId = "add-lead"
             case "ESTIMATES": primaryId = "new-estimate"
             case "INVOICES":  primaryId = "new-invoice"
             case "EXPENSES":  primaryId = "new-expense"
-            default:          primaryId = "new-estimate"
+            default:          primaryId = "new-invoice"
             }
         }
         if let idx = rawItems.firstIndex(where: { $0.id == primaryId }), idx > 0 {

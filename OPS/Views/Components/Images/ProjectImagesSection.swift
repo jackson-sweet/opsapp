@@ -6,10 +6,16 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct ProjectImagesSection: View {
     let project: Project
     @State private var selectedImageURL: String?
+    /// Phase F — populated on appear via a SwiftData fetch of
+    /// `PhotoAnnotation` rows for this project that carry a non-null
+    /// `dimensionsData`. Drives the per-thumbnail `ruler` badge overlay.
+    @State private var dimensionedURLs: Set<String> = []
+    @Environment(\.modelContext) private var modelContext
     
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
@@ -27,13 +33,17 @@ struct ProjectImagesSection: View {
                 VStack(spacing: 8) {
                     // Image grid - images load independently
                     imageGrid(urls: imageUrls)
-                    
+
                     // Show message if there are unsynced images
                     if !project.getUnsyncedImages().isEmpty {
                         unsyncedImagesMessage
                     }
                 }
             }
+        }
+        .task(id: project.id) { await refreshDimensionedURLs() }
+        .onReceive(NotificationCenter.default.publisher(for: .annotationsComposited)) { _ in
+            Task { await refreshDimensionedURLs() }
         }
         .fullScreenCover(item: $selectedImageURL) { url in
             // Full screen image view
@@ -98,12 +108,34 @@ struct ProjectImagesSection: View {
             GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2)
         ], spacing: OPSStyle.Layout.spacing2) {
             ForEach(urls, id: \.self) { url in
-                ProjectImageView(urlString: url, project: project)
-                    .onTapGesture {
-                        selectedImageURL = url
-                    }
+                ProjectImageView(
+                    urlString: url,
+                    project: project,
+                    isDimensioned: dimensionedURLs.contains(url)
+                )
+                .onTapGesture {
+                    selectedImageURL = url
+                }
             }
         }
     }
 
+    /// Fetches `PhotoAnnotation` rows for this project that carry a non-null
+    /// `dimensionsData` blob and converts them into the URL set consumed by
+    /// the per-thumbnail badge. Re-runs when the surrounding annotations
+    /// recomposite (so a newly-saved dimensioned capture lights up the badge
+    /// without requiring a tab switch).
+    @MainActor
+    private func refreshDimensionedURLs() async {
+        let projectId = project.id
+        let descriptor = FetchDescriptor<PhotoAnnotation>(
+            predicate: #Predicate {
+                $0.projectId == projectId
+                    && $0.dimensionsData != nil
+                    && $0.deletedAt == nil
+            }
+        )
+        guard let annotations = try? modelContext.fetch(descriptor) else { return }
+        dimensionedURLs = DimensionBadgeOverlay.dimensionedURLs(in: annotations)
+    }
 }

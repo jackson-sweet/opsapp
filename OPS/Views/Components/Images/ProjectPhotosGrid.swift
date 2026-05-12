@@ -6,10 +6,12 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct ProjectPhotosGrid: View {
     let project: Project
     @Environment(\.dismiss) var dismiss
+    @Environment(\.modelContext) private var modelContext
     @State private var selectedPhotoIndex: Int? = nil
     @State private var showingCamera = false
     @State private var cameraImage: UIImage?
@@ -19,6 +21,9 @@ struct ProjectPhotosGrid: View {
     @State private var longPressingPhotoIndex: Int? = nil
     @State private var showingNetworkError = false
     @State private var networkErrorMessage = ""
+    /// Phase F — set of photo URLs for this project that carry a dimensioned
+    /// capture (non-null `dimensions` jsonb on the matching annotation row).
+    @State private var dimensionedURLs: Set<String> = []
     @EnvironmentObject private var dataController: DataController
     
     // Three-column grid with minimal spacing
@@ -45,7 +50,11 @@ struct ProjectPhotosGrid: View {
                             LazyVGrid(columns: columns, spacing: 2) {
                                 ForEach(Array(photos.enumerated()), id: \.element) { index, url in
                                     ZStack {
-                                        PhotoThumbnail(url: url, project: project)
+                                        PhotoThumbnail(
+                                            url: url,
+                                            project: project,
+                                            isDimensioned: dimensionedURLs.contains(url)
+                                        )
                                             .aspectRatio(1, contentMode: .fill)
                                             .clipped()
                                             .contentShape(Rectangle())
@@ -130,6 +139,10 @@ struct ProjectPhotosGrid: View {
             }
             .navigationBarTitle("Project Photos", displayMode: .inline)
             .navigationBarItems(trailing: Button("Done") { dismiss() })
+            .task(id: project.id) { await refreshDimensionedURLs() }
+            .onReceive(NotificationCenter.default.publisher(for: .annotationsComposited)) { _ in
+                Task { await refreshDimensionedURLs() }
+            }
         }
         .preferredColorScheme(.dark)
         .fullScreenCover(item: Binding<PhotoViewerItem?>(
@@ -237,6 +250,10 @@ struct PhotoViewerItem: Identifiable {
 struct PhotoThumbnail: View {
     let url: String
     let project: Project? // Optional to maintain backward compatibility
+    /// Phase F — driven by the parent grid. When true, overlays a small
+    /// `ruler` SF Symbol bottom-right per the LiDAR Dimensioned Capture spec
+    /// §3.7. Default false keeps legacy callers unchanged.
+    var isDimensioned: Bool = false
     @State private var image: UIImage?
     @State private var isLoading = true
     private let id = UUID() // Unique identifier to prevent view reuse
@@ -280,6 +297,9 @@ struct PhotoThumbnail: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.md))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
+
+            // Phase F — dimensioned-capture badge overlay (bottom-right).
+            DimensionBadgeOverlay(isDimensioned: isDimensioned)
         }
         .onAppear(perform: loadImage)
         .onReceive(NotificationCenter.default.publisher(for: .annotationsComposited)) { _ in
@@ -633,7 +653,23 @@ struct SinglePhotoView: View {
 
 // MARK: - Project Photo Management
 extension ProjectPhotosGrid {
-    
+
+    /// Phase F — pulls `PhotoAnnotation` rows with non-null dimensions for this
+    /// project and converts them into the URL set consumed by `PhotoThumbnail`.
+    @MainActor
+    fileprivate func refreshDimensionedURLs() async {
+        let projectId = project.id
+        let descriptor = FetchDescriptor<PhotoAnnotation>(
+            predicate: #Predicate {
+                $0.projectId == projectId
+                    && $0.dimensionsData != nil
+                    && $0.deletedAt == nil
+            }
+        )
+        guard let annotations = try? modelContext.fetch(descriptor) else { return }
+        dimensionedURLs = DimensionBadgeOverlay.dimensionedURLs(in: annotations)
+    }
+
     /// Delete a single photo from the project
     private func deletePhoto(_ url: String) {
         // Start a background task for deletion

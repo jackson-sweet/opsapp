@@ -92,7 +92,8 @@ class PresignedURLUploadService {
                 // Step 2: Upload image to S3 using presigned URL
                 try await uploadToPresignedURL(
                     presignedResponse: presignedResponse,
-                    imageData: imageData
+                    imageData: imageData,
+                    contentType: "image/jpeg"
                 )
                 
                 // Step 3: Add to results
@@ -130,7 +131,8 @@ class PresignedURLUploadService {
 
             try await uploadToPresignedURL(
                 presignedResponse: presignedResponse,
-                imageData: imageData
+                imageData: imageData,
+                contentType: "image/jpeg"
             )
 
             urls.append(presignedResponse.publicUrl)
@@ -169,7 +171,8 @@ class PresignedURLUploadService {
         // Upload to S3
         try await uploadToPresignedURL(
             presignedResponse: presignedResponse,
-            imageData: imageData
+            imageData: imageData,
+            contentType: "image/jpeg"
         )
 
         print("[PRESIGNED_UPLOAD] ✅ Profile image uploaded successfully: \(presignedResponse.publicUrl)")
@@ -206,7 +209,8 @@ class PresignedURLUploadService {
         // Upload to S3
         try await uploadToPresignedURL(
             presignedResponse: presignedResponse,
-            imageData: imageData
+            imageData: imageData,
+            contentType: "image/jpeg"
         )
 
         print("[PRESIGNED_UPLOAD] ✅ Logo uploaded successfully: \(presignedResponse.publicUrl)")
@@ -224,7 +228,32 @@ class PresignedURLUploadService {
         )
         try await uploadToPresignedURL(
             presignedResponse: presignedResponse,
-            imageData: data
+            imageData: data,
+            contentType: "image/jpeg"
+        )
+        return presignedResponse.publicUrl
+    }
+
+    /// Upload arbitrary asset bytes (LiDAR dimensioned-capture pipeline per spec §7).
+    /// Content type travels with the presign request AND the S3 PUT so the bucket
+    /// stores the correct MIME — `image/heic` for the HEIC photo, `application/json`
+    /// for the sidecar metadata, `application/octet-stream` for the FP32 raw depth.
+    /// Returns the publicly resolvable S3 URL.
+    func uploadAsset(
+        _ data: Data,
+        filename: String,
+        folder: String,
+        contentType: String
+    ) async throws -> String {
+        let presignedResponse = try await requestPresignedURL(
+            filename: filename,
+            contentType: contentType,
+            folder: folder
+        )
+        try await uploadToPresignedURL(
+            presignedResponse: presignedResponse,
+            imageData: data,
+            contentType: contentType
         )
         return presignedResponse.publicUrl
     }
@@ -286,15 +315,22 @@ class PresignedURLUploadService {
         return try JSONDecoder().decode(PresignedURLResponse.self, from: data)
     }
 
-    /// Upload image data to S3 using presigned PUT URL
-    private func uploadToPresignedURL(presignedResponse: PresignedURLResponse, imageData: Data) async throws {
+    /// Upload data to S3 using a presigned PUT URL. The `contentType` parameter
+    /// matches the one passed to the presign step — required for non-image assets
+    /// (HEIC photo, sidecar JSON, FP32 raw depth) introduced by the LiDAR
+    /// dimensioned-capture pipeline.
+    private func uploadToPresignedURL(
+        presignedResponse: PresignedURLResponse,
+        imageData: Data,
+        contentType: String
+    ) async throws {
         guard let url = URL(string: presignedResponse.uploadUrl) else {
             throw UploadError.invalidURL
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
-        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         request.setValue("\(imageData.count)", forHTTPHeaderField: "Content-Length")
         request.httpBody = imageData
 

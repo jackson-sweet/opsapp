@@ -32,16 +32,21 @@ struct OPSApp: App {
     @StateObject private var permissionStore = PermissionStore.shared
 
     // Create the model container for SwiftData.
-    // Schema is driven by the current VersionedSchema (`OPSSchemaV3`) and the
-    // container runs `OPSMigrationPlan` on launch so stores written by earlier
-    // builds (e.g. pre-`WizardState.id`) are migrated in place.
+    // Schema is driven by the LATEST VersionedSchema (currently `OPSSchemaV5`)
+    // and the container runs `OPSMigrationPlan` on launch so stores written by
+    // earlier builds (e.g. pre-`WizardState.id`, pre-catalog, pre-reminders)
+    // are migrated in place. **When you add a new VersionedSchema (V6, V7, …),
+    // bump this reference to the new latest** — leaving it stale produces the
+    // "Duplicate version checksums across stages detected" runtime crash
+    // because the migration plan validates from-version/to-version pairs that
+    // overshoot the declared schema.
     //
     // Error 134504 ("unknown model version") means the on-disk store was created
     // before this app introduced versioned schemas. SwiftData can't map it to any
     // schema in the migration plan, so it refuses to open it. We delete the store
     // and start fresh — Supabase sync will re-hydrate all data on next launch.
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: OPSSchemaV3.self)
+        let schema = Schema(versionedSchema: OPSSchemaV5.self)
 
         let modelConfiguration = ModelConfiguration(
             schema: schema,

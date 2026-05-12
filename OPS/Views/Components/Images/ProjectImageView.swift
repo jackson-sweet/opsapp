@@ -11,15 +11,21 @@ struct ProjectImageView: View {
     let urlString: String
     let size: CGSize
     let project: Project
-    
+    /// Phase F — set to true by the parent gallery when this URL has a
+    /// dimensioned-capture annotation row (non-null `dimensions` jsonb) or a
+    /// `project_photos.source == 'measurement'` row. Drives the small `ruler`
+    /// SF Symbol badge overlay in the corner.
+    let isDimensioned: Bool
+
     @State private var image: UIImage?
     @State private var isLoading = true
     @State private var loadFailed = false
-    
-    init(urlString: String, project: Project, size: CGSize = CGSize(width: 150, height: 150)) {
+
+    init(urlString: String, project: Project, size: CGSize = CGSize(width: 150, height: 150), isDimensioned: Bool = false) {
         self.urlString = urlString
         self.project = project
         self.size = size
+        self.isDimensioned = isDimensioned
     }
     
     var body: some View {
@@ -68,6 +74,9 @@ struct ProjectImageView: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.lg))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
+
+            // Phase F — dimensioned-capture badge (bottom-right, non-interactive).
+            DimensionBadgeOverlay(isDimensioned: isDimensioned)
         }
         .onAppear(perform: loadImage)
     }

@@ -23,6 +23,11 @@ struct ProjectQuickActionsBar: View {
     let onContact: () -> Void
     let onAddTask: () -> Void
     var onDeckDesign: (() -> Void)? = nil
+    /// LiDAR Dimensioned Photo Capture entry (spec §3.1). Optional so the
+    /// parent can gate it on `feature.measurement.dimensioned_capture` flag
+    /// AND device capability (`CaptureCapability != .noDepth`). Hidden when
+    /// nil. Spec: ops-software-bible/specs/2026-05-10-lidar-dimensioned-photo-capture-design.md §3.1
+    var onMeasure: (() -> Void)? = nil
     var onShare: (() -> Void)? = nil
     /// Bug 1b7e59f7 — in-app equivalent of the requested Photos → OPS share
     /// extension flow. Tapping opens the Photos library picker for this
@@ -76,6 +81,12 @@ struct ProjectQuickActionsBar: View {
 
         if let onDeckDesign = onDeckDesign {
             items.append(ActionItem(icon: "ruler.fill", label: "DECK", action: onDeckDesign))
+        }
+
+        // LiDAR Dimensioned Photo Capture — sits next to DECK since both are
+        // measurement-related. Parent gates on flag + capability.
+        if let onMeasure = onMeasure {
+            items.append(ActionItem(icon: "ruler", label: "MEASURE", action: onMeasure))
         }
 
         if let task = selectedTask {

@@ -244,7 +244,10 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
             transition(to: .failed(.capabilityInsufficient))
             return
         }
-        guard state != .idle, state != .failed(.capabilityInsufficient) else {
+        if case .failed = state {
+            return
+        }
+        guard state != .idle else {
             transition(to: .failed(.noActiveSession))
             return
         }

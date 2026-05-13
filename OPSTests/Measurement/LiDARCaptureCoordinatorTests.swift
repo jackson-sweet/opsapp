@@ -9,6 +9,7 @@
 //
 
 import AVFoundation
+import Combine
 import XCTest
 @testable import OPS
 
@@ -358,6 +359,26 @@ final class LiDARCaptureCoordinatorTests: XCTestCase {
             return XCTFail("expected .failed, got \(coordinator.state)")
         }
         XCTAssertEqual(error, .capabilityInsufficient)
+    }
+
+    func test_capture_from_failedDepthFormatState_preservesFailureWithoutEnteringCapture() async {
+        let coordinator = LiDARCaptureCoordinator(
+            capabilityReport: CaptureCapabilityReport(capability: .lidar, supportsAutoDetect: true)
+        )
+        let expectedFailure = LiDARCaptureCoordinator.CaptureError.avCaptureFailed(
+            "LiDAR 768x576 FP32 depth format unavailable"
+        )
+        var observedStates: [LiDARCaptureCoordinator.CaptureState] = []
+        let cancellable = coordinator.$state.sink { state in
+            observedStates.append(state)
+        }
+
+        coordinator._test_transition(to: .failed(expectedFailure))
+        await coordinator.capture()
+
+        XCTAssertEqual(coordinator.state, .failed(expectedFailure))
+        XCTAssertFalse(observedStates.contains(.capturing))
+        withExtendedLifetime(cancellable) {}
     }
 
     // MARK: - .captured payload

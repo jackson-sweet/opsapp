@@ -246,8 +246,11 @@ final class CashflowForecastEngineTests: XCTestCase {
             id: "r-1", amount: 3000, cadence: .weekly,
             nextDueDate: date(2026, 6, 1), endDate: nil, label: "Subs"
         )
+        // Horizon = 3: balances trace 10k → 7k → 4k → 1k. All ≥ 0, two weeks
+        // below the 5k threshold → state must be .lowWater. A 4-week horizon
+        // would push wk3 to -2k and trip .danger instead.
         let inputs = ForecastInputs(
-            today: today, horizonWeeks: 4,
+            today: today, horizonWeeks: 3,
             startingBalance: 10_000, lowWaterThreshold: 5_000,
             avgDaysToPayment: 0, layers: Set(ForecastLayer.allCases),
             invoices: [], milestones: [], estimates: [], opportunities: [], recurringExpenses: [r],
@@ -255,5 +258,7 @@ final class CashflowForecastEngineTests: XCTestCase {
         )
         let result = CashflowForecastEngine().compute(inputs: inputs)
         XCTAssertEqual(result.state, .lowWater)
+        XCTAssertGreaterThanOrEqual(result.lowestBalance, 0)
+        XCTAssertLessThan(result.lowestBalance, 5_000)
     }
 }

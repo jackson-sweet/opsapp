@@ -33,6 +33,8 @@ struct ProjectDetailsView: View {
     @State private var showNewExpenseSheet = false
     @State private var showingStatusPicker = false
     @State private var showingCameraBatch = false
+    @State private var showingMeasureCapture = false
+    @State private var measureCaptureMode: DimensionedCaptureView.CaptureMode = .normal
     @State private var showingDeckCreationPicker = false
     @State private var deckDesignToOpen: DeckDesign?
     @ObservedObject private var permissionStore = PermissionStore.shared
@@ -98,6 +100,33 @@ struct ProjectDetailsView: View {
                                 }
                             }
                         }
+                    }
+                    .fullScreenCover(isPresented: $showingMeasureCapture) {
+                        // LiDAR Dimensioned Photo Capture (spec §3.1) — same
+                        // capture/save closures as Home's MeasureActionButton.
+                        DimensionedCaptureView(
+                            mode: measureCaptureMode,
+                            projectId: project.id,
+                            projectName: project.title,
+                            companyId: project.companyId,
+                            userId: dataController.currentUser?.id ?? "",
+                            onSavedSuccessfully: { _ in
+                                showingMeasureCapture = false
+                            },
+                            onError: { _ in
+                                showingMeasureCapture = false
+                            },
+                            onRequestCalibrationMode: {
+                                // Round-trip per spec §5.2: dismiss, re-present
+                                // in calibration mode so the user can reframe a
+                                // reference object.
+                                showingMeasureCapture = false
+                                measureCaptureMode = .calibration
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                    showingMeasureCapture = true
+                                }
+                            }
+                        )
                     }
                     .sheet(isPresented: $viewModel.showingNoteImagePicker) {
                         noteImagePickerContent
@@ -408,6 +437,17 @@ struct ProjectDetailsView: View {
                         onContact: { viewModel.showingClientContact = true },
                         onAddTask: { viewModel.showingAddTaskSheet = true },
                         onDeckDesign: permissionStore.isFeatureEnabled("deck_builder") ? { showingDeckCreationPicker = true } : nil,
+                        // LiDAR Dimensioned Photo Capture (spec §3.1) — gated
+                        // by `MeasureActionButton.shouldRender` so flag + capability
+                        // checks stay in one place. Same logic as Home's
+                        // ProjectActionBar entry.
+                        onMeasure: MeasureActionButton.shouldRender(
+                            flagEnabled: permissionStore.isFeatureEnabled(MeasurementFlag.dimensionedCapture),
+                            capability: CaptureCapability.detect().capability
+                        ) ? {
+                            measureCaptureMode = .normal
+                            showingMeasureCapture = true
+                        } : nil,
                         onShare: { shareProject() },
                         onPhotoLibrary: {
                             // Bug 1b7e59f7 — open the existing image picker

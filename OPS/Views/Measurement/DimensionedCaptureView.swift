@@ -68,7 +68,7 @@ public struct DimensionedCaptureView: View {
     @State private var helperStateOverride: HelperTextOverlay.HelperState?
     @State private var errorToast: ErrorToast?
     @State private var levelIndicatorEnabled = true
-    @State private var pendingAnnotation: CapturedAssets?
+    @State private var pendingAnnotation: DimensionedAnnotationHandoff?
     @State private var saveInFlight = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -142,15 +142,14 @@ public struct DimensionedCaptureView: View {
             //                      onRequestCalibrationMode so the action bar
             //                      can re-present the capture view in
             //                      calibration mode.
-            if let assets = pendingAnnotation {
-                let capability = coordinatorBox.coordinator?.capability ?? .noDepth
-                let handoff = Self.annotationHandoffConfiguration(for: capability)
+            if let handoff = pendingAnnotation {
+                let assets = handoff.assets
                 DimensionedAnnotationView(
                     assets: assets,
                     preloadedPhoto: nil,
-                    preloadedDepthMap: nil,
-                    anchors: nil,
-                    detectedOpenings: [],
+                    preloadedDepthMap: handoff.preloadedDepthMap,
+                    anchors: handoff.anchors,
+                    detectedOpenings: handoff.detectedOpenings,
                     initialCalibration: handoff.initialCalibration,
                     capability: handoff.capability,
                     coplanarOnly: handoff.coplanarOnly,
@@ -445,9 +444,16 @@ public struct DimensionedCaptureView: View {
             withAnimation(.opsCurve200) {
                 helperStateOverride = .capturedFlash
             }
+            let capability = coordinatorBox.coordinator?.capability ?? .noDepth
             Task {
+                let handoff = await Task.detached(priority: .userInitiated) {
+                    DimensionedAnnotationHandoffBuilder.build(
+                        assets: assets,
+                        capability: capability
+                    )
+                }.value
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
-                await MainActor.run { pendingAnnotation = assets }
+                await MainActor.run { pendingAnnotation = handoff }
             }
         case .failed(let error):
             showError(toast: ErrorToast.from(captureError: error))

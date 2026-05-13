@@ -529,13 +529,16 @@ extension LiDARCaptureCoordinator: ARSessionDelegate {
             imageHeight: Int(imageRes.height)
         )
 
+        var meshFacePayloads: [ARKitSnapshot.MeshFacePayload] = []
         let meshPayloads: [ARKitSnapshot.MeshAnchorPayload] = frame.anchors.compactMap { anchor in
             guard let mesh = anchor as? ARMeshAnchor else { return nil }
+            meshFacePayloads.append(contentsOf: makeFacePayloads(from: mesh))
             return makePayload(from: mesh)
         }
 
         return ARKitSnapshot(
             meshAnchors: meshPayloads,
+            meshFaces: meshFacePayloads,
             cameraIntrinsics: intrinsics,
             devicePose: simdMatrixToArray(frame.camera.transform),
             timestamp: Date(timeIntervalSinceReferenceDate: frame.timestamp)
@@ -550,10 +553,8 @@ extension LiDARCaptureCoordinator: ARSessionDelegate {
         var histogram: [String: Int] = [:]
         let classification = geometry.classification
         if let classification = classification {
-            let buffer = classification.buffer
-            let pointer = buffer.contents().assumingMemoryBound(to: UInt8.self)
             for i in 0..<classification.count {
-                let raw = Int(pointer[i])
+                let raw = classificationRawValue(source: classification, index: i) ?? 0
                 let key = meshClassificationName(raw: raw)
                 histogram[key, default: 0] += 1
             }
@@ -566,6 +567,112 @@ extension LiDARCaptureCoordinator: ARSessionDelegate {
             faceCount: faceCount,
             classifications: histogram
         )
+    }
+
+    private nonisolated static func makeFacePayloads(
+        from mesh: ARMeshAnchor
+    ) -> [ARKitSnapshot.MeshFacePayload] {
+        let geometry = mesh.geometry
+        let faces = geometry.faces
+        guard faces.primitiveType == .triangle,
+              faces.indexCountPerPrimitive == 3 else {
+            return []
+        }
+
+        var payloads: [ARKitSnapshot.MeshFacePayload] = []
+        payloads.reserveCapacity(faces.count)
+
+        for faceIndex in 0..<faces.count {
+            guard let i0 = meshIndex(faceIndex: faceIndex, corner: 0, faces: faces),
+                  let i1 = meshIndex(faceIndex: faceIndex, corner: 1, faces: faces),
+                  let i2 = meshIndex(faceIndex: faceIndex, corner: 2, faces: faces),
+                  let v0 = meshVertex(index: i0, vertices: geometry.vertices),
+                  let v1 = meshVertex(index: i1, vertices: geometry.vertices),
+                  let v2 = meshVertex(index: i2, vertices: geometry.vertices) else {
+                continue
+            }
+
+            let classification = geometry.classification
+                .flatMap { classificationRawValue(source: $0, index: faceIndex) }
+                .map(meshFaceClassification(raw:)) ?? .none
+
+            payloads.append(
+                ARKitSnapshot.MeshFacePayload(
+                    v0: transformToWorld(v0, transform: mesh.transform),
+                    v1: transformToWorld(v1, transform: mesh.transform),
+                    v2: transformToWorld(v2, transform: mesh.transform),
+                    classification: classification
+                )
+            )
+        }
+
+        return payloads
+    }
+
+    private nonisolated static func meshIndex(
+        faceIndex: Int,
+        corner: Int,
+        faces: ARGeometryElement
+    ) -> Int? {
+        let linearIndex = faceIndex * faces.indexCountPerPrimitive + corner
+        let byteOffset = linearIndex * faces.bytesPerIndex
+        let address = faces.buffer.contents().advanced(by: byteOffset)
+        switch faces.bytesPerIndex {
+        case MemoryLayout<UInt16>.size:
+            return Int(address.assumingMemoryBound(to: UInt16.self).pointee)
+        case MemoryLayout<UInt32>.size:
+            return Int(address.assumingMemoryBound(to: UInt32.self).pointee)
+        default:
+            return nil
+        }
+    }
+
+    private nonisolated static func meshVertex(
+        index: Int,
+        vertices: ARGeometrySource
+    ) -> SIMD3<Float>? {
+        guard index >= 0,
+              index < vertices.count,
+              vertices.componentsPerVector >= 3 else {
+            return nil
+        }
+        let byteOffset = vertices.offset + index * vertices.stride
+        let address = vertices.buffer.contents().advanced(by: byteOffset)
+        let pointer = address.assumingMemoryBound(to: Float.self)
+        return SIMD3<Float>(pointer[0], pointer[1], pointer[2])
+    }
+
+    private nonisolated static func classificationRawValue(
+        source: ARGeometrySource,
+        index: Int
+    ) -> Int? {
+        guard index >= 0, index < source.count else { return nil }
+        let byteOffset = source.offset + index * source.stride
+        let address = source.buffer.contents().advanced(by: byteOffset)
+        return Int(address.assumingMemoryBound(to: UInt8.self).pointee)
+    }
+
+    private nonisolated static func transformToWorld(
+        _ local: SIMD3<Float>,
+        transform: simd_float4x4
+    ) -> SIMD3<Float> {
+        let world = transform * SIMD4<Float>(local.x, local.y, local.z, 1)
+        return SIMD3<Float>(world.x, world.y, world.z)
+    }
+
+    private nonisolated static func meshFaceClassification(
+        raw: Int
+    ) -> MeshFaceSnapshot.Classification {
+        switch raw {
+        case 1: return .wall
+        case 2: return .floor
+        case 3: return .ceiling
+        case 4: return .table
+        case 5: return .seat
+        case 6: return .window
+        case 7: return .door
+        default: return .none
+        }
     }
 
     private nonisolated static func simdMatrixToArray(_ m: simd_float4x4) -> [Float] {

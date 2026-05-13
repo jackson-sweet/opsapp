@@ -17,6 +17,7 @@
 //
 
 import Foundation
+import simd
 
 public struct CapturedAssets: Equatable {
 
@@ -135,7 +136,78 @@ public struct ARKitSnapshot: Codable, Equatable {
         }
     }
 
+    public struct MeshFacePayload: Codable, Equatable {
+        public let v0: SIMD3<Float>
+        public let v1: SIMD3<Float>
+        public let v2: SIMD3<Float>
+        public let classification: MeshFaceSnapshot.Classification
+
+        public init(
+            v0: SIMD3<Float>,
+            v1: SIMD3<Float>,
+            v2: SIMD3<Float>,
+            classification: MeshFaceSnapshot.Classification
+        ) {
+            self.v0 = v0
+            self.v1 = v1
+            self.v2 = v2
+            self.classification = classification
+        }
+
+        var meshFaceSnapshot: MeshFaceSnapshot {
+            MeshFaceSnapshot(
+                v0: v0,
+                v1: v1,
+                v2: v2,
+                classification: classification
+            )
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case v0, v1, v2, classification
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.v0 = try Self.decodeVector(forKey: .v0, from: container)
+            self.v1 = try Self.decodeVector(forKey: .v1, from: container)
+            self.v2 = try Self.decodeVector(forKey: .v2, from: container)
+            self.classification = try container.decode(
+                MeshFaceSnapshot.Classification.self,
+                forKey: .classification
+            )
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(Self.encodeVector(v0), forKey: .v0)
+            try container.encode(Self.encodeVector(v1), forKey: .v1)
+            try container.encode(Self.encodeVector(v2), forKey: .v2)
+            try container.encode(classification, forKey: .classification)
+        }
+
+        private static func decodeVector(
+            forKey key: CodingKeys,
+            from container: KeyedDecodingContainer<CodingKeys>
+        ) throws -> SIMD3<Float> {
+            let values = try container.decode([Float].self, forKey: key)
+            guard values.count == 3 else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: key,
+                    in: container,
+                    debugDescription: "Mesh face vertex must contain exactly 3 floats"
+                )
+            }
+            return SIMD3<Float>(values[0], values[1], values[2])
+        }
+
+        private static func encodeVector(_ vector: SIMD3<Float>) -> [Float] {
+            [vector.x, vector.y, vector.z]
+        }
+    }
+
     public let meshAnchors: [MeshAnchorPayload]
+    public let meshFaces: [MeshFacePayload]
     public let cameraIntrinsics: DimensionsData.Intrinsics
 
     /// Column-major 4×4 device pose at shutter. Always 16 floats.
@@ -145,14 +217,45 @@ public struct ARKitSnapshot: Codable, Equatable {
 
     public init(
         meshAnchors: [MeshAnchorPayload],
+        meshFaces: [MeshFacePayload] = [],
         cameraIntrinsics: DimensionsData.Intrinsics,
         devicePose: [Float],
         timestamp: Date
     ) {
         self.meshAnchors = meshAnchors
+        self.meshFaces = meshFaces
         self.cameraIntrinsics = cameraIntrinsics
         self.devicePose = devicePose
         self.timestamp = timestamp
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case meshAnchors
+        case meshFaces
+        case cameraIntrinsics
+        case devicePose
+        case timestamp
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.meshAnchors = try container.decode([MeshAnchorPayload].self, forKey: .meshAnchors)
+        self.meshFaces = try container.decodeIfPresent([MeshFacePayload].self, forKey: .meshFaces) ?? []
+        self.cameraIntrinsics = try container.decode(
+            DimensionsData.Intrinsics.self,
+            forKey: .cameraIntrinsics
+        )
+        self.devicePose = try container.decode([Float].self, forKey: .devicePose)
+        self.timestamp = try container.decode(Date.self, forKey: .timestamp)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(meshAnchors, forKey: .meshAnchors)
+        try container.encode(meshFaces, forKey: .meshFaces)
+        try container.encode(cameraIntrinsics, forKey: .cameraIntrinsics)
+        try container.encode(devicePose, forKey: .devicePose)
+        try container.encode(timestamp, forKey: .timestamp)
     }
 }
 
@@ -170,4 +273,34 @@ public extension ARKitSnapshot {
         d.dateDecodingStrategy = .iso8601
         return d
     }()
+
+    var cameraToWorldMatrix: simd_float4x4? {
+        guard devicePose.count == 16 else { return nil }
+        return simd_float4x4(
+            SIMD4<Float>(devicePose[0], devicePose[1], devicePose[2], devicePose[3]),
+            SIMD4<Float>(devicePose[4], devicePose[5], devicePose[6], devicePose[7]),
+            SIMD4<Float>(devicePose[8], devicePose[9], devicePose[10], devicePose[11]),
+            SIMD4<Float>(devicePose[12], devicePose[13], devicePose[14], devicePose[15])
+        )
+    }
+
+    var worldToCameraMatrix: simd_float4x4? {
+        guard let cameraToWorld = cameraToWorldMatrix else { return nil }
+        let determinant = simd_determinant(cameraToWorld)
+        guard determinant.isFinite, abs(determinant) > 1e-6 else { return nil }
+        return simd_inverse(cameraToWorld)
+    }
+}
+
+public extension AnchorSnapshot {
+    init?(arkitSnapshot snapshot: ARKitSnapshot) {
+        guard let worldToCamera = snapshot.worldToCameraMatrix,
+              !snapshot.meshFaces.isEmpty else {
+            return nil
+        }
+        self.init(
+            faces: snapshot.meshFaces.map(\.meshFaceSnapshot),
+            worldToCamera: worldToCamera
+        )
+    }
 }

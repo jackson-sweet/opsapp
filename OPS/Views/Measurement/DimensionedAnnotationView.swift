@@ -736,17 +736,7 @@ public struct DimensionedAnnotationView: View {
     }
 
     private func loadDepthFromDisk() -> DepthMap? {
-        guard let depthURL = assets.depthURL,
-              let data = try? Data(contentsOf: depthURL) else { return nil }
-        let count = data.count / MemoryLayout<Float>.size
-        let width = 768
-        guard count % width == 0 else { return nil }
-        let height = count / width
-        let values = data.withUnsafeBytes { raw -> [Float] in
-            let p = raw.bindMemory(to: Float.self)
-            return Array(p)
-        }
-        return DepthMap(width: width, height: height, values: values)
+        DepthMapLoader.load(from: assets.depthURL)
     }
 }
 

@@ -23,11 +23,17 @@ final class MeasurementToolbarTests: XCTestCase {
         )
     }
 
-    func test_visibleTools_lidarWithOpening_showsAllSixTools() {
+    func test_visibleTools_lidarWithOpeningNoMeasurements_hidesIncompleteAndUnavailableTools() {
         let bar = makeToolbar(config: .init(hasAuto: true, hasCalibrate: true,
                                             canExport: false, canUndo: false, canRedo: false))
         let visible = bar.visibleTools()
-        XCTAssertEqual(visible, [.measure, .auto, .calibrate, .mark, .note, .export])
+        XCTAssertEqual(visible, [.measure, .auto, .calibrate])
+        XCTAssertFalse(visible.contains(.mark),
+                       "MARK must stay hidden until PencilKit output is persisted/exported by this feature.")
+        XCTAssertFalse(visible.contains(.note),
+                       "NOTE must stay hidden until it has an implemented action.")
+        XCTAssertFalse(visible.contains(.export),
+                       "EXPORT must stay hidden until measurements exist.")
     }
 
     func test_visibleTools_noOpeningDetected_hidesAuto() {
@@ -36,8 +42,7 @@ final class MeasurementToolbarTests: XCTestCase {
         let visible = bar.visibleTools()
         XCTAssertFalse(visible.contains(.auto),
                        "AUTO must be HIDDEN (not greyed) when no opening detected, per §5.2")
-        XCTAssertEqual(visible.count, 5)
-        XCTAssertEqual(visible, [.measure, .calibrate, .mark, .note, .export])
+        XCTAssertEqual(visible, [.measure, .calibrate])
     }
 
     func test_visibleTools_noDepthCapability_hidesCalibrate() {
@@ -47,28 +52,37 @@ final class MeasurementToolbarTests: XCTestCase {
         XCTAssertFalse(visible.contains(.calibrate),
                        "CALIBRATE must be HIDDEN on noDepth capability per §3.8")
         XCTAssertFalse(visible.contains(.auto))
-        XCTAssertEqual(visible, [.measure, .mark, .note, .export])
+        XCTAssertEqual(visible, [.measure])
     }
 
-    func test_export_disabledWhenNoMeasurements() {
+    func test_export_hiddenWhenNoMeasurements() {
         let bar = makeToolbar(config: .init(hasAuto: false, hasCalibrate: true,
                                             canExport: false, canUndo: false, canRedo: false))
+        XCTAssertFalse(bar.visibleTools().contains(.export))
         XCTAssertTrue(bar.isDisabled(.export),
-                      "EXPORT must be disabled when canExport=false (no measurements)")
+                      "EXPORT remains disabled defensively if invoked while hidden.")
     }
 
-    func test_export_enabledWhenMeasurementsExist() {
+    func test_export_visibleAndEnabledWhenMeasurementsExist() {
         let bar = makeToolbar(config: .init(hasAuto: false, hasCalibrate: true,
                                             canExport: true, canUndo: false, canRedo: false))
+        XCTAssertEqual(bar.visibleTools(), [.measure, .calibrate, .export])
         XCTAssertFalse(bar.isDisabled(.export))
     }
 
-    func test_otherTools_neverDisabled() {
+    func test_markAndNote_visibilityRequiresExplicitConfig() {
+        let bar = makeToolbar(config: .init(hasAuto: true, hasCalibrate: true,
+                                            canExport: true, canUndo: false, canRedo: false,
+                                            showsMark: true, showsNote: true))
+        XCTAssertEqual(bar.visibleTools(), [.measure, .auto, .calibrate, .mark, .note, .export])
+    }
+
+    func test_availableTools_neverDisabled() {
         let bar = makeToolbar(config: .init(hasAuto: false, hasCalibrate: false,
                                             canExport: false, canUndo: false, canRedo: false))
         XCTAssertFalse(bar.isDisabled(.measure))
-        XCTAssertFalse(bar.isDisabled(.mark))
-        XCTAssertFalse(bar.isDisabled(.note))
+        XCTAssertFalse(bar.isDisabled(.auto))
+        XCTAssertFalse(bar.isDisabled(.calibrate))
     }
 
     func test_toolSymbols_matchSpec() {

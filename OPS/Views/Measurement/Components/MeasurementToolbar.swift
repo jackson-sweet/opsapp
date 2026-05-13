@@ -2,18 +2,21 @@
 //  MeasurementToolbar.swift
 //  OPS
 //
-//  Bottom toolbar on `DimensionedAnnotationView` (spec §5.2). Six tools
-//  + UNDO/REDO history buttons. Field-first: 60 pt tool height on screens
-//  ≥375 pt, 50 pt on iPhone SE 1st-gen (<375 pt). No overflow menu.
+//  Bottom toolbar on `DimensionedAnnotationView` (spec §5.2). History controls
+//  + visible measurement tools. Field-first: every visible control keeps a
+//  minimum 44 pt touch target on iPhone widths. No overflow menu.
 //
-//    [UNDO][REDO]   MEASURE   AUTO   CALIBRATE   MARK   NOTE   EXPORT
+//    [UNDO][REDO]
+//    [MEASURE] [AUTO] [CALIBRATE] [EXPORT]
 //
 //  Per spec §5.2:
 //    • `AUTO` is HIDDEN entirely (not greyed) when no opening detected
 //      at capture — remaining 5 tools shift left to fill.
 //    • `CALIBRATE` is hidden on `noDepth` capability per §3.8 truth
 //      table (manual-scale-only path).
-//    • `EXPORT` is disabled when `measurementsCount == 0`.
+//    • `MARK` and `NOTE` stay hidden until this feature can persist/export
+//      their output safely.
+//    • `EXPORT` is hidden when `measurementsCount == 0`.
 //    • Active tool: rgba(255,255,255,0.08) background, label in `text`.
 //      Inactive label in `text3`.
 //
@@ -29,19 +32,24 @@ public enum MeasurementTool: String, Equatable, CaseIterable {
 }
 
 public struct MeasurementToolbarConfig: Equatable {
-    public var hasAuto: Bool        // opening detected at capture
-    public var hasCalibrate: Bool   // capability ≠ .noDepth
-    public var canExport: Bool      // measurementsCount > 0
+    public var hasAuto: Bool         // opening detected at capture
+    public var hasCalibrate: Bool    // capability ≠ .noDepth
+    public var canExport: Bool       // measurementsCount > 0
     public var canUndo: Bool
     public var canRedo: Bool
+    public var showsMark: Bool       // hidden until persisted/exported
+    public var showsNote: Bool       // hidden until implemented
 
     public init(hasAuto: Bool, hasCalibrate: Bool, canExport: Bool,
-                canUndo: Bool, canRedo: Bool) {
+                canUndo: Bool, canRedo: Bool,
+                showsMark: Bool = false, showsNote: Bool = false) {
         self.hasAuto = hasAuto
         self.hasCalibrate = hasCalibrate
         self.canExport = canExport
         self.canUndo = canUndo
         self.canRedo = canRedo
+        self.showsMark = showsMark
+        self.showsNote = showsNote
     }
 }
 
@@ -69,21 +77,32 @@ public struct MeasurementToolbar: View {
 
     public var body: some View {
         GeometryReader { geo in
-            let compact = geo.size.width < 375
-            HStack(spacing: compact ? 6 : 4) {
-                undoButton
-                redoButton
-                Spacer(minLength: 8)
-                ForEach(visibleTools(), id: \.self) { tool in
-                    toolButton(tool, compact: compact)
+            let tools = visibleTools()
+            let metrics = MeasurementToolbarLayout.metrics(
+                width: geo.size.width,
+                toolCount: tools.count
+            )
+
+            VStack(alignment: .leading, spacing: metrics.rowSpacing) {
+                HStack(spacing: 8) {
+                    undoButton
+                    redoButton
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
+                .frame(height: MeasurementToolbarLayout.historyButtonSize)
+
+                HStack(spacing: metrics.toolSpacing) {
+                    ForEach(tools, id: \.self) { tool in
+                        toolButton(tool, metrics: metrics)
+                    }
+                    Spacer(minLength: 0)
+                }
             }
-            .padding(.horizontal, compact ? 8 : 12)
-            .padding(.vertical, 6)
+            .padding(.horizontal, metrics.horizontalPadding)
+            .padding(.vertical, metrics.verticalPadding)
             .frame(maxWidth: .infinity)
         }
-        .frame(height: 78)
+        .frame(height: MeasurementToolbarLayout.toolbarHeight)
         .background(
             Rectangle()
                 .fill(.ultraThinMaterial)
@@ -102,9 +121,9 @@ public struct MeasurementToolbar: View {
         var tools: [MeasurementTool] = [.measure]
         if config.hasAuto { tools.append(.auto) }
         if config.hasCalibrate { tools.append(.calibrate) }
-        tools.append(.mark)
-        tools.append(.note)
-        tools.append(.export)
+        if config.showsMark { tools.append(.mark) }
+        if config.showsNote { tools.append(.note) }
+        if config.canExport { tools.append(.export) }
         return tools
     }
 
@@ -118,10 +137,11 @@ public struct MeasurementToolbar: View {
     // MARK: - Tool button
 
     @ViewBuilder
-    private func toolButton(_ tool: MeasurementTool, compact: Bool) -> some View {
+    private func toolButton(_ tool: MeasurementTool,
+                            metrics: MeasurementToolbarLayout.Metrics) -> some View {
         let active = activeTool == tool
         let disabled = isDisabled(tool)
-        let size: CGFloat = compact ? 50 : 60
+        let size = metrics.toolSize
 
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -130,13 +150,13 @@ public struct MeasurementToolbar: View {
         } label: {
             VStack(spacing: 4) {
                 Image(systemName: tool.sfSymbol)
-                    .font(.system(size: compact ? 20 : 22, weight: .regular))
+                    .font(.system(size: metrics.iconSize, weight: .regular))
                     .frame(width: size, height: size * 0.45)
                 Text(tool.label)
-                    .font(.custom("CakeMono-Light", size: compact ? 9 : 10))
+                    .font(.custom("CakeMono-Light", size: metrics.labelSize))
                     .tracking(0.5)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.72)
             }
             .frame(width: size, height: size)
             .background(
@@ -150,6 +170,7 @@ public struct MeasurementToolbar: View {
             )
         }
         .disabled(disabled)
+        .buttonStyle(.plain)
         .accessibilityLabel(tool.label)
         .accessibilityAddTraits(active ? [.isSelected] : [])
     }
@@ -167,6 +188,7 @@ public struct MeasurementToolbar: View {
                 .frame(width: 44, height: 44)
         }
         .disabled(!config.canUndo)
+        .buttonStyle(.plain)
         .accessibilityLabel("Undo")
     }
 
@@ -181,7 +203,47 @@ public struct MeasurementToolbar: View {
                 .frame(width: 44, height: 44)
         }
         .disabled(!config.canRedo)
+        .buttonStyle(.plain)
         .accessibilityLabel("Redo")
+    }
+}
+
+// MARK: - Layout
+
+enum MeasurementToolbarLayout {
+    static let historyButtonSize: CGFloat = 44
+    static let toolbarHeight: CGFloat = 126
+
+    struct Metrics {
+        let toolSize: CGFloat
+        let toolSpacing: CGFloat
+        let rowSpacing: CGFloat
+        let horizontalPadding: CGFloat
+        let verticalPadding: CGFloat
+
+        var compact: Bool { toolSize < 56 }
+        var iconSize: CGFloat { compact ? 18 : 22 }
+        var labelSize: CGFloat { compact ? 9 : 10 }
+    }
+
+    static func metrics(width: CGFloat, toolCount: Int) -> Metrics {
+        let compact = width < 375
+        let horizontalPadding: CGFloat = compact ? 8 : 12
+        let toolSpacing: CGFloat = compact ? 6 : 8
+        let preferredToolSize: CGFloat = compact ? 50 : 60
+        let count = max(toolCount, 1)
+        let availableWidth = max(0, width - (horizontalPadding * 2))
+        let totalSpacing = CGFloat(count - 1) * toolSpacing
+        let maxToolSize = floor((availableWidth - totalSpacing) / CGFloat(count))
+        let toolSize = max(44, min(preferredToolSize, maxToolSize))
+
+        return Metrics(
+            toolSize: toolSize,
+            toolSpacing: toolSpacing,
+            rowSpacing: 6,
+            horizontalPadding: horizontalPadding,
+            verticalPadding: 8
+        )
     }
 }
 

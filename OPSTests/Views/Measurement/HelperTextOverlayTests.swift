@@ -46,6 +46,13 @@ final class HelperTextOverlayTests: XCTestCase {
         XCTAssertFalse(S.capturedFlash.copy.contains("—"))
     }
 
+    func test_annotationDepthMissToast_copy_matches_spec() {
+        XCTAssertEqual(
+            AnnotationFeedback.noDepthAtPoint.copy,
+            "// ERROR — NO DEPTH AT POINT · TAP A SOLID SURFACE"
+        )
+    }
+
     // MARK: - Color ladder
 
     func test_initializing_color_is_text2_secondary() {

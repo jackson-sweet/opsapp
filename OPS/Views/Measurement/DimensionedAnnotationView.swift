@@ -30,6 +30,23 @@ import SwiftUI
 import UIKit
 import PencilKit
 
+enum AnnotationFeedback: Equatable, Identifiable {
+    case noDepthAtPoint
+
+    var id: String {
+        switch self {
+        case .noDepthAtPoint: return "noDepthAtPoint"
+        }
+    }
+
+    var copy: String {
+        switch self {
+        case .noDepthAtPoint:
+            return "// ERROR — NO DEPTH AT POINT · TAP A SOLID SURFACE"
+        }
+    }
+}
+
 public struct DimensionedAnnotationView: View {
 
     // MARK: - Inputs
@@ -78,6 +95,8 @@ public struct DimensionedAnnotationView: View {
     @State private var showingCalibrateConfirmation = false
     @State private var showingExport = false
     @State private var sillUnavailableReason: SillUnavailableReason?
+    @State private var annotationFeedback: AnnotationFeedback?
+    @State private var annotationFeedbackDismissTask: Task<Void, Never>?
 
     @State private var pencilDrawing = PKDrawing()
 
@@ -135,10 +154,26 @@ public struct DimensionedAnnotationView: View {
                     onRedo: performRedo
                 )
             }
+
+            if let feedback = annotationFeedback {
+                VStack {
+                    AnnotationFeedbackToast(feedback: feedback) {
+                        dismissAnnotationFeedback()
+                    }
+                    .padding(.top, 56)
+                    .padding(.horizontal, 12)
+                    Spacer()
+                }
+                .transition(feedbackTransition)
+                .zIndex(10)
+            }
         }
         .preferredColorScheme(.dark)
         .task {
             await loadAssetsIfNeeded()
+        }
+        .onDisappear {
+            annotationFeedbackDismissTask?.cancel()
         }
         .sheet(isPresented: $showingCloseConfirmation) {
             CloseConfirmationSheet(
@@ -353,9 +388,7 @@ public struct DimensionedAnnotationView: View {
 
     private func commitManualMeasurement(from a: CGPoint, to b: CGPoint) {
         guard let depth = currentDepthMap() else {
-            // Without a depth map we cannot raycast — surface the failure
-            // path; spec §5.2 will toast `// ERROR — NO DEPTH AT POINT …`.
-            // For Phase E the parent owns the toast surface; we just drop.
+            showDepthMissFeedback()
             return
         }
         let raycaster = DepthRaycaster(
@@ -369,6 +402,7 @@ public struct DimensionedAnnotationView: View {
             primaryDisplayUnit: primaryUnit,
             source: .manual
         ) else {
+            showDepthMissFeedback()
             return
         }
         pushUndo()
@@ -377,6 +411,11 @@ public struct DimensionedAnnotationView: View {
         measurements.append(m2)
         hasUnsavedChanges = true
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    private func showDepthMissFeedback() {
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        showAnnotationFeedback(.noDepthAtPoint)
     }
 
     // MARK: - Auto measure
@@ -580,6 +619,37 @@ public struct DimensionedAnnotationView: View {
         }
     }
 
+    // MARK: - Feedback
+
+    private var feedbackTransition: AnyTransition {
+        if reduceMotion {
+            return .opacity.animation(.linear(duration: 0.15))
+        }
+        return .asymmetric(
+            insertion: .opacity.combined(with: .move(edge: .top)).animation(.opsCurve200),
+            removal: .opacity.animation(.opsCurve200)
+        )
+    }
+
+    private func showAnnotationFeedback(_ feedback: AnnotationFeedback) {
+        annotationFeedbackDismissTask?.cancel()
+        withAnimation(reduceMotion ? .linear(duration: 0.15) : .opsCurve200) {
+            annotationFeedback = feedback
+        }
+        annotationFeedbackDismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            guard annotationFeedback == feedback else { return }
+            dismissAnnotationFeedback()
+        }
+    }
+
+    private func dismissAnnotationFeedback() {
+        annotationFeedbackDismissTask?.cancel()
+        withAnimation(reduceMotion ? .linear(duration: 0.15) : .opsCurve200) {
+            annotationFeedback = nil
+        }
+    }
+
     // MARK: - Derived state
 
     private var toolbarConfig: MeasurementToolbarConfig {
@@ -676,6 +746,38 @@ public struct DimensionedAnnotationView: View {
             return Array(p)
         }
         return DepthMap(width: width, height: height, values: values)
+    }
+}
+
+// MARK: - Annotation feedback toast
+
+private struct AnnotationFeedbackToast: View {
+    let feedback: AnnotationFeedback
+    let onDismiss: () -> Void
+
+    var body: some View {
+        Button(action: onDismiss) {
+            Text(feedback.copy)
+                .font(.panelTitle)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.rose)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                        .fill(OPSStyle.Colors.glassDenseApprox)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                                .strokeBorder(OPSStyle.Colors.roseLine, lineWidth: 1)
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(feedback.copy)
     }
 }
 

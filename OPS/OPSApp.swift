@@ -380,9 +380,13 @@ struct OPSApp: App {
     private func performActiveChecks() async {
         print("[APP_ACTIVE] 🏥 App became active - running subscription check...")
 
-        // Refresh permissions if stale
-        if permissionStore.isCacheStale(),
-           let userId = dataController.currentUser?.id {
+        // Always refresh permissions on app foreground — the fetch is cheap
+        // and the stale-cache TTL gate (8 hrs default) was causing a real
+        // bug where flag/permission changes wouldn't reach the device until
+        // the user logged out + back in or the cache aged past the threshold.
+        // Connectivity-restored handler keeps the gate (fires too frequently
+        // to drop), but foreground-active is a once-per-resume signal.
+        if let userId = dataController.currentUser?.id {
             await permissionStore.fetchPermissions(userId: userId)
         }
 

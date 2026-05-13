@@ -2,9 +2,9 @@
 //  CaptureAssetWriter.swift
 //  OPS
 //
-//  Writes the three on-disk assets produced by a single capture:
-//    1. HEIC with embedded kCGImageAuxiliaryDataTypeDisparity channel
-//    2. Standalone FP32 disparity grid (raw bytes, height×width×4)
+//  Writes the on-disk assets produced by a single capture:
+//    1. HEIC with embedded kCGImageAuxiliaryDataTypeDisparity channel when depth exists
+//    2. Standalone FP32 disparity grid when depth exists (raw bytes, height×width×4)
 //    3. Sidecar JSON (ARKit snapshot, intrinsics, device pose)
 //
 //  Spec reference:
@@ -33,7 +33,7 @@ public enum CaptureAssetWriterError: Error, Equatable {
 
 public enum CaptureAssetWriter {
 
-    /// Atomic write of all three assets. If any step fails, no partial files are left behind —
+    /// Atomic write of all assets. If any step fails, no partial files are left behind —
     /// success writes to temp files first and renames into place.
     public static func write(
         directory: URL,
@@ -46,14 +46,18 @@ public enum CaptureAssetWriter {
             at: directory, withIntermediateDirectories: true
         )
 
-        let urls = CapturedAssets.in(directory: directory, captureID: captureID)
+        let urls = assetURLs(
+            directory: directory,
+            captureID: captureID,
+            includesStandaloneDepth: depth != nil
+        )
 
         // 1. HEIC (with embedded disparity if depth available)
         try writeHEIC(photo: photo, depth: depth, to: urls.heicURL)
 
         // 2. Standalone FP32 disparity (if available)
-        if let depth = depth {
-            try writeRawDisparity(depth: depth, to: urls.depthURL)
+        if let depth = depth, let depthURL = urls.depthURL {
+            try writeRawDisparity(depth: depth, to: depthURL)
         }
 
         // 3. Sidecar JSON
@@ -67,6 +71,18 @@ public enum CaptureAssetWriter {
             arkitSnapshot: snapshot,
             captureID: captureID,
             captureFinishedAt: Date()
+        )
+    }
+
+    static func assetURLs(
+        directory: URL,
+        captureID: UUID,
+        includesStandaloneDepth: Bool
+    ) -> CapturedAssets._AssetURLs {
+        CapturedAssets.in(
+            directory: directory,
+            captureID: captureID,
+            includesDepthAsset: includesStandaloneDepth
         )
     }
 

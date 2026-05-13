@@ -52,9 +52,38 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
                                  in directory: URL? = nil) throws -> CapturedAssets {
         let dir = directory ?? makeTempDir()
         let urls = CapturedAssets.in(directory: dir, captureID: captureID)
+        let depthURL = try XCTUnwrap(urls.depthURL)
         try Data("FAKE_HEIC_BYTES".utf8).write(to: urls.heicURL)
         try Data("{\"meshAnchors\":[]}".utf8).write(to: urls.sidecarURL)
-        try Data([0x00, 0x00, 0x80, 0x3F]).write(to: urls.depthURL)
+        try Data([0x00, 0x00, 0x80, 0x3F]).write(to: depthURL)
+        return CapturedAssets(
+            heicURL: urls.heicURL,
+            depthURL: urls.depthURL,
+            sidecarURL: urls.sidecarURL,
+            intrinsics: .init(fx: 1593.4, fy: 1593.4,
+                              cx: 1015.5, cy: 762.0,
+                              imageWidth: 4032, imageHeight: 3024),
+            arkitSnapshot: .init(meshAnchors: [],
+                                 cameraIntrinsics: .init(fx: 1593.4, fy: 1593.4,
+                                                         cx: 1015.5, cy: 762.0,
+                                                         imageWidth: 4032, imageHeight: 3024),
+                                 devicePose: Array(repeating: 0, count: 16),
+                                 timestamp: Date(timeIntervalSince1970: 1_747_166_400)),
+            captureID: captureID,
+            captureFinishedAt: Date(timeIntervalSince1970: 1_747_166_400)
+        )
+    }
+
+    private func fixtureVisualCaptured(captureID: UUID = UUID(),
+                                       in directory: URL? = nil) throws -> CapturedAssets {
+        let dir = directory ?? makeTempDir()
+        let urls = CapturedAssets.in(
+            directory: dir,
+            captureID: captureID,
+            includesDepthAsset: false
+        )
+        try Data("FAKE_HEIC_BYTES".utf8).write(to: urls.heicURL)
+        try Data("{\"meshAnchors\":[]}".utf8).write(to: urls.sidecarURL)
         return CapturedAssets(
             heicURL: urls.heicURL,
             depthURL: urls.depthURL,
@@ -125,9 +154,69 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
         XCTAssertFalse(annotation.needsSync)
         XCTAssertNotNil(annotation.dimensions?.sidecarMetadataUrl)
         XCTAssertNotNil(annotation.dimensions?.depthAssetUrl)
-        XCTAssertEqual(annotation.localDepthMapPath, captured.depthURL.path)
+        XCTAssertEqual(annotation.localDepthMapPath, captured.depthURL?.path)
         XCTAssertEqual(annotation.localSidecarPath, captured.sidecarURL.path)
         XCTAssertEqual(annotation.localCaptureFinishedAt, captured.captureFinishedAt)
+    }
+
+    @MainActor
+    func test_sync_visualCapture_uploadsHeicAndSidecarOnly() async throws {
+        let captureID = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
+        let captured = try fixtureVisualCaptured(captureID: captureID)
+        let uploader = RecordingUploader(plan: .alwaysSucceed)
+        let persister = RecordingPersister()
+        let manager = DimensionedPhotoSyncManager(uploader: uploader, persister: persister, notifier: NoopDimensionedNotificationDispatcher())
+
+        let annotation = try await manager.sync(
+            captured: captured,
+            dimensions: DimensionsData(
+                captureMode: .visual,
+                calibration: .init(method: .none, estimatedAccuracyMeters: 0.05),
+                intrinsics: captured.intrinsics
+            ),
+            projectId: "project-123",
+            projectName: "Smith Residence",
+            companyId: "company-abc",
+            userId: "user-xyz"
+        )
+
+        XCTAssertEqual(uploader.calls.count, 2)
+        XCTAssertEqual(uploader.calls[0].filename, "\(captureID.uuidString).heic")
+        XCTAssertEqual(uploader.calls[1].filename, "\(captureID.uuidString).metadata.json")
+        XCTAssertNil(persister.annotationInserts.first?.dimensions.depthAssetUrl)
+        XCTAssertNotNil(persister.annotationInserts.first?.dimensions.sidecarMetadataUrl)
+        XCTAssertNil(annotation.localDepthMapPath)
+        XCTAssertNil(annotation.dimensions?.depthAssetUrl)
+    }
+
+    @MainActor
+    func test_sync_rejectsLidarDimensionsWhenStandaloneDepthAssetIsMissing() async throws {
+        let captured = try fixtureVisualCaptured()
+        let uploader = RecordingUploader(plan: .alwaysSucceed)
+        let persister = RecordingPersister()
+        let manager = DimensionedPhotoSyncManager(uploader: uploader, persister: persister, notifier: NoopDimensionedNotificationDispatcher())
+
+        do {
+            _ = try await manager.sync(
+                captured: captured,
+                dimensions: fixtureDimensions(),
+                projectId: "project-123",
+                projectName: "Smith Residence",
+                companyId: "company-abc",
+                userId: "user-xyz"
+            )
+            XCTFail("Expected missingRequiredDepthAsset for LiDAR dimensions without a depth file")
+        } catch let error as DimensionedSyncError {
+            switch error {
+            case .missingRequiredDepthAsset:
+                break
+            default:
+                XCTFail("Wrong error case: \(error)")
+            }
+        }
+
+        XCTAssertEqual(uploader.calls.count, 0)
+        XCTAssertEqual(persister.annotationInserts.count, 0)
     }
 
     // MARK: - 2. Retry path
@@ -189,7 +278,7 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
         let queued = try XCTUnwrap(DimensionedPhotoSyncManager.lastQueuedAnnotation,
                                    "Expected lastQueuedAnnotation to be populated for the caller to insert locally")
         XCTAssertTrue(queued.needsSync)
-        XCTAssertEqual(queued.localDepthMapPath, captured.depthURL.path)
+        XCTAssertEqual(queued.localDepthMapPath, captured.depthURL?.path)
         XCTAssertEqual(queued.localSidecarPath, captured.sidecarURL.path)
         XCTAssertNotNil(queued.dimensions)
         DimensionedPhotoSyncManager.lastQueuedAnnotation = nil

@@ -8,6 +8,7 @@
 //  and live in a hardware-gated integration test (see `requiresLiDAR`).
 //
 
+import AVFoundation
 import XCTest
 @testable import OPS
 
@@ -28,6 +29,137 @@ final class LiDARCaptureCoordinatorTests: XCTestCase {
         let coordinator = LiDARCaptureCoordinator(capabilityReport: report)
         XCTAssertEqual(coordinator.capability, .visual)
         XCTAssertFalse(coordinator.supportsAutoDetect)
+    }
+
+    func test_captureSessionConfiguration_for_lidar_requires_lidarCamera_andDepth() throws {
+        let configuration = try XCTUnwrap(
+            LiDARCaptureCoordinator.captureSessionConfiguration(for: .lidar)
+        )
+
+        XCTAssertEqual(
+            configuration.deviceTypes.map(\.rawValue),
+            [AVCaptureDevice.DeviceType.builtInLiDARDepthCamera.rawValue]
+        )
+        XCTAssertTrue(configuration.requiresDepthData)
+        XCTAssertTrue(configuration.attachesDepthOutput)
+    }
+
+    func test_captureSessionConfiguration_for_visual_usesBackPhotoCameras_withoutDepth() throws {
+        let configuration = try XCTUnwrap(
+            LiDARCaptureCoordinator.captureSessionConfiguration(for: .visual)
+        )
+
+        XCTAssertEqual(
+            configuration.deviceTypes.map(\.rawValue),
+            [
+                AVCaptureDevice.DeviceType.builtInTripleCamera.rawValue,
+                AVCaptureDevice.DeviceType.builtInDualWideCamera.rawValue,
+                AVCaptureDevice.DeviceType.builtInDualCamera.rawValue,
+                AVCaptureDevice.DeviceType.builtInWideAngleCamera.rawValue
+            ]
+        )
+        XCTAssertFalse(configuration.deviceTypes.contains(.builtInLiDARDepthCamera))
+        XCTAssertFalse(configuration.requiresDepthData)
+        XCTAssertFalse(configuration.attachesDepthOutput)
+    }
+
+    func test_photoSettingsPolicy_for_lidar_preservesDepth_whenSupported() {
+        let policy = LiDARCaptureCoordinator.photoSettingsPolicy(
+            for: .lidar,
+            depthDeliverySupported: true,
+            highResolutionSupported: true
+        )
+
+        XCTAssertEqual(policy.photoCodec, .hevc)
+        XCTAssertTrue(policy.enablesDepthDataDelivery)
+        XCTAssertTrue(policy.filtersDepthData)
+        XCTAssertTrue(policy.embedsDepthDataInPhoto)
+        XCTAssertTrue(policy.enablesHighResolutionPhoto)
+    }
+
+    func test_photoSettingsPolicy_for_visual_disablesDepth_evenWhenPhotoOutputSupportsIt() {
+        let policy = LiDARCaptureCoordinator.photoSettingsPolicy(
+            for: .visual,
+            depthDeliverySupported: true,
+            highResolutionSupported: true
+        )
+
+        XCTAssertEqual(policy.photoCodec, .hevc)
+        XCTAssertFalse(policy.enablesDepthDataDelivery)
+        XCTAssertFalse(policy.filtersDepthData)
+        XCTAssertFalse(policy.embedsDepthDataInPhoto)
+        XCTAssertTrue(policy.enablesHighResolutionPhoto)
+    }
+
+    func test_photoSettingsPolicy_fallsBackWhenHEICCodecIsUnavailable() {
+        let policy = LiDARCaptureCoordinator.photoSettingsPolicy(
+            for: .visual,
+            depthDeliverySupported: false,
+            heicSupported: false,
+            highResolutionSupported: true
+        )
+
+        XCTAssertNil(policy.photoCodec)
+        XCTAssertFalse(policy.enablesDepthDataDelivery)
+    }
+
+    func test_depthDeliveryValidation_rejectsLidarWhenPhotoOutputCannotDeliverDepth() throws {
+        let configuration = try XCTUnwrap(
+            LiDARCaptureCoordinator.captureSessionConfiguration(for: .lidar)
+        )
+
+        XCTAssertEqual(
+            LiDARCaptureCoordinator.depthDeliveryValidationFailure(
+                for: configuration,
+                depthDeliverySupported: false
+            ),
+            .avCaptureFailed("LiDAR depth data unavailable")
+        )
+    }
+
+    func test_depthDeliveryValidation_acceptsVisualWithoutDepthDelivery() throws {
+        let configuration = try XCTUnwrap(
+            LiDARCaptureCoordinator.captureSessionConfiguration(for: .visual)
+        )
+
+        XCTAssertNil(
+            LiDARCaptureCoordinator.depthDeliveryValidationFailure(
+                for: configuration,
+                depthDeliverySupported: false
+            )
+        )
+    }
+
+    func test_processedPhotoDepthValidation_rejectsLidarPhotoWithoutDepth() {
+        XCTAssertEqual(
+            LiDARCaptureCoordinator.processedPhotoDepthValidationFailure(
+                capability: .lidar,
+                hasDepthData: false
+            ),
+            .avCaptureFailed("LiDAR capture returned no depth data")
+        )
+    }
+
+    func test_processedPhotoDepthValidation_acceptsVisualPhotoWithoutDepth() {
+        XCTAssertNil(
+            LiDARCaptureCoordinator.processedPhotoDepthValidationFailure(
+                capability: .visual,
+                hasDepthData: false
+            )
+        )
+    }
+
+    func test_annotationHandoff_for_visual_preservesVisualCapability_hidesAuto_showsCalibrate() {
+        let configuration = DimensionedCaptureView.annotationHandoffConfiguration(
+            for: .visual
+        )
+
+        XCTAssertEqual(configuration.capability, .visual)
+        XCTAssertEqual(configuration.initialCalibration.method, .none)
+        XCTAssertEqual(configuration.initialCalibration.estimatedAccuracyMeters, 0.05)
+        XCTAssertFalse(configuration.hasAuto)
+        XCTAssertTrue(configuration.hasCalibrate)
+        XCTAssertFalse(configuration.coplanarOnly)
     }
 
     // MARK: - startLiveAim

@@ -59,6 +59,37 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
         case noActiveSession
     }
 
+    struct CaptureSessionConfiguration: Equatable {
+        let deviceTypes: [AVCaptureDevice.DeviceType]
+        let requiresDepthData: Bool
+        let attachesDepthOutput: Bool
+    }
+
+    struct PhotoSettingsPolicy: Equatable {
+        let photoCodec: AVVideoCodecType?
+        let enablesDepthDataDelivery: Bool
+        let filtersDepthData: Bool
+        let embedsDepthDataInPhoto: Bool
+        let enablesHighResolutionPhoto: Bool
+    }
+
+    private enum CaptureSessionConfigurationError: LocalizedError {
+        case inputUnavailable
+        case photoOutputUnavailable
+        case depthOutputUnavailable
+
+        var errorDescription: String? {
+            switch self {
+            case .inputUnavailable:
+                return "camera input unavailable"
+            case .photoOutputUnavailable:
+                return "photo output unavailable"
+            case .depthOutputUnavailable:
+                return "LiDAR depth output unavailable"
+            }
+        }
+    }
+
     // MARK: - Published state
 
     @Published public private(set) var state: CaptureState = .idle
@@ -96,6 +127,70 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
         self.assetDirectory = assetDirectory
         super.init()
         arSession.delegate = self
+    }
+
+    // MARK: - AVCapture profile seams
+
+    static func captureSessionConfiguration(
+        for capability: CaptureCapability
+    ) -> CaptureSessionConfiguration? {
+        switch capability {
+        case .lidar:
+            return CaptureSessionConfiguration(
+                deviceTypes: [.builtInLiDARDepthCamera],
+                requiresDepthData: true,
+                attachesDepthOutput: true
+            )
+        case .visual:
+            return CaptureSessionConfiguration(
+                deviceTypes: [
+                    .builtInTripleCamera,
+                    .builtInDualWideCamera,
+                    .builtInDualCamera,
+                    .builtInWideAngleCamera
+                ],
+                requiresDepthData: false,
+                attachesDepthOutput: false
+            )
+        case .noDepth:
+            return nil
+        }
+    }
+
+    static func photoSettingsPolicy(
+        for capability: CaptureCapability,
+        depthDeliverySupported: Bool,
+        heicSupported: Bool = true,
+        highResolutionSupported: Bool
+    ) -> PhotoSettingsPolicy {
+        let enablesDepth = capability == .lidar && depthDeliverySupported
+        return PhotoSettingsPolicy(
+            photoCodec: heicSupported ? .hevc : nil,
+            enablesDepthDataDelivery: enablesDepth,
+            filtersDepthData: enablesDepth,
+            embedsDepthDataInPhoto: enablesDepth,
+            enablesHighResolutionPhoto: highResolutionSupported
+        )
+    }
+
+    static func depthDeliveryValidationFailure(
+        for configuration: CaptureSessionConfiguration,
+        depthDeliverySupported: Bool
+    ) -> CaptureError? {
+        guard configuration.requiresDepthData, !depthDeliverySupported else {
+            return nil
+        }
+        return .avCaptureFailed("LiDAR depth data unavailable")
+    }
+
+    static func processedPhotoDepthValidationFailure(
+        capability: CaptureCapability,
+        hasDepthData: Bool
+    ) -> CaptureError? {
+        guard capability == .lidar, !hasDepthData else {
+            return nil
+        }
+        return .avCaptureFailed("LiDAR capture returned no depth data")
     }
 
     // MARK: - Public API
@@ -191,52 +286,82 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
     }
 
     private func prewarmAVSession() {
-        guard let device = AVCaptureDevice.default(
-            .builtInLiDARDepthCamera, for: .video, position: .back
-        ) else {
-            return // .visual path — no LiDAR camera to pre-warm
+        guard let configuration = Self.captureSessionConfiguration(for: capability) else {
+            return
+        }
+        guard let device = Self.bestAvailableBackCamera(for: configuration) else {
+            transition(to: .failed(.avCaptureFailed("back camera unavailable")))
+            return
         }
 
         avSession.beginConfiguration()
+        defer { avSession.commitConfiguration() }
         avSession.sessionPreset = .photo
 
         do {
             let input = try AVCaptureDeviceInput(device: device)
             if avSession.canAddInput(input) {
                 avSession.addInput(input)
+            } else {
+                throw CaptureSessionConfigurationError.inputUnavailable
             }
 
             if avSession.canAddOutput(photoOutput) {
                 avSession.addOutput(photoOutput)
-                photoOutput.isDepthDataDeliveryEnabled = true
                 photoOutput.isHighResolutionCaptureEnabled = true
+            } else {
+                throw CaptureSessionConfigurationError.photoOutputUnavailable
             }
 
-            if avSession.canAddOutput(depthOutput) {
-                avSession.addOutput(depthOutput)
-                depthOutput.isFilteringEnabled = true
-                if let connection = depthOutput.connection(with: .depthData) {
-                    connection.isEnabled = true
+            if configuration.attachesDepthOutput {
+                if avSession.canAddOutput(depthOutput) {
+                    avSession.addOutput(depthOutput)
+                    depthOutput.isFilteringEnabled = true
+                    if let connection = depthOutput.connection(with: .depthData) {
+                        connection.isEnabled = true
+                    }
+                } else {
+                    throw CaptureSessionConfigurationError.depthOutputUnavailable
                 }
             }
 
             // Force FP32 disparity on the depth output, per spec §3.2.
-            if let availableFormat = device.activeFormat.supportedDepthDataFormats
-                .first(where: {
-                    CMFormatDescriptionGetMediaSubType($0.formatDescription)
-                        == kCVPixelFormatType_DepthFloat32
-                }) {
+            if configuration.requiresDepthData,
+               let availableFormat = device.activeFormat.supportedDepthDataFormats
+                    .first(where: {
+                        CMFormatDescriptionGetMediaSubType($0.formatDescription)
+                            == kCVPixelFormatType_DepthFloat32
+                    }) {
                 try device.lockForConfiguration()
                 device.activeDepthDataFormat = availableFormat
                 device.unlockForConfiguration()
             }
+
+            if let failure = Self.depthDeliveryValidationFailure(
+                for: configuration,
+                depthDeliverySupported: photoOutput.isDepthDataDeliverySupported
+            ) {
+                transition(to: .failed(failure))
+                return
+            }
+
+            photoOutput.isDepthDataDeliveryEnabled = configuration.requiresDepthData
         } catch {
             log.error("AVSession prewarm failed: \(error.localizedDescription)")
             transition(to: .failed(.avCaptureFailed(error.localizedDescription)))
         }
-
-        avSession.commitConfiguration()
         // NOTE: We do not call startRunning() here — shutter will start the session.
+    }
+
+    private static func bestAvailableBackCamera(
+        for configuration: CaptureSessionConfiguration
+    ) -> AVCaptureDevice? {
+        for deviceType in configuration.deviceTypes {
+            if let device = AVCaptureDevice.default(deviceType, for: .video, position: .back) {
+                return device
+            }
+        }
+        return nil
     }
 
     // MARK: - Shutter handoff
@@ -263,11 +388,22 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
 
         // Step 4: Capture
         let captureID = UUID()
-        let settings = AVCapturePhotoSettings()
-        settings.isDepthDataDeliveryEnabled = true
-        settings.isDepthDataFiltered = true
-        settings.embedsDepthDataInPhoto = true
-        if photoOutput.isHighResolutionCaptureEnabled {
+        let policy = Self.photoSettingsPolicy(
+            for: capability,
+            depthDeliverySupported: photoOutput.isDepthDataDeliverySupported,
+            heicSupported: photoOutput.availablePhotoCodecTypes.contains(.hevc),
+            highResolutionSupported: photoOutput.isHighResolutionCaptureEnabled
+        )
+        let settings: AVCapturePhotoSettings
+        if let codec = policy.photoCodec {
+            settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: codec])
+        } else {
+            settings = AVCapturePhotoSettings()
+        }
+        settings.isDepthDataDeliveryEnabled = policy.enablesDepthDataDelivery
+        settings.isDepthDataFiltered = policy.filtersDepthData
+        settings.embedsDepthDataInPhoto = policy.embedsDepthDataInPhoto
+        if policy.enablesHighResolutionPhoto {
             settings.isHighResolutionPhotoEnabled = true
         }
 
@@ -478,6 +614,14 @@ extension LiDARCaptureCoordinator: AVCapturePhotoCaptureDelegate {
             pending.photoData = photo
             pending.depthData = photo.depthData
 
+            if let failure = Self.processedPhotoDepthValidationFailure(
+                capability: self.capability,
+                hasDepthData: photo.depthData != nil
+            ) {
+                pending.continuation.resume(returning: .failure(failure))
+                return
+            }
+
             self.finalizeCapture(
                 captureID: pending.captureID,
                 snapshot: pending.snapshot,
@@ -488,4 +632,3 @@ extension LiDARCaptureCoordinator: AVCapturePhotoCaptureDelegate {
         }
     }
 }
-

@@ -2,14 +2,14 @@
 //  CapturedAssets.swift
 //  OPS
 //
-//  Descriptor for the three on-disk artifacts produced by a single LiDAR
-//  dimensioned capture, plus the ARKit state snapshot taken at the moment
-//  of shutter. Used as the @Published .captured(...) payload on the
-//  coordinator and as the input to the upload manager in Phase F.
+//  Descriptor for the on-disk artifacts produced by a single dimensioned
+//  capture, plus the ARKit state snapshot taken at the moment of shutter.
+//  Used as the @Published .captured(...) payload on the coordinator and as
+//  the input to the upload manager in Phase F.
 //
 //  On-disk layout under `<Documents>/lidar-captures/<uuid>.*`:
-//    <uuid>.heic           HEIC photo with embedded kCGImageAuxiliaryDataTypeDisparity
-//    <uuid>.depth.fp32     Standalone FP32 disparity grid (768×576 typical), raw bytes
+//    <uuid>.heic           HEIC photo, with embedded disparity when depth exists
+//    <uuid>.depth.fp32     Standalone FP32 disparity grid (LiDAR only), raw bytes
 //    <uuid>.metadata.json  Sidecar — ARKit anchors, intrinsics, device pose, capture metadata
 //
 //  Schema reference:
@@ -20,13 +20,15 @@ import Foundation
 
 public struct CapturedAssets: Equatable {
 
-    /// HEIC with embedded Disparity aux channel (`kCGImageAuxiliaryDataTypeDisparity`).
+    /// HEIC photo. LiDAR captures include an embedded Disparity aux channel
+    /// (`kCGImageAuxiliaryDataTypeDisparity`); visual captures are standard HEIC.
     /// This is the primary asset — uploaded to `project_photos.url`.
     public let heicURL: URL
 
     /// Standalone FP32 disparity grid for high-precision re-rendering.
+    /// Present for LiDAR captures, nil for visual-only captures.
     /// Lifecycled out after 90 days per spec §7.
-    public let depthURL: URL
+    public let depthURL: URL?
 
     /// JSON sidecar with mesh anchors + classification + intrinsics + device pose.
     public let sidecarURL: URL
@@ -44,7 +46,7 @@ public struct CapturedAssets: Equatable {
 
     public init(
         heicURL: URL,
-        depthURL: URL,
+        depthURL: URL?,
         sidecarURL: URL,
         intrinsics: DimensionsData.Intrinsics,
         arkitSnapshot: ARKitSnapshot,
@@ -74,10 +76,16 @@ public extension CapturedAssets {
 
     /// Builds a CapturedAssets descriptor with URLs only — no intrinsics or snapshot.
     /// Useful for tests; the production path uses the full initializer once capture completes.
-    static func `in`(directory: URL, captureID: UUID) -> _AssetURLs {
+    static func `in`(
+        directory: URL,
+        captureID: UUID,
+        includesDepthAsset: Bool = true
+    ) -> _AssetURLs {
         _AssetURLs(
             heicURL: directory.appendingPathComponent("\(captureID.uuidString).heic"),
-            depthURL: directory.appendingPathComponent("\(captureID.uuidString).depth.fp32"),
+            depthURL: includesDepthAsset
+                ? directory.appendingPathComponent("\(captureID.uuidString).depth.fp32")
+                : nil,
             sidecarURL: directory.appendingPathComponent("\(captureID.uuidString).metadata.json")
         )
     }
@@ -86,7 +94,7 @@ public extension CapturedAssets {
     /// which are only available post-shutter.
     struct _AssetURLs: Equatable {
         public let heicURL: URL
-        public let depthURL: URL
+        public let depthURL: URL?
         public let sidecarURL: URL
     }
 }

@@ -685,7 +685,7 @@ public struct DimensionedAnnotationView: View {
             captureMode: captureMode(),
             calibration: calibration,
             intrinsics: assets.intrinsics,
-            depthAssetUrl: assets.depthURL.absoluteString,
+            depthAssetUrl: assets.depthURL?.absoluteString,
             sidecarMetadataUrl: assets.sidecarURL.absoluteString,
             measurements: measurements,
             openings: detectedOpenings.map { opening in
@@ -736,7 +736,8 @@ public struct DimensionedAnnotationView: View {
     }
 
     private func loadDepthFromDisk() -> DepthMap? {
-        guard let data = try? Data(contentsOf: assets.depthURL) else { return nil }
+        guard let depthURL = assets.depthURL,
+              let data = try? Data(contentsOf: depthURL) else { return nil }
         let count = data.count / MemoryLayout<Float>.size
         let width = 768
         guard count % width == 0 else { return nil }

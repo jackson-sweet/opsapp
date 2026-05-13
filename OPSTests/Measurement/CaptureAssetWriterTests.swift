@@ -79,4 +79,32 @@ final class CaptureAssetWriterTests: XCTestCase {
             .decode(ARKitSnapshot.self, from: Data(contentsOf: url))
         XCTAssertEqual(decoded.cameraIntrinsics.fx, 99)
     }
+
+    func test_assetURLs_for_lidar_capture_includeStandaloneDepthFile() throws {
+        let captureID = try XCTUnwrap(UUID(uuidString: "11111111-2222-3333-4444-555555555555"))
+
+        let urls = CaptureAssetWriter.assetURLs(
+            directory: tempDir,
+            captureID: captureID,
+            includesStandaloneDepth: true
+        )
+
+        XCTAssertEqual(urls.heicURL.lastPathComponent, "\(captureID.uuidString).heic")
+        XCTAssertEqual(urls.depthURL?.lastPathComponent, "\(captureID.uuidString).depth.fp32")
+        XCTAssertEqual(urls.sidecarURL.lastPathComponent, "\(captureID.uuidString).metadata.json")
+    }
+
+    func test_assetURLs_for_visual_capture_omitStandaloneDepthFile() throws {
+        let captureID = try XCTUnwrap(UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"))
+
+        let urls = CaptureAssetWriter.assetURLs(
+            directory: tempDir,
+            captureID: captureID,
+            includesStandaloneDepth: false
+        )
+
+        XCTAssertEqual(urls.heicURL.lastPathComponent, "\(captureID.uuidString).heic")
+        XCTAssertNil(urls.depthURL)
+        XCTAssertEqual(urls.sidecarURL.lastPathComponent, "\(captureID.uuidString).metadata.json")
+    }
 }

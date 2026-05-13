@@ -144,20 +144,16 @@ public struct DimensionedCaptureView: View {
             //                      calibration mode.
             if let assets = pendingAnnotation {
                 let capability = coordinatorBox.coordinator?.capability ?? .noDepth
+                let handoff = Self.annotationHandoffConfiguration(for: capability)
                 DimensionedAnnotationView(
                     assets: assets,
                     preloadedPhoto: nil,
                     preloadedDepthMap: nil,
                     anchors: nil,
                     detectedOpenings: [],
-                    initialCalibration: DimensionsData.Calibration(
-                        method: capability == .lidar ? .lidar : .none,
-                        referenceObject: nil,
-                        scaleFactor: 1.0,
-                        estimatedAccuracyMeters: capability == .lidar ? 0.025 : 0.05
-                    ),
-                    capability: capability,
-                    coplanarOnly: false,
+                    initialCalibration: handoff.initialCalibration,
+                    capability: handoff.capability,
+                    coplanarOnly: handoff.coplanarOnly,
                     existingDimensions: nil,
                     onRequestCalibrate: {
                         pendingAnnotation = nil
@@ -599,8 +595,35 @@ public struct DimensionedCaptureView: View {
 // MARK: - Helper types
 
 extension DimensionedCaptureView {
+    struct AnnotationHandoffConfiguration: Equatable {
+        let capability: CaptureCapability
+        let initialCalibration: DimensionsData.Calibration
+        let hasAuto: Bool
+        let hasCalibrate: Bool
+        let coplanarOnly: Bool
+    }
+
     enum ARAvailability {
         case checking, ready, denied, unsupported
+    }
+
+    static func annotationHandoffConfiguration(
+        for capability: CaptureCapability
+    ) -> AnnotationHandoffConfiguration {
+        let calibration = DimensionsData.Calibration(
+            method: capability == .lidar ? .lidar : .none,
+            referenceObject: nil,
+            scaleFactor: 1.0,
+            estimatedAccuracyMeters: capability == .lidar ? 0.025 : 0.05
+        )
+
+        return AnnotationHandoffConfiguration(
+            capability: capability,
+            initialCalibration: calibration,
+            hasAuto: false,
+            hasCalibrate: capability != .noDepth,
+            coplanarOnly: false
+        )
     }
 
     struct ErrorToast: Equatable {

@@ -2,30 +2,30 @@
 //  DimensionedPhotoSyncManager.swift
 //  OPS
 //
-//  Phase F — orchestrates the three-asset upload pipeline for a LiDAR
-//  dimensioned capture (spec §7) and inserts the matching SwiftData +
+//  Phase F — orchestrates the HEIC + sidecar + optional-depth upload pipeline
+//  for a dimensioned capture (spec §7) and inserts the matching SwiftData +
 //  Supabase rows so the photo appears in the gallery and in the office
 //  web portal.
 //
 //  Asset pipeline (all uploads via the existing `PresignedURLUploadService`):
 //
-//    1. HEIC photo with embedded Disparity aux channel
+//    1. HEIC photo with embedded Disparity aux channel when depth exists
 //         → S3, content-type `image/heic`
 //         → URL stored on a new `project_photos` row with
 //           `source = 'measurement'`, `is_client_visible = false`
 //    2. Sidecar metadata JSON (ARKit anchors + intrinsics + device pose)
 //         → S3, content-type `application/json`
 //         → URL stored in `DimensionsData.sidecarMetadataUrl`
-//    3. Standalone FP32 depth grid
+//    3. Standalone FP32 depth grid (LiDAR only)
 //         → S3, content-type `application/octet-stream`
 //         → URL stored in `DimensionsData.depthAssetUrl`
 //
-//  After the three assets land, a `project_photo_annotations` row is
+//  After the required assets land, a `project_photo_annotations` row is
 //  inserted with the `dimensions` jsonb column populated via the typed
 //  `PhotoAnnotation.dimensions` accessor (Phase A added this).
 //
 //  Failure handling per spec §7 + brief: each asset retries up to 3 times
-//  with exponential backoff (0.5s, 1.5s, 4.5s). If any asset still fails,
+//  with exponential backoff (0.5s, 1.5s, 4.5s). If any required asset still fails,
 //  the manager persists the local cache paths in
 //  `PhotoAnnotation.localDepthMapPath` / `.localSidecarPath` /
 //  `.localCaptureFinishedAt`, marks `needsSync = true`, and throws
@@ -280,11 +280,16 @@ public enum DimensionedSyncError: Error, LocalizedError, Equatable {
     /// capture-pipeline bug — not a sync failure.
     case missingLocalAsset(URL)
 
+    /// A LiDAR dimensions payload reached sync without the required standalone
+    /// FP32 depth asset. Visual captures may omit depth; LiDAR captures may not.
+    case missingRequiredDepthAsset
+
     public var errorDescription: String? {
         switch self {
         case .queuedForRetry(let r):       return "Dimensioned capture queued for retry: \(r)"
         case .annotationInsertFailed(let r): return "Annotation row insert failed: \(r)"
         case .missingLocalAsset(let url):  return "Local asset missing: \(url.lastPathComponent)"
+        case .missingRequiredDepthAsset:   return "LiDAR capture missing required depth asset"
         }
     }
 }
@@ -341,16 +346,20 @@ public final class DimensionedPhotoSyncManager {
         userId: String
     ) async throws -> PhotoAnnotation {
 
-        // 1. Read all three assets off disk up front. If any file is missing
-        // we fail fast — this is a capture-pipeline bug, not a sync condition.
+        guard dimensions.captureMode != .lidar || captured.depthURL != nil else {
+            throw DimensionedSyncError.missingRequiredDepthAsset
+        }
+
+        // 1. Read assets off disk up front. LiDAR captures include a standalone
+        // depth file; visual captures intentionally do not.
         let heicData = try readAsset(captured.heicURL)
         let sidecarData = try readAsset(captured.sidecarURL)
-        let depthData = try readAsset(captured.depthURL)
+        let depthData = try captured.depthURL.map { try readAsset($0) }
 
         let folder = "measurements/\(companyId)/\(projectId)"
         let captureID = captured.captureID.uuidString
 
-        // 2. Attempt all three uploads with per-asset retry. Any failure after
+        // 2. Attempt all present uploads with per-asset retry. Any failure after
         // retries falls through to the queue-for-retry path.
         var uploadedHeic: String?
         var uploadedSidecar: String?
@@ -372,13 +381,15 @@ public final class DimensionedPhotoSyncManager {
                 contentType: "application/json",
                 label: "sidecar"
             )
-            uploadedDepth = try await uploadWithRetry(
-                data: depthData,
-                filename: "\(captureID).depth.fp32",
-                folder: folder,
-                contentType: "application/octet-stream",
-                label: "depth"
-            )
+            if let depthData {
+                uploadedDepth = try await uploadWithRetry(
+                    data: depthData,
+                    filename: "\(captureID).depth.fp32",
+                    folder: folder,
+                    contentType: "application/octet-stream",
+                    label: "depth"
+                )
+            }
         } catch {
             failureReason = "\(error)"
         }
@@ -386,7 +397,7 @@ public final class DimensionedPhotoSyncManager {
         guard
             let heicURLString = uploadedHeic,
             let sidecarURLString = uploadedSidecar,
-            let depthURLString = uploadedDepth
+            depthData == nil || uploadedDepth != nil
         else {
             // 2a. Failure path — persist local cache + queue for retry.
             let stub = makeQueuedAnnotation(
@@ -396,6 +407,9 @@ public final class DimensionedPhotoSyncManager {
                 companyId: companyId,
                 authorId: userId
             )
+            await MainActor.run {
+                Self.lastQueuedAnnotation = stub
+            }
             await notifier.dispatchPendingSync(
                 userId: userId,
                 companyId: companyId,
@@ -404,7 +418,7 @@ public final class DimensionedPhotoSyncManager {
             )
             throw DimensionedSyncError.queuedForRetry(
                 reason: failureReason ?? "unknown upload failure"
-            ).attach(annotation: stub)
+            )
         }
 
         // 3. Decorate dimensions with the persisted asset URLs (the worldPoints /
@@ -412,7 +426,7 @@ public final class DimensionedPhotoSyncManager {
         // the URLs that didn't exist until upload finished).
         var enriched = dimensions
         enriched.sidecarMetadataUrl = sidecarURLString
-        enriched.depthAssetUrl = depthURLString
+        enriched.depthAssetUrl = uploadedDepth
 
         // 4. Best-effort `project_photos` row so the web portal sees the photo.
         // Mirrors the `ImageSyncManager.insertProjectPhotoRows` pattern — a
@@ -450,6 +464,9 @@ public final class DimensionedPhotoSyncManager {
             // Override the photoURL since the upload DID succeed — re-sync only
             // needs to retry the annotation row, not the asset uploads.
             stub.photoURL = heicURLString
+            await MainActor.run {
+                Self.lastQueuedAnnotation = stub
+            }
             await notifier.dispatchPendingSync(
                 userId: userId,
                 companyId: companyId,
@@ -458,7 +475,7 @@ public final class DimensionedPhotoSyncManager {
             )
             throw DimensionedSyncError.annotationInsertFailed(
                 reason: "\(error)"
-            ).attach(annotation: stub)
+            )
         }
 
         // 6. Build the hydrated `PhotoAnnotation` model. Use the server-assigned
@@ -472,7 +489,7 @@ public final class DimensionedPhotoSyncManager {
             createdAt: inserted.createdAt
         )
         model.dimensions = enriched
-        model.localDepthMapPath = captured.depthURL.path
+        model.localDepthMapPath = captured.depthURL?.path
         model.localSidecarPath = captured.sidecarURL.path
         model.localCaptureFinishedAt = captured.captureFinishedAt
         model.lastSyncedAt = Date()
@@ -598,12 +615,16 @@ public final class DimensionedPhotoSyncManager {
         for annotation in pending {
             guard
                 let dims = annotation.dimensions,
-                let depthPath = annotation.localDepthMapPath,
                 let sidecarPath = annotation.localSidecarPath,
                 let finishedAt = annotation.localCaptureFinishedAt
             else { continue }
 
-            let depthURL = URL(fileURLWithPath: depthPath)
+            guard dims.captureMode != .lidar || annotation.localDepthMapPath != nil else {
+                print("[DIMENSIONED_SYNC] Skipping \(annotation.id) — LiDAR depth asset missing")
+                continue
+            }
+
+            let depthURL = annotation.localDepthMapPath.map(URL.init(fileURLWithPath:))
             let sidecarURL = URL(fileURLWithPath: sidecarPath)
             // The HEIC URL convention from `CapturedAssets._AssetURLs` is the
             // sidecar URL's parent + `<captureID>.heic`. The captureID isn't
@@ -615,11 +636,20 @@ public final class DimensionedPhotoSyncManager {
                 .appendingPathComponent("\(captureID).heic")
 
             guard let heicData = try? Data(contentsOf: heicURL),
-                  let sidecarData = try? Data(contentsOf: sidecarURL),
-                  let depthData = try? Data(contentsOf: depthURL)
+                  let sidecarData = try? Data(contentsOf: sidecarURL)
             else {
                 print("[DIMENSIONED_SYNC] Skipping \(annotation.id) — local asset missing")
                 continue
+            }
+            let depthData: Data?
+            if let depthURL {
+                guard let data = try? Data(contentsOf: depthURL) else {
+                    print("[DIMENSIONED_SYNC] Skipping \(annotation.id) — local depth asset missing")
+                    continue
+                }
+                depthData = data
+            } else {
+                depthData = nil
             }
 
             do {
@@ -638,13 +668,18 @@ public final class DimensionedPhotoSyncManager {
                     contentType: "application/json",
                     label: "sidecar"
                 )
-                let depthURLString = try await uploadWithRetry(
-                    data: depthData,
-                    filename: "\(captureID).depth.fp32",
-                    folder: folder,
-                    contentType: "application/octet-stream",
-                    label: "depth"
-                )
+                let depthURLString: String?
+                if let depthData {
+                    depthURLString = try await uploadWithRetry(
+                        data: depthData,
+                        filename: "\(captureID).depth.fp32",
+                        folder: folder,
+                        contentType: "application/octet-stream",
+                        label: "depth"
+                    )
+                } else {
+                    depthURLString = nil
+                }
 
                 var enriched = dims
                 enriched.sidecarMetadataUrl = sidecarURLString
@@ -729,7 +764,7 @@ public final class DimensionedPhotoSyncManager {
             createdAt: captured.captureFinishedAt
         )
         model.dimensions = dimensions
-        model.localDepthMapPath = captured.depthURL.path
+        model.localDepthMapPath = captured.depthURL?.path
         model.localSidecarPath = captured.sidecarURL.path
         model.localCaptureFinishedAt = captured.captureFinishedAt
         model.needsSync = true
@@ -744,28 +779,6 @@ public final class DimensionedPhotoSyncManager {
         } catch {
             throw DimensionedSyncError.missingLocalAsset(url)
         }
-    }
-}
-
-// MARK: - Error annotation attachment
-
-private struct AnnotationErrorContext {
-    let annotation: PhotoAnnotation
-}
-
-private extension DimensionedSyncError {
-    /// Attaches the locally-persisted `PhotoAnnotation` stub to the error so the
-    /// caller (Phase G) can insert it into the SwiftData store and surface
-    /// `measurement_pending_sync` without losing the in-flight context.
-    /// Stored via associated thread-local so the public error type stays a
-    /// plain enum (Equatable, Codable-friendly).
-    func attach(annotation: PhotoAnnotation) -> Self {
-        // `lastQueuedAnnotation` is @MainActor isolated; hop onto MainActor
-        // since `attach(_:)` is called from nonisolated throw paths.
-        Task { @MainActor in
-            DimensionedPhotoSyncManager.lastQueuedAnnotation = annotation
-        }
-        return self
     }
 }
 

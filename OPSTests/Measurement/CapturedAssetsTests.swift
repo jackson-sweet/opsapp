@@ -74,7 +74,7 @@ final class CapturedAssetsTests: XCTestCase {
         let assets = CapturedAssets.in(directory: directory, captureID: captureID)
 
         XCTAssertEqual(assets.heicURL.lastPathComponent, "\(captureID.uuidString).heic")
-        XCTAssertEqual(assets.depthURL.lastPathComponent, "\(captureID.uuidString).depth.fp32")
+        XCTAssertEqual(assets.depthURL?.lastPathComponent, "\(captureID.uuidString).depth.fp32")
         XCTAssertEqual(assets.sidecarURL.lastPathComponent, "\(captureID.uuidString).metadata.json")
     }
 

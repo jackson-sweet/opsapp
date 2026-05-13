@@ -10,9 +10,14 @@
 //    1. Capture ARKit state snapshot — ARFrame.anchors with classifications,
 //       camera.intrinsics, device pose. Non-blocking, ~5 ms.
 //    2. Pause ARKit: arSession.pause() — releases the camera.
-//    3. Activate pre-warmed AVCaptureSession with builtInLiDARDepthCamera +
-//       synchronized photo / depth / calibration outputs.
-//    4. capturePhoto() with AVCaptureSynchronizedDataCollection delegate.
+//    3. Activate pre-warmed AVCaptureSession with builtInLiDARDepthCamera.
+//       photoOutput.isDepthDataDeliveryEnabled = true streams depth inline with
+//       the still photo. The attached AVCaptureDepthDataOutput is required at
+//       session-config time so the LiDAR pipeline reports
+//       isDepthDataDeliverySupported = true on the photoOutput; nothing
+//       subscribes to its streaming callbacks.
+//    4. capturePhoto() — delivery flows through AVCapturePhotoCaptureDelegate,
+//       with depth on AVCapturePhoto.depthData.
 //    5. Tear down AVCaptureSession; do NOT resume ARKit.
 //
 //  Total shutter latency budget (steps 2+3+4): <250 ms.
@@ -73,11 +78,6 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
     private let avSession = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
     private let depthOutput = AVCaptureDepthDataOutput()
-    private var dataOutputSynchronizer: AVCaptureDataOutputSynchronizer?
-    private let synchronizerQueue = DispatchQueue(
-        label: "co.opsapp.lidar.synchronizer",
-        qos: .userInteractive
-    )
     private var pendingCapture: PendingCapture?
     private let assetDirectory: URL
     private let log = Logger(subsystem: "co.opsapp.ops", category: "lidar-capture")
@@ -230,12 +230,6 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
                 device.activeDepthDataFormat = availableFormat
                 device.unlockForConfiguration()
             }
-
-            let synchronizer = AVCaptureDataOutputSynchronizer(
-                dataOutputs: [photoOutput, depthOutput]
-            )
-            synchronizer.setDelegate(self, queue: synchronizerQueue)
-            self.dataOutputSynchronizer = synchronizer
         } catch {
             log.error("AVSession prewarm failed: \(error.localizedDescription)")
             transition(to: .failed(.avCaptureFailed(error.localizedDescription)))
@@ -495,18 +489,3 @@ extension LiDARCaptureCoordinator: AVCapturePhotoCaptureDelegate {
     }
 }
 
-// MARK: - AVCaptureDataOutputSynchronizerDelegate
-//
-// Wired up for parity with the synchronized-output pipeline described in spec §3.2,
-// though Phase B funnels capture through AVCapturePhotoCaptureDelegate above —
-// photoOutput already delivers AVDepthData on its own delegate when
-// isDepthDataDeliveryEnabled = true. The synchronizer remains configured so Phase C
-// can subscribe to streaming depth frames during live aim without rewiring.
-extension LiDARCaptureCoordinator: AVCaptureDataOutputSynchronizerDelegate {
-    nonisolated public func dataOutputSynchronizer(
-        _ synchronizer: AVCaptureDataOutputSynchronizer,
-        didOutput synchronizedDataCollection: AVCaptureSynchronizedDataCollection
-    ) {
-        // No-op for Phase B. Phase C will tap into this for live-aim depth previews.
-    }
-}

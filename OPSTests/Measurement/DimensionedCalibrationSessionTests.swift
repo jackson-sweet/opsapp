@@ -33,7 +33,8 @@ final class DimensionedCalibrationSessionTests: XCTestCase {
         let session = DimensionedCalibrationSession(
             originalHandoff: handoff,
             originalDimensions: original,
-            originalCoplanarOnly: false
+            originalCoplanarOnly: false,
+            originalHasUnsavedChanges: false
         )
 
         let reopened = session.cancelledAnnotation()
@@ -42,6 +43,34 @@ final class DimensionedCalibrationSessionTests: XCTestCase {
         XCTAssertEqual(reopened.dimensions, original)
         XCTAssertEqual(reopened.initialCalibration, original.calibration)
         XCTAssertFalse(reopened.coplanarOnly)
+        XCTAssertFalse(reopened.hasUnsavedChanges)
+    }
+
+    func test_cancelledCalibrationRestoresOriginalDirtyFlag() throws {
+        let handoff = makeHandoff(capability: .lidar)
+        let original = makeDimensions(
+            calibration: DimensionsData.Calibration(
+                method: .lidar,
+                referenceObject: nil,
+                scaleFactor: 1.0,
+                estimatedAccuracyMeters: 0.025
+            )
+        )
+        let session = DimensionedCalibrationSession(
+            originalHandoff: handoff,
+            originalDimensions: original,
+            originalCoplanarOnly: false,
+            originalHasUnsavedChanges: true
+        )
+
+        let reopened = session.cancelledAnnotation()
+
+        XCTAssertEqual(reopened.dimensions, original)
+        XCTAssertTrue(reopened.hasUnsavedChanges)
+
+        let presentation = DimensionedCaptureView.AnnotationPresentation(resolved: reopened)
+        XCTAssertTrue(presentation.hasUnsavedChanges)
+        XCTAssertEqual(presentation.existingDimensions, original)
     }
 
     func test_successfulLiDARCalibrationPreservesMeasurementsAndUpgradesCalibration() throws {
@@ -62,7 +91,8 @@ final class DimensionedCalibrationSessionTests: XCTestCase {
         let session = DimensionedCalibrationSession(
             originalHandoff: handoff,
             originalDimensions: original,
-            originalCoplanarOnly: false
+            originalCoplanarOnly: false,
+            originalHasUnsavedChanges: true
         )
 
         let reopened = session.calibratedAnnotation(with: result)
@@ -76,6 +106,40 @@ final class DimensionedCalibrationSessionTests: XCTestCase {
         XCTAssertEqual(reopened.dimensions.calibration.estimatedAccuracyMeters, 0.005, accuracy: 1e-9)
         XCTAssertEqual(reopened.initialCalibration, reopened.dimensions.calibration)
         XCTAssertFalse(reopened.coplanarOnly)
+        XCTAssertTrue(reopened.hasUnsavedChanges)
+    }
+
+    func test_successfulCalibrationReopensDirtyWhenOriginalWasClean() throws {
+        let handoff = makeHandoff(capability: .lidar)
+        let original = makeDimensions(
+            calibration: DimensionsData.Calibration(
+                method: .lidar,
+                referenceObject: nil,
+                scaleFactor: 1.0,
+                estimatedAccuracyMeters: 0.025
+            )
+        )
+        let result = makeCalibrationResult(
+            scaleFactor: 0.992,
+            coplanarOnly: false,
+            referenceObject: .opsMarker
+        )
+        let session = DimensionedCalibrationSession(
+            originalHandoff: handoff,
+            originalDimensions: original,
+            originalCoplanarOnly: false,
+            originalHasUnsavedChanges: false
+        )
+
+        let reopened = session.calibratedAnnotation(with: result)
+
+        XCTAssertEqual(reopened.dimensions.measurements, original.measurements)
+        XCTAssertEqual(reopened.dimensions.calibration.method, .referenceObject)
+        XCTAssertTrue(reopened.hasUnsavedChanges)
+
+        let presentation = DimensionedCaptureView.AnnotationPresentation(resolved: reopened)
+        XCTAssertTrue(presentation.hasUnsavedChanges)
+        XCTAssertEqual(presentation.existingDimensions?.calibration.method, .referenceObject)
     }
 
     func test_successfulVisualCalibrationMarksReopenedAnnotationCoplanarOnly() throws {
@@ -97,7 +161,8 @@ final class DimensionedCalibrationSessionTests: XCTestCase {
         let session = DimensionedCalibrationSession(
             originalHandoff: handoff,
             originalDimensions: original,
-            originalCoplanarOnly: false
+            originalCoplanarOnly: false,
+            originalHasUnsavedChanges: false
         )
 
         let reopened = session.calibratedAnnotation(with: result)
@@ -108,6 +173,7 @@ final class DimensionedCalibrationSessionTests: XCTestCase {
         XCTAssertEqual(reopened.dimensions.calibration.referenceObject, .creditCard)
         XCTAssertEqual(reopened.dimensions.calibration.scaleFactor, 1.018, accuracy: 1e-9)
         XCTAssertTrue(reopened.coplanarOnly)
+        XCTAssertTrue(reopened.hasUnsavedChanges)
     }
 
     func test_calibratorTriesCreditCardThenOpsMarkerBeforeFailing() throws {

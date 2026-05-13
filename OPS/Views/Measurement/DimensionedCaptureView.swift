@@ -150,11 +150,13 @@ public struct DimensionedCaptureView: View {
                     capability: handoff.capability,
                     coplanarOnly: presentation.coplanarOnly,
                     existingDimensions: presentation.existingDimensions,
-                    onRequestCalibrate: { dimensions in
+                    initialHasUnsavedChanges: presentation.hasUnsavedChanges,
+                    onRequestCalibrate: { dimensions, hasUnsavedChanges in
                         calibrationSession = DimensionedCalibrationSession(
                             originalHandoff: handoff,
                             originalDimensions: dimensions,
-                            originalCoplanarOnly: presentation.coplanarOnly
+                            originalCoplanarOnly: presentation.coplanarOnly,
+                            originalHasUnsavedChanges: hasUnsavedChanges
                         )
                         pendingAnnotation = nil
                         enterCalibrationMode()
@@ -543,7 +545,7 @@ public struct DimensionedCaptureView: View {
 
         do {
             let result = try await Task.detached(priority: .userInitiated) {
-                try Self.calibrationResult(
+                try DimensionedCalibrationResolver.calibrationResult(
                     from: calibrationAssets,
                     hasLiDAR: session.originalHandoff.capability == .lidar
                 )
@@ -567,26 +569,6 @@ public struct DimensionedCaptureView: View {
 
     private func reopenAnnotation(_ resolved: DimensionedResolvedAnnotation) {
         pendingAnnotation = AnnotationPresentation(resolved: resolved)
-    }
-
-    private static func calibrationResult(
-        from assets: CapturedAssets,
-        hasLiDAR: Bool
-    ) throws -> CalibrationResult {
-        let image = try loadCalibrationImage(from: assets.heicURL)
-        return try ReferenceObjectCalibrator.calibrate(
-            image: image,
-            intrinsics: assets.intrinsics,
-            hasLiDAR: hasLiDAR
-        )
-    }
-
-    private static func loadCalibrationImage(from url: URL) throws -> CGImage {
-        guard let data = try? Data(contentsOf: url),
-              let image = UIImage(data: data)?.cgImage else {
-            throw CalibrationCaptureError.photoUnavailable
-        }
-        return image
     }
 
     // MARK: - Errors
@@ -749,12 +731,14 @@ extension DimensionedCaptureView {
         let existingDimensions: DimensionsData?
         let initialCalibration: DimensionsData.Calibration
         let coplanarOnly: Bool
+        let hasUnsavedChanges: Bool
 
         init(handoff: DimensionedAnnotationHandoff) {
             self.handoff = handoff
             self.existingDimensions = nil
             self.initialCalibration = handoff.initialCalibration
             self.coplanarOnly = handoff.coplanarOnly
+            self.hasUnsavedChanges = false
         }
 
         init(resolved: DimensionedResolvedAnnotation) {
@@ -762,6 +746,7 @@ extension DimensionedCaptureView {
             self.existingDimensions = resolved.dimensions
             self.initialCalibration = resolved.initialCalibration
             self.coplanarOnly = resolved.coplanarOnly
+            self.hasUnsavedChanges = resolved.hasUnsavedChanges
         }
     }
 
@@ -775,10 +760,6 @@ extension DimensionedCaptureView {
 
     enum ARAvailability {
         case checking, ready, denied, unsupported
-    }
-
-    enum CalibrationCaptureError: Error {
-        case photoUnavailable
     }
 
     static func annotationHandoffConfiguration(

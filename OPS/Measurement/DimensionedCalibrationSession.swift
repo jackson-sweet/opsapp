@@ -12,6 +12,7 @@ public struct DimensionedResolvedAnnotation {
     public let handoff: DimensionedAnnotationHandoff
     public let dimensions: DimensionsData
     public let coplanarOnly: Bool
+    public let hasUnsavedChanges: Bool
 
     public var initialCalibration: DimensionsData.Calibration {
         dimensions.calibration
@@ -20,11 +21,13 @@ public struct DimensionedResolvedAnnotation {
     public init(
         handoff: DimensionedAnnotationHandoff,
         dimensions: DimensionsData,
-        coplanarOnly: Bool
+        coplanarOnly: Bool,
+        hasUnsavedChanges: Bool
     ) {
         self.handoff = handoff
         self.dimensions = dimensions
         self.coplanarOnly = coplanarOnly
+        self.hasUnsavedChanges = hasUnsavedChanges
     }
 }
 
@@ -32,22 +35,26 @@ public struct DimensionedCalibrationSession {
     public let originalHandoff: DimensionedAnnotationHandoff
     public let originalDimensions: DimensionsData
     public let originalCoplanarOnly: Bool
+    public let originalHasUnsavedChanges: Bool
 
     public init(
         originalHandoff: DimensionedAnnotationHandoff,
         originalDimensions: DimensionsData,
-        originalCoplanarOnly: Bool
+        originalCoplanarOnly: Bool,
+        originalHasUnsavedChanges: Bool
     ) {
         self.originalHandoff = originalHandoff
         self.originalDimensions = originalDimensions
         self.originalCoplanarOnly = originalCoplanarOnly
+        self.originalHasUnsavedChanges = originalHasUnsavedChanges
     }
 
     public func cancelledAnnotation() -> DimensionedResolvedAnnotation {
         DimensionedResolvedAnnotation(
             handoff: originalHandoff,
             dimensions: originalDimensions,
-            coplanarOnly: originalCoplanarOnly
+            coplanarOnly: originalCoplanarOnly,
+            hasUnsavedChanges: originalHasUnsavedChanges
         )
     }
 
@@ -64,7 +71,8 @@ public struct DimensionedCalibrationSession {
         return DimensionedResolvedAnnotation(
             handoff: originalHandoff,
             dimensions: updated,
-            coplanarOnly: result.coplanarOnly
+            coplanarOnly: result.coplanarOnly,
+            hasUnsavedChanges: true
         )
     }
 }

@@ -25,6 +25,7 @@
 import SwiftUI
 import AVFoundation
 import ARKit
+import UIKit
 
 public struct DimensionedCaptureView: View {
 
@@ -40,10 +41,6 @@ public struct DimensionedCaptureView: View {
     /// callers omit this — the view builds a fresh coordinator on first appear.
     private let injectedCoordinator: LiDARCaptureCoordinator?
 
-    /// Capture mode — `.normal` for first-time capture, `.calibration` for a
-    /// round-trip from the annotation view to re-establish reference scale.
-    public let mode: CaptureMode
-
     // Project context — flows in from `ProjectActionBar`/`MeasureActionButton`
     // and is captured by the save closure when dispatching to Phase F's
     // `DimensionedPhotoSyncManager`. Defaults preserve back-compat with the
@@ -54,12 +51,11 @@ public struct DimensionedCaptureView: View {
     public let userId: String
 
     // Parent-injected closures for post-save routing. The capture view owns
-    // the sync call; the parent owns dismissal + error UX so the action bar
-    // can route the user back to the project on success and re-present the
-    // capture view in calibration mode on a calibrate request.
+    // the sync call and calibration continuity; the parent owns dismissal +
+    // error UX so the action bar can route the user back to the project on
+    // success.
     let onSavedSuccessfully: (PhotoAnnotation) -> Void
     let onError: (Error) -> Void
-    let onRequestCalibrationMode: () -> Void
 
     @StateObject private var coordinatorBox = CoordinatorBox()
     @State private var availability: ARAvailability = .checking
@@ -68,7 +64,9 @@ public struct DimensionedCaptureView: View {
     @State private var helperStateOverride: HelperTextOverlay.HelperState?
     @State private var errorToast: ErrorToast?
     @State private var levelIndicatorEnabled = true
-    @State private var pendingAnnotation: DimensionedAnnotationHandoff?
+    @State private var activeMode: CaptureMode
+    @State private var pendingAnnotation: AnnotationPresentation?
+    @State private var calibrationSession: DimensionedCalibrationSession?
     @State private var saveInFlight = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -81,18 +79,16 @@ public struct DimensionedCaptureView: View {
         companyId: String = "",
         userId: String = "",
         onSavedSuccessfully: @escaping (PhotoAnnotation) -> Void = { _ in },
-        onError: @escaping (Error) -> Void = { _ in },
-        onRequestCalibrationMode: @escaping () -> Void = {}
+        onError: @escaping (Error) -> Void = { _ in }
     ) {
         self.injectedCoordinator = coordinator
-        self.mode = mode
+        self._activeMode = State(initialValue: mode)
         self.projectId = projectId
         self.projectName = projectName
         self.companyId = companyId
         self.userId = userId
         self.onSavedSuccessfully = onSavedSuccessfully
         self.onError = onError
-        self.onRequestCalibrationMode = onRequestCalibrationMode
     }
 
     public var body: some View {
@@ -138,11 +134,11 @@ public struct DimensionedCaptureView: View {
             //                    Failure → parent's onError + leave annotation
             //                    view open so the user can retry without losing
             //                    measurements.
-            // onRequestCalibrate → dismiss annotation, call parent's
-            //                      onRequestCalibrationMode so the action bar
-            //                      can re-present the capture view in
-            //                      calibration mode.
-            if let handoff = pendingAnnotation {
+            // onRequestCalibrate → snapshot dimensions, return to the same
+            //                      capture view in calibration mode, then
+            //                      reopen this annotation on cancel/success.
+            if let presentation = pendingAnnotation {
+                let handoff = presentation.handoff
                 let assets = handoff.assets
                 DimensionedAnnotationView(
                     assets: assets,
@@ -150,13 +146,18 @@ public struct DimensionedCaptureView: View {
                     preloadedDepthMap: handoff.preloadedDepthMap,
                     anchors: handoff.anchors,
                     detectedOpenings: handoff.detectedOpenings,
-                    initialCalibration: handoff.initialCalibration,
+                    initialCalibration: presentation.initialCalibration,
                     capability: handoff.capability,
-                    coplanarOnly: handoff.coplanarOnly,
-                    existingDimensions: nil,
-                    onRequestCalibrate: {
+                    coplanarOnly: presentation.coplanarOnly,
+                    existingDimensions: presentation.existingDimensions,
+                    onRequestCalibrate: { dimensions in
+                        calibrationSession = DimensionedCalibrationSession(
+                            originalHandoff: handoff,
+                            originalDimensions: dimensions,
+                            originalCoplanarOnly: presentation.coplanarOnly
+                        )
                         pendingAnnotation = nil
-                        onRequestCalibrationMode()
+                        enterCalibrationMode()
                     },
                     onSaveToProject: { dimensions in
                         guard !saveInFlight else { return }
@@ -266,7 +267,7 @@ public struct DimensionedCaptureView: View {
 
             // Chrome
             VStack(spacing: 0) {
-                topBar(coordinator: coordinator)
+                topBar
                 Spacer()
                 helperRow(coordinator: coordinator)
                     .padding(.bottom, 24)
@@ -297,27 +298,55 @@ public struct DimensionedCaptureView: View {
     // MARK: - Top bar
 
     @ViewBuilder
-    private func topBar(coordinator: LiDARCaptureCoordinator) -> some View {
+    private var topBar: some View {
         HStack {
-            // 44×44 hit area for the title is overkill — keep it inline.
-            Text("MEASURE")
-                .font(.buttonLabel)
-                .textCase(.uppercase)
-                .tracking(0.8)
-                .foregroundColor(OPSStyle.Colors.text)
+            if activeMode == .calibration {
+                Button {
+                    cancelCalibration()
+                } label: {
+                    Text("CANCEL")
+                        .font(.buttonLabel)
+                        .textCase(.uppercase)
+                        .tracking(0.8)
+                        .foregroundColor(OPSStyle.Colors.text)
+                        .frame(minWidth: 72, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Cancel calibration")
 
-            Spacer()
+                Spacer()
 
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundColor(OPSStyle.Colors.text2)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+                Text("// CALIBRATE")
+                    .font(.buttonLabel)
+                    .textCase(.uppercase)
+                    .tracking(0.8)
+                    .foregroundColor(OPSStyle.Colors.text)
+
+                Spacer()
+
+                Color.clear
+                    .frame(width: 72, height: 44)
+            } else {
+                // 44×44 hit area for the title is overkill — keep it inline.
+                Text("MEASURE")
+                    .font(.buttonLabel)
+                    .textCase(.uppercase)
+                    .tracking(0.8)
+                    .foregroundColor(OPSStyle.Colors.text)
+
+                Spacer()
+
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundColor(OPSStyle.Colors.text2)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Close")
             }
-            .accessibilityLabel("Close")
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.top, 8)
@@ -333,6 +362,9 @@ public struct DimensionedCaptureView: View {
     }
 
     private func helperState(for state: LiDARCaptureCoordinator.CaptureState) -> HelperTextOverlay.HelperState {
+        if activeMode == .calibration {
+            return .calibration
+        }
         switch state {
         case .idle, .warmingUp:    return .initializing
         case .ready:               return .aimAtOpening
@@ -412,6 +444,10 @@ public struct DimensionedCaptureView: View {
     }
 
     private func fireShutter(coordinator: LiDARCaptureCoordinator) async {
+        await MainActor.run {
+            withAnimation(.opsCurve200) { errorToast = nil }
+        }
+
         // Two-stage flash — 80 ms ramp up, medium impact haptic at peak, 160 ms ramp down.
         // Reduced motion: single 150 ms opacity transition (§5.3 row 3 fallback).
         if reduceMotion {
@@ -436,6 +472,10 @@ public struct DimensionedCaptureView: View {
     private func handleStateChange(_ state: LiDARCaptureCoordinator.CaptureState) {
         switch state {
         case .captured(let assets):
+            if activeMode == .calibration {
+                Task { await resolveCalibrationCapture(assets) }
+                return
+            }
             // Show post-capture flash chip for 1.5 s, then push to the Phase E
             // stub annotation view via `.fullScreenCover` (see body). Phase G
             // will move the navigation up to the entry point on
@@ -453,7 +493,9 @@ public struct DimensionedCaptureView: View {
                     )
                 }.value
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
-                await MainActor.run { pendingAnnotation = handoff }
+                await MainActor.run {
+                    pendingAnnotation = AnnotationPresentation(handoff: handoff)
+                }
             }
         case .failed(let error):
             showError(toast: ErrorToast.from(captureError: error))
@@ -463,6 +505,88 @@ public struct DimensionedCaptureView: View {
                 helperStateOverride = nil
             }
         }
+    }
+
+    // MARK: - Calibration mode
+
+    private func enterCalibrationMode() {
+        activeMode = .calibration
+        helperStateOverride = nil
+        withAnimation(.opsCurve200) { errorToast = nil }
+        coordinatorBox.coordinator?.reset()
+        coordinatorBox.coordinator?.startLiveAim()
+    }
+
+    private func cancelCalibration() {
+        guard let session = calibrationSession else {
+            activeMode = .normal
+            dismiss()
+            return
+        }
+
+        coordinatorBox.coordinator?.reset()
+        calibrationSession = nil
+        activeMode = .normal
+        reopenAnnotation(session.cancelledAnnotation())
+    }
+
+    private func resolveCalibrationCapture(_ calibrationAssets: CapturedAssets) async {
+        guard let session = calibrationSession else {
+            await MainActor.run {
+                activeMode = .normal
+                showError(toast: ErrorToast(copy: "// CALIBRATION LOST · RETRY"))
+                coordinatorBox.coordinator?.reset()
+                coordinatorBox.coordinator?.startLiveAim()
+            }
+            return
+        }
+
+        do {
+            let result = try await Task.detached(priority: .userInitiated) {
+                try Self.calibrationResult(
+                    from: calibrationAssets,
+                    hasLiDAR: session.originalHandoff.capability == .lidar
+                )
+            }.value
+            await MainActor.run {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                coordinatorBox.coordinator?.reset()
+                calibrationSession = nil
+                activeMode = .normal
+                reopenAnnotation(session.calibratedAnnotation(with: result))
+            }
+        } catch {
+            await MainActor.run {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                showError(toast: .referenceNotFound)
+                coordinatorBox.coordinator?.reset()
+                coordinatorBox.coordinator?.startLiveAim()
+            }
+        }
+    }
+
+    private func reopenAnnotation(_ resolved: DimensionedResolvedAnnotation) {
+        pendingAnnotation = AnnotationPresentation(resolved: resolved)
+    }
+
+    private static func calibrationResult(
+        from assets: CapturedAssets,
+        hasLiDAR: Bool
+    ) throws -> CalibrationResult {
+        let image = try loadCalibrationImage(from: assets.heicURL)
+        return try ReferenceObjectCalibrator.calibrate(
+            image: image,
+            intrinsics: assets.intrinsics,
+            hasLiDAR: hasLiDAR
+        )
+    }
+
+    private static func loadCalibrationImage(from url: URL) throws -> CGImage {
+        guard let data = try? Data(contentsOf: url),
+              let image = UIImage(data: data)?.cgImage else {
+            throw CalibrationCaptureError.photoUnavailable
+        }
+        return image
     }
 
     // MARK: - Errors
@@ -490,6 +614,20 @@ public struct DimensionedCaptureView: View {
                         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
                 }
             }
+            if toast.includesUseUncalibrated {
+                Button {
+                    cancelCalibration()
+                } label: {
+                    Text("USE UNCALIBRATED")
+                        .font(.panelTitle)
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(OPSStyle.Colors.surfaceActive)
+                        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
+                }
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -505,6 +643,7 @@ public struct DimensionedCaptureView: View {
 
     private func showError(toast: ErrorToast) {
         withAnimation(.opsCurve200) { errorToast = toast }
+        guard !toast.includesUseUncalibrated else { return }
         Task {
             try? await Task.sleep(nanoseconds: 4_000_000_000)
             await MainActor.run {
@@ -520,7 +659,11 @@ public struct DimensionedCaptureView: View {
             .onEnded { value in
                 // Apple Measure convention — vertical drag > 80 pt dismisses.
                 if value.translation.height > 80 && abs(value.translation.width) < 80 {
-                    dismiss()
+                    if activeMode == .calibration {
+                        cancelCalibration()
+                    } else {
+                        dismiss()
+                    }
                 }
             }
     }
@@ -601,6 +744,27 @@ public struct DimensionedCaptureView: View {
 // MARK: - Helper types
 
 extension DimensionedCaptureView {
+    struct AnnotationPresentation {
+        let handoff: DimensionedAnnotationHandoff
+        let existingDimensions: DimensionsData?
+        let initialCalibration: DimensionsData.Calibration
+        let coplanarOnly: Bool
+
+        init(handoff: DimensionedAnnotationHandoff) {
+            self.handoff = handoff
+            self.existingDimensions = nil
+            self.initialCalibration = handoff.initialCalibration
+            self.coplanarOnly = handoff.coplanarOnly
+        }
+
+        init(resolved: DimensionedResolvedAnnotation) {
+            self.handoff = resolved.handoff
+            self.existingDimensions = resolved.dimensions
+            self.initialCalibration = resolved.initialCalibration
+            self.coplanarOnly = resolved.coplanarOnly
+        }
+    }
+
     struct AnnotationHandoffConfiguration: Equatable {
         let capability: CaptureCapability
         let initialCalibration: DimensionsData.Calibration
@@ -611,6 +775,10 @@ extension DimensionedCaptureView {
 
     enum ARAvailability {
         case checking, ready, denied, unsupported
+    }
+
+    enum CalibrationCaptureError: Error {
+        case photoUnavailable
     }
 
     static func annotationHandoffConfiguration(
@@ -635,6 +803,12 @@ extension DimensionedCaptureView {
     struct ErrorToast: Equatable {
         let copy: String
         var includesOpenSettings: Bool = false
+        var includesUseUncalibrated: Bool = false
+
+        static let referenceNotFound = ErrorToast(
+            copy: "// ERROR — REFERENCE NOT FOUND · INCREASE LIGHT · RETRY",
+            includesUseUncalibrated: true
+        )
 
         static func from(captureError: LiDARCaptureCoordinator.CaptureError) -> ErrorToast {
             switch captureError {

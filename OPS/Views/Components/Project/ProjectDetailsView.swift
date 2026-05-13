@@ -34,7 +34,6 @@ struct ProjectDetailsView: View {
     @State private var showingStatusPicker = false
     @State private var showingCameraBatch = false
     @State private var showingMeasureCapture = false
-    @State private var measureCaptureMode: DimensionedCaptureView.CaptureMode = .normal
     @State private var showingDeckCreationPicker = false
     @State private var deckDesignToOpen: DeckDesign?
     @ObservedObject private var permissionStore = PermissionStore.shared
@@ -103,9 +102,11 @@ struct ProjectDetailsView: View {
                     }
                     .fullScreenCover(isPresented: $showingMeasureCapture) {
                         // LiDAR Dimensioned Photo Capture (spec §3.1) — same
-                        // capture/save closures as Home's MeasureActionButton.
+                        // capture/save behavior as Home's MeasureActionButton.
+                        // Calibration continuity is owned inside the capture
+                        // view so this container never tears down annotation
+                        // state mid-flow.
                         DimensionedCaptureView(
-                            mode: measureCaptureMode,
                             projectId: project.id,
                             projectName: project.title,
                             companyId: project.companyId,
@@ -115,16 +116,6 @@ struct ProjectDetailsView: View {
                             },
                             onError: { _ in
                                 showingMeasureCapture = false
-                            },
-                            onRequestCalibrationMode: {
-                                // Round-trip per spec §5.2: dismiss, re-present
-                                // in calibration mode so the user can reframe a
-                                // reference object.
-                                showingMeasureCapture = false
-                                measureCaptureMode = .calibration
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                    showingMeasureCapture = true
-                                }
                             }
                         )
                     }
@@ -445,7 +436,6 @@ struct ProjectDetailsView: View {
                             flagEnabled: permissionStore.isFeatureEnabled(MeasurementFlag.dimensionedCapture),
                             capability: CaptureCapability.detect().capability
                         ) ? {
-                            measureCaptureMode = .normal
                             showingMeasureCapture = true
                         } : nil,
                         onShare: { shareProject() },

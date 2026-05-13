@@ -2,7 +2,7 @@
 //  HelperTextOverlayTests.swift
 //  OPSTests
 //
-//  Verifies the six progressive helper states from spec §5.1 — both the
+//  Verifies the progressive helper states from spec §5.1 — both the
 //  literal copy (the spec table is canonical) and the foreground color
 //  ladder. Acts as a copy-regression guard so future edits to the spec
 //  flow through this test rather than silently drifting in the UI.
@@ -38,6 +38,10 @@ final class HelperTextOverlayTests: XCTestCase {
         XCTAssertEqual(S.openingLocked.copy, "OPENING LOCKED")
     }
 
+    func test_calibration_copy_matches_spec() {
+        XCTAssertEqual(S.calibration.copy, "CALIBRATE · PLACE CARD ON SURFACE")
+    }
+
     func test_captured_flash_includes_interpunct_separator() {
         // §5.1 mandates `·` interpunct (never em-dash), and the JetBrains Mono
         // duration is a literal `0.07s` per the spec table.
@@ -51,6 +55,14 @@ final class HelperTextOverlayTests: XCTestCase {
             AnnotationFeedback.noDepthAtPoint.copy,
             "// ERROR — NO DEPTH AT POINT · TAP A SOLID SURFACE"
         )
+    }
+
+    func test_calibrationReferenceNotFound_copy_matches_spec() {
+        XCTAssertEqual(
+            DimensionedCaptureView.ErrorToast.referenceNotFound.copy,
+            "// ERROR — REFERENCE NOT FOUND · INCREASE LIGHT · RETRY"
+        )
+        XCTAssertTrue(DimensionedCaptureView.ErrorToast.referenceNotFound.includesUseUncalibrated)
     }
 
     // MARK: - Color ladder
@@ -77,6 +89,10 @@ final class HelperTextOverlayTests: XCTestCase {
         XCTAssertEqual(S.openingLocked.foreground, OPSStyle.Colors.olive)
     }
 
+    func test_calibration_uses_attention_tan() {
+        XCTAssertEqual(S.calibration.foreground, OPSStyle.Colors.tan)
+    }
+
     func test_captured_flash_reads_as_neutral_primary_text() {
         // Capture is a *commitment* beat, paired with the shutter haptic.
         // Not a status color — stays in the primary `text` ladder so the
@@ -99,12 +115,13 @@ final class HelperTextOverlayTests: XCTestCase {
         }
     }
 
-    func test_all_six_states_are_present_in_enum_order() {
+    func test_all_states_are_present_in_enum_order() {
         // Locks the enum to the §5.1 progression so a future refactor can't
         // silently drop a state. The order matters — it's the temporal flow.
         XCTAssertEqual(S.allCases, [
             .initializing, .aimAtOpening, .searching,
-            .wallDetected, .openingLocked, .capturedFlash
+            .wallDetected, .openingLocked, .calibration,
+            .capturedFlash
         ])
     }
 }

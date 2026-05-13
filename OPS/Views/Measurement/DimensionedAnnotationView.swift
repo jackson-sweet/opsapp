@@ -61,7 +61,7 @@ public struct DimensionedAnnotationView: View {
     public let coplanarOnly: Bool
     public let existingDimensions: DimensionsData?
 
-    public var onRequestCalibrate: () -> Void
+    public var onRequestCalibrate: (DimensionsData) -> Void
     public var onSaveToProject: (DimensionsData) -> Void
     public var onDismiss: () -> Void
 
@@ -112,7 +112,7 @@ public struct DimensionedAnnotationView: View {
         capability: CaptureCapability,
         coplanarOnly: Bool = false,
         existingDimensions: DimensionsData? = nil,
-        onRequestCalibrate: @escaping () -> Void = {},
+        onRequestCalibrate: @escaping (DimensionsData) -> Void = { _ in },
         onSaveToProject: @escaping (DimensionsData) -> Void = { _ in },
         onDismiss: @escaping () -> Void = {},
         // Initial-state convenience for re-open and tests:
@@ -130,10 +130,11 @@ public struct DimensionedAnnotationView: View {
         self.onRequestCalibrate = onRequestCalibrate
         self.onSaveToProject = onSaveToProject
         self.onDismiss = onDismiss
-        self._calibration = State(initialValue: initialCalibration)
         if let existing = existingDimensions {
+            self._calibration = State(initialValue: existing.calibration)
             self._measurements = State(initialValue: existing.measurements)
         } else {
+            self._calibration = State(initialValue: initialCalibration)
             self._measurements = State(initialValue: startingMeasurements)
         }
     }
@@ -552,7 +553,7 @@ public struct DimensionedAnnotationView: View {
                 }
                 Button {
                     showingCalibrateConfirmation = false
-                    onRequestCalibrate()
+                    onRequestCalibrate(currentDimensionsData())
                 } label: {
                     Text("CONTINUE")
                         .font(.custom("CakeMono-Light", size: 14))

@@ -104,9 +104,41 @@ public enum ReferenceObjectCalibratorError: Error, Equatable {
     case noRectangleDetected
     case rectangleAspectOutOfBounds(detected: Float, expectedMin: Float, expectedMax: Float)
     case pnpFailed
+    case noSupportedReferenceDetected
 }
 
 public struct ReferenceObjectCalibrator {
+
+    public static func firstSuccessfulCalibration(
+        markers: [ReferenceMarker] = [.creditCard, .opsMarker],
+        using calibrate: (ReferenceMarker) throws -> CalibrationResult
+    ) throws -> CalibrationResult {
+        for marker in markers {
+            do {
+                return try calibrate(marker)
+            } catch {
+                continue
+            }
+        }
+        throw ReferenceObjectCalibratorError.noSupportedReferenceDetected
+    }
+
+    /// Calibrate from a still photo by trying the supported reference objects
+    /// in operator-friendly order: credit card first, OPS marker second.
+    public static func calibrate(
+        image: CGImage,
+        intrinsics: DimensionsData.Intrinsics,
+        hasLiDAR: Bool
+    ) throws -> CalibrationResult {
+        try firstSuccessfulCalibration { marker in
+            try calibrate(
+                image: image,
+                intrinsics: intrinsics,
+                marker: marker,
+                hasLiDAR: hasLiDAR
+            )
+        }
+    }
 
     /// Calibrate from a still photo. Runs Vision rectangle detection then
     /// PnP. Synchronous — Vision exposes a sync API.

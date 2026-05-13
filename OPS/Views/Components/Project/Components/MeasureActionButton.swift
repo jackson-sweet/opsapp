@@ -24,7 +24,6 @@ struct MeasureActionButton: View {
     @ObservedObject private var permissionStore = PermissionStore.shared
 
     @State private var showCapture = false
-    @State private var captureMode: DimensionedCaptureView.CaptureMode = .normal
     @State private var pendingErrorBanner: String?
 
     /// Visibility gate. Pure function of (flag, capability) — exposed for unit
@@ -54,12 +53,10 @@ struct MeasureActionButton: View {
                     icon: "ruler",
                     label: "Measure"
                 ) {
-                    captureMode = .normal
                     showCapture = true
                 }
                 .fullScreenCover(isPresented: $showCapture) {
                     DimensionedCaptureView(
-                        mode: captureMode,
                         projectId: project.id,
                         projectName: project.title,
                         companyId: project.companyId,
@@ -70,18 +67,6 @@ struct MeasureActionButton: View {
                         onError: { error in
                             pendingErrorBanner = error.localizedDescription
                             showCapture = false
-                        },
-                        onRequestCalibrationMode: {
-                            // Round-trip per spec §5.2: dismiss, re-present
-                            // capture view in calibration mode so the user can
-                            // reframe a reference object. Annotation view's
-                            // measurements are preserved by `existingDimensions`
-                            // on the next re-entry.
-                            showCapture = false
-                            captureMode = .calibration
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                showCapture = true
-                            }
                         }
                     )
                 }

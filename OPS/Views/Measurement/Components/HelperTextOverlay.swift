@@ -11,6 +11,7 @@
 //    Searching       → `// SEARCHING`
 //    Wall detected   → `// WALL DETECTED`
 //    Opening locked  → `// OPENING LOCKED`
+//    Calibration     → `// CALIBRATE · PLACE CARD ON SURFACE`
 //    Post-capture    → `// CAPTURED · 0.07s`   (driven by parent flash flag)
 //
 //  Voice rules: `//` prefix, JetBrains Mono for numbers, sunlight-legible
@@ -79,6 +80,7 @@ extension HelperTextOverlay {
         case searching
         case wallDetected
         case openingLocked
+        case calibration
         case capturedFlash
 
         public var id: String { rawValue }
@@ -91,6 +93,7 @@ extension HelperTextOverlay {
             case .searching:       return "SEARCHING"
             case .wallDetected:    return "WALL DETECTED"
             case .openingLocked:   return "OPENING LOCKED"
+            case .calibration:     return "CALIBRATE · PLACE CARD ON SURFACE"
             case .capturedFlash:   return "CAPTURED · 0.07S"
             }
         }
@@ -106,6 +109,8 @@ extension HelperTextOverlay {
                 return OPSStyle.Colors.text
             case .openingLocked:
                 return OPSStyle.Colors.olive
+            case .calibration:
+                return OPSStyle.Colors.tan
             case .capturedFlash:
                 return OPSStyle.Colors.text
             }

@@ -14,9 +14,17 @@ Supplements the root `OPS LTD./CLAUDE.md`. Read both.
 
 ## Git Commit Guidelines
 
-- **Never include Claude as co-author.** Do not add Claude or any AI attribution to git commits.
-- **Clear commit messages.** Write concise, descriptive messages that explain the changes.
-- **Atomic commits.** Each commit should represent a single logical change.
+- **You may commit without asking first.** The default "ask before committing" behavior is overridden — make atomic commits as work lands. **Pushes still require explicit permission** (`git push`, force-push, rebase against shared history, branch deletion, tag-write).
+- **Don't step on parallel agent work.** This repo regularly has multiple Claude sessions / worktrees running in parallel (`git worktree list` shows current ones). Before acting on shared state:
+  - Do **not** stash, reset, restore, or `git add` files that have pre-existing uncommitted WIP you did not create.
+  - Do **not** rebase or rewrite history on a branch a sibling worktree is using.
+  - Do **not** delete, rename, or move files another session is mid-edit on.
+  - Do **not** run `xcodebuild` against a DerivedData path another session is actively writing to — check `lsof` or running processes first.
+  - When uncertain whether parallelism applies, ask before acting.
+- **Atomic commits.** One logical change per commit.
+- **Never include Claude as co-author.** No `Co-Authored-By: Claude`, no `noreply@anthropic.com`, no AI attribution of any kind in commit messages or trailers.
+- **Stage by name, not bulk.** Never `git add -A` or `git add .` — name the specific files. Bulk-staging risks pulling in unrelated WIP, secrets (`Secrets.xcconfig`), or another session's files.
+- **Conventional-commit style.** `feat(scope): …`, `fix(scope): …`, `docs(scope): …`, `refactor(scope): …`. Describe what changed and why, not how.
 
 ## Field-First Implementation
 

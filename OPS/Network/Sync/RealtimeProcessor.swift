@@ -1056,6 +1056,9 @@ final class RealtimeProcessor: ObservableObject {
             if !pendingFields.contains("note")              { existing.note = model.note }
             if !pendingFields.contains("updatedAt")         { existing.updatedAt = model.updatedAt }
             if !pendingFields.contains("deletedAt")         { existing.deletedAt = model.deletedAt }
+            if !pendingFields.contains("dimensions"), let dimensionsData = model.dimensionsData {
+                existing.dimensionsData = dimensionsData
+            }
             existing.lastSyncedAt = Date()
             existing.needsSync = false
         } else {

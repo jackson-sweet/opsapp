@@ -1270,7 +1270,7 @@ final class InboundProcessor {
                 entityType: .photoAnnotation,
                 entityId: id,
                 fields: [
-                    "annotationURL", "note", "updatedAt", "deletedAt"
+                    "annotationURL", "note", "updatedAt", "deletedAt", "dimensions"
                 ],
                 context: context
             )
@@ -1279,6 +1279,9 @@ final class InboundProcessor {
             if accept.contains("note") { existing.note = dto.note ?? "" }
             if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
             if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("dimensions"), let dimensionsData = dto.dimensionsData {
+                existing.dimensionsData = dimensionsData
+            }
 
             existing.lastSyncedAt = Date()
             let hasPending = hasPendingOperations(entityType: .photoAnnotation, entityId: existing.id, context: context)

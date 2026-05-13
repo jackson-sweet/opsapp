@@ -1141,7 +1141,7 @@ actor DataActor {
                 entityType: .photoAnnotation,
                 entityId: id,
                 fields: [
-                    "annotationURL", "note", "updatedAt", "deletedAt"
+                    "annotationURL", "note", "updatedAt", "deletedAt", "dimensions"
                 ]
             )
 
@@ -1149,6 +1149,9 @@ actor DataActor {
             if accept.contains("note") { existing.note = dto.note ?? "" }
             if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
             if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+            if accept.contains("dimensions"), let dimensionsData = dto.dimensionsData {
+                existing.dimensionsData = dimensionsData
+            }
 
             existing.lastSyncedAt = Date()
             if !hasPendingOperations(entityType: .photoAnnotation, entityId: existing.id) {

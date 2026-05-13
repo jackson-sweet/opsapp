@@ -18,6 +18,11 @@ struct PhotoAnnotationDTO: Codable, Identifiable {
     let createdAt: String
     let updatedAt: String?
     let deletedAt: String?
+    let dimensions: DimensionsJSONValue?
+
+    var dimensionsData: Data? {
+        Self.encodeDimensionsData(from: dimensions)
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -30,6 +35,7 @@ struct PhotoAnnotationDTO: Codable, Identifiable {
         case createdAt     = "created_at"
         case updatedAt     = "updated_at"
         case deletedAt     = "deleted_at"
+        case dimensions
     }
 
     func toModel() -> PhotoAnnotation {
@@ -49,7 +55,13 @@ struct PhotoAnnotationDTO: Codable, Identifiable {
         if let deletedAt = deletedAt {
             annotation.deletedAt = SupabaseDate.parse(deletedAt)
         }
+        annotation.dimensionsData = dimensionsData
         return annotation
+    }
+
+    private static func encodeDimensionsData(from dimensions: DimensionsJSONValue?) -> Data? {
+        guard let dimensions else { return nil }
+        return try? JSONEncoder().encode(dimensions)
     }
 }
 
@@ -60,6 +72,7 @@ struct UpsertPhotoAnnotationDTO: Codable {
     let annotationUrl: String?
     let note: String
     let authorId: String
+    let dimensions: DimensionsJSONValue? = nil
 
     enum CodingKeys: String, CodingKey {
         case projectId     = "project_id"
@@ -68,5 +81,6 @@ struct UpsertPhotoAnnotationDTO: Codable {
         case annotationUrl = "annotation_url"
         case note
         case authorId      = "author_id"
+        case dimensions
     }
 }

@@ -90,14 +90,14 @@ Three files per capture, stored under `<Documents>/lidar-captures/<uuid>.*`:
 
 HEIC photo with embedded `kCGImageAuxiliaryDataTypeDisparity` aux channel. The
 primary asset — uploads to `project_photos.url` with `source = 'measurement'`.
-The embedded disparity is enough for HEIC auxiliary preservation; the
-standalone FP32 file is kept for high-precision re-rendering.
+The embedded aux channel stays disparity for HEIC compatibility; the separate
+standalone asset is FP32 depth in meters for high-precision re-rendering.
 
 ### `<uuid>.depth.fp32`
 
-Standalone raw FP32 depth grid, tightly packed (no row padding). Exact
-size: 768 × 576 × 4 bytes = ~1.7 MB. Per spec §7, this file is lifecycled out
-after 90 days; HEIC + sidecar are kept indefinitely.
+Standalone raw FP32 depth grid in meters, tightly packed (no row padding).
+Exact size: 768 × 576 × 4 bytes = ~1.7 MB. Per spec §7, this file is
+lifecycled out after 90 days; HEIC + sidecar are kept indefinitely.
 
 Read with:
 
@@ -148,15 +148,15 @@ startLiveAim()
         .sceneReconstruction = .meshWithClassification (if supported)
   └── AVCaptureSession (pre-configured, NOT started)
         builtInLiDARDepthCamera input
-        AVCapturePhotoOutput  (depthDataDelivery on, embedsDepthInPhoto on)
-        AVCaptureDepthDataOutput  (FP32 depth format)
-        AVCaptureDataOutputSynchronizer
+        AVCapturePhotoOutput (depthDataDelivery on, embedsDepthInPhoto on)
+        activeDepthDataFormat = exact 768×576 DepthFloat32
+        AVCaptureDepthDataOutput attached only to advertise LiDAR depth support
 
 capture()
   1. Full ARFrame snapshot — anchors, mesh faces, intrinsics, pose
   2. arSession.pause()
   3. avSession.startRunning()
-  4. photoOutput.capturePhoto(...) → AVCapturePhotoCaptureDelegate
+  4. photoOutput.capturePhoto(...) → AVCapturePhoto.depthData
   5. CaptureAssetWriter.write(...) → HEIC + depth + JSON on disk
   6. avSession.stopRunning()
   7. transition(.captured(assets))
@@ -182,7 +182,7 @@ Total cold-start to first capture: **< 1.05 s** (≈ 800 ms warm-up + 250 ms shu
 **Hardware-required (manual, real iPhone with LiDAR):**
 
 - HEIC + embedded disparity round-trip
-- FP32 raw depth file shape (768 × 576 × 4)
+- FP32 raw depth-in-meters file shape (768 × 576 × 4)
 - Shutter latency profiling — target <250 ms (steps 2-4) and <750 ms end-to-end
   (acceptance gate, spec §10.2)
 - Memory ceiling during capture — target <250 MB resident

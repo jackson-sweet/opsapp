@@ -73,6 +73,12 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
         let enablesHighResolutionPhoto: Bool
     }
 
+    struct DepthDataFormatDescriptor: Equatable {
+        let width: Int
+        let height: Int
+        let mediaSubType: OSType
+    }
+
     private enum CaptureSessionConfigurationError: LocalizedError {
         case inputUnavailable
         case photoOutputUnavailable
@@ -177,6 +183,25 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
             return nil
         }
         return .avCaptureFailed("LiDAR depth data unavailable")
+    }
+
+    static func selectedDepthDataFormatIndex(
+        in descriptors: [DepthDataFormatDescriptor]
+    ) -> Int? {
+        descriptors.firstIndex { descriptor in
+            descriptor.width == DepthMapLoader.lidarDepthWidth
+                && descriptor.height == DepthMapLoader.lidarDepthHeight
+                && descriptor.mediaSubType == kCVPixelFormatType_DepthFloat32
+        }
+    }
+
+    static func depthFormatValidationFailure(
+        selectedFormatIndex: Int?
+    ) -> CaptureError? {
+        guard selectedFormatIndex == nil else {
+            return nil
+        }
+        return .avCaptureFailed("LiDAR 768x576 FP32 depth format unavailable")
     }
 
     static func processedPhotoDepthValidationFailure(
@@ -320,16 +345,16 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
                 }
             }
 
-            // Force FP32 depth on the depth output, per spec §3.2.
-            if configuration.requiresDepthData,
-               let availableFormat = device.activeFormat.supportedDepthDataFormats
-                    .first(where: {
-                        CMFormatDescriptionGetMediaSubType($0.formatDescription)
-                            == kCVPixelFormatType_DepthFloat32
-                    }) {
+            if configuration.requiresDepthData {
+                let supportedFormats = device.activeFormat.supportedDepthDataFormats
+                guard let availableFormat = Self.selectedDepthDataFormat(in: supportedFormats) else {
+                    transition(to: .failed(.avCaptureFailed("LiDAR 768x576 FP32 depth format unavailable")))
+                    return
+                }
+
                 try device.lockForConfiguration()
+                defer { device.unlockForConfiguration() }
                 device.activeDepthDataFormat = availableFormat
-                device.unlockForConfiguration()
             }
 
             if let failure = Self.depthDeliveryValidationFailure(
@@ -357,6 +382,27 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
             }
         }
         return nil
+    }
+
+    private static func selectedDepthDataFormat(
+        in formats: [AVCaptureDevice.Format]
+    ) -> AVCaptureDevice.Format? {
+        let descriptors = formats.map { depthDataFormatDescriptor(from: $0) }
+        guard let index = selectedDepthDataFormatIndex(in: descriptors) else {
+            return nil
+        }
+        return formats[index]
+    }
+
+    private static func depthDataFormatDescriptor(
+        from format: AVCaptureDevice.Format
+    ) -> DepthDataFormatDescriptor {
+        let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+        return DepthDataFormatDescriptor(
+            width: Int(dimensions.width),
+            height: Int(dimensions.height),
+            mediaSubType: CMFormatDescriptionGetMediaSubType(format.formatDescription)
+        )
     }
 
     // MARK: - Shutter handoff

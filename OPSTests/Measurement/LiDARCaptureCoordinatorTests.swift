@@ -130,6 +130,77 @@ final class LiDARCaptureCoordinatorTests: XCTestCase {
         )
     }
 
+    // MARK: - Depth format selection
+
+    func test_depthFormatSelection_prefersExactLiDARFP32Grid_overEarlierFP32Formats() {
+        let descriptors = [
+            LiDARCaptureCoordinator.DepthDataFormatDescriptor(
+                width: 256,
+                height: 192,
+                mediaSubType: kCVPixelFormatType_DepthFloat32
+            ),
+            LiDARCaptureCoordinator.DepthDataFormatDescriptor(
+                width: 768,
+                height: 576,
+                mediaSubType: kCVPixelFormatType_DepthFloat32
+            ),
+            LiDARCaptureCoordinator.DepthDataFormatDescriptor(
+                width: 768,
+                height: 576,
+                mediaSubType: kCVPixelFormatType_DisparityFloat32
+            )
+        ]
+
+        XCTAssertEqual(
+            LiDARCaptureCoordinator.selectedDepthDataFormatIndex(in: descriptors),
+            1
+        )
+    }
+
+    func test_depthFormatSelection_rejectsExactGridWhenPixelFormatIsNotDepthFP32() {
+        let descriptors = [
+            LiDARCaptureCoordinator.DepthDataFormatDescriptor(
+                width: 768,
+                height: 576,
+                mediaSubType: kCVPixelFormatType_DisparityFloat32
+            ),
+            LiDARCaptureCoordinator.DepthDataFormatDescriptor(
+                width: 768,
+                height: 576,
+                mediaSubType: kCVPixelFormatType_DepthFloat16
+            )
+        ]
+
+        XCTAssertNil(LiDARCaptureCoordinator.selectedDepthDataFormatIndex(in: descriptors))
+    }
+
+    func test_depthFormatSelection_rejectsFP32WhenDimensionsDoNotMatchLiDARGrid() {
+        let descriptors = [
+            LiDARCaptureCoordinator.DepthDataFormatDescriptor(
+                width: 768,
+                height: 575,
+                mediaSubType: kCVPixelFormatType_DepthFloat32
+            ),
+            LiDARCaptureCoordinator.DepthDataFormatDescriptor(
+                width: 767,
+                height: 576,
+                mediaSubType: kCVPixelFormatType_DepthFloat32
+            )
+        ]
+
+        XCTAssertNil(LiDARCaptureCoordinator.selectedDepthDataFormatIndex(in: descriptors))
+    }
+
+    func test_depthFormatValidationFailure_requiresExactLiDARFP32Grid() {
+        XCTAssertNil(
+            LiDARCaptureCoordinator.depthFormatValidationFailure(selectedFormatIndex: 0)
+        )
+        XCTAssertEqual(
+            LiDARCaptureCoordinator.depthFormatValidationFailure(selectedFormatIndex: nil),
+            .avCaptureFailed("LiDAR 768x576 FP32 depth format unavailable")
+        )
+    }
+
     func test_processedPhotoDepthValidation_rejectsLidarPhotoWithoutDepth() {
         XCTAssertEqual(
             LiDARCaptureCoordinator.processedPhotoDepthValidationFailure(

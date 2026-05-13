@@ -149,6 +149,44 @@ final class LiDARCaptureCoordinatorTests: XCTestCase {
         )
     }
 
+    func test_snapshotPayload_forLiveFrameUpdate_doesNotEvaluateFullMeshFaceExtractor() {
+        var didExtractFaces = false
+
+        let snapshot = LiDARCaptureCoordinator.makeSnapshotPayload(
+            meshAnchors: [],
+            meshFaces: {
+                didExtractFaces = true
+                return [Self.fixtureMeshFace]
+            },
+            cameraIntrinsics: Self.fixtureIntrinsics,
+            devicePose: Self.identityPose,
+            timestamp: Date(timeIntervalSince1970: 0),
+            purpose: .liveFrameUpdate
+        )
+
+        XCTAssertFalse(didExtractFaces)
+        XCTAssertTrue(snapshot.meshFaces.isEmpty)
+    }
+
+    func test_snapshotPayload_forShutterCapture_evaluatesFullMeshFaceExtractor() {
+        var didExtractFaces = false
+
+        let snapshot = LiDARCaptureCoordinator.makeSnapshotPayload(
+            meshAnchors: [],
+            meshFaces: {
+                didExtractFaces = true
+                return [Self.fixtureMeshFace]
+            },
+            cameraIntrinsics: Self.fixtureIntrinsics,
+            devicePose: Self.identityPose,
+            timestamp: Date(timeIntervalSince1970: 0),
+            purpose: .shutterCapture
+        )
+
+        XCTAssertTrue(didExtractFaces)
+        XCTAssertEqual(snapshot.meshFaces, [Self.fixtureMeshFace])
+    }
+
     func test_annotationHandoff_for_visual_preservesVisualCapability_hidesAuto_showsCalibrate() {
         let configuration = DimensionedCaptureView.annotationHandoffConfiguration(
             for: .visual
@@ -312,4 +350,22 @@ final class LiDARCaptureCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(coordinator.state, .idle)
     }
+
+    private static let fixtureIntrinsics = DimensionsData.Intrinsics(
+        fx: 1, fy: 1, cx: 0, cy: 0, imageWidth: 1, imageHeight: 1
+    )
+
+    private static let identityPose: [Float] = [
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1
+    ]
+
+    private static let fixtureMeshFace = ARKitSnapshot.MeshFacePayload(
+        v0: SIMD3<Float>(0, 0, 0),
+        v1: SIMD3<Float>(1, 0, 0),
+        v2: SIMD3<Float>(0, 1, 0),
+        classification: .window
+    )
 }

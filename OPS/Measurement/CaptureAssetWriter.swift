@@ -4,7 +4,7 @@
 //
 //  Writes the on-disk assets produced by a single capture:
 //    1. HEIC with embedded kCGImageAuxiliaryDataTypeDisparity channel when depth exists
-//    2. Standalone FP32 disparity grid when depth exists (raw bytes, height×width×4)
+//    2. Standalone FP32 depth grid when depth exists (raw bytes, height×width×4)
 //    3. Sidecar JSON (ARKit snapshot, intrinsics, device pose)
 //
 //  Spec reference:
@@ -12,7 +12,7 @@
 //
 //  Layout under `<directory>/<uuid>.*`:
 //    <uuid>.heic            primary photo + embedded depth
-//    <uuid>.depth.fp32      standalone disparity grid (90-day retention per §7)
+//    <uuid>.depth.fp32      standalone depth grid (90-day retention per §7)
 //    <uuid>.metadata.json   ARKit snapshot for Phase C raycasting / classification
 //
 
@@ -27,6 +27,7 @@ public enum CaptureAssetWriterError: Error, Equatable {
     case noPhotoData
     case heicEncodingFailed(String)
     case depthBufferUnavailable
+    case depthDimensionsMismatch(width: Int, height: Int)
     case sidecarEncodingFailed(String)
     case fileWriteFailed(String)
 }
@@ -55,9 +56,9 @@ public enum CaptureAssetWriter {
         // 1. HEIC (with embedded disparity if depth available)
         try writeHEIC(photo: photo, depth: depth, to: urls.heicURL)
 
-        // 2. Standalone FP32 disparity (if available)
+        // 2. Standalone FP32 depth (if available)
         if let depth = depth, let depthURL = urls.depthURL {
-            try writeRawDisparity(depth: depth, to: depthURL)
+            try writeRawDepth(depth: depth, to: depthURL)
         }
 
         // 3. Sidecar JSON
@@ -147,20 +148,34 @@ public enum CaptureAssetWriter {
         return dict as? [CFString: Any]
     }
 
-    // MARK: - Raw FP32 disparity
+    // MARK: - Raw FP32 depth
 
-    static func writeRawDisparity(depth: AVDepthData, to url: URL) throws {
-        let disparity = depth.depthDataType == kCVPixelFormatType_DisparityFloat32
+    static func depthDimensionValidationFailure(
+        width: Int,
+        height: Int
+    ) -> CaptureAssetWriterError? {
+        guard width == DepthMapLoader.lidarDepthWidth,
+              height == DepthMapLoader.lidarDepthHeight else {
+            return .depthDimensionsMismatch(width: width, height: height)
+        }
+        return nil
+    }
+
+    static func writeRawDepth(depth: AVDepthData, to url: URL) throws {
+        let depthMeters = depth.depthDataType == kCVPixelFormatType_DepthFloat32
             ? depth
-            : depth.converting(toDepthDataType: kCVPixelFormatType_DisparityFloat32)
+            : depth.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32)
 
-        let pixelBuffer = disparity.depthDataMap
+        let pixelBuffer = depthMeters.depthDataMap
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
 
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        if let failure = depthDimensionValidationFailure(width: width, height: height) {
+            throw failure
+        }
         guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else {
             throw CaptureAssetWriterError.depthBufferUnavailable
         }

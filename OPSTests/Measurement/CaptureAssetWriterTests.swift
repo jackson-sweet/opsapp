@@ -107,4 +107,21 @@ final class CaptureAssetWriterTests: XCTestCase {
         XCTAssertNil(urls.depthURL)
         XCTAssertEqual(urls.sidecarURL.lastPathComponent, "\(captureID.uuidString).metadata.json")
     }
+
+    func test_rawFP32DepthDimensions_mustMatchLiDARSensorGrid() {
+        XCTAssertNil(
+            CaptureAssetWriter.depthDimensionValidationFailure(
+                width: DepthMapLoader.lidarDepthWidth,
+                height: DepthMapLoader.lidarDepthHeight
+            )
+        )
+        XCTAssertEqual(
+            CaptureAssetWriter.depthDimensionValidationFailure(width: 768, height: 575),
+            .depthDimensionsMismatch(width: 768, height: 575)
+        )
+        XCTAssertEqual(
+            CaptureAssetWriter.depthDimensionValidationFailure(width: 767, height: 576),
+            .depthDimensionsMismatch(width: 767, height: 576)
+        )
+    }
 }

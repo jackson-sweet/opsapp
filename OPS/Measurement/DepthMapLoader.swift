@@ -9,6 +9,8 @@ import Foundation
 
 public enum DepthMapLoader {
     public static let lidarDepthWidth = 768
+    public static let lidarDepthHeight = 576
+    public static let lidarDepthSampleCount = lidarDepthWidth * lidarDepthHeight
 
     public static func load(from url: URL?) -> DepthMap? {
         guard let url,
@@ -19,14 +21,13 @@ public enum DepthMapLoader {
             return nil
         }
         let count = data.count / MemoryLayout<Float>.size
-        guard count > 0, count % lidarDepthWidth == 0 else {
+        guard count == lidarDepthSampleCount else {
             return nil
         }
-        let height = count / lidarDepthWidth
         let values = data.withUnsafeBytes { raw -> [Float] in
             let pointer = raw.bindMemory(to: Float.self)
             return Array(pointer)
         }
-        return DepthMap(width: lidarDepthWidth, height: height, values: values)
+        return DepthMap(width: lidarDepthWidth, height: lidarDepthHeight, values: values)
     }
 }

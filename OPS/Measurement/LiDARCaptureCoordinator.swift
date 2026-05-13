@@ -8,7 +8,7 @@
 //
 //  Handoff sequence at shutter (spec §3.2):
 //    1. Capture ARKit state snapshot — ARFrame.anchors with classifications,
-//       camera.intrinsics, device pose. Non-blocking, ~5 ms.
+//       mesh faces, camera.intrinsics, device pose. Runs once at shutter.
 //    2. Pause ARKit: arSession.pause() — releases the camera.
 //    3. Activate pre-warmed AVCaptureSession with builtInLiDARDepthCamera.
 //       photoOutput.isDepthDataDeliveryEnabled = true streams depth inline with
@@ -112,10 +112,6 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
     private var pendingCapture: PendingCapture?
     private let assetDirectory: URL
     private let log = Logger(subsystem: "co.opsapp.ops", category: "lidar-capture")
-
-    /// Snapshot of the latest ARFrame, refreshed on every `session(_:didUpdate:)` callback.
-    /// Captured at shutter to seed the sidecar JSON.
-    private var latestFrameSnapshot: ARKitSnapshot?
 
     // MARK: - Init
 
@@ -245,7 +241,6 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
             avSession.stopRunning()
         }
         pendingCapture = nil
-        latestFrameSnapshot = nil
         transition(to: .idle)
     }
 
@@ -325,7 +320,7 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
                 }
             }
 
-            // Force FP32 disparity on the depth output, per spec §3.2.
+            // Force FP32 depth on the depth output, per spec §3.2.
             if configuration.requiresDepthData,
                let availableFormat = device.activeFormat.supportedDepthDataFormats
                     .first(where: {
@@ -367,11 +362,12 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
     // MARK: - Shutter handoff
 
     private func performHandoffAndCapture() async {
-        // Step 1: ARKit snapshot (~5 ms — must happen while AR is still running)
-        guard let snapshot = latestFrameSnapshot else {
+        // Step 1: Build the full ARKit snapshot once, while ARKit is still running.
+        guard let frame = arSession.currentFrame else {
             transition(to: .failed(.arSessionFailed("no ARFrame available at shutter")))
             return
         }
+        let snapshot = Self.makeSnapshot(from: frame, purpose: .shutterCapture)
 
         // Step 2: Pause ARKit
         arSession.pause()
@@ -476,9 +472,7 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
 extension LiDARCaptureCoordinator: ARSessionDelegate {
 
     nonisolated public func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        let snapshot = Self.makeSnapshot(from: frame)
         Task { @MainActor in
-            self.latestFrameSnapshot = snapshot
             self.advanceAimStateIfNeeded(using: frame)
         }
     }
@@ -517,7 +511,36 @@ extension LiDARCaptureCoordinator: ARSessionDelegate {
         }
     }
 
-    private nonisolated static func makeSnapshot(from frame: ARFrame) -> ARKitSnapshot {
+    enum ARKitSnapshotPurpose {
+        case liveFrameUpdate
+        case shutterCapture
+
+        var extractsFullMeshFaces: Bool {
+            self == .shutterCapture
+        }
+    }
+
+    nonisolated static func makeSnapshotPayload(
+        meshAnchors: [ARKitSnapshot.MeshAnchorPayload],
+        meshFaces: () -> [ARKitSnapshot.MeshFacePayload],
+        cameraIntrinsics: DimensionsData.Intrinsics,
+        devicePose: [Float],
+        timestamp: Date,
+        purpose: ARKitSnapshotPurpose
+    ) -> ARKitSnapshot {
+        ARKitSnapshot(
+            meshAnchors: meshAnchors,
+            meshFaces: purpose.extractsFullMeshFaces ? meshFaces() : [],
+            cameraIntrinsics: cameraIntrinsics,
+            devicePose: devicePose,
+            timestamp: timestamp
+        )
+    }
+
+    nonisolated static func makeSnapshot(
+        from frame: ARFrame,
+        purpose: ARKitSnapshotPurpose
+    ) -> ARKitSnapshot {
         let intrinsicsMatrix = frame.camera.intrinsics
         let imageRes = frame.camera.imageResolution
         let intrinsics = DimensionsData.Intrinsics(
@@ -529,19 +552,16 @@ extension LiDARCaptureCoordinator: ARSessionDelegate {
             imageHeight: Int(imageRes.height)
         )
 
-        var meshFacePayloads: [ARKitSnapshot.MeshFacePayload] = []
-        let meshPayloads: [ARKitSnapshot.MeshAnchorPayload] = frame.anchors.compactMap { anchor in
-            guard let mesh = anchor as? ARMeshAnchor else { return nil }
-            meshFacePayloads.append(contentsOf: makeFacePayloads(from: mesh))
-            return makePayload(from: mesh)
-        }
+        let meshes = frame.anchors.compactMap { $0 as? ARMeshAnchor }
+        let meshPayloads = meshes.map(makePayload(from:))
 
-        return ARKitSnapshot(
+        return makeSnapshotPayload(
             meshAnchors: meshPayloads,
-            meshFaces: meshFacePayloads,
+            meshFaces: { meshes.flatMap(makeFacePayloads(from:)) },
             cameraIntrinsics: intrinsics,
             devicePose: simdMatrixToArray(frame.camera.transform),
-            timestamp: Date(timeIntervalSinceReferenceDate: frame.timestamp)
+            timestamp: Date(timeIntervalSinceReferenceDate: frame.timestamp),
+            purpose: purpose
         )
     }
 

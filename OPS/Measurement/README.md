@@ -90,12 +90,12 @@ Three files per capture, stored under `<Documents>/lidar-captures/<uuid>.*`:
 
 HEIC photo with embedded `kCGImageAuxiliaryDataTypeDisparity` aux channel. The
 primary asset — uploads to `project_photos.url` with `source = 'measurement'`.
-The embedded disparity is enough for re-projection in most cases; the
+The embedded disparity is enough for HEIC auxiliary preservation; the
 standalone FP32 file is kept for high-precision re-rendering.
 
 ### `<uuid>.depth.fp32`
 
-Standalone raw FP32 disparity grid, tightly packed (no row padding). Typical
+Standalone raw FP32 depth grid, tightly packed (no row padding). Exact
 size: 768 × 576 × 4 bytes = ~1.7 MB. Per spec §7, this file is lifecycled out
 after 90 days; HEIC + sidecar are kept indefinitely.
 
@@ -105,7 +105,7 @@ Read with:
 let data = try Data(contentsOf: url)
 let pointer = data.withUnsafeBytes { $0.bindMemory(to: Float.self) }
 let width = 768
-let height = data.count / (width * MemoryLayout<Float>.size)
+let height = 576
 ```
 
 ### `<uuid>.metadata.json`
@@ -149,11 +149,11 @@ startLiveAim()
   └── AVCaptureSession (pre-configured, NOT started)
         builtInLiDARDepthCamera input
         AVCapturePhotoOutput  (depthDataDelivery on, embedsDepthInPhoto on)
-        AVCaptureDepthDataOutput  (FP32 disparity format)
+        AVCaptureDepthDataOutput  (FP32 depth format)
         AVCaptureDataOutputSynchronizer
 
 capture()
-  1. ARFrame snapshot — anchors with classifications, intrinsics, pose (~5 ms)
+  1. Full ARFrame snapshot — anchors, mesh faces, intrinsics, pose
   2. arSession.pause()
   3. avSession.startRunning()
   4. photoOutput.capturePhoto(...) → AVCapturePhotoCaptureDelegate
@@ -182,7 +182,7 @@ Total cold-start to first capture: **< 1.05 s** (≈ 800 ms warm-up + 250 ms shu
 **Hardware-required (manual, real iPhone with LiDAR):**
 
 - HEIC + embedded disparity round-trip
-- FP32 raw disparity file shape (768 × 576 × 4)
+- FP32 raw depth file shape (768 × 576 × 4)
 - Shutter latency profiling — target <250 ms (steps 2-4) and <750 ms end-to-end
   (acceptance gate, spec §10.2)
 - Memory ceiling during capture — target <250 MB resident

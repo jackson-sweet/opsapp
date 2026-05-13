@@ -58,7 +58,7 @@ final class DimensionedAnnotationHandoffTests: XCTestCase {
         XCTAssertEqual(handoff.capability, .lidar)
         XCTAssertNotNil(handoff.preloadedDepthMap)
         XCTAssertEqual(handoff.preloadedDepthMap?.width, 768)
-        XCTAssertEqual(handoff.preloadedDepthMap?.height, 2)
+        XCTAssertEqual(handoff.preloadedDepthMap?.height, 576)
         XCTAssertNotNil(handoff.anchors)
         XCTAssertEqual(handoff.detectedOpenings.count, 1)
         XCTAssertTrue(handoff.hasAuto)
@@ -144,7 +144,7 @@ final class DimensionedAnnotationHandoffTests: XCTestCase {
     }
 
     private func writeDepthFixture(to url: URL) throws {
-        let values = Array(repeating: Float(2), count: 768 * 2)
+        let values = Array(repeating: Float(2), count: 768 * 576)
         let data = values.withUnsafeBufferPointer { buffer in
             Data(buffer: buffer)
         }

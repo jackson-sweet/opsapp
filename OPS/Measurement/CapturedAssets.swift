@@ -9,7 +9,7 @@
 //
 //  On-disk layout under `<Documents>/lidar-captures/<uuid>.*`:
 //    <uuid>.heic           HEIC photo, with embedded disparity when depth exists
-//    <uuid>.depth.fp32     Standalone FP32 disparity grid (LiDAR only), raw bytes
+//    <uuid>.depth.fp32     Standalone FP32 depth grid (LiDAR only), raw bytes
 //    <uuid>.metadata.json  Sidecar — ARKit anchors, intrinsics, device pose, capture metadata
 //
 //  Schema reference:
@@ -26,7 +26,7 @@ public struct CapturedAssets: Equatable {
     /// This is the primary asset — uploaded to `project_photos.url`.
     public let heicURL: URL
 
-    /// Standalone FP32 disparity grid for high-precision re-rendering.
+    /// Standalone FP32 depth grid for high-precision re-rendering.
     /// Present for LiDAR captures, nil for visual-only captures.
     /// Lifecycled out after 90 days per spec §7.
     public let depthURL: URL?

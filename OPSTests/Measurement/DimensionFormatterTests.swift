@@ -64,7 +64,33 @@ final class DimensionFormatterTests: XCTestCase {
         // 6 3/16 in — no single Unicode glyph for 3/16, expect ascii form.
         let metres = (6 + 3.0 / 16.0) * 0.0254
         let s = DimensionFormatter.string(for: metres, unit: .imperialFraction)
-        XCTAssertEqual(s, "6\(3)/\(16)\u{2033}")
+        XCTAssertEqual(s, "6 3/16\u{2033}")
+    }
+
+    func test_imperialFraction_oneSixteenthUsesAsciiFraction() {
+        let metres = (1.0 / 16.0) * 0.0254
+        let s = DimensionFormatter.string(for: metres, unit: .imperialFraction)
+        XCTAssertEqual(s, "1/16\u{2033}")
+    }
+
+    func test_imperialFraction_wholeInchesPlusOneSixteenthUsesAsciiFraction() {
+        let metres = (6 + 1.0 / 16.0) * 0.0254
+        let s = DimensionFormatter.string(for: metres, unit: .imperialFraction)
+        XCTAssertEqual(s, "6 1/16\u{2033}")
+    }
+
+    func test_imperialFraction_neverContainsOneNinthGlyph() {
+        let formattedValues = (1...31).map { sixteenths in
+            DimensionFormatter.string(
+                for: (Double(sixteenths) / 16.0) * 0.0254,
+                unit: .imperialFraction
+            )
+        }
+
+        XCTAssertFalse(
+            formattedValues.contains { $0.contains("\u{2151}") },
+            "Imperial 1/16-inch formatting must not emit U+2151."
+        )
     }
 
     // MARK: - Decimal feet

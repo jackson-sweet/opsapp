@@ -91,7 +91,7 @@ public enum DimensionFormatter {
     /// `14′ 0″`). When the rounded value lands exactly on a whole foot at
     /// finer precision (e.g. 11 15/16″ rounds up to 12″ → 1′), recompose.
     static func formatImperialFraction(metres: Double) -> String {
-        let totalInches = metres * 39.37007874
+        let totalInches = metres / 0.0254
         let sixteenths = (totalInches * 16).rounded()
         let totalSixteenths = Int(sixteenths)
 
@@ -121,39 +121,41 @@ public enum DimensionFormatter {
     }
 
     private static func inchesPartString(wholeInches: Int, fractionSixteenths: Int) -> String {
-        let fracGlyph = fractionGlyph(sixteenths: fractionSixteenths)
+        let fraction = fractionText(sixteenths: fractionSixteenths)
         if wholeInches == 0 {
-            return fracGlyph.isEmpty ? "0" : fracGlyph
+            return fraction.text.isEmpty ? "0" : fraction.text
         }
-        if fracGlyph.isEmpty {
+        if fraction.text.isEmpty {
             return "\(wholeInches)"
         }
-        return "\(wholeInches)\(fracGlyph)"
+        if fraction.joinsToWholeInches {
+            return "\(wholeInches)\(fraction.text)"
+        }
+        return "\(wholeInches) \(fraction.text)"
     }
 
     /// Returns the Unicode glyph for the common fractions, or an ascii
     /// `n/16` form for sixteenths that lack a single glyph. Empty string
     /// when sixteenths == 0.
-    private static func fractionGlyph(sixteenths: Int) -> String {
-        switch sixteenths {
-        case 0:  return ""
-        case 1:  return "\u{2151}" // ⅑ — not standard; we use 1/16 instead
-        default: break
+    private static func fractionText(sixteenths: Int) -> (text: String, joinsToWholeInches: Bool) {
+        if sixteenths == 0 {
+            return ("", true)
         }
+
         // Reduce 16ths fraction to lowest terms.
         let g = gcd(sixteenths, 16)
         let num = sixteenths / g
         let den = 16 / g
         switch (num, den) {
-        case (1, 8):  return "\u{215B}" // ⅛
-        case (3, 8):  return "\u{215C}" // ⅜
-        case (5, 8):  return "\u{215D}" // ⅝
-        case (7, 8):  return "\u{215E}" // ⅞
-        case (1, 4):  return "\u{00BC}" // ¼
-        case (3, 4):  return "\u{00BE}" // ¾
-        case (1, 2):  return "\u{00BD}" // ½
+        case (1, 8):  return ("\u{215B}", true) // ⅛
+        case (3, 8):  return ("\u{215C}", true) // ⅜
+        case (5, 8):  return ("\u{215D}", true) // ⅝
+        case (7, 8):  return ("\u{215E}", true) // ⅞
+        case (1, 4):  return ("\u{00BC}", true) // ¼
+        case (3, 4):  return ("\u{00BE}", true) // ¾
+        case (1, 2):  return ("\u{00BD}", true) // ½
         default:
-            return "\(num)/\(den)"
+            return ("\(num)/\(den)", false)
         }
     }
 

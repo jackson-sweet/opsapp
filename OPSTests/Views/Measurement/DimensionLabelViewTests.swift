@@ -45,7 +45,7 @@ final class DimensionLabelViewTests: XCTestCase {
         XCTAssertLessThan(rect.midY, 400, "North leader places chip ABOVE midpoint")
         let f = DimensionFormatter.format(valueMeters: valueMetres,
                                           primaryUnit: .imperialFraction)
-        XCTAssertEqual(f.primary, "36\u{2033}")
+        XCTAssertEqual(f.primary, "3\u{2032}")
         _ = makeView(a: a, b: b, chipRect: rect,
                      primary: f.primary, secondary: f.secondary)
     }
@@ -78,7 +78,7 @@ final class DimensionLabelViewTests: XCTestCase {
         let f = DimensionFormatter.format(valueMeters: valueMetres,
                                           primaryUnit: .metric)
         XCTAssertEqual(f.primary, "0.91 m")
-        XCTAssertEqual(f.secondary, "36\u{2033}")
+        XCTAssertEqual(f.secondary, "3\u{2032}")
     }
 
     func test_leaderSide_south_metric() {
@@ -91,13 +91,13 @@ final class DimensionLabelViewTests: XCTestCase {
             primary: f.primary, secondary: f.secondary
         )
         XCTAssertEqual(view.primaryText, "0.91 m")
-        XCTAssertEqual(view.secondaryText, "36\u{2033}")
+        XCTAssertEqual(view.secondaryText, "3\u{2032}")
     }
 
     func test_leaderSide_east_metric_dualUnitText() {
         let f = DimensionFormatter.format(valueMeters: valueMetres,
                                           primaryUnit: .metric)
-        XCTAssertEqual(f.dualUnit, "0.91 m / 36\u{2033}")
+        XCTAssertEqual(f.dualUnit, "0.91 m / 3\u{2032}")
     }
 
     func test_leaderSide_west_metric() {

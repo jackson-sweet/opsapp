@@ -129,6 +129,41 @@ final class DimensionLabelViewTests: XCTestCase {
         XCTAssertNil(view.inlineHint)
     }
 
+    // MARK: - Accessibility
+
+    func test_accessibilityLabel_usesSemanticMeasurementLabelAndSpokenValues() {
+        let view = makeView(
+            a: CGPoint(x: 100, y: 100),
+            b: CGPoint(x: 200, y: 100),
+            chipRect: CGRect(x: 100, y: 50, width: 110, height: 36),
+            measurementLabel: "Width",
+            primary: "36\u{2033}",
+            secondary: "0.91 m",
+            accessibilityLabelText: "Width: 36 inches, 0.91 meters"
+        )
+
+        XCTAssertEqual(view.measurementLabel, "Width")
+        XCTAssertEqual(view.accessibilityLabelText, "Width: 36 inches, 0.91 meters")
+    }
+
+    func test_accessibilityLabel_includesInlineHintSpeech() {
+        let view = makeView(
+            a: CGPoint(x: 100, y: 100),
+            b: CGPoint(x: 200, y: 100),
+            chipRect: CGRect(x: 100, y: 50, width: 110, height: 36),
+            measurementLabel: "Height",
+            primary: "60\u{2033}",
+            secondary: "1.52 m",
+            inlineHint: "// SILL — NO FLOOR REFERENCE",
+            accessibilityLabelText: "Height: 60 inches, 1.52 meters. Sill: no floor reference"
+        )
+
+        XCTAssertEqual(
+            view.accessibilityLabelText,
+            "Height: 60 inches, 1.52 meters. Sill: no floor reference"
+        )
+    }
+
     // MARK: - Animation surface
 
     func test_traceProgress_zero_meansLineNotYetVisible() {
@@ -153,15 +188,19 @@ final class DimensionLabelViewTests: XCTestCase {
 
     private func makeView(
         a: CGPoint, b: CGPoint, chipRect: CGRect,
+        measurementLabel: String = "Measurement",
         primary: String, secondary: String,
         inlineHint: String? = nil,
+        accessibilityLabelText: String = "Measurement: 3 feet, 0.91 meters",
         traceProgress: CGFloat = 1.0,
         labelOpacity: Double = 1.0
     ) -> DimensionLabelView {
         DimensionLabelView(
             pointA: a, pointB: b, chipRect: chipRect,
+            measurementLabel: measurementLabel,
             primaryText: primary, secondaryText: secondary,
             inlineHint: inlineHint,
+            accessibilityLabelText: accessibilityLabelText,
             traceProgress: traceProgress,
             labelOpacity: labelOpacity
         )

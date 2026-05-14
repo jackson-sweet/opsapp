@@ -135,6 +135,64 @@ final class DimensionFormatterTests: XCTestCase {
         XCTAssertEqual(DimensionFormatter.displayContext(for: wallID, openings: openings), .standard)
     }
 
+    // MARK: - Accessibility speech
+
+    func test_accessibilityLabel_openingWidthSpeaksThirtySixInchesNotFeet() {
+        let metres = 36.0 * 0.0254
+        let label = DimensionFormatter.accessibilityLabel(
+            measurementLabel: "Width",
+            valueMeters: metres,
+            primaryUnit: .imperialFraction,
+            displayContext: .opening
+        )
+        XCTAssertEqual(label, "Width: 36 inches, 0.91 meters")
+    }
+
+    func test_accessibilityLabel_fractionalImperialSpeaksFeetInchesAndFractionWords() {
+        let metres = 174.5 * 0.0254
+        let label = DimensionFormatter.accessibilityLabel(
+            measurementLabel: "Height",
+            valueMeters: metres,
+            primaryUnit: .imperialFraction,
+            displayContext: .standard
+        )
+        XCTAssertEqual(label, "Height: 14 feet, 6 inches and one half, 4.43 meters")
+    }
+
+    func test_accessibilityLabel_metricPrimaryIncludesImperialSecondarySpeech() {
+        let label = DimensionFormatter.accessibilityLabel(
+            measurementLabel: "Width",
+            valueMeters: 1.0,
+            primaryUnit: .metric,
+            displayContext: .standard
+        )
+        XCTAssertEqual(label, "Width: 1.00 meters, 3 feet, 3 inches and three eighths")
+    }
+
+    func test_accessibilityLabel_inlineHintSpeaksHintWithoutTacticalGlyphs() {
+        let metres = 60.0 * 0.0254
+        let label = DimensionFormatter.accessibilityLabel(
+            measurementLabel: "Height",
+            valueMeters: metres,
+            primaryUnit: .imperialFraction,
+            displayContext: .opening,
+            inlineHint: "// SILL — NO FLOOR REFERENCE"
+        )
+        XCTAssertEqual(label, "Height: 60 inches, 1.52 meters. Sill: no floor reference")
+    }
+
+    func test_visualOpeningFormatterStringsRemainUnchanged() {
+        let metres = 36.0 * 0.0254
+        let f = DimensionFormatter.format(
+            valueMeters: metres,
+            primaryUnit: .imperialFraction,
+            displayContext: .opening
+        )
+        XCTAssertEqual(f.primary, "36\u{2033}")
+        XCTAssertEqual(f.secondary, "0.91 m")
+        XCTAssertEqual(f.dualUnit, "36\u{2033} / 0.91 m")
+    }
+
     func test_imperialFraction_neverContainsOneNinthGlyph() {
         let formattedValues = (1...31).map { sixteenths in
             DimensionFormatter.string(

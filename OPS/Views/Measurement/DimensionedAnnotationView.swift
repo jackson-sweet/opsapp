@@ -316,10 +316,22 @@ public struct DimensionedAnnotationView: View {
                                     fit: PhotoFit) -> some View {
         let a = fit.screenPoint(fromPhoto: cg(m.imagePoints.first))
         let b = fit.screenPoint(fromPhoto: cg(m.imagePoints.last))
+        let displayContext = DimensionFormatter.displayContext(for: m.id, openings: openings)
         let formatted = DimensionFormatter.format(
             valueMeters: m.valueMeters,
             primaryUnit: primaryUnit,
-            displayContext: DimensionFormatter.displayContext(for: m.id, openings: openings)
+            displayContext: displayContext
+        )
+        let inlineHint = inlineHint(for: m)
+        let accessibilityLabel = DimensionFormatter.accessibilityLabel(
+            measurementLabel: m.label,
+            valueMeters: m.valueMeters,
+            primaryUnit: primaryUnit,
+            displayContext: displayContext,
+            inlineHint: inlineHint,
+            includeSecondaryUnit: !formatted.secondary.isEmpty
+                && formatted.secondary != formatted.primary
+                && formatted.secondary != DimensionFormatter.emptyDash
         )
         let trace = traceProgress[m.id] ?? 1.0
         let opacity = labelOpacity[m.id] ?? 1.0
@@ -328,9 +340,11 @@ public struct DimensionedAnnotationView: View {
             pointA: a,
             pointB: b,
             chipRect: placement,
+            measurementLabel: m.label,
             primaryText: formatted.primary,
             secondaryText: formatted.secondary,
-            inlineHint: inlineHint(for: m),
+            inlineHint: inlineHint,
+            accessibilityLabelText: accessibilityLabel,
             traceProgress: trace,
             labelOpacity: opacity
         )

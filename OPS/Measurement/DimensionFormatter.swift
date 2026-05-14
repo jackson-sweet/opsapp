@@ -109,6 +109,55 @@ public enum DimensionFormatter {
         return isWindowOrDoorMeasurement ? .opening : .standard
     }
 
+    // MARK: - Accessibility speech
+
+    public static func accessibilityLabel(
+        measurementLabel: String,
+        valueMeters: Double,
+        primaryUnit: DimensionsData.Measurement.DisplayUnit,
+        displayContext: DisplayContext = .standard,
+        inlineHint: String? = nil,
+        includeSecondaryUnit: Bool = true
+    ) -> String {
+        let label = spokenMeasurementLabel(measurementLabel)
+        guard valueMeters.isFinite, valueMeters > 0 else {
+            return "\(label): no measurement"
+        }
+
+        var parts = [
+            spokenString(for: valueMeters, unit: primaryUnit, displayContext: displayContext)
+        ]
+        if includeSecondaryUnit {
+            let secondaryUnit = secondary(for: primaryUnit)
+            parts.append(spokenString(for: valueMeters, unit: secondaryUnit, displayContext: displayContext))
+        }
+
+        var result = "\(label): \(parts.joined(separator: ", "))"
+        if let hint = spokenInlineHint(inlineHint) {
+            result += ". \(hint)"
+        }
+        return result
+    }
+
+    public static func spokenString(
+        for valueMeters: Double,
+        unit: DimensionsData.Measurement.DisplayUnit,
+        displayContext: DisplayContext = .standard
+    ) -> String {
+        guard valueMeters.isFinite, valueMeters > 0 else {
+            return "no measurement"
+        }
+
+        switch unit {
+        case .imperialFraction:
+            return spokenImperialFraction(metres: valueMeters, displayContext: displayContext)
+        case .decimalFeet:
+            return String(format: "%.2f feet", valueMeters * 3.280839895)
+        case .metric:
+            return String(format: "%.2f meters", valueMeters)
+        }
+    }
+
     // MARK: - Imperial fraction
 
     /// `14′ 6½″`, `36″`, `0″`. Rounds to the nearest 1/16″.
@@ -117,22 +166,11 @@ public enum DimensionFormatter {
     /// `14′ 0″`). When the rounded value lands exactly on a whole foot at
     /// finer precision (e.g. 11 15/16″ rounds up to 12″ → 1′), recompose.
     static func formatImperialFraction(metres: Double) -> String {
-        let totalInches = metres / 0.0254
-        let sixteenths = (totalInches * 16).rounded()
-        let totalSixteenths = Int(sixteenths)
-
-        // Whole feet + remainder sixteenths
-        let inchesTimes16PerFoot = 16 * 12 // 192
-        var feet = totalSixteenths / inchesTimes16PerFoot
-        var remSixteenths = totalSixteenths - feet * inchesTimes16PerFoot
-        // Split into whole inches + fractional sixteenths
-        var wholeInches = remSixteenths / 16
-        var fracSixteenths = remSixteenths - wholeInches * 16
-
-        // Already in normal form because of integer division; guard anyway.
-        if fracSixteenths == 16 { fracSixteenths = 0; wholeInches += 1 }
-        if wholeInches == 12 { wholeInches = 0; feet += 1 }
-        remSixteenths = wholeInches * 16 + fracSixteenths
+        let components = imperialComponents(metres: metres, displayContext: .standard)
+        let feet = components.feet
+        let wholeInches = components.wholeInches
+        let fracSixteenths = components.fractionSixteenths
+        let remSixteenths = wholeInches * 16 + fracSixteenths
 
         var parts: [String] = []
         if feet > 0 {
@@ -147,14 +185,46 @@ public enum DimensionFormatter {
     }
 
     static func formatImperialOpeningInches(metres: Double) -> String {
+        let components = imperialComponents(metres: metres, displayContext: .opening)
+        return inchesPartString(
+            wholeInches: components.wholeInches,
+            fractionSixteenths: components.fractionSixteenths
+        ) + "\u{2033}"
+    }
+
+    private static func imperialComponents(
+        metres: Double,
+        displayContext: DisplayContext
+    ) -> (feet: Int, wholeInches: Int, fractionSixteenths: Int) {
         let totalInches = metres / 0.0254
         let totalSixteenths = Int((totalInches * 16).rounded())
-        let wholeInches = totalSixteenths / 16
-        let fracSixteenths = totalSixteenths - wholeInches * 16
-        return inchesPartString(
-            wholeInches: wholeInches,
-            fractionSixteenths: fracSixteenths
-        ) + "\u{2033}"
+
+        switch displayContext {
+        case .opening:
+            let wholeInches = totalSixteenths / 16
+            let fractionSixteenths = totalSixteenths - wholeInches * 16
+            return (0, wholeInches, fractionSixteenths)
+        case .standard:
+            let sixteenthsPerFoot = 16 * 12
+            var feet = totalSixteenths / sixteenthsPerFoot
+            var remainder = totalSixteenths - feet * sixteenthsPerFoot
+            var wholeInches = remainder / 16
+            var fractionSixteenths = remainder - wholeInches * 16
+
+            if fractionSixteenths == 16 {
+                fractionSixteenths = 0
+                wholeInches += 1
+            }
+            if wholeInches == 12 {
+                wholeInches = 0
+                feet += 1
+            }
+            remainder = wholeInches * 16 + fractionSixteenths
+            if remainder == 0 {
+                return (feet, 0, 0)
+            }
+            return (feet, wholeInches, fractionSixteenths)
+        }
     }
 
     private static func inchesPartString(wholeInches: Int, fractionSixteenths: Int) -> String {
@@ -194,6 +264,106 @@ public enum DimensionFormatter {
         default:
             return ("\(num)/\(den)", false)
         }
+    }
+
+    private static func spokenImperialFraction(
+        metres: Double,
+        displayContext: DisplayContext
+    ) -> String {
+        let components = imperialComponents(metres: metres, displayContext: displayContext)
+        let feet = components.feet
+        let wholeInches = components.wholeInches
+        let fractionSixteenths = components.fractionSixteenths
+        let hasInches = wholeInches > 0 || fractionSixteenths > 0 || feet == 0
+
+        var parts: [String] = []
+        if feet > 0 {
+            parts.append("\(feet) \(feet == 1 ? "foot" : "feet")")
+        }
+        if hasInches {
+            parts.append(spokenInches(wholeInches: wholeInches, fractionSixteenths: fractionSixteenths))
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private static func spokenInches(wholeInches: Int, fractionSixteenths: Int) -> String {
+        guard fractionSixteenths > 0 else {
+            return "\(wholeInches) \(wholeInches == 1 ? "inch" : "inches")"
+        }
+        guard wholeInches > 0 else {
+            return "\(fractionWords(sixteenths: fractionSixteenths)) inch"
+        }
+        return "\(wholeInches) \(wholeInches == 1 ? "inch" : "inches") and \(fractionWords(sixteenths: fractionSixteenths))"
+    }
+
+    private static func fractionWords(sixteenths: Int) -> String {
+        let g = gcd(sixteenths, 16)
+        let numerator = sixteenths / g
+        let denominator = 16 / g
+        let numeratorText = numberWord(numerator)
+
+        switch denominator {
+        case 2: return numerator == 1 ? "one half" : "\(numeratorText) halves"
+        case 4: return numerator == 1 ? "one quarter" : "\(numeratorText) quarters"
+        case 8: return numerator == 1 ? "one eighth" : "\(numeratorText) eighths"
+        case 16: return numerator == 1 ? "one sixteenth" : "\(numeratorText) sixteenths"
+        default: return "\(numeratorText) over \(denominator)"
+        }
+    }
+
+    private static func numberWord(_ value: Int) -> String {
+        switch value {
+        case 0: return "zero"
+        case 1: return "one"
+        case 2: return "two"
+        case 3: return "three"
+        case 4: return "four"
+        case 5: return "five"
+        case 6: return "six"
+        case 7: return "seven"
+        case 8: return "eight"
+        case 9: return "nine"
+        case 10: return "ten"
+        case 11: return "eleven"
+        case 12: return "twelve"
+        case 13: return "thirteen"
+        case 14: return "fourteen"
+        case 15: return "fifteen"
+        default: return "\(value)"
+        }
+    }
+
+    private static func spokenMeasurementLabel(_ label: String) -> String {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Measurement" : trimmed
+    }
+
+    private static func spokenInlineHint(_ hint: String?) -> String? {
+        guard let hint else { return nil }
+        let stripped = hint
+            .replacingOccurrences(of: "//", with: "")
+            .replacingOccurrences(of: "—", with: ":")
+            .replacingOccurrences(of: "–", with: ":")
+            .replacingOccurrences(of: "·", with: ",")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !stripped.isEmpty else { return nil }
+
+        let collapsed = stripped
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+        let parts = collapsed.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: true)
+        if parts.count == 2 {
+            let subject = sentenceCase(String(parts[0]))
+            let detail = String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return "\(subject): \(detail)"
+        }
+        return sentenceCase(collapsed)
+    }
+
+    private static func sentenceCase(_ value: String) -> String {
+        let lowercased = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let first = lowercased.first else { return lowercased }
+        return String(first).uppercased() + String(lowercased.dropFirst())
     }
 
     private static func gcd(_ a: Int, _ b: Int) -> Int {

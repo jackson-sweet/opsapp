@@ -37,28 +37,42 @@ public struct DimensionLabelView: View {
     public let pointA: CGPoint       // screen-canvas pixel
     public let pointB: CGPoint       // screen-canvas pixel
     public let chipRect: CGRect      // screen-canvas pixel
+    public let measurementLabel: String
     public let primaryText: String   // e.g. "14′ 6½″"
     public let secondaryText: String // e.g. "4.43 m"
     public let inlineHint: String?   // e.g. "// SILL — NO FLOOR REFERENCE"
+    public let accessibilityLabelText: String
     public var traceProgress: CGFloat = 1.0  // 0…1, drives `.trim` on the line
     public var labelOpacity: Double = 1.0    // 0…1, drives chip alpha
+
+    @ScaledMetric(relativeTo: .body) private var primaryFontSize: CGFloat = 14
+    @ScaledMetric(relativeTo: .caption2) private var secondaryFontSize: CGFloat = 10
+    @ScaledMetric(relativeTo: .caption2) private var hintFontSize: CGFloat = 10
+    @ScaledMetric(relativeTo: .body) private var chipHorizontalPadding: CGFloat = 8
+    @ScaledMetric(relativeTo: .body) private var chipVerticalPadding: CGFloat = 4
+    @ScaledMetric(relativeTo: .caption2) private var hintHorizontalPadding: CGFloat = 6
+    @ScaledMetric(relativeTo: .caption2) private var hintVerticalPadding: CGFloat = 2
 
     public init(
         pointA: CGPoint,
         pointB: CGPoint,
         chipRect: CGRect,
+        measurementLabel: String,
         primaryText: String,
         secondaryText: String,
         inlineHint: String? = nil,
+        accessibilityLabelText: String,
         traceProgress: CGFloat = 1.0,
         labelOpacity: Double = 1.0
     ) {
         self.pointA = pointA
         self.pointB = pointB
         self.chipRect = chipRect
+        self.measurementLabel = measurementLabel
         self.primaryText = primaryText
         self.secondaryText = secondaryText
         self.inlineHint = inlineHint
+        self.accessibilityLabelText = accessibilityLabelText
         self.traceProgress = traceProgress
         self.labelOpacity = labelOpacity
     }
@@ -76,7 +90,7 @@ public struct DimensionLabelView: View {
         }
         .compositingGroup()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityText)
+        .accessibilityLabel(Text(accessibilityLabelText))
     }
 
     // MARK: - Measurement line
@@ -133,20 +147,20 @@ public struct DimensionLabelView: View {
     private var chip: some View {
         VStack(alignment: .center, spacing: 1) {
             Text(primaryText)
-                .font(.custom("JetBrainsMono-Regular", size: 14))
+                .font(.custom("JetBrainsMono-Regular", size: primaryFontSize))
                 .foregroundColor(.white)
                 .monospacedDigit()
                 .lineLimit(1)
             if !secondaryText.isEmpty && secondaryText != primaryText {
                 Text(secondaryText)
-                    .font(.custom("JetBrainsMono-Regular", size: 10))
+                    .font(.custom("JetBrainsMono-Regular", size: secondaryFontSize))
                     .foregroundColor(Color.white.opacity(0.7))
                     .monospacedDigit()
                     .lineLimit(1)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, chipHorizontalPadding)
+        .padding(.vertical, chipVerticalPadding)
         .background(
             RoundedRectangle(cornerRadius: 4)
                 .fill(Color(red: 10/255, green: 10/255, blue: 10/255).opacity(0.85))
@@ -165,10 +179,10 @@ public struct DimensionLabelView: View {
     @ViewBuilder
     private func inlineHintCaption(_ hint: String) -> some View {
         Text(hint)
-            .font(.custom("JetBrainsMono-Regular", size: 10))
+            .font(.custom("JetBrainsMono-Regular", size: hintFontSize))
             .foregroundColor(OPSStyle.Colors.text3)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
+            .padding(.horizontal, hintHorizontalPadding)
+            .padding(.vertical, hintVerticalPadding)
             .background(
                 RoundedRectangle(cornerRadius: 3)
                     .fill(Color.black.opacity(0.6))
@@ -176,11 +190,5 @@ public struct DimensionLabelView: View {
             .fixedSize()
             .position(x: chipRect.midX, y: chipRect.maxY + 12)
             .opacity(labelOpacity)
-    }
-
-    private var accessibilityText: String {
-        let dual = secondaryText.isEmpty ? primaryText : "\(primaryText), \(secondaryText)"
-        if let hint = inlineHint { return "\(dual). \(hint)" }
-        return dual
     }
 }

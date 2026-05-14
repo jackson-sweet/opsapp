@@ -179,9 +179,9 @@ final class RenderedPhotoComposerTests: XCTestCase {
         )
         let large = DimensionsData.Measurement(
             type: .linear, label: "Sill Height — Tallest Window",
-            worldPoints: [.init(x: 0, y: 0, z: 0), .init(x: 4.572, y: 0, z: 0)],
+            worldPoints: [.init(x: 0, y: 0, z: 0), .init(x: 4.4323, y: 0, z: 0)],
             imagePoints: [.init(x: 0, y: 0), .init(x: 1800, y: 0)],
-            valueMeters: 4.572,
+            valueMeters: 174.5 * 0.0254,
             labelPlacement: .init(side: .north, leaderLengthPx: 60),
             source: .auto
         )

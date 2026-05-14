@@ -79,6 +79,62 @@ final class DimensionFormatterTests: XCTestCase {
         XCTAssertEqual(s, "6 1/16\u{2033}")
     }
 
+    func test_imperialFraction_eightFootGenericMeasurementStaysFeet() {
+        let metres = 96.0 * 0.0254
+        let s = DimensionFormatter.string(for: metres, unit: .imperialFraction)
+        XCTAssertEqual(s, "8\u{2032}")
+    }
+
+    func test_imperialFraction_wholeInchesPlusThreeSixteenthsRemainAsciiFraction() {
+        let metres = (36 + 3.0 / 16.0) * 0.0254
+        let s = DimensionFormatter.string(for: metres, unit: .imperialFraction)
+        XCTAssertEqual(s, "3\u{2032} 3/16\u{2033}")
+    }
+
+    func test_openingContext_thirtySixInchWindowWidthStaysInches() {
+        let metres = 36.0 * 0.0254
+        let s = DimensionFormatter.string(
+            for: metres,
+            unit: .imperialFraction,
+            displayContext: .opening
+        )
+        XCTAssertEqual(s, "36\u{2033}")
+    }
+
+    func test_openingContext_sixtyInchDoorHeightStaysInches() {
+        let metres = 60.0 * 0.0254
+        let s = DimensionFormatter.string(
+            for: metres,
+            unit: .imperialFraction,
+            displayContext: .opening
+        )
+        XCTAssertEqual(s, "60\u{2033}")
+    }
+
+    func test_displayContext_usesWindowDoorMeasurementIdsOnly() {
+        let windowID = UUID()
+        let doorID = UUID()
+        let wallID = UUID()
+        let openings: [DimensionsData.Opening] = [
+            .init(type: .window,
+                  boundingPolygon: [],
+                  classificationConfidence: 0.9,
+                  measurementIds: [windowID]),
+            .init(type: .door,
+                  boundingPolygon: [],
+                  classificationConfidence: 0.9,
+                  measurementIds: [doorID]),
+            .init(type: .wallSection,
+                  boundingPolygon: [],
+                  classificationConfidence: 0.9,
+                  measurementIds: [wallID])
+        ]
+
+        XCTAssertEqual(DimensionFormatter.displayContext(for: windowID, openings: openings), .opening)
+        XCTAssertEqual(DimensionFormatter.displayContext(for: doorID, openings: openings), .opening)
+        XCTAssertEqual(DimensionFormatter.displayContext(for: wallID, openings: openings), .standard)
+    }
+
     func test_imperialFraction_neverContainsOneNinthGlyph() {
         let formattedValues = (1...31).map { sixteenths in
             DimensionFormatter.string(

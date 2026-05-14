@@ -90,6 +90,7 @@ public enum RenderedPhotoComposer {
                 imageScale: scale,
                 canvasSize: canvas,
                 in: context,
+                openings: dimensions.openings,
                 primaryUnit: dimensions.measurements.first?.primaryDisplayUnit ?? .imperialFraction
             )
 
@@ -138,6 +139,7 @@ public enum RenderedPhotoComposer {
         imageScale: CGFloat,
         canvasSize: CGSize,
         in context: CGContext,
+        openings: [DimensionsData.Opening] = [],
         primaryUnit: DimensionsData.Measurement.DisplayUnit
     ) {
         guard !measurements.isEmpty else { return }
@@ -156,7 +158,15 @@ public enum RenderedPhotoComposer {
                 x: CGFloat(b.x) * imageScale,
                 y: CGFloat(b.y) * imageScale
             )
-            let chipSize = measureChipSize(for: m, primaryUnit: primaryUnit)
+            let displayContext = DimensionFormatter.displayContext(
+                for: m.id,
+                openings: openings
+            )
+            let chipSize = measureChipSize(
+                for: m,
+                primaryUnit: primaryUnit,
+                displayContext: displayContext
+            )
             return LabelPlacer.Input(id: m.id, pointA: pointA, pointB: pointB, chipSize: chipSize)
         }
 
@@ -175,6 +185,10 @@ public enum RenderedPhotoComposer {
                 chipRect: placement.chipRect,
                 measurement: measurement,
                 primaryUnit: primaryUnit,
+                displayContext: DimensionFormatter.displayContext(
+                    for: measurement.id,
+                    openings: openings
+                ),
                 context: context
             )
         }
@@ -186,11 +200,13 @@ public enum RenderedPhotoComposer {
     /// `DimensionLabelView`.
     static func measureChipSize(
         for m: DimensionsData.Measurement,
-        primaryUnit: DimensionsData.Measurement.DisplayUnit
+        primaryUnit: DimensionsData.Measurement.DisplayUnit,
+        displayContext: DimensionFormatter.DisplayContext = .standard
     ) -> CGSize {
         let formatted = DimensionFormatter.format(
             valueMeters: m.valueMeters,
-            primaryUnit: primaryUnit
+            primaryUnit: primaryUnit,
+            displayContext: displayContext
         )
         let primaryFont = jbMono(14)
         let secondaryFont = jbMono(10)
@@ -209,11 +225,13 @@ public enum RenderedPhotoComposer {
         chipRect: CGRect,
         measurement: DimensionsData.Measurement,
         primaryUnit: DimensionsData.Measurement.DisplayUnit,
+        displayContext: DimensionFormatter.DisplayContext = .standard,
         context: CGContext
     ) {
         let formatted = DimensionFormatter.format(
             valueMeters: measurement.valueMeters,
-            primaryUnit: primaryUnit
+            primaryUnit: primaryUnit,
+            displayContext: displayContext
         )
 
         // Measurement line — outer black, inner white (per DimensionLabelView §3.5).

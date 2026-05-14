@@ -79,7 +79,7 @@ public enum PDFExporter {
             ctx.beginPage()
             drawHeader(metadata: metadata, accuracy: accuracy)
             drawPhoto(photo)
-            drawDimensionsTable(dimensions.measurements)
+            drawDimensionsTable(dimensions.measurements, openings: dimensions.openings)
             drawFooter()
         }
     }
@@ -176,7 +176,10 @@ public enum PDFExporter {
 
     // MARK: - Dimensions table
 
-    static func drawDimensionsTable(_ measurements: [DimensionsData.Measurement]) {
+    static func drawDimensionsTable(
+        _ measurements: [DimensionsData.Measurement],
+        openings: [DimensionsData.Opening] = []
+    ) {
         let tableTop = pagePadding + headerHeight + pageSize.height * 0.45 + 18
         attributedString("DIMENSIONS",
                          font: cakeMonoLight(13),
@@ -204,9 +207,14 @@ public enum PDFExporter {
                              color: .black)
                 .draw(at: CGPoint(x: labelX, y: y))
 
+            let displayContext = DimensionFormatter.displayContext(
+                for: m.id,
+                openings: openings
+            )
             let f = DimensionFormatter.format(
                 valueMeters: m.valueMeters,
-                primaryUnit: m.primaryDisplayUnit
+                primaryUnit: m.primaryDisplayUnit,
+                displayContext: displayContext
             )
             attributedString(f.primary, font: jbMono(11), color: .black)
                 .draw(at: CGPoint(x: primaryX, y: y))

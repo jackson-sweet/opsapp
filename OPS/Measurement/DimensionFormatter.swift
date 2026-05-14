@@ -46,6 +46,11 @@ public enum DimensionFormatter {
         case interpunct = " · "
     }
 
+    public enum DisplayContext: Equatable {
+        case standard
+        case opening
+    }
+
     // MARK: - Public API
 
     /// Formats a measurement value (in metres) into a dual-unit string set.
@@ -55,14 +60,15 @@ public enum DimensionFormatter {
     public static func format(
         valueMeters: Double,
         primaryUnit: DimensionsData.Measurement.DisplayUnit,
+        displayContext: DisplayContext = .standard,
         separator: Separator = .slash
     ) -> Formatted {
         guard valueMeters.isFinite, valueMeters > 0 else {
             return Formatted(primary: emptyDash, secondary: emptyDash, dualUnit: emptyDash)
         }
-        let primary = string(for: valueMeters, unit: primaryUnit)
+        let primary = string(for: valueMeters, unit: primaryUnit, displayContext: displayContext)
         let secondaryUnit = secondary(for: primaryUnit)
-        let secondary = string(for: valueMeters, unit: secondaryUnit)
+        let secondary = string(for: valueMeters, unit: secondaryUnit, displayContext: displayContext)
         let dual = primary + separator.rawValue + secondary
         return Formatted(primary: primary, secondary: secondary, dualUnit: dual)
     }
@@ -71,16 +77,36 @@ public enum DimensionFormatter {
     /// caller that does not want a dual-unit line.
     public static func string(
         for valueMeters: Double,
-        unit: DimensionsData.Measurement.DisplayUnit
+        unit: DimensionsData.Measurement.DisplayUnit,
+        displayContext: DisplayContext = .standard
     ) -> String {
         guard valueMeters.isFinite, valueMeters > 0 else {
             return emptyDash
         }
         switch unit {
-        case .imperialFraction: return formatImperialFraction(metres: valueMeters)
+        case .imperialFraction:
+            switch displayContext {
+            case .standard: return formatImperialFraction(metres: valueMeters)
+            case .opening:  return formatImperialOpeningInches(metres: valueMeters)
+            }
         case .decimalFeet:      return formatDecimalFeet(metres: valueMeters)
         case .metric:           return formatMetric(metres: valueMeters)
         }
+    }
+
+    public static func displayContext(
+        for measurementID: UUID,
+        openings: [DimensionsData.Opening]
+    ) -> DisplayContext {
+        let isWindowOrDoorMeasurement = openings.contains { opening in
+            switch opening.type {
+            case .window, .door:
+                return opening.measurementIds.contains(measurementID)
+            case .wallSection:
+                return false
+            }
+        }
+        return isWindowOrDoorMeasurement ? .opening : .standard
     }
 
     // MARK: - Imperial fraction
@@ -118,6 +144,17 @@ public enum DimensionFormatter {
             parts.append(inchesPart + "\u{2033}")
         }
         return parts.joined(separator: " ")
+    }
+
+    static func formatImperialOpeningInches(metres: Double) -> String {
+        let totalInches = metres / 0.0254
+        let totalSixteenths = Int((totalInches * 16).rounded())
+        let wholeInches = totalSixteenths / 16
+        let fracSixteenths = totalSixteenths - wholeInches * 16
+        return inchesPartString(
+            wholeInches: wholeInches,
+            fractionSixteenths: fracSixteenths
+        ) + "\u{2033}"
     }
 
     private static func inchesPartString(wholeInches: Int, fractionSixteenths: Int) -> String {

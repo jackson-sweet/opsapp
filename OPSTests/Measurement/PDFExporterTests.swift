@@ -14,6 +14,8 @@ import UIKit
 final class PDFExporterTests: XCTestCase {
 
     private func fixtureDimensions() -> DimensionsData {
+        let widthID = UUID()
+        let heightID = UUID()
         return DimensionsData(
             captureMode: .lidar,
             calibration: .init(method: .lidar, estimatedAccuracyMeters: 0.025),
@@ -21,14 +23,16 @@ final class PDFExporterTests: XCTestCase {
                               cx: 1015.5, cy: 762.0,
                               imageWidth: 4032, imageHeight: 3024),
             measurements: [
-                .init(type: .linear,
+                .init(id: widthID,
+                      type: .linear,
                       label: "Width",
                       worldPoints: [.init(x: 0, y: 0, z: 0), .init(x: 0.9144, y: 0, z: 0)],
                       imagePoints: [.init(x: 100, y: 500), .init(x: 800, y: 500)],
                       valueMeters: 0.9144,
                       labelPlacement: .init(side: .north, leaderLengthPx: 60),
                       source: .auto),
-                .init(type: .linear,
+                .init(id: heightID,
+                      type: .linear,
                       label: "Height",
                       worldPoints: [.init(x: 0, y: 0, z: 0), .init(x: 0, y: 1.524, z: 0)],
                       imagePoints: [.init(x: 100, y: 500), .init(x: 100, y: 1900)],
@@ -36,7 +40,17 @@ final class PDFExporterTests: XCTestCase {
                       labelPlacement: .init(side: .east, leaderLengthPx: 60),
                       source: .auto)
             ],
-            openings: []
+            openings: [
+                .init(type: .window,
+                      boundingPolygon: [
+                        .init(x: 100, y: 500),
+                        .init(x: 800, y: 500),
+                        .init(x: 800, y: 1900),
+                        .init(x: 100, y: 1900)
+                      ],
+                      classificationConfidence: 0.94,
+                      measurementIds: [widthID, heightID])
+            ]
         )
     }
 
@@ -93,6 +107,69 @@ final class PDFExporterTests: XCTestCase {
         let doc = PDFDocument(data: data)
         XCTAssertNotNil(doc)
         XCTAssertEqual(doc?.pageCount, 1)
+    }
+
+    func test_render_windowOpeningTableKeepsWholeFootDimensionsAsInches() throws {
+        let data = PDFExporter.render(
+            photo: fixturePhoto(),
+            dimensions: fixtureDimensions(),
+            metadata: .init(projectName: "X",
+                            capturedAt: Date(),
+                            capturedByName: nil),
+            accuracy: .init(text: "±1″ · LIDAR", coplanarOnly: false)
+        )
+        let doc = try XCTUnwrap(PDFDocument(data: data))
+        let text = try XCTUnwrap(doc.page(at: 0)?.string)
+
+        XCTAssertTrue(text.contains("36\u{2033}"), "Window width should render as 36 inches, not 3 feet.")
+        XCTAssertTrue(text.contains("60\u{2033}"), "Window height should render as 60 inches, not 5 feet.")
+        XCTAssertFalse(text.contains("3\u{2032}"), "Opening dimensions must not collapse whole-foot inch values into feet.")
+        XCTAssertFalse(text.contains("5\u{2032}"), "Opening dimensions must not collapse whole-foot inch values into feet.")
+    }
+
+    func test_render_wallSectionTableKeepsGenericImperialFeet() throws {
+        let measurementID = UUID()
+        let dims = DimensionsData(
+            captureMode: .lidar,
+            calibration: .init(method: .lidar, estimatedAccuracyMeters: 0.025),
+            intrinsics: .init(fx: 1593.4, fy: 1593.4,
+                              cx: 1015.5, cy: 762.0,
+                              imageWidth: 4032, imageHeight: 3024),
+            measurements: [
+                .init(id: measurementID,
+                      type: .linear,
+                      label: "Height",
+                      worldPoints: [.init(x: 0, y: 0, z: 0), .init(x: 0, y: 2.4384, z: 0)],
+                      imagePoints: [.init(x: 100, y: 500), .init(x: 100, y: 1900)],
+                      valueMeters: 2.4384,
+                      labelPlacement: .init(side: .east, leaderLengthPx: 60),
+                      source: .auto)
+            ],
+            openings: [
+                .init(type: .wallSection,
+                      boundingPolygon: [
+                        .init(x: 100, y: 500),
+                        .init(x: 800, y: 500),
+                        .init(x: 800, y: 1900),
+                        .init(x: 100, y: 1900)
+                      ],
+                      classificationConfidence: 0.94,
+                      measurementIds: [measurementID])
+            ]
+        )
+        let data = PDFExporter.render(
+            photo: fixturePhoto(),
+            dimensions: dims,
+            metadata: .init(projectName: "X",
+                            capturedAt: Date(),
+                            capturedByName: nil),
+            accuracy: .init(text: "±1″ · LIDAR", coplanarOnly: false)
+        )
+        let doc = try XCTUnwrap(PDFDocument(data: data))
+        let text = try XCTUnwrap(doc.page(at: 0)?.string)
+
+        XCTAssertTrue(text.contains("8\u{2032}"), "Wall-section measurements should keep normal imperial feet display.")
+        XCTAssertFalse(text.contains("96\u{2033}"), "Wall-section measurements should not use opening-inch display.")
     }
 
     func test_pageSizeIsA4() {

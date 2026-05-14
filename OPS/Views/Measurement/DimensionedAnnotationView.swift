@@ -74,6 +74,7 @@ public struct DimensionedAnnotationView: View {
     @State private var loadFailed = false
 
     @State private var measurements: [DimensionsData.Measurement] = []
+    @State private var openings: [DimensionsData.Opening] = []
     @State private var undoStack: [[DimensionsData.Measurement]] = []
     @State private var redoStack: [[DimensionsData.Measurement]] = []
     @State private var hasUnsavedChanges = false
@@ -134,9 +135,11 @@ public struct DimensionedAnnotationView: View {
         if let existing = existingDimensions {
             self._calibration = State(initialValue: existing.calibration)
             self._measurements = State(initialValue: existing.measurements)
+            self._openings = State(initialValue: existing.openings)
         } else {
             self._calibration = State(initialValue: initialCalibration)
             self._measurements = State(initialValue: startingMeasurements)
+            self._openings = State(initialValue: Self.persistedOpenings(from: detectedOpenings))
         }
         self._hasUnsavedChanges = State(initialValue: initialHasUnsavedChanges)
     }
@@ -315,7 +318,8 @@ public struct DimensionedAnnotationView: View {
         let b = fit.screenPoint(fromPhoto: cg(m.imagePoints.last))
         let formatted = DimensionFormatter.format(
             valueMeters: m.valueMeters,
-            primaryUnit: primaryUnit
+            primaryUnit: primaryUnit,
+            displayContext: DimensionFormatter.displayContext(for: m.id, openings: openings)
         )
         let trace = traceProgress[m.id] ?? 1.0
         let opacity = labelOpacity[m.id] ?? 1.0
@@ -437,6 +441,7 @@ public struct DimensionedAnnotationView: View {
             m2.primaryDisplayUnit = primaryUnit
             return m2
         }
+        assignAutoMeasurements(toAdd.map(\.id), to: result.opening)
         sillUnavailableReason = result.sillUnavailableReason
 
         if reduceMotion {
@@ -691,15 +696,53 @@ public struct DimensionedAnnotationView: View {
             depthAssetUrl: assets.depthURL?.absoluteString,
             sidecarMetadataUrl: assets.sidecarURL.absoluteString,
             measurements: measurements,
-            openings: detectedOpenings.map { opening in
-                DimensionsData.Opening(
-                    id: opening.id,
-                    type: opening.type,
-                    boundingPolygon: opening.boundingPolygon,
-                    classificationConfidence: opening.classificationConfidence,
-                    measurementIds: []
-                )
+            openings: currentOpenings()
+        )
+    }
+
+    private func currentOpenings() -> [DimensionsData.Opening] {
+        let currentMeasurementIDs = Set(measurements.map(\.id))
+        return openings.map { opening in
+            var filtered = opening
+            filtered.measurementIds = filtered.measurementIds.filter {
+                currentMeasurementIDs.contains($0)
             }
+            return filtered
+        }
+    }
+
+    private func assignAutoMeasurements(
+        _ measurementIDs: [UUID],
+        to detectedOpening: DetectedOpening
+    ) {
+        if let idx = openings.firstIndex(where: { $0.id == detectedOpening.id }) {
+            for measurementID in measurementIDs where !openings[idx].measurementIds.contains(measurementID) {
+                openings[idx].measurementIds.append(measurementID)
+            }
+        } else {
+            openings.append(Self.persistedOpening(
+                from: detectedOpening,
+                measurementIds: measurementIDs
+            ))
+        }
+    }
+
+    private static func persistedOpenings(
+        from detectedOpenings: [DetectedOpening]
+    ) -> [DimensionsData.Opening] {
+        detectedOpenings.map { persistedOpening(from: $0, measurementIds: []) }
+    }
+
+    private static func persistedOpening(
+        from detectedOpening: DetectedOpening,
+        measurementIds: [UUID]
+    ) -> DimensionsData.Opening {
+        DimensionsData.Opening(
+            id: detectedOpening.id,
+            type: detectedOpening.type,
+            boundingPolygon: detectedOpening.boundingPolygon,
+            classificationConfidence: detectedOpening.classificationConfidence,
+            measurementIds: measurementIds
         )
     }
 

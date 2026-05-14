@@ -115,6 +115,9 @@ struct OPSActionBarButton: View {
                     Text(label.uppercased())
                         .font(OPSStyle.Typography.caption)
                         .tracking(0.8)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .allowsTightening(true)
                         .foregroundColor(isDisabled ? OPSStyle.Colors.tertiaryText : labelColor)
                 }
             }

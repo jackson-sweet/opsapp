@@ -103,54 +103,42 @@ struct ProjectActionBar: View {
         )
     }
 
+    private var actionEntries: [ProjectActionBarEntry] {
+        var entries = orderedActions.map { action in
+            ProjectActionBarEntry.project(
+                action,
+                icon: action.iconName(isRouting: inProgressManager.isRouting),
+                label: action == .complete
+                    ? completeLabel
+                    : action.label(isRouting: inProgressManager.isRouting)
+            )
+        }
+
+        if showMeasureEntry {
+            entries.append(.measure)
+        }
+
+        return entries
+    }
+
     var body: some View {
-        // horizontalPadding: 4 gives each button more allocated width, which
-        // pulls the first/last button icons closer to the card edge AND
-        // widens the visual gaps between icons. The default 16 clumps the
-        // icons toward the centre.
-        OPSActionBar(horizontalPadding: 4) {
-            HStack(spacing: 0) {
-                ForEach(Array(orderedActions.enumerated()), id: \.element) { index, action in
-                    OPSActionBarButton(
-                        icon: action.iconName(isRouting: inProgressManager.isRouting),
-                        label: action == .complete
-                            ? completeLabel
-                            : action.label(isRouting: inProgressManager.isRouting)
-                    ) {
-                        handleAction(action)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .modifier(ActionButtonHighlightModifier(action: action))
+        let entries = actionEntries
+        let layout = ProjectActionBarLayout.plan(
+            availableWidth: UIScreen.main.bounds.width,
+            labels: entries.map(\.label)
+        )
 
-                    // Vertical divider between buttons (not after last one).
-                    // When the MEASURE entry is visible, this divider always
-                    // renders after the last `ProjectAction` and a second one
-                    // appears between MEASURE and the trailing edge — see the
-                    // measure block below.
-                    if index < orderedActions.count - 1 || showMeasureEntry {
-                        Rectangle()
-                            .fill(OPSStyle.Colors.cardBorderSubtle)
-                            .frame(width: 1, height: 32)
-                    }
-                }
-
-                // Phase G — MEASURE entry. Renders only when the LiDAR feature
-                // flag is enabled AND the device supports depth-aware capture
-                // (LiDAR or visual SLAM). Hidden by default; flips visible
-                // once `feature.measurement.dimensioned_capture` is flipped ON
-                // remotely. Spec §3.1 + §10.3.
-                if showMeasureEntry {
-                    MeasureActionButton(project: project)
-                        .frame(maxWidth: .infinity)
-                }
-            }
+        // horizontalPadding: 4 gives the buttons more room while keeping the
+        // hairline container aligned with the active-project cards.
+        OPSActionBar(horizontalPadding: ProjectActionBarLayout.containerHorizontalPadding) {
+            actionRows(entries: entries, layout: layout)
         }
         .frame(maxWidth: .infinity)
         // 16pt outer margin matches NavigationManeuverCard, ActiveProjectCard,
         // and NavigationTripStrip so every floating card aligns to the same
         // vertical gutter on both edges of the screen.
-        .padding(.horizontal, 16)
-        .contentMargins(.bottom, 90)
+        .padding(.horizontal, ProjectActionBarLayout.outerHorizontalPadding)
+        .contentMargins(.bottom, layout.rowCounts.count > 1 ? 140 : 90)
         // Bug aa3ec6d7 — confirmation copy + action follow whichever entity
         // (project or active task) the Complete button currently targets.
         // The alert content is computed once per render via `completeAlert`
@@ -244,6 +232,88 @@ struct ProjectActionBar: View {
                 }
             }
         )
+    }
+
+    @ViewBuilder
+    private func actionRows(
+        entries: [ProjectActionBarEntry],
+        layout: ProjectActionBarLayout
+    ) -> some View {
+        switch layout.arrangement {
+        case .singleRow:
+            actionRow(entries)
+        case .grid(let columns):
+            let rows = chunked(entries, columns: columns)
+
+            VStack(spacing: ProjectActionBarLayout.rowSpacing) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, rowEntries in
+                    actionRow(rowEntries)
+
+                    if index < rows.count - 1 {
+                        Rectangle()
+                            .fill(OPSStyle.Colors.cardBorderSubtle)
+                            .frame(height: ProjectActionBarLayout.horizontalDividerHeight)
+                    }
+                }
+            }
+        }
+    }
+
+    private func actionRow(_ entries: [ProjectActionBarEntry]) -> some View {
+        HStack(spacing: 0) {
+            ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                actionButton(for: entry)
+                    .frame(
+                        minWidth: ProjectActionBarLayout.minimumButtonWidth,
+                        maxWidth: .infinity
+                    )
+
+                if index < entries.count - 1 {
+                    Rectangle()
+                        .fill(OPSStyle.Colors.cardBorderSubtle)
+                        .frame(width: ProjectActionBarLayout.dividerWidth, height: 32)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func actionButton(for entry: ProjectActionBarEntry) -> some View {
+        switch entry {
+        case .project(let action, let icon, let label):
+            OPSActionBarButton(
+                icon: icon,
+                label: label
+            ) {
+                handleAction(action)
+            }
+            .modifier(ActionButtonHighlightModifier(action: action))
+        case .measure:
+            // Phase G — MEASURE entry. Renders only when the LiDAR feature
+            // flag is enabled AND the device supports depth-aware capture
+            // (LiDAR or visual SLAM). Hidden by default; flips visible
+            // once `feature.measurement.dimensioned_capture` is flipped ON
+            // remotely. Spec §3.1 + §10.3.
+            MeasureActionButton(project: project)
+        }
+    }
+
+    private func chunked(
+        _ entries: [ProjectActionBarEntry],
+        columns: Int
+    ) -> [[ProjectActionBarEntry]] {
+        guard columns > 0 else { return [entries] }
+
+        var rows: [[ProjectActionBarEntry]] = []
+        var startIndex = 0
+
+        while startIndex < entries.count {
+            let endIndex = min(startIndex + columns, entries.count)
+            rows.append(Array(entries[startIndex..<endIndex]))
+            startIndex = endIndex
+        }
+
+        return rows
     }
     
     private func handleAction(_ action: ProjectAction) {
@@ -521,6 +591,41 @@ enum ProjectAction: CaseIterable {
     }
 }
 
+private enum ProjectActionBarEntry: Identifiable {
+    case project(ProjectAction, icon: String, label: String)
+    case measure
+
+    var id: String {
+        switch self {
+        case .project(let action, _, _):
+            return action.id
+        case .measure:
+            return "measure"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .project(_, _, let label):
+            return label
+        case .measure:
+            return "MEASURE"
+        }
+    }
+}
+
+private extension ProjectAction {
+    var id: String {
+        switch self {
+        case .navigate: return "navigate"
+        case .complete: return "complete"
+        case .receipt:  return "receipt"
+        case .details:  return "details"
+        case .photo:    return "photo"
+        }
+    }
+}
+
 // MARK: - Action Button Highlight Modifier
 
 /// Modifier that adds tutorial highlight to specific action buttons based on tutorial phase
@@ -602,4 +707,3 @@ private struct PulsingActionHighlight: View {
 }
 
 // ReceiptScannerView removed — replaced by ExpenseFormSheet
-

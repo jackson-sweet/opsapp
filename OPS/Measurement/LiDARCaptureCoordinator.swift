@@ -70,7 +70,32 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
         let enablesDepthDataDelivery: Bool
         let filtersDepthData: Bool
         let embedsDepthDataInPhoto: Bool
-        let enablesHighResolutionPhoto: Bool
+        let maxPhotoDimensions: PhotoDimensions?
+    }
+
+    struct PhotoDimensions: Equatable {
+        let width: Int32
+        let height: Int32
+
+        init(width: Int32, height: Int32) {
+            self.width = width
+            self.height = height
+        }
+
+        init?(_ dimensions: CMVideoDimensions) {
+            guard dimensions.width > 0, dimensions.height > 0 else {
+                return nil
+            }
+            self.init(width: dimensions.width, height: dimensions.height)
+        }
+
+        var cmVideoDimensions: CMVideoDimensions {
+            CMVideoDimensions(width: width, height: height)
+        }
+
+        var pixelArea: Int64 {
+            Int64(width) * Int64(height)
+        }
     }
 
     struct DepthDataFormatDescriptor: Equatable {
@@ -163,7 +188,7 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
         for capability: CaptureCapability,
         depthDeliverySupported: Bool,
         heicSupported: Bool = true,
-        highResolutionSupported: Bool
+        maxPhotoDimensions: PhotoDimensions?
     ) -> PhotoSettingsPolicy {
         let enablesDepth = capability == .lidar && depthDeliverySupported
         return PhotoSettingsPolicy(
@@ -171,7 +196,7 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
             enablesDepthDataDelivery: enablesDepth,
             filtersDepthData: enablesDepth,
             embedsDepthDataInPhoto: enablesDepth,
-            enablesHighResolutionPhoto: highResolutionSupported
+            maxPhotoDimensions: maxPhotoDimensions
         )
     }
 
@@ -212,6 +237,17 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
             return nil
         }
         return .avCaptureFailed("LiDAR capture returned no depth data")
+    }
+
+    static func preferredMaxPhotoDimensions(
+        in dimensions: [PhotoDimensions]
+    ) -> PhotoDimensions? {
+        dimensions.max { lhs, rhs in
+            if lhs.pixelArea == rhs.pixelArea {
+                return lhs.width < rhs.width
+            }
+            return lhs.pixelArea < rhs.pixelArea
+        }
     }
 
     // MARK: - Public API
@@ -331,7 +367,11 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
 
             if avSession.canAddOutput(photoOutput) {
                 avSession.addOutput(photoOutput)
-                photoOutput.isHighResolutionCaptureEnabled = true
+                if let maxPhotoDimensions = Self.preferredMaxPhotoDimensions(
+                    for: device.activeFormat
+                ) {
+                    photoOutput.maxPhotoDimensions = maxPhotoDimensions.cmVideoDimensions
+                }
             } else {
                 throw CaptureSessionConfigurationError.photoOutputUnavailable
             }
@@ -397,6 +437,14 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
         return formats[index]
     }
 
+    private static func preferredMaxPhotoDimensions(
+        for format: AVCaptureDevice.Format
+    ) -> PhotoDimensions? {
+        preferredMaxPhotoDimensions(
+            in: format.supportedMaxPhotoDimensions.compactMap(PhotoDimensions.init)
+        )
+    }
+
     private static func depthDataFormatDescriptor(
         from format: AVCaptureDevice.Format
     ) -> DepthDataFormatDescriptor {
@@ -437,7 +485,7 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
             for: capability,
             depthDeliverySupported: photoOutput.isDepthDataDeliverySupported,
             heicSupported: photoOutput.availablePhotoCodecTypes.contains(.hevc),
-            highResolutionSupported: photoOutput.isHighResolutionCaptureEnabled
+            maxPhotoDimensions: PhotoDimensions(photoOutput.maxPhotoDimensions)
         )
         let settings: AVCapturePhotoSettings
         if let codec = policy.photoCodec {
@@ -448,8 +496,8 @@ public final class LiDARCaptureCoordinator: NSObject, ObservableObject {
         settings.isDepthDataDeliveryEnabled = policy.enablesDepthDataDelivery
         settings.isDepthDataFiltered = policy.filtersDepthData
         settings.embedsDepthDataInPhoto = policy.embedsDepthDataInPhoto
-        if policy.enablesHighResolutionPhoto {
-            settings.isHighResolutionPhotoEnabled = true
+        if let maxPhotoDimensions = policy.maxPhotoDimensions {
+            settings.maxPhotoDimensions = maxPhotoDimensions.cmVideoDimensions
         }
 
         let result: Result<CapturedAssets, CaptureError> = await withCheckedContinuation { cont in

@@ -68,28 +68,28 @@ final class LiDARCaptureCoordinatorTests: XCTestCase {
         let policy = LiDARCaptureCoordinator.photoSettingsPolicy(
             for: .lidar,
             depthDeliverySupported: true,
-            highResolutionSupported: true
+            maxPhotoDimensions: Self.fixturePhotoDimensions
         )
 
         XCTAssertEqual(policy.photoCodec, .hevc)
         XCTAssertTrue(policy.enablesDepthDataDelivery)
         XCTAssertTrue(policy.filtersDepthData)
         XCTAssertTrue(policy.embedsDepthDataInPhoto)
-        XCTAssertTrue(policy.enablesHighResolutionPhoto)
+        XCTAssertEqual(policy.maxPhotoDimensions, Self.fixturePhotoDimensions)
     }
 
     func test_photoSettingsPolicy_for_visual_disablesDepth_evenWhenPhotoOutputSupportsIt() {
         let policy = LiDARCaptureCoordinator.photoSettingsPolicy(
             for: .visual,
             depthDeliverySupported: true,
-            highResolutionSupported: true
+            maxPhotoDimensions: Self.fixturePhotoDimensions
         )
 
         XCTAssertEqual(policy.photoCodec, .hevc)
         XCTAssertFalse(policy.enablesDepthDataDelivery)
         XCTAssertFalse(policy.filtersDepthData)
         XCTAssertFalse(policy.embedsDepthDataInPhoto)
-        XCTAssertTrue(policy.enablesHighResolutionPhoto)
+        XCTAssertEqual(policy.maxPhotoDimensions, Self.fixturePhotoDimensions)
     }
 
     func test_photoSettingsPolicy_fallsBackWhenHEICCodecIsUnavailable() {
@@ -97,11 +97,40 @@ final class LiDARCaptureCoordinatorTests: XCTestCase {
             for: .visual,
             depthDeliverySupported: false,
             heicSupported: false,
-            highResolutionSupported: true
+            maxPhotoDimensions: Self.fixturePhotoDimensions
         )
 
         XCTAssertNil(policy.photoCodec)
         XCTAssertFalse(policy.enablesDepthDataDelivery)
+        XCTAssertEqual(policy.maxPhotoDimensions, Self.fixturePhotoDimensions)
+    }
+
+    func test_photoSettingsPolicy_allowsMissingMaxPhotoDimensions() {
+        let policy = LiDARCaptureCoordinator.photoSettingsPolicy(
+            for: .lidar,
+            depthDeliverySupported: true,
+            maxPhotoDimensions: nil
+        )
+
+        XCTAssertTrue(policy.enablesDepthDataDelivery)
+        XCTAssertNil(policy.maxPhotoDimensions)
+    }
+
+    func test_preferredMaxPhotoDimensions_selectsLargestPixelArea() {
+        let dimensions = [
+            LiDARCaptureCoordinator.PhotoDimensions(width: 1920, height: 1080),
+            LiDARCaptureCoordinator.PhotoDimensions(width: 4032, height: 3024),
+            LiDARCaptureCoordinator.PhotoDimensions(width: 3840, height: 2160)
+        ]
+
+        XCTAssertEqual(
+            LiDARCaptureCoordinator.preferredMaxPhotoDimensions(in: dimensions),
+            LiDARCaptureCoordinator.PhotoDimensions(width: 4032, height: 3024)
+        )
+    }
+
+    func test_preferredMaxPhotoDimensions_rejectsEmptyList() {
+        XCTAssertNil(LiDARCaptureCoordinator.preferredMaxPhotoDimensions(in: []))
     }
 
     func test_depthDeliveryValidation_rejectsLidarWhenPhotoOutputCannotDeliverDepth() throws {
@@ -445,6 +474,11 @@ final class LiDARCaptureCoordinatorTests: XCTestCase {
 
     private static let fixtureIntrinsics = DimensionsData.Intrinsics(
         fx: 1, fy: 1, cx: 0, cy: 0, imageWidth: 1, imageHeight: 1
+    )
+
+    private static let fixturePhotoDimensions = LiDARCaptureCoordinator.PhotoDimensions(
+        width: 4032,
+        height: 3024
     )
 
     private static let identityPose: [Float] = [

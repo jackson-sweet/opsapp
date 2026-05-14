@@ -68,6 +68,7 @@ public struct DimensionedAnnotationView: View {
     // MARK: - State
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var loadedPhoto: UIImage?
     @State private var loadedDepth: DepthMap?
@@ -335,7 +336,13 @@ public struct DimensionedAnnotationView: View {
         )
         let trace = traceProgress[m.id] ?? 1.0
         let opacity = labelOpacity[m.id] ?? 1.0
-        let placement = computePlacement(for: m, in: fit)
+        let placement = computePlacement(
+            for: m,
+            in: fit,
+            primaryText: formatted.primary,
+            secondaryText: formatted.secondary,
+            inlineHint: inlineHint
+        )
         DimensionLabelView(
             pointA: a,
             pointB: b,
@@ -345,24 +352,61 @@ public struct DimensionedAnnotationView: View {
             secondaryText: formatted.secondary,
             inlineHint: inlineHint,
             accessibilityLabelText: accessibilityLabel,
+            maximumLabelWidth: DimensionLabelMetrics.maximumLabelWidth(in: fit.containerSize),
             traceProgress: trace,
             labelOpacity: opacity
         )
     }
 
     private func computePlacement(for m: DimensionsData.Measurement,
-                                  in fit: PhotoFit) -> CGRect {
+                                  in fit: PhotoFit,
+                                  primaryText: String,
+                                  secondaryText: String,
+                                  inlineHint: String?) -> CGRect {
         // Use the stored side + leader as a starting hint; defer full collision
         // avoidance to the LabelPlacer when committing layout.
         let a = fit.screenPoint(fromPhoto: cg(m.imagePoints.first))
         let b = fit.screenPoint(fromPhoto: cg(m.imagePoints.last))
         let mid = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
-        let chipSize = CGSize(width: 110, height: 36)
-        return LabelPlacer.chipRect(
+        return Self.liveDimensionLabelChipRect(
             midpoint: mid,
-            chipSize: chipSize,
-            side: m.labelPlacement.side,
-            leader: CGFloat(m.labelPlacement.leaderLengthPx)
+            labelPlacement: m.labelPlacement,
+            primaryText: primaryText,
+            secondaryText: secondaryText,
+            inlineHint: inlineHint,
+            canvasSize: fit.containerSize,
+            dynamicTypeSize: dynamicTypeSize
+        )
+    }
+
+    static func liveDimensionLabelChipRect(
+        midpoint: CGPoint,
+        labelPlacement: DimensionsData.Measurement.LabelPlacement,
+        primaryText: String,
+        secondaryText: String,
+        inlineHint: String?,
+        canvasSize: CGSize,
+        dynamicTypeSize: DynamicTypeSize
+    ) -> CGRect {
+        let metrics = DimensionLabelMetrics(dynamicTypeSize: dynamicTypeSize)
+        let maximumWidth = DimensionLabelMetrics.maximumLabelWidth(in: canvasSize)
+        let layout = metrics.layout(
+            primaryText: primaryText,
+            secondaryText: secondaryText,
+            inlineHint: inlineHint,
+            maximumWidth: maximumWidth
+        )
+        let rawRect = LabelPlacer.chipRect(
+            midpoint: midpoint,
+            chipSize: layout.chipSize,
+            side: labelPlacement.side,
+            leader: CGFloat(labelPlacement.leaderLengthPx)
+        )
+        return metrics.clampedChipRect(
+            rawRect,
+            inlineHint: inlineHint,
+            canvasSize: canvasSize,
+            maximumWidth: maximumWidth
         )
     }
 

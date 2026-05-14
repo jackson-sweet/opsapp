@@ -164,6 +164,85 @@ final class DimensionLabelViewTests: XCTestCase {
         )
     }
 
+    // MARK: - Dynamic Type chip sizing
+
+    func test_chipMetrics_growsForAccessibilityDynamicType() {
+        let regular = DimensionLabelMetrics(dynamicTypeSize: .large).layout(
+            primaryText: "36\u{00BD}\u{2033}",
+            secondaryText: "0.93 m",
+            inlineHint: nil
+        )
+        let accessibility = DimensionLabelMetrics(dynamicTypeSize: .accessibility5).layout(
+            primaryText: "36\u{00BD}\u{2033}",
+            secondaryText: "0.93 m",
+            inlineHint: nil
+        )
+
+        XCTAssertGreaterThan(accessibility.chipSize.width, regular.chipSize.width)
+        XCTAssertGreaterThan(accessibility.chipSize.height, regular.chipSize.height)
+    }
+
+    func test_chipMetrics_accountsForInlineHintBounds() {
+        let metrics = DimensionLabelMetrics(dynamicTypeSize: .large)
+        let withoutHint = metrics.layout(
+            primaryText: "5\u{2032}",
+            secondaryText: "1.52 m",
+            inlineHint: nil
+        )
+        let withHint = metrics.layout(
+            primaryText: "5\u{2032}",
+            secondaryText: "1.52 m",
+            inlineHint: "// SILL — NO FLOOR REFERENCE"
+        )
+
+        XCTAssertEqual(withoutHint.hintSize, .zero)
+        XCTAssertGreaterThan(withHint.hintSize.width, 0)
+        XCTAssertGreaterThan(withHint.boundsSize.height, withoutHint.boundsSize.height)
+        XCTAssertGreaterThanOrEqual(withHint.boundsSize.width, withHint.hintSize.width)
+    }
+
+    func test_livePlacementUsesMeasuredChipSizeInsteadOfFixedLegacySize() {
+        let canvas = CGSize(width: 390, height: 844)
+        let placement = DimensionedAnnotationView.liveDimensionLabelChipRect(
+            midpoint: CGPoint(x: 195, y: 422),
+            labelPlacement: .init(side: .north, leaderLengthPx: 60),
+            primaryText: "36\u{00BD}\u{2033}",
+            secondaryText: "0.93 m",
+            inlineHint: nil,
+            canvasSize: canvas,
+            dynamicTypeSize: .accessibility3
+        )
+
+        XCTAssertNotEqual(placement.size.width, 110)
+        XCTAssertNotEqual(placement.size.height, 36)
+    }
+
+    func test_livePlacementClampsLongLargeLabelInsidePhoneAnnotationCanvas() {
+        let canvas = CGSize(width: 390, height: 844)
+        let hint = "// SILL — NO FLOOR REFERENCE"
+        let maxLabelWidth = DimensionLabelMetrics.maximumLabelWidth(in: canvas)
+        let metrics = DimensionLabelMetrics(dynamicTypeSize: .accessibility5)
+        let placement = DimensionedAnnotationView.liveDimensionLabelChipRect(
+            midpoint: CGPoint(x: 376, y: 812),
+            labelPlacement: .init(side: .south, leaderLengthPx: 90),
+            primaryText: "14\u{2032} 6\u{00BD}\u{2033}",
+            secondaryText: "4.43 m",
+            inlineHint: hint,
+            canvasSize: canvas,
+            dynamicTypeSize: .accessibility5
+        )
+        let bounds = metrics.boundsRect(
+            forChipRect: placement,
+            inlineHint: hint,
+            maximumWidth: maxLabelWidth
+        )
+
+        XCTAssertTrue(
+            CGRect(origin: .zero, size: canvas).contains(bounds),
+            "Expected \(bounds) to stay inside \(canvas)"
+        )
+    }
+
     // MARK: - Animation surface
 
     func test_traceProgress_zero_meansLineNotYetVisible() {

@@ -42,16 +42,15 @@ public struct DimensionLabelView: View {
     public let secondaryText: String // e.g. "4.43 m"
     public let inlineHint: String?   // e.g. "// SILL — NO FLOOR REFERENCE"
     public let accessibilityLabelText: String
+    public let maximumLabelWidth: CGFloat?
     public var traceProgress: CGFloat = 1.0  // 0…1, drives `.trim` on the line
     public var labelOpacity: Double = 1.0    // 0…1, drives chip alpha
 
-    @ScaledMetric(relativeTo: .body) private var primaryFontSize: CGFloat = 14
-    @ScaledMetric(relativeTo: .caption2) private var secondaryFontSize: CGFloat = 10
-    @ScaledMetric(relativeTo: .caption2) private var hintFontSize: CGFloat = 10
-    @ScaledMetric(relativeTo: .body) private var chipHorizontalPadding: CGFloat = 8
-    @ScaledMetric(relativeTo: .body) private var chipVerticalPadding: CGFloat = 4
-    @ScaledMetric(relativeTo: .caption2) private var hintHorizontalPadding: CGFloat = 6
-    @ScaledMetric(relativeTo: .caption2) private var hintVerticalPadding: CGFloat = 2
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var metrics: DimensionLabelMetrics {
+        DimensionLabelMetrics(dynamicTypeSize: dynamicTypeSize)
+    }
 
     public init(
         pointA: CGPoint,
@@ -62,6 +61,7 @@ public struct DimensionLabelView: View {
         secondaryText: String,
         inlineHint: String? = nil,
         accessibilityLabelText: String,
+        maximumLabelWidth: CGFloat? = nil,
         traceProgress: CGFloat = 1.0,
         labelOpacity: Double = 1.0
     ) {
@@ -73,6 +73,7 @@ public struct DimensionLabelView: View {
         self.secondaryText = secondaryText
         self.inlineHint = inlineHint
         self.accessibilityLabelText = accessibilityLabelText
+        self.maximumLabelWidth = maximumLabelWidth
         self.traceProgress = traceProgress
         self.labelOpacity = labelOpacity
     }
@@ -147,20 +148,23 @@ public struct DimensionLabelView: View {
     private var chip: some View {
         VStack(alignment: .center, spacing: 1) {
             Text(primaryText)
-                .font(.custom("JetBrainsMono-Regular", size: primaryFontSize))
+                .font(.custom("JetBrainsMono-Regular", size: metrics.primaryFontSize))
                 .foregroundColor(.white)
                 .monospacedDigit()
                 .lineLimit(1)
+                .truncationMode(.middle)
             if !secondaryText.isEmpty && secondaryText != primaryText {
                 Text(secondaryText)
-                    .font(.custom("JetBrainsMono-Regular", size: secondaryFontSize))
+                    .font(.custom("JetBrainsMono-Regular", size: metrics.secondaryFontSize))
                     .foregroundColor(Color.white.opacity(0.7))
                     .monospacedDigit()
                     .lineLimit(1)
+                    .truncationMode(.middle)
             }
         }
-        .padding(.horizontal, chipHorizontalPadding)
-        .padding(.vertical, chipVerticalPadding)
+        .padding(.horizontal, metrics.chipHorizontalPadding)
+        .padding(.vertical, metrics.chipVerticalPadding)
+        .frame(width: chipRect.width, height: chipRect.height)
         .background(
             RoundedRectangle(cornerRadius: 4)
                 .fill(Color(red: 10/255, green: 10/255, blue: 10/255).opacity(0.85))
@@ -169,7 +173,6 @@ public struct DimensionLabelView: View {
                         .strokeBorder(Color.white.opacity(0.15), lineWidth: 0.5)
                 )
         )
-        .fixedSize()
         .position(x: chipRect.midX, y: chipRect.midY)
         .opacity(labelOpacity)
     }
@@ -178,16 +181,19 @@ public struct DimensionLabelView: View {
 
     @ViewBuilder
     private func inlineHintCaption(_ hint: String) -> some View {
+        let hintSize = metrics.hintSize(inlineHint: hint, maximumWidth: maximumLabelWidth)
         Text(hint)
-            .font(.custom("JetBrainsMono-Regular", size: hintFontSize))
+            .font(.custom("JetBrainsMono-Regular", size: metrics.hintFontSize))
             .foregroundColor(OPSStyle.Colors.text3)
-            .padding(.horizontal, hintHorizontalPadding)
-            .padding(.vertical, hintVerticalPadding)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .padding(.horizontal, metrics.hintHorizontalPadding)
+            .padding(.vertical, metrics.hintVerticalPadding)
+            .frame(width: hintSize.width, height: hintSize.height)
             .background(
                 RoundedRectangle(cornerRadius: 3)
                     .fill(Color.black.opacity(0.6))
             )
-            .fixedSize()
             .position(x: chipRect.midX, y: chipRect.maxY + 12)
             .opacity(labelOpacity)
     }

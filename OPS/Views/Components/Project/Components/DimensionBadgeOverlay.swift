@@ -67,7 +67,8 @@ public struct DimensionBadgeOverlay: View {
         ZStack {
             // Black halo for sunlight legibility (0.6 pt stroke equivalent —
             // achieved by stacking the icon at offsets in 4 directions).
-            ForEach(haloOffsets, id: \.self) { offset in
+            ForEach(haloOffsets.indices, id: \.self) { index in
+                let offset = haloOffsets[index]
                 Image(systemName: "ruler")
                     .font(.system(size: iconPointSize, weight: .semibold))
                     .foregroundColor(.black)

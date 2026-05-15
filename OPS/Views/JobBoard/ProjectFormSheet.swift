@@ -154,6 +154,13 @@ struct ProjectFormSheet: View {
     /// deck builder so the user can immediately start drawing. Without this
     /// the picker just dismissed and left a placeholder behind.
     @State private var showingDeckBuilderForCapture: DeckDesign?
+    /// Bug 55c9de66 (re-fix) — handoff buffer between the picker sheet and
+    /// the deck-builder fullScreenCover. Set in onDesignCreated, consumed in
+    /// the picker sheet's onDismiss. Using a delay-based handoff was racing
+    /// with the parent re-render triggered by capturedDeckDesign, so the
+    /// cover silently failed to present on some devices. onDismiss fires
+    /// deterministically once the picker is fully gone.
+    @State private var pendingBuilderDesign: DeckDesign?
 
     // Section ordering - tracks which sections appear first
     @State private var sectionOrder: [OptionalSection] = [.description, .notes, .tasks, .photos]
@@ -840,7 +847,18 @@ struct ProjectFormSheet: View {
             )
         }
         // Bug f86cf554 — deck design capture from project create form.
-        .sheet(isPresented: $showingDeckCreationPicker) {
+        // Bug 55c9de66 (re-fix) — open the deck builder from onDismiss, not a
+        // timed dispatch. SwiftUI calls onDismiss after the picker sheet is
+        // fully gone, which is the only safe window to present another modal
+        // from the same parent. The earlier 0.35s delay raced with the parent
+        // re-render caused by capturedDeckDesign and dropped the cover
+        // silently on some devices.
+        .sheet(isPresented: $showingDeckCreationPicker, onDismiss: {
+            if let design = pendingBuilderDesign {
+                pendingBuilderDesign = nil
+                showingDeckBuilderForCapture = design
+            }
+        }) {
             deckCreationPickerSheet
         }
         // Bug 55c9de66 — open the deck builder right after the user picks
@@ -875,17 +893,15 @@ struct ProjectFormSheet: View {
             companyId: companyId,
             userId: userId,
             onDesignCreated: { design in
+                // Stash the design for both attachment (capturedDeckDesign
+                // re-parents on save) and for the post-dismiss handoff
+                // (pendingBuilderDesign is consumed by the picker sheet's
+                // onDismiss, which fires once iOS has fully torn down the
+                // picker — the only safe window to present the builder
+                // fullScreenCover from this same parent).
                 capturedDeckDesign = design
+                pendingBuilderDesign = design
                 showingDeckCreationPicker = false
-                // Defer opening the deck builder by one run-loop turn after the
-                // picker sheet finishes dismissing. iOS cannot present a
-                // fullScreenCover while a sheet is still in its dismiss
-                // animation — setting the item binding simultaneously causes
-                // DeckBuilderView to silently not appear. Bug 1 fix (mirrors
-                // the same pattern used in ProjectDetailsView).
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    showingDeckBuilderForCapture = design
-                }
             }
         )
         .presentationDetents([.medium])

@@ -15,16 +15,33 @@ struct DayEventsSheet: View {
     @EnvironmentObject var dataController: DataController
     @Environment(\.dismiss) private var dismiss
 
-    // Separate new and ongoing tasks
+    // Bug 077edeff — `task.startDate ?? Date()` was reading the current
+    // instant on every render. A task with no startDate flipped between
+    // the "new" and "ongoing" buckets each redraw, and within each bucket
+    // the rows had no explicit sort so SwiftUI swapped them around as the
+    // upstream array order shifted. Sort once by (startDate, displayOrder,
+    // id) and treat undated tasks as "new" — they have no past start so
+    // they cannot be ongoing.
+    private var sortedTasks: [ProjectTask] {
+        scheduledTasks.sorted { lhs, rhs in
+            let lhsStart = lhs.startDate ?? .distantFuture
+            let rhsStart = rhs.startDate ?? .distantFuture
+            if lhsStart != rhsStart { return lhsStart < rhsStart }
+            if lhs.displayOrder != rhs.displayOrder { return lhs.displayOrder < rhs.displayOrder }
+            return lhs.id < rhs.id
+        }
+    }
+
     private var newTasks: [ProjectTask] {
-        scheduledTasks.filter { task in
-            Calendar.current.isDate(task.startDate ?? Date(), inSameDayAs: date)
+        sortedTasks.filter { task in
+            guard let startDate = task.startDate else { return true }
+            return Calendar.current.isDate(startDate, inSameDayAs: date)
         }
     }
 
     private var ongoingTasks: [ProjectTask] {
-        scheduledTasks.filter { task in
-            let startDate = task.startDate ?? Date()
+        sortedTasks.filter { task in
+            guard let startDate = task.startDate else { return false }
             return !Calendar.current.isDate(startDate, inSameDayAs: date)
         }
     }

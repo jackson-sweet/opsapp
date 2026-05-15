@@ -168,10 +168,11 @@ struct ProjectFormSheet: View {
     @State private var isSaving = false
 
     // Bug 3cc5aefa — duplicate project name detection. When the user tries
-    // to create a project with a title that already exists locally, surface
-    // an alert with a suggested suffixed alternative ("Deck 2", "Deck 3",
-    // etc.) before committing. The user can keep typing to override, accept
-    // the suggestion, or save as-is.
+    // to create a project with a title that already exists in the same
+    // company, surface an alert with a suggested alternative using the
+    // word-suffix convention ("Backyard Deck Two", "Three"… up to "Ten",
+    // then "11", "12"…). The user can edit the name, accept the
+    // suggestion, or save anyway.
     @State private var showingDuplicateNameAlert = false
     @State private var suggestedAlternativeName: String = ""
     @State private var errorMessage: String?
@@ -817,19 +818,19 @@ struct ProjectFormSheet: View {
             Text(errorMessage ?? "An unknown error occurred")
         }
         // Bug 3cc5aefa — collision alert when the entered title matches an
-        // existing project. Three actions: keep typing (cancel), accept the
-        // suffixed alternative, or save anyway with the original.
-        .alert("Project Name Already Exists", isPresented: $showingDuplicateNameAlert) {
-            Button("Cancel", role: .cancel) { }
+        // existing project in the same company. Three actions: edit the
+        // name (cancel), accept the suffixed alternative, or save anyway.
+        .alert("DUPLICATE NAME", isPresented: $showingDuplicateNameAlert) {
             Button("Use \"\(suggestedAlternativeName)\"") {
                 title = suggestedAlternativeName
                 proceedWithSave()
             }
-            Button("Save Anyway") {
+            Button("Save anyway", role: .destructive) {
                 proceedWithSave()
             }
+            Button("Edit name", role: .cancel) { }
         } message: {
-            Text("A project named \"\(title)\" already exists. Use \"\(suggestedAlternativeName)\" instead, or save anyway.")
+            Text("A project named \"\(title)\" already exists.")
         }
         .loadingOverlay(isPresented: $isSaving, message: "Saving...")
         .sheet(isPresented: $showingCopyFromProject) {
@@ -2364,29 +2365,89 @@ struct ProjectFormSheet: View {
     }
 
     /// Returns the existing project's suggested alternative name when the
-    /// trimmed entered title matches another project in the local store.
+    /// trimmed entered title matches another project in the same company.
     /// `nil` means no collision — caller should proceed with save.
+    ///
+    /// The suggestion uses word suffixes ("Two".."Ten") then numeric
+    /// ("11", "12"…) per the user's "deck two" bug example. If the
+    /// entered title already ends with an ordinal suffix, the next
+    /// ordinal is used so collisions chain naturally: "Deck Two" →
+    /// "Deck Three" → "Deck Four"…
     private func duplicateProjectNameAlternative(for rawTitle: String) -> String? {
         let trimmed = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
+        // Scope to the current user's company. `getAllProjects()` returns
+        // the local SwiftData store, which sync already scopes to the
+        // user's company — the explicit filter is defensive in case a
+        // stale row from a prior company lingers.
+        let scopedCompanyId = dataController.currentUser?.companyId
         let existingTitles = dataController.getAllProjects()
             .filter { $0.deletedAt == nil }
+            .filter { project in
+                guard let scopedCompanyId, !scopedCompanyId.isEmpty else { return true }
+                return project.companyId == scopedCompanyId
+            }
             .map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
         let existingSet = Set(existingTitles)
 
         guard existingSet.contains(trimmed.lowercased()) else { return nil }
 
-        // Suggest the lowest available "<title> N" suffix where N >= 2.
-        // We avoid "Copy" / "(1)" because the user's bug example was
-        // `deck two` style — a numeric suffix is unambiguous and short.
-        for n in 2...99 {
-            let candidate = "\(trimmed) \(n)"
+        let (baseName, startOrdinal) = Self.stripOrdinalSuffix(trimmed)
+        for n in startOrdinal...999 {
+            let candidate = "\(baseName) \(Self.ordinalSuffix(for: n))"
             if !existingSet.contains(candidate.lowercased()) {
                 return candidate
             }
         }
-        return "\(trimmed) Copy"
+        // Practically unreachable — would require 998 colliding titles.
+        return nil
+    }
+
+    /// Convert a 1-indexed ordinal (>= 2) to its OPS suffix form.
+    /// 2..10 → "Two".."Ten"; 11+ → numeric string.
+    fileprivate static func ordinalSuffix(for n: Int) -> String {
+        switch n {
+        case 2: return "Two"
+        case 3: return "Three"
+        case 4: return "Four"
+        case 5: return "Five"
+        case 6: return "Six"
+        case 7: return "Seven"
+        case 8: return "Eight"
+        case 9: return "Nine"
+        case 10: return "Ten"
+        default: return String(n)
+        }
+    }
+
+    /// Detect an existing ordinal suffix on a title and return the base
+    /// name (sans suffix) along with the next ordinal to try.
+    /// "Deck"        → ("Deck", 2)
+    /// "Deck Two"    → ("Deck", 3)
+    /// "Deck Three"  → ("Deck", 4)
+    /// "Deck 11"     → ("Deck", 12)
+    fileprivate static func stripOrdinalSuffix(_ title: String) -> (base: String, nextOrdinal: Int) {
+        let wordOrdinals: [(suffix: String, ordinal: Int)] = [
+            ("Ten", 10), ("Nine", 9), ("Eight", 8), ("Seven", 7),
+            ("Six", 6), ("Five", 5), ("Four", 4), ("Three", 3), ("Two", 2)
+        ]
+        let lowered = title.lowercased()
+        for (suffix, ordinal) in wordOrdinals {
+            let needle = " \(suffix.lowercased())"
+            if lowered.hasSuffix(needle) {
+                let base = String(title.dropLast(needle.count))
+                return (base, ordinal + 1)
+            }
+        }
+        if let spaceIndex = title.lastIndex(of: " ") {
+            let tail = title[title.index(after: spaceIndex)...]
+            if let numericPart = Int(tail) {
+                let base = String(title[..<spaceIndex])
+                return (base, numericPart + 1)
+            }
+        }
+        return (title, 2)
     }
 
     /// Internal save path used both by the direct save button and by the

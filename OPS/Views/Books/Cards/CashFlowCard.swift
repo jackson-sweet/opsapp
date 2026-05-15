@@ -40,16 +40,11 @@ struct CashFlowCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("CASH FLOW · \(viewModel.selectedPeriod.pillLabel)")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Text(viewModel.netCash, format: .currency(code: "USD").precision(.fractionLength(0)))
-                        .font(OPSStyle.Typography.title)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                }
+                Text(viewModel.netCash, format: .currency(code: "USD").precision(.fractionLength(0)))
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
                 Spacer()
                 legend
             }
@@ -93,13 +88,7 @@ struct CashFlowCard: View {
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
     private var legend: some View {
@@ -146,3 +135,19 @@ struct CashFlowCard: View {
         value.formatted(.currency(code: "USD").precision(.fractionLength(0)))
     }
 }
+
+#if DEBUG
+#Preview("CashFlowCard — seeded") {
+    CashFlowCard(viewModel: .previewStub(), onTapDays: {})
+        .padding(.vertical, 24)
+        .background(OPSStyle.Colors.background)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("CashFlowCard — empty") {
+    CashFlowCard(viewModel: .previewEmpty(), onTapDays: {})
+        .padding(.vertical, 24)
+        .background(OPSStyle.Colors.background)
+        .preferredColorScheme(.dark)
+}
+#endif

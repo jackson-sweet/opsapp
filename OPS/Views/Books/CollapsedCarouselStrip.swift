@@ -76,3 +76,25 @@ struct CollapsedCarouselStrip: View {
         )
     }
 }
+
+#if DEBUG
+#Preview("CollapsedCarouselStrip — P&L active") {
+    CollapsedCarouselStrip(
+        viewModel: .previewStub(),
+        activeCard: .pl,
+        visibleCards: HeroCarousel.CardID.allCases
+    )
+    .background(OPSStyle.Colors.background)
+    .preferredColorScheme(.dark)
+}
+
+#Preview("CollapsedCarouselStrip — A/R active") {
+    CollapsedCarouselStrip(
+        viewModel: .previewStub(),
+        activeCard: .ar,
+        visibleCards: HeroCarousel.CardID.allCases
+    )
+    .background(OPSStyle.Colors.background)
+    .preferredColorScheme(.dark)
+}
+#endif

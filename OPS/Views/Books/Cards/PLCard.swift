@@ -25,10 +25,6 @@ struct PLCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text("P&L · \(viewModel.selectedPeriod.pillLabel)")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
             row(label: "PAYMENTS IN", value: viewModel.totalPayments, color: OPSStyle.Colors.successStatus, sign: "+")
             row(label: "EXPENSES OUT", value: viewModel.totalExpenses, color: OPSStyle.Colors.warningStatus, sign: "−")
 
@@ -53,13 +49,7 @@ struct PLCard: View {
                 tile(label: "FORECAST", value: viewModel.pendingEstimatesValue, count: viewModel.pendingEstimatesCount, valueColor: OPSStyle.Colors.primaryAccent, action: onTapForecast)
             }
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .onAppear {
             withAnimation(reduceMotion ? .none : OPSStyle.Animation.standard) {
                 appeared = true
@@ -125,3 +115,19 @@ struct PLCard: View {
         value.formatted(.currency(code: "USD").precision(.fractionLength(0)))
     }
 }
+
+#if DEBUG
+#Preview("PLCard — seeded") {
+    PLCard(viewModel: .previewStub(), onTapOutstanding: {}, onTapForecast: {})
+        .padding(.vertical, 24)
+        .background(OPSStyle.Colors.background)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("PLCard — empty") {
+    PLCard(viewModel: .previewEmpty(), onTapOutstanding: {}, onTapForecast: {})
+        .padding(.vertical, 24)
+        .background(OPSStyle.Colors.background)
+        .preferredColorScheme(.dark)
+}
+#endif

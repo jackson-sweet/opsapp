@@ -52,6 +52,8 @@ struct HeroCarousel: View {
             EmptyView()
         } else {
             VStack(spacing: OPSStyle.Layout.spacing2) {
+                inlineHeader
+
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: OPSStyle.Layout.spacing3) {
                         ForEach(visibleCards) { card in
@@ -79,6 +81,33 @@ struct HeroCarousel: View {
                 let restored = CardID(rawValue: lastViewedRaw) ?? .pl
                 scrollPosition = visibleCards.contains(restored) ? restored : visibleCards.first
             }
+        }
+    }
+
+    /// Top line of the hero: active card's label on the left, period pill on the right.
+    /// Cards 3 (A/R) and 4 (Forecast) include a colored scope hint (ALL OPEN / ACTIVE)
+    /// so the user understands why those cards don't respond to the pill.
+    private var inlineHeader: some View {
+        let active = scrollPosition ?? visibleCards.first ?? .pl
+        let header = headerLabel(for: active)
+        return HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
+            Text(header.text)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(header.color)
+                .contentTransition(.opacity)
+            Spacer()
+            PeriodPill(selected: $viewModel.selectedPeriod)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+    }
+
+    private func headerLabel(for card: CardID) -> (text: String, color: Color) {
+        switch card {
+        case .pl:       return ("P&L",                  OPSStyle.Colors.secondaryText)
+        case .cashFlow: return ("CASH FLOW",            OPSStyle.Colors.secondaryText)
+        case .ar:       return ("A/R · ALL OPEN",       OPSStyle.Colors.errorStatus)
+        case .forecast: return ("FORECAST · ACTIVE",    OPSStyle.Colors.primaryAccent)
+        case .jobs:     return ("JOBS · NET BY PROJECT", OPSStyle.Colors.secondaryText)
         }
     }
 
@@ -116,3 +145,33 @@ struct HeroCarousel: View {
         .padding(.top, OPSStyle.Layout.spacing1)
     }
 }
+
+#if DEBUG
+#Preview("HeroCarousel — Owner (all 5 cards)") {
+    HeroCarousel(
+        viewModel: .previewStub(),
+        onDrillOutstanding: {}, onDrillForecast: {},
+        onDrillCashFlowDays: {}, onDrillTopChase: {},
+        onDrillCloseRate: {}, onDrillStale: {},
+        onDrillProfitable: {}, onDrillLosers: {}
+    )
+    .environmentObject(PermissionStore.previewOwner())
+    .padding(.vertical, 24)
+    .background(OPSStyle.Colors.background)
+    .preferredColorScheme(.dark)
+}
+
+#Preview("HeroCarousel — empty data") {
+    HeroCarousel(
+        viewModel: .previewEmpty(),
+        onDrillOutstanding: {}, onDrillForecast: {},
+        onDrillCashFlowDays: {}, onDrillTopChase: {},
+        onDrillCloseRate: {}, onDrillStale: {},
+        onDrillProfitable: {}, onDrillLosers: {}
+    )
+    .environmentObject(PermissionStore.previewOwner())
+    .padding(.vertical, 24)
+    .background(OPSStyle.Colors.background)
+    .preferredColorScheme(.dark)
+}
+#endif

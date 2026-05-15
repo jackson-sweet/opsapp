@@ -18,10 +18,23 @@ private struct HeaderBottomKey: PreferenceKey {
 }
 
 struct BooksTabView: View {
-    @StateObject private var dashboardVM = MoneyDashboardViewModel()
+    @StateObject private var dashboardVM: MoneyDashboardViewModel
     @StateObject private var estimateVM = EstimateViewModel()
     @StateObject private var invoiceVM = InvoiceViewModel()
     @StateObject private var expenseVM = ExpenseViewModel()
+
+    init() {
+        _dashboardVM = StateObject(wrappedValue: MoneyDashboardViewModel())
+    }
+
+    #if DEBUG
+    /// Preview-only — injects a pre-seeded dashboard VM so the carousel
+    /// renders with realistic data on Xcode's preview canvas. Bypasses the
+    /// usual setup() / loadData() chain (which is guarded by `currentUser`).
+    init(previewDashboardVM: MoneyDashboardViewModel) {
+        _dashboardVM = StateObject(wrappedValue: previewDashboardVM)
+    }
+    #endif
 
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
@@ -83,37 +96,29 @@ struct BooksTabView: View {
 
                 ScrollView {
                     VStack(spacing: 0) {
-                        // Hero: PeriodPill + HeroCarousel — only when the user
-                        // can see at least one card. Operator role lands here
-                        // with zero permitted cards and skips the whole hero.
+                        // Hero carousel — borderless, top-level data.
+                        // PeriodPill lives inline on each card's top row (inside HeroCarousel).
+                        // Operator role lands here with zero permitted cards and skips the hero.
                         if carouselVisible {
-                            VStack(spacing: OPSStyle.Layout.spacing3) {
-                                PeriodPill(
-                                    selected: $dashboardVM.selectedPeriod,
-                                    momTrend: dashboardVM.totalExpenses > 0 ? dashboardVM.expensesTrend : nil
-                                )
-                                .padding(.horizontal, OPSStyle.Layout.spacing3)
-
-                                HeroCarousel(
-                                    viewModel: dashboardVM,
-                                    onDrillOutstanding: {
-                                        selectedSegmentRaw = BooksSection.invoices.rawValue
-                                        invoiceVM.selectedFilter = .overdue
-                                    },
-                                    onDrillForecast: {
-                                        selectedSegmentRaw = BooksSection.estimates.rawValue
-                                        estimateVM.selectedFilter = .sent
-                                    },
-                                    onDrillCashFlowDays: { /* Cash-flow report — deferred per spec §10 */ },
-                                    onDrillTopChase: { showARDetail = true },
-                                    onDrillCloseRate: { /* Pipeline tab drill — see PIPELINE TAB - P1-1 */ },
-                                    onDrillStale: { /* Pipeline tab drill — see PIPELINE TAB - P1-1 */ },
-                                    onDrillProfitable: { /* Jobs report — deferred per spec §10 */ },
-                                    onDrillLosers: { /* Jobs report — deferred per spec §10 */ }
-                                )
-                                .environmentObject(permissionStore)
-                            }
-                            .padding(.vertical, OPSStyle.Layout.spacing3)
+                            HeroCarousel(
+                                viewModel: dashboardVM,
+                                onDrillOutstanding: {
+                                    selectedSegmentRaw = BooksSection.invoices.rawValue
+                                    invoiceVM.selectedFilter = .overdue
+                                },
+                                onDrillForecast: {
+                                    selectedSegmentRaw = BooksSection.estimates.rawValue
+                                    estimateVM.selectedFilter = .sent
+                                },
+                                onDrillCashFlowDays: { /* Cash-flow report — deferred per spec §10 */ },
+                                onDrillTopChase: { showARDetail = true },
+                                onDrillCloseRate: { /* Pipeline tab drill — see PIPELINE TAB - P1-1 */ },
+                                onDrillStale: { /* Pipeline tab drill — see PIPELINE TAB - P1-1 */ },
+                                onDrillProfitable: { /* Jobs report — deferred per spec §10 */ },
+                                onDrillLosers: { /* Jobs report — deferred per spec §10 */ }
+                            )
+                            .environmentObject(permissionStore)
+                            .padding(.bottom, OPSStyle.Layout.spacing2)
                             .background(
                                 GeometryReader { geo in
                                     Color.clear.preference(
@@ -236,3 +241,23 @@ struct BooksTabView: View {
         expenseVM.setup(companyId: companyId)
     }
 }
+
+#if DEBUG
+#Preview("BooksTabView — Owner (seeded)") {
+    BooksTabView(previewDashboardVM: .previewStub())
+        .environmentObject(DataController())
+        .environmentObject(PermissionStore.previewOwner())
+        .environmentObject(AppState())
+        .environmentObject(SubscriptionManager.shared)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("BooksTabView — Operator (no carousel)") {
+    BooksTabView(previewDashboardVM: .previewEmpty())
+        .environmentObject(DataController())
+        .environmentObject(PermissionStore.previewOperator())
+        .environmentObject(AppState())
+        .environmentObject(SubscriptionManager.shared)
+        .preferredColorScheme(.dark)
+}
+#endif

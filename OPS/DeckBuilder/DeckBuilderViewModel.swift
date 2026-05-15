@@ -147,6 +147,12 @@ class DeckBuilderViewModel: ObservableObject {
     private var hasPromptedForAutosave: Bool = false
     /// 2 minutes — matches the field-test request.
     private static let autosaveInterval: TimeInterval = 120.0
+    /// UserDefaults keys for persisting the user's autosave decision so the
+    /// prompt fires AT MOST ONCE per device. Previously the answer lived in
+    /// the in-memory `hasPromptedForAutosave` flag, which reset on every
+    /// fresh ViewModel and re-fired the prompt on every open.
+    private static let autosaveDecisionMadeKey = "deckBuilder.autosaveDecisionMade"
+    private static let autosavePreferenceKey = "deckBuilder.autosaveEnabled"
 
     // MARK: - Multi-Level Computed
 
@@ -515,11 +521,24 @@ class DeckBuilderViewModel: ObservableObject {
         }
         self.isNewDrawing = !(hasSingleGeometry || hasMultiGeometry)
         setupLaserSubscription()
-        // New drawings auto-enable autosave silently; existing drawings wait
+        // New drawings auto-enable autosave silently. Existing drawings
+        // apply the persisted user choice if one exists, otherwise wait
         // for the first edit to surface the prompt (handled in `save()`).
+        // The persisted choice lives in UserDefaults so the prompt never
+        // re-asks once the user has answered (either way) on this device.
         if self.isNewDrawing {
             self.autosaveEnabled = true
             startAutosaveTimer()
+        } else {
+            let defaults = UserDefaults.standard
+            if defaults.bool(forKey: Self.autosaveDecisionMadeKey) {
+                let saved = defaults.bool(forKey: Self.autosavePreferenceKey)
+                self.autosaveEnabled = saved
+                self.hasPromptedForAutosave = true
+                if saved {
+                    startAutosaveTimer()
+                }
+            }
         }
 
         // DECK-NEW-1 follow-up — migrate legacy single-`footprint` payloads
@@ -595,16 +614,34 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     /// Called by the prompt's accept path. Existing drawings opt in here.
+    /// Persists the choice so the prompt never re-asks on this device.
     func enableAutosave() {
-        autosaveEnabled = true
+        setAutosavePreference(true)
         showingAutosavePrompt = false
-        startAutosaveTimer()
     }
 
-    /// Called by the prompt's decline path.
+    /// Called by the prompt's decline path. Records that the user answered
+    /// so the prompt doesn't re-fire on the next open.
     func declineAutosave() {
-        autosaveEnabled = false
+        setAutosavePreference(false)
         showingAutosavePrompt = false
+    }
+
+    /// Sets the persisted autosave preference and applies it to the live
+    /// timer. Bound to the toggle in DeckSettingsSheet so the user can
+    /// change their mind after the initial prompt — and writes the
+    /// `decisionMade` flag so the prompt stays suppressed.
+    func setAutosavePreference(_ enabled: Bool) {
+        autosaveEnabled = enabled
+        hasPromptedForAutosave = true
+        let defaults = UserDefaults.standard
+        defaults.set(true, forKey: Self.autosaveDecisionMadeKey)
+        defaults.set(enabled, forKey: Self.autosavePreferenceKey)
+        if enabled {
+            startAutosaveTimer()
+        } else {
+            stopAutosaveTimer()
+        }
     }
 
     // MARK: - Undo/Redo

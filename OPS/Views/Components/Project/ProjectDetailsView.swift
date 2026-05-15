@@ -641,7 +641,7 @@ struct ProjectDetailsView: View {
 
     private var visibleTabs: [ProjectDetailTab] {
         var tabs: [ProjectDetailTab] = [.activity, .details, .expenses]
-        if permissionStore.isFeatureEnabled("deck_builder") && permissionStore.can("deck_builder.view") {
+        if permissionStore.isFeatureEnabled("deck_builder") && permissionStore.can("deck_builder.view", requiredScope: "assigned") {
             tabs.append(.deck)
         }
         return tabs

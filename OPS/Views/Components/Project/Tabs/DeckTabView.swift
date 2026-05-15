@@ -219,7 +219,7 @@ struct DeckTabView: View {
 
             Spacer()
 
-            if permissionStore.can("deck_builder.edit") {
+            if permissionStore.can("deck_builder.edit", requiredScope: "assigned") {
                 Button {
                     onEditDeckDesign(design)
                 } label: {
@@ -257,7 +257,7 @@ struct DeckTabView: View {
                     .lineSpacing(4)
                     .padding(.bottom, 24)
 
-                if permissionStore.can("deck_builder.create") {
+                if permissionStore.can("deck_builder.create", requiredScope: "assigned") {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         onCreateDeckDesign()

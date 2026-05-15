@@ -57,12 +57,24 @@ final class AutoBugReporter {
     /// queue retries the same poisoned upload every 30s. The server-side
     /// partial unique index would dedupe anyway, but skipping the round-trip
     /// keeps the user's data plane clean.
+    ///
+    /// Per-occurrence counts are preserved across suppression: each
+    /// suppressed fire bumps `pendingCount` and the NEXT successful RPC call
+    /// applies the accumulated burst as a single `p_fire_count` increment.
+    /// So times_reported reflects actual lost photos, not distinct hours.
     private static let clientDedupeTTL: TimeInterval = 3600 // 1 hour
 
-    /// In-memory cache of recently-fired dedupe hashes. Keys are the same
-    /// SHA-256 hashes the server computes; values are the timestamp of the
-    /// last fire. Cleared on app cold-launch.
-    private var recentFires: [String: Date] = [:]
+    /// In-memory cache of dedupe hashes that have been SUCCESSFULLY reported
+    /// to the RPC. Keys are the same SHA-256 hashes the server computes;
+    /// values are the timestamp of the last successful send. Set ONLY after
+    /// the RPC round-trip returns — a failed RPC leaves the slot empty so
+    /// the next fire can retry. Cleared on app cold-launch.
+    private var lastSuccessfulSend: [String: Date] = [:]
+
+    /// Suppressed-fire counts per hash. Incremented every time the TTL guard
+    /// skips an RPC call, AND every time we attempt an RPC (so a failed
+    /// attempt doesn't lose its count). Cleared on successful RPC.
+    private var pendingCount: [String: Int] = [:]
 
     private init() {}
 
@@ -98,23 +110,42 @@ final class AutoBugReporter {
             errorCode: errorCode
         )
 
-        if let lastFire = recentFires[hash],
-           Date().timeIntervalSince(lastFire) < Self.clientDedupeTTL {
-            // Within the 1-hour TTL — skip the RPC entirely. The server's
-            // partial unique index would dedupe anyway, but we save the round
-            // trip during offline-drain storms.
+        // Within the 1-hour TTL since the last SUCCESSFUL send — accumulate
+        // the count but skip the RPC. The next out-of-TTL fire will send
+        // the accumulated burst as a single p_fire_count increment so the
+        // bug_reports.times_reported column reflects actual occurrences.
+        if let lastSend = lastSuccessfulSend[hash],
+           Date().timeIntervalSince(lastSend) < Self.clientDedupeTTL {
+            pendingCount[hash, default: 0] += 1
             return
         }
 
-        recentFires[hash] = Date()
+        // Fire count = accumulated suppressed fires + this one.
+        let suppressed = pendingCount[hash] ?? 0
+        let fireCount = suppressed + 1
 
-        await postToRPC(
+        // Pre-stage the count BEFORE the RPC. If the RPC fails, the slot
+        // stays at this value so the next retry resends it. If it succeeds,
+        // we clear the slot in the success branch below. Either way, no
+        // count is ever lost to a transient RPC failure.
+        pendingCount[hash] = fireCount
+
+        let success = await postToRPC(
             screen: screen,
             suspectedFile: suspectedFile,
             errorCode: errorCode,
             summary: summary,
-            metadata: metadata
+            metadata: metadata,
+            fireCount: fireCount
         )
+
+        if success {
+            // Mark only on RPC success — prevents the HIGH-2 case where a
+            // failed call would still suppress the next fire for 1h. And
+            // clear the pending count: the server has now absorbed it.
+            lastSuccessfulSend[hash] = Date()
+            pendingCount[hash] = 0
+        }
     }
 
     /// Convenience overload that classifies the error first and only fires
@@ -177,13 +208,18 @@ final class AutoBugReporter {
 
     // MARK: - RPC call
 
+    /// Send the RPC. Returns true on success, false on any failure. Never
+    /// throws — the entire point of this helper is that it never breaks the
+    /// caller's retry / UI flow. A `false` return tells the caller (report())
+    /// to leave the suppression cache un-set so the next fire can retry.
     private func postToRPC(
         screen: String,
         suspectedFile: String,
         errorCode: String,
         summary: String,
-        metadata: [String: Any]
-    ) async {
+        metadata: [String: Any],
+        fireCount: Int
+    ) async -> Bool {
         let deviceInfo = BugReportCaptureService.shared.captureDeviceInfo()
         let networkType = currentNetworkType()
 
@@ -199,24 +235,25 @@ final class AutoBugReporter {
             p_build_number: deviceInfo["buildNumber"] as? String ?? "unknown",
             p_os_version: deviceInfo["osVersion"] as? String ?? "unknown",
             p_device_model: deviceInfo["deviceModel"] as? String ?? "unknown",
-            p_network_type: networkType
+            p_network_type: networkType,
+            p_fire_count: fireCount
         )
 
         do {
             try await SupabaseService.shared.client
                 .rpc("record_auto_bug", params: params)
                 .execute()
+            return true
         } catch {
-            // Auto-bug fire failed. Do NOT throw to the caller — the entire
-            // point of this helper is that it never breaks the original flow.
             // Log to the local debug logger so the next user-filed bug carries
             // the trail. Don't log to print() — that's what got us into May-12
             // in the first place.
             DebugLogger.shared.log(
-                "AutoBugReporter RPC failed for \(screen)/\(errorCode): \(error)",
+                "AutoBugReporter RPC failed for \(screen)/\(errorCode) (fireCount=\(fireCount)): \(error)",
                 level: .warning,
                 category: "AutoBugReporter"
             )
+            return false
         }
     }
 
@@ -269,6 +306,11 @@ private struct RecordAutoBugParams: Encodable {
     let p_os_version: String
     let p_device_model: String
     let p_network_type: String
+    /// Burst count for the dedupe window — accumulates suppressed fires
+    /// since the last successful send so times_reported reflects actual
+    /// occurrences. Defaults to 1 server-side if omitted, but iOS always
+    /// sends an explicit value derived from the local pendingCount cache.
+    let p_fire_count: Int
 }
 
 /// Type-erasing JSON wrapper so `[String: Any]` metadata can ride through

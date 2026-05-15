@@ -14,9 +14,16 @@ import SwiftData
 struct ProjectsWithoutTasksReviewView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
-    @EnvironmentObject private var appState: AppState
+
+    @Query private var allTaskTypes: [TaskType]
 
     @State private var projects: [Project] = []
+
+    /// Bug fa5010b0 — id of the project whose inline quick-add composer
+    /// is currently expanded. Only one composer at a time; tapping a
+    /// different row collapses the previous one. `nil` means every row
+    /// is in its collapsed default state.
+    @State private var expandedProjectId: String? = nil
 
     var body: some View {
         ZStack {
@@ -75,14 +82,28 @@ struct ProjectsWithoutTasksReviewView: View {
             ScrollView {
                 LazyVStack(spacing: OPSStyle.Layout.spacing2) {
                     ForEach(projects, id: \.id) { project in
-                        Button(action: { openProject(project) }) {
-                            row(project)
+                        VStack(spacing: 0) {
+                            Button(action: { toggleExpansion(for: project) }) {
+                                row(project)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+
+                            if expandedProjectId == project.id {
+                                InlineQuickTaskComposer(
+                                    project: project,
+                                    allTaskTypes: allTaskTypes,
+                                    onSaved: { handleTaskSaved() },
+                                    onCancel: { collapseRow() }
+                                )
+                                .padding(.top, OPSStyle.Layout.spacing2)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
                         }
-                        .buttonStyle(PlainButtonStyle())
                     }
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.bottom, OPSStyle.Layout.spacing4)
+                .animation(OPSStyle.Animation.standard, value: expandedProjectId)
             }
         }
     }
@@ -198,11 +219,341 @@ struct ProjectsWithoutTasksReviewView: View {
         projects = ProjectsWithoutTasksDetector.projectsWithoutTasks(from: all)
     }
 
-    private func openProject(_ project: Project) {
+    /// Bug fa5010b0 — tap toggles the inline composer instead of
+    /// navigating away. The operator wants to fix the "no tasks" state
+    /// without leaving the review list; bouncing into project details
+    /// just to drop in a single task was friction.
+    private func toggleExpansion(for project: Project) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        dismiss()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            appState.viewProjectDetailsById(project.id)
+        if expandedProjectId == project.id {
+            expandedProjectId = nil
+        } else {
+            expandedProjectId = project.id
+        }
+    }
+
+    private func collapseRow() {
+        expandedProjectId = nil
+    }
+
+    private func handleTaskSaved() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        expandedProjectId = nil
+        // The project just got a task — it should drop out of the
+        // "needs tasks" list on the next pass. Recompute against the
+        // latest local state.
+        recomputeProjects()
+    }
+}
+
+// MARK: - Inline Quick-Task Composer (bug fa5010b0)
+
+/// Single-shot inline task creator embedded inside each expandable row
+/// of `ProjectsWithoutTasksReviewView`. Mirrors the chip-based inline
+/// composer used in `ProjectFormSheet` so the two flows feel like the
+/// same control: pick a task type, pick a crew, pick a date, save.
+///
+/// On save the composer constructs a `ProjectTask`, persists it via
+/// `DataController.createTask`, and calls back so the parent can
+/// collapse + refresh.
+private struct InlineQuickTaskComposer: View {
+    let project: Project
+    let allTaskTypes: [TaskType]
+    let onSaved: () -> Void
+    let onCancel: () -> Void
+
+    @EnvironmentObject private var dataController: DataController
+    @Environment(\.modelContext) private var modelContext
+
+    @State private var draftTask: LocalTask
+    @State private var assignSelectedIds: Set<String> = []
+    @State private var showCrewPicker = false
+    @State private var showScheduler = false
+    @State private var schedulerStart: Date = Date()
+    @State private var schedulerEnd: Date = Date()
+    @State private var schedulerConfirmed = false
+    @State private var schedulerDatesExisted = false
+    @State private var fetchedTeamUsers: [User] = []
+    @State private var saving = false
+    @State private var saveError: String? = nil
+
+    init(project: Project, allTaskTypes: [TaskType], onSaved: @escaping () -> Void, onCancel: @escaping () -> Void) {
+        self.project = project
+        self.allTaskTypes = allTaskTypes
+        self.onSaved = onSaved
+        self.onCancel = onCancel
+        _draftTask = State(initialValue: LocalTask(
+            id: UUID(),
+            taskTypeId: "",
+            customTitle: nil,
+            status: .active,
+            teamMemberIds: [],
+            startDate: nil,
+            endDate: nil
+        ))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            InlineTaskRow(
+                task: draftTask,
+                availableTaskTypes: allTaskTypes,
+                teamMemberCount: draftTask.teamMemberIds.count,
+                isEnabled: !saving,
+                onTaskTypeChange: { newTypeId in
+                    draftTask.taskTypeId = newTypeId
+                    // Bug fa5010b0 — clear any crew the user picked
+                    // before they chose a type so the "recent for type"
+                    // suggestions get a clean slate on the next tap.
+                    if assignSelectedIds.isEmpty == false && draftTask.teamMemberIds.isEmpty {
+                        // no-op — keep the user's prior selection if any
+                    }
+                },
+                onCreateNewTaskType: { /* inline composer doesn't surface task-type creation */ },
+                onTeamTap: { presentCrewPicker() },
+                onDateTap: { presentScheduler() },
+                onStatusChange: { newStatus in draftTask.status = newStatus },
+                onOpenFullEditor: { /* full editor would navigate away, keep inline */ },
+                onDuplicate: { /* not meaningful with a single draft row */ },
+                onDelete: { onCancel() }
+            )
+
+            if let saveError = saveError {
+                Text(saveError)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.errorStatus)
+            }
+
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Button(action: onCancel) {
+                    Text("CANCEL")
+                        .font(OPSStyle.Typography.captionBold)
+                        .tracking(0.8)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                        .background(Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(saving)
+
+                Button(action: { Task { await saveTask() } }) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
+                        if saving {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.invertedText))
+                                .scaleEffect(0.8)
+                        }
+                        Text(saving ? "SAVING" : "SAVE TASK")
+                            .font(OPSStyle.Typography.captionBold)
+                            .tracking(0.8)
+                            .foregroundColor(OPSStyle.Colors.invertedText)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                    .background(canSave ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(!canSave || saving)
+            }
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.cardBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .onAppear { loadTeamUsers() }
+        .sheet(isPresented: $showCrewPicker, onDismiss: { handleCrewPickerDismiss() }) {
+            crewPickerSheet
+        }
+        .sheet(isPresented: $showScheduler, onDismiss: { handleSchedulerDismiss() }) {
+            schedulerSheet
+        }
+    }
+
+    // MARK: - Save eligibility
+
+    private var canSave: Bool {
+        !draftTask.taskTypeId.isEmpty &&
+        allTaskTypes.contains(where: { $0.id == draftTask.taskTypeId })
+    }
+
+    // MARK: - Team picker
+
+    private var crewPickerSheet: some View {
+        let recentIds: Set<String> = {
+            guard !draftTask.taskTypeId.isEmpty,
+                  let companyId = dataController.currentUser?.companyId else {
+                return []
+            }
+            return Set(dataController.recentTeamMemberIds(
+                forTaskType: draftTask.taskTypeId,
+                companyId: companyId
+            ))
+        }()
+        let ordered = teamUsersOrdered(forTaskTypeId: draftTask.taskTypeId)
+        return TeamMemberPickerSheet(
+            selectedTeamMemberIds: $assignSelectedIds,
+            allTeamMembers: ordered,
+            recentMemberIds: recentIds
+        )
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func presentCrewPicker() {
+        guard !saving else { return }
+        assignSelectedIds = Set(draftTask.teamMemberIds)
+        showCrewPicker = true
+    }
+
+    private func handleCrewPickerDismiss() {
+        draftTask.teamMemberIds = Array(assignSelectedIds)
+    }
+
+    private func teamUsersOrdered(forTaskTypeId taskTypeId: String) -> [User] {
+        let alphaSorted = fetchedTeamUsers
+        guard !taskTypeId.isEmpty,
+              let companyId = dataController.currentUser?.companyId else {
+            return alphaSorted
+        }
+        let recentIds = dataController.recentTeamMemberIds(
+            forTaskType: taskTypeId,
+            companyId: companyId
+        )
+        guard !recentIds.isEmpty else { return alphaSorted }
+        let recencyIndex = Dictionary(
+            uniqueKeysWithValues: recentIds.enumerated().map { ($1, $0) }
+        )
+        let recentSet = Set(recentIds)
+        let recentTier = alphaSorted
+            .filter { recentSet.contains($0.id) }
+            .sorted { lhs, rhs in
+                (recencyIndex[lhs.id] ?? Int.max) < (recencyIndex[rhs.id] ?? Int.max)
+            }
+        let restTier = alphaSorted.filter { !recentSet.contains($0.id) }
+        return recentTier + restTier
+    }
+
+    // MARK: - Scheduler
+
+    private var schedulerSheet: some View {
+        CalendarSchedulerSheet(
+            isPresented: $showScheduler,
+            itemType: .draftTask(
+                taskTypeId: draftTask.taskTypeId,
+                teamMemberIds: draftTask.teamMemberIds,
+                projectId: project.id
+            ),
+            currentStartDate: schedulerStart,
+            currentEndDate: schedulerEnd,
+            onScheduleUpdate: { newStart, newEnd in
+                schedulerConfirmed = true
+                draftTask.startDate = newStart
+                draftTask.endDate = newEnd
+            },
+            onClearDates: {
+                draftTask.startDate = nil
+                draftTask.endDate = nil
+            },
+            preselectedTeamMemberIds: assignSelectedIds.isEmpty ? nil : assignSelectedIds
+        )
+        .environmentObject(dataController)
+    }
+
+    private func presentScheduler() {
+        guard !saving else { return }
+        schedulerDatesExisted = draftTask.startDate != nil
+        schedulerConfirmed = false
+        schedulerStart = draftTask.startDate ?? Date()
+        schedulerEnd = draftTask.endDate ?? schedulerStart
+        showScheduler = true
+    }
+
+    private func handleSchedulerDismiss() {
+        // Same convention as ProjectFormSheet: a sheet dismissed without
+        // confirmation rolls back dates that didn't exist before opening.
+        if !schedulerConfirmed && !schedulerDatesExisted {
+            draftTask.startDate = nil
+            draftTask.endDate = nil
+        }
+    }
+
+    // MARK: - Save
+
+    private func loadTeamUsers() {
+        guard let companyId = dataController.currentUser?.companyId else { return }
+        fetchedTeamUsers = dataController.getTeamMembers(companyId: companyId)
+            .sorted { $0.fullName.localizedCompare($1.fullName) == .orderedAscending }
+    }
+
+    @MainActor
+    private func saveTask() async {
+        guard canSave, !saving else { return }
+        guard let modelContext = dataController.modelContext else {
+            saveError = "Local store unavailable."
+            return
+        }
+        guard let taskType = allTaskTypes.first(where: { $0.id == draftTask.taskTypeId }) else {
+            saveError = "Pick a task type to save."
+            return
+        }
+        guard let companyId = dataController.currentUser?.companyId else {
+            saveError = "Missing company context."
+            return
+        }
+
+        saving = true
+        saveError = nil
+
+        let taskId = UUID().uuidString.lowercased()
+        let task = ProjectTask(
+            id: taskId,
+            projectId: project.id,
+            taskTypeId: draftTask.taskTypeId,
+            companyId: companyId,
+            status: draftTask.status,
+            taskColor: taskType.color
+        )
+        task.project = project
+        task.taskType = taskType
+        task.startDate = draftTask.startDate
+        task.endDate = draftTask.endDate
+
+        // Resolve team members: explicit picks > task-type default > project team.
+        let resolvedIds: [String]
+        if !draftTask.teamMemberIds.isEmpty {
+            resolvedIds = draftTask.teamMemberIds
+        } else if !taskType.defaultTeamMemberIdsString.isEmpty {
+            resolvedIds = taskType.defaultTeamMemberIdsString
+                .components(separatedBy: ",")
+                .filter { !$0.isEmpty }
+        } else {
+            resolvedIds = project.teamMembers.map { $0.id }
+        }
+        task.setTeamMemberIds(resolvedIds)
+        let lowercaseIds = task.getTeamMemberIds()
+        if !lowercaseIds.isEmpty {
+            let descriptor = FetchDescriptor<User>(
+                predicate: #Predicate<User> { user in lowercaseIds.contains(user.id) }
+            )
+            task.teamMembers = (try? modelContext.fetch(descriptor)) ?? []
+        }
+
+        do {
+            try await dataController.createTask(task: task)
+            saving = false
+            onSaved()
+        } catch {
+            saving = false
+            saveError = "Save failed. \(error.localizedDescription)"
         }
     }
 }

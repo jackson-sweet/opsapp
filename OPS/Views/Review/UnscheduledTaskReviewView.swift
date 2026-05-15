@@ -251,11 +251,20 @@ struct UnscheduledTaskReviewView: View {
             // Fetch team members as full User objects so the crew picker shows
             // real profile photos (UserAvatar needs profileImageData /
             // profileImageURL / userColor — none of which the lightweight
-            // TeamMember projection carried).
+            // TeamMember projection carried). The picker also re-fetches on
+            // present (bug 040e4482) so this snapshot is just the warm
+            // start.
             if let companyId = dataController.currentUser?.companyId {
                 fetchedTeamMembers = dataController.getTeamMembers(companyId: companyId)
                     .sorted { $0.fullName < $1.fullName }
             }
+        }
+        .onDisappear {
+            // Tear down the in-flight toast-dismiss Task so it doesn't outlive
+            // the view and write to stale @State after the user has closed
+            // the review.
+            toastDismissTask?.cancel()
+            toastDismissTask = nil
         }
     }
 

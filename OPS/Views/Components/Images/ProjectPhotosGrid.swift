@@ -271,12 +271,12 @@ struct PhotoThumbnail: View {
                         .clipped()
                 }
 
-                // Overlay a cloud with slash icon if image is not synced
+                // Bug 189ace29 — sync-fail indicator sits top-LEFT so it
+                // doesn't collide with the per-photo client-visibility eye
+                // that the Details + Activity carousels overlay at top-right.
                 if let project = project, !project.isImageSynced(url) {
                     VStack {
                         HStack {
-                            Spacer()
-
                             // Unsynced indicator
                             Image(systemName: "icloud.slash")
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))
@@ -285,6 +285,8 @@ struct PhotoThumbnail: View {
                                 .background(OPSStyle.Colors.errorStatus)
                                 .clipShape(Circle())
                                 .padding(4)
+
+                            Spacer()
                         }
 
                         Spacer()

@@ -1328,20 +1328,11 @@ final class InboundProcessor {
             let accept = acceptableFields(
                 entityType: .deckDesign,
                 entityId: id,
-                fields: [
-                    "title", "drawing_data", "thumbnail_url",
-                    "version", "updated_at", "deleted_at"
-                ],
+                fields: DeckDesign.serverMergeFields,
                 context: context
             )
 
-            if accept.contains("title") { existing.title = dto.title }
-            if accept.contains("drawing_data") { existing.drawingDataJSON = dto.drawingData.toJSON() }
-            if accept.contains("thumbnail_url") { existing.thumbnailURL = dto.thumbnailUrl }
-            if accept.contains("version") { existing.version = dto.version }
-            if accept.contains("updated_at") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
-            if accept.contains("deleted_at") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
-
+            existing.applyServerSnapshot(dto, accepting: accept)
             existing.lastSyncedAt = Date()
             let hasPending = hasPendingOperations(entityType: .deckDesign, entityId: existing.id, context: context)
             if !hasPending {

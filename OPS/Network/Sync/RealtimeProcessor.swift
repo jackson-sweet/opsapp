@@ -75,6 +75,7 @@ final class RealtimeProcessor: ObservableObject {
         "task_types",
         "project_notes",
         "project_photo_annotations",
+        "deck_designs",
         // Catalog parents
         "catalog_categories",
         "catalog_units",
@@ -327,6 +328,11 @@ final class RealtimeProcessor: ObservableObject {
                 let pendingFields = pendingFieldsForEntity(entityType: .photoAnnotation, entityId: dto.id, context: context)
                 try upsertPhotoAnnotation(context: context, id: dto.id, model: model, pendingFields: pendingFields)
 
+            case "deck_designs":
+                let dto = try record.decodeRecord(as: SupabaseDeckDesignDTO.self, decoder: decoder)
+                let pendingFields = pendingFieldsForEntity(entityType: .deckDesign, entityId: dto.id, context: context)
+                try upsertDeckDesign(context: context, id: dto.id, dto: dto, pendingFields: pendingFields)
+
             case "expenses":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
 
@@ -438,6 +444,13 @@ final class RealtimeProcessor: ObservableObject {
                     try context.save()
                 }
 
+            case "deck_designs":
+                let descriptor = FetchDescriptor<DeckDesign>(predicate: #Predicate { $0.id == id })
+                if let existing = try context.fetch(descriptor).first {
+                    existing.deletedAt = Date()
+                    try context.save()
+                }
+
             case "expenses":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
 
@@ -525,6 +538,10 @@ final class RealtimeProcessor: ObservableObject {
                 let dto = try record.decodeRecord(as: PhotoAnnotationDTO.self, decoder: decoder)
                 Task { await actor.handleRealtimeUpdate(.photoAnnotation(dto)) }
 
+            case "deck_designs":
+                let dto = try record.decodeRecord(as: SupabaseDeckDesignDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.deckDesign(dto)) }
+
             // Catalog parents — Option A: only parent tables fire realtime;
             // their children (option values, joins, snapshot items, order
             // items, product extension rows) refetch on the next pullDelta.
@@ -585,6 +602,7 @@ final class RealtimeProcessor: ObservableObject {
             switch table {
             case "projects", "project_tasks", "users", "clients", "companies",
                  "task_types", "sub_clients", "project_notes", "project_photo_annotations",
+                 "deck_designs",
                  // Catalog parents with surrogate-id identity. catalog_snapshots
                  // is append-only (no DELETE expected) and company_default_products
                  // uses a composite key (no surrogate id), so neither is dispatched.
@@ -1062,6 +1080,22 @@ final class RealtimeProcessor: ObservableObject {
             existing.lastSyncedAt = Date()
             existing.needsSync = false
         } else {
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            context.insert(model)
+        }
+        try context.save()
+    }
+
+    private func upsertDeckDesign(context: ModelContext, id: String, dto: SupabaseDeckDesignDTO, pendingFields: Set<String>) throws {
+        let descriptor = FetchDescriptor<DeckDesign>(predicate: #Predicate { $0.id == id })
+        if let existing = try context.fetch(descriptor).first {
+            let acceptedFields = Set(DeckDesign.serverMergeFields).subtracting(pendingFields)
+            existing.applyServerSnapshot(dto, accepting: acceptedFields)
+            existing.lastSyncedAt = Date()
+            existing.needsSync = !pendingFields.isEmpty
+        } else {
+            let model = dto.toModel()
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)

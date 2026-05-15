@@ -39,9 +39,9 @@ final class DeckDesign: Identifiable {
         drawingDataJSON: String = "{}",
         createdBy: String? = nil
     ) {
-        self.id = id
-        self.companyId = companyId
-        self.projectId = projectId
+        self.id = Self.canonicalUUIDString(id)
+        self.companyId = Self.canonicalUUIDString(companyId)
+        self.projectId = projectId.map(Self.canonicalUUIDString)
         self.title = title
         self.drawingDataJSON = drawingDataJSON
         self.createdBy = createdBy
@@ -66,5 +66,41 @@ final class DeckDesign: Identifiable {
     func markForSync() {
         needsSync = true
         updatedAt = Date()
+    }
+
+    static func canonicalUUIDString(_ value: String) -> String {
+        UUID(uuidString: value)?.uuidString.lowercased() ?? value
+    }
+
+    func isAttached(toProjectId projectId: String) -> Bool {
+        guard let designProjectId = self.projectId else { return false }
+        return Self.canonicalUUIDString(designProjectId) == Self.canonicalUUIDString(projectId)
+    }
+
+    var hasRenderableGeometry: Bool {
+        if drawingData.isMultiLevel {
+            return drawingData.levels.contains { !$0.vertices.isEmpty }
+        }
+        return !drawingData.vertices.isEmpty
+    }
+
+    static func displayCandidate(in designs: [DeckDesign], forProjectId projectId: String) -> DeckDesign? {
+        let candidates = designs.filter {
+            $0.deletedAt == nil && $0.isAttached(toProjectId: projectId)
+        }
+
+        let renderable = candidates.filter(\.hasRenderableGeometry)
+        if let design = mostRecentlyUpdated(renderable) {
+            return design
+        }
+
+        return mostRecentlyUpdated(candidates)
+    }
+
+    private static func mostRecentlyUpdated(_ designs: [DeckDesign]) -> DeckDesign? {
+        designs.sorted {
+            ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast)
+        }
+        .first
     }
 }

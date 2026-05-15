@@ -2602,10 +2602,25 @@ struct ProjectFormSheet: View {
             // the form; we re-parent it here so it shows up in the DECK
             // tab on first load.
             if let deck = capturedDeckDesign {
+                let attachmentUpdatedAt = Date()
                 deck.projectId = project.id
                 deck.needsSync = true
-                deck.updatedAt = Date()
+                deck.updatedAt = attachmentUpdatedAt
                 try? modelContext.save()
+
+                if !tutorialMode {
+                    dataController.syncEngine.recordOperation(
+                        entityType: .deckDesign,
+                        entityId: deck.id,
+                        operationType: "update",
+                        changedFields: [
+                            "project_id": project.id,
+                            "updated_at": ISO8601DateFormatter().string(from: attachmentUpdatedAt)
+                        ],
+                        priority: 1
+                    )
+                }
+
                 print("[PROJECT_CREATE] 🏗️ Attached deck design \(deck.id) to project \(project.id)")
             }
         }

@@ -1199,19 +1199,10 @@ actor DataActor {
             let accept = acceptableFields(
                 entityType: .deckDesign,
                 entityId: id,
-                fields: [
-                    "title", "drawing_data", "thumbnail_url",
-                    "version", "updated_at", "deleted_at"
-                ]
+                fields: DeckDesign.serverMergeFields
             )
 
-            if accept.contains("title") { existing.title = dto.title }
-            if accept.contains("drawing_data") { existing.drawingDataJSON = dto.drawingData.toJSON() }
-            if accept.contains("thumbnail_url") { existing.thumbnailURL = dto.thumbnailUrl }
-            if accept.contains("version") { existing.version = dto.version }
-            if accept.contains("updated_at") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
-            if accept.contains("deleted_at") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
-
+            existing.applyServerSnapshot(dto, accepting: accept)
             existing.lastSyncedAt = Date()
             if !hasPendingOperations(entityType: .deckDesign, entityId: existing.id) {
                 existing.needsSync = false
@@ -3210,6 +3201,7 @@ actor DataActor {
                 case .subClient(let dto):               try mergeSubClient(dto: dto)
                 case .projectNote(let dto):             try mergeProjectNote(dto: dto)
                 case .photoAnnotation(let dto):         try mergePhotoAnnotation(dto: dto)
+                case .deckDesign(let dto):              try mergeDeckDesign(dto: dto)
                 case .catalogCategory(let dto):         try mergeCatalogCategory(dto: dto)
                 case .catalogUnit(let dto):             try mergeCatalogUnit(dto: dto)
                 case .catalogTag(let dto):              try mergeCatalogTag(dto: dto)
@@ -3268,6 +3260,10 @@ actor DataActor {
                     }
                 case "project_photo_annotations":
                     if let m = try modelContext.fetch(FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "deck_designs":
+                    if let m = try modelContext.fetch(FetchDescriptor<DeckDesign>(predicate: #Predicate { $0.id == id })).first {
                         m.deletedAt = Date()
                     }
                 case "catalog_categories":
@@ -4220,6 +4216,7 @@ enum RealtimeUpdate: Sendable {
     case subClient(SupabaseSubClientDTO)
     case projectNote(ProjectNoteDTO)
     case photoAnnotation(PhotoAnnotationDTO)
+    case deckDesign(SupabaseDeckDesignDTO)
     // Catalog parents (Option A — children refetch via next pullDelta).
     case catalogCategory(CatalogCategoryDTO)
     case catalogUnit(CatalogUnitDTO)

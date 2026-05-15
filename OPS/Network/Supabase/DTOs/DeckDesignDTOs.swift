@@ -71,3 +71,33 @@ struct SupabaseDeckDesignDTO: Codable, Identifiable {
         )
     }
 }
+
+extension DeckDesign {
+    static let serverMergeFields: [String] = [
+        "company_id", "project_id", "title", "drawing_data",
+        "thumbnail_url", "version", "created_by",
+        "created_at", "updated_at", "deleted_at"
+    ]
+
+    func applyServerSnapshot(
+        _ dto: SupabaseDeckDesignDTO,
+        accepting acceptedFields: Set<String>
+    ) {
+        if acceptedFields.contains("company_id") { companyId = dto.companyId }
+        if acceptedFields.contains("project_id") { projectId = dto.projectId }
+        if acceptedFields.contains("title") { title = dto.title }
+        if acceptedFields.contains("drawing_data") { drawingDataJSON = dto.drawingData.toJSON() }
+        if acceptedFields.contains("thumbnail_url") { thumbnailURL = dto.thumbnailUrl }
+        if acceptedFields.contains("version") { version = dto.version }
+        if acceptedFields.contains("created_by") { createdBy = dto.createdBy }
+        if acceptedFields.contains("created_at") {
+            createdAt = SupabaseDate.parse(dto.createdAt) ?? createdAt
+        }
+        if acceptedFields.contains("updated_at") {
+            updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) }
+        }
+        if acceptedFields.contains("deleted_at") {
+            deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+        }
+    }
+}

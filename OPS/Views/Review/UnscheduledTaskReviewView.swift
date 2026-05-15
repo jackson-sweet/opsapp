@@ -61,6 +61,37 @@ struct UnscheduledTaskReviewView: View {
         }
     }
 
+    /// Bug f3a3d66d — order `activeTeamMembers` by recency-for-task-type
+    /// when a task type is known, otherwise fall back to the alphabetical
+    /// order already provided. Mirrors `ProjectFormSheet.teamUsersOrdered`
+    /// so the two pickers feel consistent.
+    private func teamUsersOrdered(forTaskTypeId taskTypeId: String) -> [User] {
+        let alphaSorted = activeTeamMembers
+
+        guard !taskTypeId.isEmpty,
+              let companyId = dataController.currentUser?.companyId else {
+            return alphaSorted
+        }
+
+        let recentIds = dataController.recentTeamMemberIds(
+            forTaskType: taskTypeId,
+            companyId: companyId
+        )
+        guard !recentIds.isEmpty else { return alphaSorted }
+
+        let recencyIndex = Dictionary(
+            uniqueKeysWithValues: recentIds.enumerated().map { ($1, $0) }
+        )
+        let recentSet = Set(recentIds)
+        let recentTier = alphaSorted
+            .filter { recentSet.contains($0.id) }
+            .sorted { lhs, rhs in
+                (recencyIndex[lhs.id] ?? Int.max) < (recencyIndex[rhs.id] ?? Int.max)
+            }
+        let restTier = alphaSorted.filter { !recentSet.contains($0.id) }
+        return recentTier + restTier
+    }
+
     /// The task currently on top of the card stack
     private var currentTask: ProjectTask? {
         guard currentTopIndex < tasks.count else { return nil }
@@ -149,9 +180,27 @@ struct UnscheduledTaskReviewView: View {
         .sheet(isPresented: $showCrewPicker, onDismiss: {
             handleCrewPickerDismiss()
         }) {
+            // Bug f3a3d66d — order the picker by "recent for this task
+            // type" before falling back to alphabetical, so the operator
+            // sees the people they routinely assign to demo / framing /
+            // punchlist (etc.) at the top instead of having to scroll.
+            let taskTypeId = pendingAssignTask?.taskTypeId ?? ""
+            let ordered = teamUsersOrdered(forTaskTypeId: taskTypeId)
+            let recentIds: Set<String> = {
+                guard !taskTypeId.isEmpty,
+                      let companyId = dataController.currentUser?.companyId else {
+                    return []
+                }
+                return Set(dataController.recentTeamMemberIds(
+                    forTaskType: taskTypeId,
+                    companyId: companyId
+                ))
+            }()
+
             TeamMemberPickerSheet(
                 selectedTeamMemberIds: $assignSelectedIds,
-                allTeamMembers: activeTeamMembers
+                allTeamMembers: ordered,
+                recentMemberIds: recentIds
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)

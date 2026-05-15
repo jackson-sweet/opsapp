@@ -536,6 +536,11 @@ private struct ProjectPhotosCarousel: View {
     var body: some View {
         let photos = project.getProjectImages()
         let pending = imageSyncManager.currentInFlightUploads(for: project.id)
+        // Split in-flight tiles into actively-uploading vs failed. The
+        // UPLOADING badge counts only the spinners; failed tiles show
+        // their own red-badged state and shouldn't inflate the upload
+        // count after a permanent rejection.
+        let uploadingCount = pending.lazy.filter { !$0.failed }.count
         let totalCount = photos.count + pending.count
 
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
@@ -546,12 +551,12 @@ private struct ProjectPhotosCarousel: View {
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Spacer()
-                if !pending.isEmpty {
+                if uploadingCount > 0 {
                     HStack(spacing: 6) {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
                             .scaleEffect(0.7)
-                        Text("UPLOADING \(pending.count)")
+                        Text("UPLOADING \(uploadingCount)")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
@@ -561,7 +566,7 @@ private struct ProjectPhotosCarousel: View {
             .padding(.horizontal, 16)
             // 0.2s crossfade so the UPLOADING badge feels confident, not
             // jumpy. Matches OPSStyle.Animation.fast.
-            .animation(OPSStyle.Animation.fast, value: pending.count)
+            .animation(OPSStyle.Animation.fast, value: uploadingCount)
 
             if totalCount == 0 {
                 Text("Tap the camera to add project photos")
@@ -582,6 +587,17 @@ private struct ProjectPhotosCarousel: View {
                                 .buttonStyle(PlainButtonStyle())
                                 .wizardTarget(index == 0 ? "view_photo" : "")
                                 .transition(.opacity)
+                                .overlay(alignment: .topLeading) {
+                                    // Bug 189ace29 — sync-fail badge mirrors the
+                                    // visibility eye on the opposite corner:
+                                    // same 22pt circle, same 4pt outside-the-
+                                    // corner offset.
+                                    if !project.isImageSynced(url) {
+                                        PhotoSyncFailBadge()
+                                            .offset(x: -4, y: -4)
+                                            .allowsHitTesting(false)
+                                    }
+                                }
 
                                 // Per-photo client-portal visibility toggle.
                                 // Filled eye = visible to client, slashed = hidden.

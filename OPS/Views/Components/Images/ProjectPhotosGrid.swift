@@ -49,7 +49,7 @@ struct ProjectPhotosGrid: View {
                         ScrollView {
                             LazyVGrid(columns: columns, spacing: 2) {
                                 ForEach(Array(photos.enumerated()), id: \.element) { index, url in
-                                    ZStack {
+                                    ZStack(alignment: .topLeading) {
                                         PhotoThumbnail(
                                             url: url,
                                             project: project,
@@ -58,6 +58,16 @@ struct ProjectPhotosGrid: View {
                                             .aspectRatio(1, contentMode: .fill)
                                             .clipped()
                                             .contentShape(Rectangle())
+
+                                        // Bug 189ace29 — inset 4pt inside the cell
+                                        // because the 2pt grid spacing leaves no
+                                        // room to protrude past the corner like the
+                                        // smaller carousels do.
+                                        if !project.isImageSynced(url) {
+                                            PhotoSyncFailBadge()
+                                                .padding(4)
+                                                .allowsHitTesting(false)
+                                        }
                                     }
                                     .scaleEffect(longPressingPhotoIndex == index ? 0.9 : 1.0) // Scale down when pressed
                                     .overlay(
@@ -271,27 +281,13 @@ struct PhotoThumbnail: View {
                         .clipped()
                 }
 
-                // Bug 189ace29 — sync-fail indicator sits top-LEFT so it
-                // doesn't collide with the per-photo client-visibility eye
-                // that the Details + Activity carousels overlay at top-right.
-                if let project = project, !project.isImageSynced(url) {
-                    VStack {
-                        HStack {
-                            // Unsynced indicator
-                            Image(systemName: "icloud.slash")
-                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .padding(2)
-                                .background(OPSStyle.Colors.errorStatus)
-                                .clipShape(Circle())
-                                .padding(4)
-
-                            Spacer()
-                        }
-
-                        Spacer()
-                    }
-                }
+                // Bug 189ace29 — the sync-fail badge used to render here as
+                // a tiny inside-the-clip indicator, which both clipped the
+                // glyph and didn't visually mirror the client-visibility
+                // eye on the opposite corner. The badge is now a sibling
+                // component (PhotoSyncFailBadge) rendered alongside the
+                // visibility eye by each carousel/grid callsite so the
+                // two corners read as a matched pair.
             } else if isLoading {
                 ProgressView()
             } else {
@@ -418,6 +414,28 @@ struct PhotoThumbnail: View {
                 }
             }
         }.resume()
+    }
+}
+
+/// Bug 189ace29 — corner badge for an unsynced project photo. Sized and
+/// styled to mirror `ClientVisibilityButton` (22pt filled circle, 10pt
+/// semibold glyph) so the two opposite-corner overlays read as a
+/// matched pair. Rendered by the consuming carousel/grid as a sibling
+/// of the thumbnail so it can sit `4pt` outside the corner like the
+/// visibility eye instead of being clipped inside the rounded
+/// rectangle.
+struct PhotoSyncFailBadge: View {
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(OPSStyle.Colors.errorStatus)
+                .frame(width: 22, height: 22)
+
+            Image(systemName: "icloud.slash")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.primaryText)
+        }
+        .accessibilityLabel("Photo not synced")
     }
 }
 

@@ -1000,6 +1000,17 @@ struct PhotosSection: View {
                                             .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
                                     }
                                     .buttonStyle(PlainButtonStyle())
+                                    .overlay(alignment: .topLeading) {
+                                        // Bug 189ace29 — sync-fail badge mirrors
+                                        // the visibility eye on the opposite
+                                        // corner: same 22pt circle, same 4pt
+                                        // outside-the-corner offset.
+                                        if !project.isImageSynced(url) {
+                                            PhotoSyncFailBadge()
+                                                .offset(x: -4, y: -4)
+                                                .allowsHitTesting(false)
+                                        }
+                                    }
 
                                     // Per-photo client-portal visibility toggle.
                                     // Filled eye = visible to client, slashed = hidden.

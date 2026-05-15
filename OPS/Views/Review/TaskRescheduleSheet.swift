@@ -26,81 +26,19 @@ struct TaskRescheduleSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Drag indicator
-            RoundedRectangle(cornerRadius: 2)
-                .fill(Color.white.opacity(0.3))
-                .frame(width: 36, height: 4)
-                .padding(.top, 8)
-
-            // Header
-            VStack(spacing: 6) {
-                Text("RESCHEDULE TASK")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                Text(task.displayTitle.uppercased())
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-
-                if let startDate = task.startDate {
-                    Text(startDate.formatted(date: .abbreviated, time: .omitted))
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: OPSStyle.Layout.spacing4) {
+                    headerCard
+                    quickPushSection
                 }
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing3)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
             }
-            .padding(.top, 16)
-            .padding(.bottom, 20)
 
-            // Quick push buttons
-            VStack(spacing: 8) {
-                Text("QUICK PUSH")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                HStack(spacing: 12) {
-                    pushButton(label: "+1D", days: 1)
-                    pushButton(label: "+2D", days: 2)
-                    pushButton(label: "+3D", days: 3)
-                    pushButton(label: "+1W", days: 7)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 20)
-
-            // Calendar reschedule button
-            Button(action: {
-                showCalendarScheduler = true
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "calendar.badge.clock")
-                        .font(.system(size: 16))
-                    Text("RESCHEDULE")
-                        .font(OPSStyle.Typography.captionBold)
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: OPSStyle.Layout.touchTargetStandard)
-                .background(OPSStyle.Colors.primaryAccent)
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 12)
-
-            // Cancel button
-            Button(action: {
-                onDismiss()
-                dismiss()
-            }) {
-                Text("CANCEL")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: OPSStyle.Layout.touchTargetStandard)
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+            actionFooter
         }
-        .background(OPSStyle.Colors.background)
+        .background(OPSStyle.Colors.background.ignoresSafeArea())
         .sheet(isPresented: $showCalendarScheduler) {
             CalendarSchedulerSheet(
                 isPresented: $showCalendarScheduler,
@@ -138,20 +76,179 @@ struct TaskRescheduleSheet: View {
         }
     }
 
-    // MARK: - Push Button
+    // MARK: - Header Card
+    //
+    // Glass-on-canvas card stating WHAT is being rescheduled and FROM WHEN.
+    // The current-start line is the load-bearing context for the entire sheet
+    // — every push is relative to it — so it gets equal weight with the task
+    // name via the internal hairline divider.
 
-    private func pushButton(label: String, days: Int) -> some View {
-        Button(action: {
-            handlePush(days: days)
-        }) {
-            Text(label)
-                .font(OPSStyle.Typography.button)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .background(OPSStyle.Colors.primaryAccent)
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+    private var headerCard: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+            sectionEyebrow("RESCHEDULE")
+
+            Text(task.displayTitle.uppercased())
+                .font(OPSStyle.Typography.bodyBold)
+                .tracking(0.6)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Rectangle()
+                .fill(OPSStyle.Colors.cardBorder)
+                .frame(height: OPSStyle.Layout.Border.standard)
+
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1 + 2) {
+                sectionEyebrow("CURRENT START")
+
+                if let startDate = task.startDate {
+                    Text(currentStartLabel(for: startDate))
+                        .font(OPSStyle.Typography.dataValue)
+                        .monospacedDigit()
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                } else {
+                    Text("— NOT SCHEDULED")
+                        .font(OPSStyle.Typography.dataValue)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+            }
         }
+        .padding(OPSStyle.Layout.spacing3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+    }
+
+    // MARK: - Quick Push Section
+    //
+    // Four monochrome outlined chips. Filled steel-blue is reserved for the
+    // primary CTA below per the OPS visual system; secondary "shortcut"
+    // actions sit as hairline-bordered chips so the screen has one clear
+    // dominant signal.
+
+    private var quickPushSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            sectionEyebrow("QUICK PUSH")
+
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                pushChip(label: "+1D", days: 1, hint: "Push start date by one day")
+                pushChip(label: "+2D", days: 2, hint: "Push start date by two days")
+                pushChip(label: "+3D", days: 3, hint: "Push start date by three days")
+                pushChip(label: "+1W", days: 7, hint: "Push start date by one week")
+            }
+        }
+    }
+
+    private func pushChip(label: String, days: Int, hint: String) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            handlePush(days: days)
+        } label: {
+            Text(label)
+                .font(OPSStyle.Typography.dataValue)
+                .monospacedDigit()
+                .tracking(0.6)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .frame(maxWidth: .infinity)
+                .frame(height: OPSStyle.Layout.touchTargetMin)
+                .background(OPSStyle.Colors.cardBackgroundDark)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel("Push \(label)")
+        .accessibilityHint(hint)
+    }
+
+    // MARK: - Action Footer
+    //
+    // Pinned to the bottom edge so the primary CTA is one-thumb reachable
+    // and unaffected by content scroll. Steel-blue fill on the primary CTA
+    // is the only accent fill on the sheet — the single dominant signal.
+
+    private var actionFooter: some View {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showCalendarScheduler = true
+            } label: {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                    Text("OPEN CALENDAR")
+                        .font(OPSStyle.Typography.captionBold)
+                        .tracking(1.0)
+                    Spacer(minLength: 0)
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                        .opacity(0.7)
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .frame(maxWidth: .infinity)
+                .frame(height: OPSStyle.Layout.touchTargetStandard)
+                .background(OPSStyle.Colors.primaryAccent)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("Open full calendar to pick new dates")
+
+            Button {
+                onDismiss()
+                dismiss()
+            } label: {
+                Text("CANCEL")
+                    .font(OPSStyle.Typography.captionBold)
+                    .tracking(1.0)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: OPSStyle.Layout.touchTargetMin)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing2_5)
+        .padding(.bottom, OPSStyle.Layout.spacing3)
+        .background(OPSStyle.Colors.background)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(OPSStyle.Colors.cardBorderSubtle)
+                .frame(height: OPSStyle.Layout.Border.standard)
+        }
+    }
+
+    // MARK: - Section Eyebrow
+
+    private func sectionEyebrow(_ label: String) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
+            Text("//")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.inactiveText)
+            Text(label)
+                .font(OPSStyle.Typography.metadata)
+                .tracking(1.2)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: - Formatting
+
+    private func currentStartLabel(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE · MMM d"
+        return formatter.string(from: date).uppercased()
     }
 
     // MARK: - Push Logic

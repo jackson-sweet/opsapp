@@ -24,8 +24,34 @@ struct TaskReviewCardStack: View {
     @State private var dragDirection: SwipeDirection? = nil
     @State private var hasTriggeredThresholdHaptic: Bool = false
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private let swipeThreshold: CGFloat = 120
     private let maxVisibleCards: Int = 3
+
+    /// Drag-snap / fly-away animation. Springs feel right for the gesture
+    /// rebound; reduce-motion users get a quick ease that still telegraphs
+    /// the result without the bounce.
+    private var dragSettleAnimation: Animation {
+        reduceMotion
+            ? .easeOut(duration: 0.2)
+            : .spring(response: 0.3, dampingFraction: 0.8)
+    }
+
+    /// Stack-shift animation when the top card changes — same tradeoff.
+    private var stackShiftAnimation: Animation {
+        reduceMotion
+            ? .easeOut(duration: 0.25)
+            : .spring(response: 0.4, dampingFraction: 0.7)
+    }
+
+    /// Snap-back when a drag ends below threshold — short and crisp in both
+    /// modes; reduce-motion just drops the springy tail.
+    private var snapBackAnimation: Animation {
+        reduceMotion
+            ? .easeOut(duration: 0.2)
+            : .spring()
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -61,8 +87,8 @@ struct TaskReviewCardStack: View {
                     .zIndex(Double(tasks.count - index))
                     .allowsHitTesting(index == currentIndex)
                     .gesture(index == currentIndex ? dragGesture : nil)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dragOffset)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.7), value: currentIndex)
+                    .animation(dragSettleAnimation, value: dragOffset)
+                    .animation(stackShiftAnimation, value: currentIndex)
                     .modifier(WizardTargetModifier(
                         stepIds: index == currentIndex
                             ? ["task_demo_swipe_right", "task_demo_swipe_left", "task_demo_swipe_up"]
@@ -127,7 +153,7 @@ struct TaskReviewCardStack: View {
                     // Block UP swipe without calendar access (legacy behavior)
                     let effectiveBlocked = blockedDirections.union(hasCalendarAccess ? [] : [.up])
                     if effectiveBlocked.contains(dir) {
-                        withAnimation(.spring()) {
+                        withAnimation(snapBackAnimation) {
                             dragOffset = .zero
                             dragDirection = nil
                         }
@@ -136,7 +162,7 @@ struct TaskReviewCardStack: View {
 
                     commitSwipe(dir)
                 } else {
-                    withAnimation(.spring()) {
+                    withAnimation(snapBackAnimation) {
                         dragOffset = .zero
                         dragDirection = nil
                     }

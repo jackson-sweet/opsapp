@@ -15,6 +15,7 @@ import SwiftData
 struct UnscheduledTaskReviewView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject var dataController: DataController
 
     let tasks: [ProjectTask]
@@ -359,7 +360,13 @@ struct UnscheduledTaskReviewView: View {
             Spacer()
         }
         .allowsHitTesting(false)
-        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: toastMessage)
+        .animation(toastAnimation, value: toastMessage)
+    }
+
+    private var toastAnimation: Animation {
+        reduceMotion
+            ? .easeInOut(duration: 0.2)
+            : .spring(response: 0.35, dampingFraction: 0.82)
     }
 
     private func showToast(_ message: String, kind: ToastKind) {
@@ -492,7 +499,14 @@ struct UnscheduledTaskReviewView: View {
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
 
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) {
+            // Crisp ease-out scale for reduce-motion users; the spring keeps
+            // the original celebratory snap for everyone else. The opacity
+            // fade is gentle in both modes so the text "lands" with the
+            // visual rather than ahead of it.
+            let scaleAnimation: Animation = reduceMotion
+                ? .easeOut(duration: 0.25)
+                : .spring(response: 0.5, dampingFraction: 0.6)
+            withAnimation(scaleAnimation) {
                 celebrationScale = 1.0
             }
             withAnimation(.easeOut(duration: 0.4).delay(0.3)) {
@@ -671,7 +685,10 @@ struct UnscheduledTaskReviewView: View {
 
     private func checkCompletion() {
         if reviewedCount >= tasks.count {
-            withAnimation(.spring().delay(0.3)) {
+            let transition: Animation = reduceMotion
+                ? .easeInOut(duration: 0.25).delay(0.3)
+                : .spring().delay(0.3)
+            withAnimation(transition) {
                 showAllDone = true
             }
         }

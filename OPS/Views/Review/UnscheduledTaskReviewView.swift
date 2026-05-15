@@ -159,9 +159,12 @@ struct UnscheduledTaskReviewView: View {
                         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                         .padding(.bottom, 8)
 
+                    // Respect the bottom safe area so the hint pills sit
+                    // above the home indicator on notched devices instead
+                    // of overlapping it. The card stack underneath still
+                    // bleeds full-screen via its own ignoresSafeArea.
                     directionHints
                         .padding(.bottom, 8)
-                        .ignoresSafeArea(.container, edges: .bottom)
                 }
             }
 

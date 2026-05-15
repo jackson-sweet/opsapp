@@ -41,7 +41,8 @@ struct LevelTabBar: View {
             .padding(.horizontal, 12)
         }
         .frame(height: OPSStyle.Layout.touchTargetMin)
-        .background(OPSStyle.Colors.cardBackground)
+        // No solid background — the bar lives inside the title overlay's
+        // shared card so the parent's translucent fill shows through.
         .alert("Cannot Delete Level", isPresented: $showDeleteError) {
             Button("OK", role: .cancel) {}
         } message: {

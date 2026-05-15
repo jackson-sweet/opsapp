@@ -4,6 +4,16 @@ import SwiftUI
 import SwiftData
 import UIKit
 
+/// Measured height of the floating header card (title bar + optional level
+/// tabs). Lets the edit cluster + live-dimension pill anchor immediately
+/// below the actual card, even when the level tab bar grows the card.
+private struct HeaderCardHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 struct DeckBuilderView: View {
     @StateObject private var viewModel: DeckBuilderViewModel
     @Environment(\.dismiss) private var dismiss
@@ -21,6 +31,12 @@ struct DeckBuilderView: View {
     @StateObject private var estimateVM = EstimateViewModel()
     @Environment(\.modelContext) private var env_modelContext
     @Query(sort: \TaskType.displayOrder) private var taskTypes: [TaskType]
+
+    /// Live-measured height of the floating header card (title + optional
+    /// level tabs). The edit cluster and live-dimension pill anchor just
+    /// below the card using this value, so they slide down automatically
+    /// when the level tab bar appears and shrink back up when it hides.
+    @State private var headerCardHeight: CGFloat = 0
 
     let projectId: String?
     let companyId: String
@@ -176,42 +192,63 @@ struct DeckBuilderView: View {
                     .animation(.easeInOut(duration: 0.25), value: viewModel.showAssignmentToast)
                     } // end canvas ZStack (bottomTrailing)
 
-                    // Floating header — compact stack. Title now lives INSIDE
-                    // the title bar (replaced the previous separate title-pill
-                    // row), so the header collapses to: titleBar → optional
-                    // metrics+AR row → optional level tabs. Edit cluster
-                    // (undo/redo/import) and live-dim pill float on the canvas
-                    // as separate overlays below the title bar — they no
-                    // longer occupy a permanent 44pt header row. DECK-NEW-2.
+                    // Floating header — compact stack. The title bar and the
+                    // (optional) level tab bar share a single rounded card so
+                    // the levels read as an extension of the title overlay
+                    // instead of a separate floating bar. The card height is
+                    // measured live and the edit cluster + live-dim pill
+                    // anchor immediately below the card, so they slide down
+                    // when the level row appears and back up when it hides.
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                        titleBar
-                            .padding(.horizontal, OPSStyle.Layout.spacing2)
-                            .padding(.vertical, OPSStyle.Layout.spacing2)
-                            .background(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .fill(OPSStyle.Colors.cardBackground.opacity(0.96))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                            .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
-                                    )
-                                    .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
-                            )
+                        // Unified header card. Levels live inside it; the
+                        // previous fallback to vertices.count >= 3 showed
+                        // the bar in single-level mode the moment a second
+                        // line was drawn, but the bar's body had nothing to
+                        // render — bug 59c76731.
+                        VStack(alignment: .leading, spacing: 0) {
+                            titleBar
+                                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                .padding(.vertical, OPSStyle.Layout.spacing2)
+
+                            if viewModel.isMultiLevel {
+                                // Edge-to-edge hairline so the level row
+                                // reads as an extension of the card, not a
+                                // floating sibling.
+                                Rectangle()
+                                    .fill(OPSStyle.Colors.cardBorder.opacity(0.6))
+                                    .frame(height: OPSStyle.Layout.Border.standard)
+
+                                LevelTabBar(viewModel: viewModel)
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                .fill(OPSStyle.Colors.cardBackground.opacity(0.96))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                        .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
+                                )
+                                .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+                        .background(
+                            // Measure the card height so the edit cluster +
+                            // live-dim pill anchor immediately below it.
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: HeaderCardHeightKey.self,
+                                    value: proxy.size.height
+                                )
+                            }
+                        )
+                        .animation(OPSStyle.Animation.fast, value: viewModel.isMultiLevel)
 
                         // Combined metrics + AR row — when both apply they
                         // share a single horizontal row instead of stacking
-                        // as two rows.
+                        // as two rows. Lives outside the card so the card
+                        // stays compact and the metrics float on the canvas.
                         metricsAndARRow
-
-                        // Level tab bar — only when the design actually has
-                        // levels. The previous fallback to vertices.count >= 3
-                        // showed the bar in single-level mode the moment a
-                        // second line was drawn, but the bar's body had nothing
-                        // to render (no levels in the ForEach, canConnectLevels
-                        // requires 2+ levels), leaving a 44pt cardBackground
-                        // rectangle floating below the title — bug 59c76731.
-                        if viewModel.isMultiLevel {
-                            LevelTabBar(viewModel: viewModel)
-                        }
 
                         Spacer(minLength: 0)
                     }
@@ -237,7 +274,7 @@ struct DeckBuilderView: View {
                        viewModel.liveDimensionLabel == nil {
                         editCluster2D
                             .padding(.trailing, OPSStyle.Layout.spacing4)
-                            .padding(.top, floatingHeaderTopPadding + headerOverlayBelowTitleOffset)
+                            .padding(.top, floatingHeaderTopPadding + headerCardHeight + OPSStyle.Layout.spacing2)
                             .frame(maxWidth: .infinity, alignment: .topTrailing)
                             .allowsHitTesting(true)
                     }
@@ -250,13 +287,20 @@ struct DeckBuilderView: View {
                     if let liveLabel = viewModel.liveDimensionLabel {
                         liveDimensionPill(label: liveLabel)
                             .padding(.trailing, OPSStyle.Layout.spacing4)
-                            .padding(.top, floatingHeaderTopPadding + headerOverlayBelowTitleOffset)
+                            .padding(.top, floatingHeaderTopPadding + headerCardHeight + OPSStyle.Layout.spacing2)
                             .frame(maxWidth: .infinity, alignment: .topTrailing)
                             .transition(.opacity)
                             .animation(OPSStyle.Animation.fast, value: viewModel.liveDimensionLabel)
                             .allowsHitTesting(false)
                     }
                 } // end ZStack (top-aligned, floating title over canvas)
+                .onPreferenceChange(HeaderCardHeightKey.self) { newHeight in
+                    // Animate so the edit cluster + live-dim pill slide down
+                    // smoothly when the level tab bar appears.
+                    withAnimation(OPSStyle.Animation.fast) {
+                        headerCardHeight = newHeight
+                    }
+                }
 
                 // Toolbar — below the canvas. Wrapped in horizontal padding +
                 // bottom gap + clipped corners so its cardBackground reads as a
@@ -817,18 +861,10 @@ struct DeckBuilderView: View {
         )
     }
 
-    /// Vertical offset from the BOTTOM of the title pill to where canvas
-    /// overlays (edit cluster, live-dim pill) anchor. The caller adds this
-    /// to `floatingHeaderTopPadding` so overlays stay aligned across the
-    /// Dynamic Island / notch / no-cutout devices alike. Matches the title
-    /// bar's intrinsic height: top pad + touch-target + bottom pad + small
-    /// gap between bar and overlay.
-    private var headerOverlayBelowTitleOffset: CGFloat {
-        OPSStyle.Layout.spacing2            // pill vertical pad (top)
-            + OPSStyle.Layout.touchTargetMin
-            + OPSStyle.Layout.spacing2      // pill vertical pad (bottom)
-            + OPSStyle.Layout.spacing2      // gap to overlay
-    }
+    // `headerOverlayBelowTitleOffset` removed — the edit cluster and
+    // live-dim pill now anchor off the runtime-measured `headerCardHeight`
+    // (HeaderCardHeightKey preference), so they track the actual card
+    // height including the level tab bar when it appears.
 
     // MARK: - Combined metrics + AR row
 

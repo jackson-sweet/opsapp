@@ -28,6 +28,15 @@ struct ContactDetailView: View {
     @State private var showingClientEdit = false
     @State private var showingClientDeletion = false
 
+    // Bug c0ed9969 — long-press any client-contact field to edit it
+    // inline without opening the full ClientSheet editor. Gated below
+    // on `isClient && canEditClient` so crew without edit-client
+    // permission never see the affordance.
+    @State private var inlineEditField: InlineEditField? = nil
+    @State private var inlineEditValue: String = ""
+    @State private var inlineEditSaving = false
+    @FocusState private var inlineEditFocused: Bool
+
     // Sub-client editing states
     @State private var subClientToEdit: SubClient? = nil  // Single state for both data and presentation
     @State private var subClientsRefreshKey = UUID()  // Force refresh of sub-clients view
@@ -44,6 +53,14 @@ struct ContactDetailView: View {
     // Constants for styling
     private let avatarSize: CGFloat = 80
     private let contactIconSize: CGFloat = 36
+
+    /// Identifies which contact-section field the operator is editing
+    /// inline (bug c0ed9969). Email / phone / address only — name is
+    /// edited from the header avatar card via the existing ClientSheet.
+    private enum InlineEditField: String, Identifiable {
+        case email, phone, address
+        var id: String { rawValue }
+    }
     
     // Convenience initializers
     init(user: User) {
@@ -679,7 +696,15 @@ struct ContactDetailView: View {
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                    if let email = self.email, !email.isEmpty {
+                    if inlineEditField == .email {
+                        inlineEditRow(
+                            field: .email,
+                            icon: OPSStyle.Icons.envelope,
+                            placeholder: "name@example.com",
+                            keyboard: .emailAddress,
+                            autocapitalize: false
+                        )
+                    } else if let email = self.email, !email.isEmpty {
                         Button(action: {
                             if let emailURL = URL(string: "mailto:\(email)") {
                                 openURL(emailURL)
@@ -712,6 +737,7 @@ struct ContactDetailView: View {
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .simultaneousGesture(longPressGesture(for: .email))
                     } else {
                         HStack(spacing: 12) {
                             Image(systemName: OPSStyle.Icons.envelope)
@@ -734,6 +760,8 @@ struct ContactDetailView: View {
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
+                        .contentShape(Rectangle())
+                        .simultaneousGesture(longPressGesture(for: .email))
                     }
                 }
                 
@@ -743,7 +771,15 @@ struct ContactDetailView: View {
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                    if let phone = self.phone, !phone.isEmpty {
+                    if inlineEditField == .phone {
+                        inlineEditRow(
+                            field: .phone,
+                            icon: OPSStyle.Icons.phone,
+                            placeholder: "(555) 555-5555",
+                            keyboard: .phonePad,
+                            autocapitalize: false
+                        )
+                    } else if let phone = self.phone, !phone.isEmpty {
                         HStack(spacing: 12) {
                             Image(systemName: OPSStyle.Icons.phone)
                                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -789,6 +825,8 @@ struct ContactDetailView: View {
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
+                        .contentShape(Rectangle())
+                        .simultaneousGesture(longPressGesture(for: .phone))
                     } else {
                         HStack(spacing: 12) {
                             Image(systemName: OPSStyle.Icons.phone)
@@ -811,6 +849,8 @@ struct ContactDetailView: View {
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                         )
+                        .contentShape(Rectangle())
+                        .simultaneousGesture(longPressGesture(for: .phone))
                     }
                 }
                 
@@ -821,7 +861,15 @@ struct ContactDetailView: View {
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                        if let address = self.address, !address.isEmpty {
+                        if inlineEditField == .address {
+                            inlineEditRow(
+                                field: .address,
+                                icon: OPSStyle.Icons.address,
+                                placeholder: "Street, City, State",
+                                keyboard: .default,
+                                autocapitalize: true
+                            )
+                        } else if let address = self.address, !address.isEmpty {
                             Button(action: {
                                 // Open address in Maps
                                 let encodedAddress = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
@@ -857,6 +905,7 @@ struct ContactDetailView: View {
                                 )
                             }
                             .buttonStyle(PlainButtonStyle())
+                            .simultaneousGesture(longPressGesture(for: .address))
                         } else {
                             HStack(spacing: 12) {
                                 Image(systemName: "location.slash")
@@ -879,14 +928,139 @@ struct ContactDetailView: View {
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                     .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                             )
+                            .contentShape(Rectangle())
+                            .simultaneousGesture(longPressGesture(for: .address))
                         }
                     }
                 }
             }
         }
     
+    // MARK: - Inline Edit (bug c0ed9969)
+
+    /// Long-press gesture wired into each contact-section row. Gated on
+    /// `isClient && canEditClient`, so crew without edit permission feel
+    /// no haptic and see no edit affordance.
+    private func longPressGesture(for field: InlineEditField) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.45)
+            .onEnded { _ in beginInlineEdit(field) }
+    }
+
+    private func beginInlineEdit(_ field: InlineEditField) {
+        guard isClient, canEditClient, let _ = client else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        inlineEditValue = currentValue(for: field) ?? ""
+        inlineEditField = field
+        // Defer focus to the next runloop tick so SwiftUI has placed the
+        // TextField before we try to focus it.
+        DispatchQueue.main.async {
+            inlineEditFocused = true
+        }
+    }
+
+    private func cancelInlineEdit() {
+        inlineEditField = nil
+        inlineEditValue = ""
+        inlineEditFocused = false
+    }
+
+    private func currentValue(for field: InlineEditField) -> String? {
+        switch field {
+        case .email:   return client?.email
+        case .phone:   return client?.phoneNumber
+        case .address: return client?.address
+        }
+    }
+
+    /// Writes the staged value through `DataController.updateClientContact`.
+    /// Preserves every other field by passing the existing values through.
+    /// Trimmed-empty values normalise to `nil` so the operator can clear a
+    /// field by long-pressing and saving blank.
+    private func saveInlineEdit() async {
+        guard let client = client, let field = inlineEditField else { return }
+        let trimmed = inlineEditValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalised = trimmed.isEmpty ? nil : trimmed
+
+        await MainActor.run { inlineEditSaving = true }
+        defer { Task { @MainActor in inlineEditSaving = false } }
+
+        do {
+            try await dataController.updateClientContact(
+                clientId: client.id,
+                name: client.name,
+                email:   field == .email   ? normalised : client.email,
+                phone:   field == .phone   ? normalised : client.phoneNumber,
+                address: field == .address ? normalised : client.address
+            )
+            await MainActor.run {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                cancelInlineEdit()
+            }
+        } catch {
+            await MainActor.run {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+            print("[CONTACT_DETAIL] inline edit save failed for \(field.rawValue): \(error)")
+        }
+    }
+
+    @ViewBuilder
+    private func inlineEditRow(
+        field: InlineEditField,
+        icon: String,
+        placeholder: String,
+        keyboard: UIKeyboardType,
+        autocapitalize: Bool
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .frame(width: 24)
+
+            TextField(placeholder, text: $inlineEditValue, axis: .vertical)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .keyboardType(keyboard)
+                .textInputAutocapitalization(autocapitalize ? .sentences : .never)
+                .autocorrectionDisabled(!autocapitalize)
+                .focused($inlineEditFocused)
+                .submitLabel(.done)
+                .onSubmit { Task { await saveInlineEdit() } }
+                .disabled(inlineEditSaving)
+
+            if inlineEditSaving {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                    .scaleEffect(0.8)
+            } else {
+                Button(action: cancelInlineEdit) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                Button(action: { Task { await saveInlineEdit() } }) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .background(Color.clear)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
     // MARK: - Save and Share Buttons
-    
+
     private var saveShareButtons: some View {
         Group {
             if isClient {

@@ -21,6 +21,10 @@ struct ActivityEntryView: View {
     /// foreground colour ("@Harrison" blue, "Sweet" not — same for
     /// "@All Team").
     let mentionNames: [String]
+    /// Bug 162364de — full TeamMember roster passed in so the edit field
+    /// can fire the same `@`-mention picker as the compose bar. Without
+    /// it the edit flow had no source of truth for avatars + ids.
+    let allTeamMembers: [TeamMember]
     let onDelete: () -> Void
     let onEdit: (String) -> Void
     let onPhotoTap: (([String], Int) -> Void)?
@@ -28,6 +32,13 @@ struct ActivityEntryView: View {
     @State private var isEditing = false
     @State private var editText = ""
     @State private var showDeleteConfirmation = false
+
+    // Bug 162364de — local picker state for the edit field. Scoped here
+    // so each entry card's edit session has its own picker without
+    // colliding with the compose-bar picker further down the screen.
+    @State private var editMentionSuggestions: [TeamMember] = []
+    @State private var editShowAllTeam = false
+    @State private var editShowMentionPicker = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -91,10 +102,18 @@ struct ActivityEntryView: View {
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                 .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
                         )
+                        .onChange(of: editText) { _, newValue in
+                            updateEditMentionState(for: newValue)
+                        }
+
+                    if editShowMentionPicker {
+                        editMentionPicker
+                    }
 
                     HStack {
                         Button("Cancel") {
                             isEditing = false
+                            clearEditMentionState()
                         }
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -104,6 +123,7 @@ struct ActivityEntryView: View {
                         Button("Save") {
                             onEdit(editText)
                             isEditing = false
+                            clearEditMentionState()
                         }
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -171,6 +191,90 @@ struct ActivityEntryView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"
         return formatter.string(from: note.createdAt)
+    }
+
+    // MARK: - Edit-mode mention picker (bug 162364de)
+
+    /// Picker bar rendered between the edit TextField and its Save/Cancel
+    /// row. Mirrors the compose-bar picker visually so the two flows feel
+    /// like the same control.
+    @ViewBuilder
+    private var editMentionPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                if editShowAllTeam {
+                    Button(action: insertEditAllTeamMention) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
+                            Image(systemName: OPSStyle.Icons.crew)
+                                .font(.system(size: 12))
+                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .frame(width: 24, height: 24)
+                                .background(OPSStyle.Colors.primaryAccent.opacity(0.15))
+                                .clipShape(Circle())
+                            Text("All Team")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
+                        .background(OPSStyle.Colors.cardBackground)
+                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+
+                ForEach(editMentionSuggestions, id: \.id) { member in
+                    Button(action: { insertEditMention(member) }) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
+                            TeamMemberAvatar(teamMember: member, size: 24)
+                            Text(member.fullName)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
+                        .background(OPSStyle.Colors.cardBackground)
+                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func updateEditMentionState(for text: String) {
+        guard let match = ProjectNotesViewModel.mentionMatch(for: text, in: allTeamMembers) else {
+            clearEditMentionState()
+            return
+        }
+        editMentionSuggestions = match.suggestions
+        editShowAllTeam = match.showAllTeam
+        editShowMentionPicker = !match.suggestions.isEmpty || match.showAllTeam
+    }
+
+    private func clearEditMentionState() {
+        editShowMentionPicker = false
+        editShowAllTeam = false
+        editMentionSuggestions = []
+    }
+
+    private func insertEditMention(_ member: TeamMember) {
+        editText = ProjectNotesViewModel.textInserting(mention: member.fullName, into: editText)
+        clearEditMentionState()
+    }
+
+    private func insertEditAllTeamMention() {
+        editText = ProjectNotesViewModel.textInserting(mention: "All Team", into: editText)
+        clearEditMentionState()
     }
 
     /// Bug 213bbaa4 — render `@Mention` spans in the accent colour with

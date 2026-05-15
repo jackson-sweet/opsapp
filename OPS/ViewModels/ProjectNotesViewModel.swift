@@ -349,63 +349,72 @@ class ProjectNotesViewModel: ObservableObject {
 
     // MARK: - Mention Handling
 
+    /// Pure helper. Given the current text and the team roster, returns the
+    /// picker state the UI should show. Returns `nil` when there is no
+    /// active `@` mention (picker should be hidden). Shared with
+    /// `ActivityEntryView` so the inline edit field can drive the same
+    /// teammate picker as the compose bar (bug 162364de).
+    nonisolated static func mentionMatch(
+        for text: String,
+        in members: [TeamMember]
+    ) -> (suggestions: [TeamMember], showAllTeam: Bool)? {
+        guard let atRange = text.range(of: "@", options: .backwards) else { return nil }
+        let afterAt = String(text[atRange.upperBound...])
+
+        // Mention already terminated by a space — unless the user is still
+        // mid-way through a multi-word name like "All Team" or
+        // "Harrison Sweet".
+        if afterAt.contains(" ") && afterAt.last == " " {
+            let partial = afterAt.trimmingCharacters(in: .whitespaces).lowercased()
+            let isPartialAllTeam = "all team".hasPrefix(partial) && partial != "all team"
+            let isPartialMemberName = members.contains { member in
+                let fullName = member.fullName.lowercased()
+                return fullName.hasPrefix(partial) && fullName != partial
+            }
+            if !isPartialAllTeam && !isPartialMemberName { return nil }
+        }
+
+        let query = afterAt.trimmingCharacters(in: .whitespaces).lowercased()
+        if query.isEmpty {
+            return (suggestions: members, showAllTeam: true)
+        }
+        let filtered = members.filter {
+            $0.fullName.lowercased().contains(query) ||
+            $0.firstName.lowercased().hasPrefix(query) ||
+            $0.lastName.lowercased().hasPrefix(query)
+        }
+        return (suggestions: filtered, showAllTeam: "all team".hasPrefix(query))
+    }
+
+    /// Pure helper. Replace the trailing partial `@…` token in `text` with
+    /// the fully-resolved mention name plus a trailing space. Used by both
+    /// the compose-bar pipeline and the edit-mode picker.
+    nonisolated static func textInserting(mention name: String, into text: String) -> String {
+        guard let atRange = text.range(of: "@", options: .backwards) else { return text }
+        return String(text[..<atRange.lowerBound]) + "@\(name) "
+    }
+
     func handleMentionInput(_ text: String) {
-        // Find the last @ symbol and extract the partial name after it
-        guard let atRange = text.range(of: "@", options: .backwards) else {
+        guard let match = Self.mentionMatch(for: text, in: allTeamMembers) else {
             showMentionPicker = false
             showAllTeamOption = false
             mentionSuggestions = []
             return
         }
-
-        let afterAt = String(text[atRange.upperBound...])
-
-        // If there's a space after the partial name, mention is complete
-        // But not if the text is a prefix of "All Team" (user still typing multi-word mention)
-        if afterAt.contains(" ") && afterAt.last == " " {
-            let partial = afterAt.trimmingCharacters(in: .whitespaces).lowercased()
-            let isPartialAllTeam = "all team".hasPrefix(partial) && partial != "all team"
-            let isPartialMemberName = allTeamMembers.contains { member in
-                let fullName = member.fullName.lowercased()
-                return fullName.hasPrefix(partial) && fullName != partial
-            }
-            if !isPartialAllTeam && !isPartialMemberName {
-                showMentionPicker = false
-                showAllTeamOption = false
-                mentionSuggestions = []
-                return
-            }
-        }
-
-        let query = afterAt.trimmingCharacters(in: .whitespaces).lowercased()
-        if query.isEmpty {
-            // Show all team members + @All when just "@" is typed
-            mentionSuggestions = allTeamMembers
-            showAllTeamOption = true
-        } else {
-            mentionSuggestions = allTeamMembers.filter {
-                $0.fullName.lowercased().contains(query) ||
-                $0.firstName.lowercased().hasPrefix(query) ||
-                $0.lastName.lowercased().hasPrefix(query)
-            }
-            showAllTeamOption = "all team".hasPrefix(query)
-        }
-        showMentionPicker = !mentionSuggestions.isEmpty || showAllTeamOption
+        mentionSuggestions = match.suggestions
+        showAllTeamOption = match.showAllTeam
+        showMentionPicker = !match.suggestions.isEmpty || match.showAllTeam
     }
 
     func insertMention(_ member: TeamMember) {
-        // Replace the partial @mention with the full name
-        guard let atRange = newNoteText.range(of: "@", options: .backwards) else { return }
-        newNoteText = String(newNoteText[..<atRange.lowerBound]) + "@\(member.fullName) "
+        newNoteText = Self.textInserting(mention: member.fullName, into: newNoteText)
         showMentionPicker = false
         showAllTeamOption = false
         mentionSuggestions = []
     }
 
     func insertAllTeamMention() {
-        // Replace the partial @mention with @All Team
-        guard let atRange = newNoteText.range(of: "@", options: .backwards) else { return }
-        newNoteText = String(newNoteText[..<atRange.lowerBound]) + "@All Team "
+        newNoteText = Self.textInserting(mention: "All Team", into: newNoteText)
         showMentionPicker = false
         showAllTeamOption = false
         mentionSuggestions = []

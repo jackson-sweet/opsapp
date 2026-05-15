@@ -615,14 +615,17 @@ struct UnscheduledTaskReviewView: View {
 
     private func markTaskComplete(_ task: ProjectTask) {
         // Canonical path — persists status, records SyncOperation, fires
-        // team-completion notifications, tracks analytics.
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        // team-completion notifications, tracks analytics. Haptic semantics
+        // demand the success notification fire only after the write
+        // actually succeeds; an optimistic success buzz followed by an
+        // error toast is worse than no buzz at all.
         let taskTitle = task.displayTitle
 
         Task {
             do {
                 try await dataController.updateTaskStatus(task: task, to: .completed)
                 await MainActor.run {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
                     showToast("COMPLETED — \(taskTitle.uppercased())", kind: .success)
                 }
             } catch {
@@ -651,15 +654,13 @@ struct UnscheduledTaskReviewView: View {
             return
         }
 
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-
         let capturedStart = placement.startDate
         let capturedEnd = placement.endDate
 
         // Canonical path — saves context, computes duration, records the
         // SyncOperation, and fires schedule-change notifications to team
-        // members. Previous inline write skipped duration, the save, and
-        // the notifications.
+        // members. Haptic fires after the write so the buzz reflects what
+        // actually happened, not what we hoped would happen.
         Task {
             do {
                 try await dataController.updateTaskSchedule(
@@ -668,6 +669,7 @@ struct UnscheduledTaskReviewView: View {
                     endDate: capturedEnd
                 )
                 await MainActor.run {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     showToast(
                         "SCHEDULED \(formatScheduledRange(start: capturedStart, end: capturedEnd))",
                         kind: .success

@@ -147,11 +147,23 @@ enum UploadErrorClassifier {
 
     private static func classifyHTTPStatus(_ statusCode: Int, context: String) -> UploadErrorKind {
         switch statusCode {
+        case 401, 403:
+            // Auth-layer rejection. Treat as transient so the retry path
+            // exercises a fresh Firebase ID token before giving up. A truly
+            // permanent auth failure (user actually signed out elsewhere,
+            // session revoked) will fail through all retry attempts and
+            // exhaust as transient — reportRetryExhausted intentionally
+            // skips transient exhaustion, so the dev team never gets noise
+            // for normal token-rotation events. The cost of a false-negative
+            // (real auth bug never auto-bugged) is bounded because the user
+            // already sees a failed tile and surfaces it via in-app support.
+            return .transient(reason: "\(context)_auth_\(statusCode)_refresh")
         case 408, 425, 429:
             // request timeout, too early, too many requests — transient with backoff
             return .transient(reason: "\(context)_\(statusCode)")
         case 400...499:
-            // client error — permanent. Includes 401/403 auth, 404 not found, 409 conflict.
+            // client error — permanent. Includes 404 not found, 409 conflict,
+            // 422 validation. 401/403 are handled above.
             return .permanent(errorCode: "HTTP_\(statusCode)", reason: "\(context) returned \(statusCode)")
         case 500...599:
             return .transient(reason: "\(context)_5xx_\(statusCode)")

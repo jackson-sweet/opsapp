@@ -60,12 +60,14 @@ struct UnscheduledTaskReviewView: View {
         }
     }
 
-    /// Bug f3a3d66d — order `activeTeamMembers` by recency-for-task-type
-    /// when a task type is known, otherwise fall back to the alphabetical
-    /// order already provided. Mirrors `ProjectFormSheet.teamUsersOrdered`
-    /// so the two pickers feel consistent.
-    private func teamUsersOrdered(forTaskTypeId taskTypeId: String) -> [User] {
-        let alphaSorted = activeTeamMembers
+    /// Bug f3a3d66d — order the supplied member list by recency-for-task-
+    /// type when a task type is known, otherwise fall back to the
+    /// alphabetical order already provided. Mirrors
+    /// `ProjectFormSheet.teamUsersOrdered` so the two pickers feel
+    /// consistent. Accepts an explicit member list so callers can opt
+    /// between the .onAppear snapshot and a fresh fetch.
+    private func teamUsersOrdered(forTaskTypeId taskTypeId: String, members: [User]) -> [User] {
+        let alphaSorted = members
 
         guard !taskTypeId.isEmpty,
               let companyId = dataController.currentUser?.companyId else {
@@ -183,8 +185,21 @@ struct UnscheduledTaskReviewView: View {
             // type" before falling back to alphabetical, so the operator
             // sees the people they routinely assign to demo / framing /
             // punchlist (etc.) at the top instead of having to scroll.
+            //
+            // Bug 040e4482 — pull a fresh team-member list every time the
+            // picker presents instead of trusting the .onAppear snapshot.
+            // Realtime sync can add (or deactivate) members while the
+            // review is open, and a stale list silently hides them from
+            // the operator.
             let taskTypeId = pendingAssignTask?.taskTypeId ?? ""
-            let ordered = teamUsersOrdered(forTaskTypeId: taskTypeId)
+            let liveTeamMembers: [User] = {
+                guard let companyId = dataController.currentUser?.companyId else {
+                    return activeTeamMembers
+                }
+                return dataController.getTeamMembers(companyId: companyId)
+                    .sorted { $0.fullName < $1.fullName }
+            }()
+            let ordered = teamUsersOrdered(forTaskTypeId: taskTypeId, members: liveTeamMembers)
             let recentIds: Set<String> = {
                 guard !taskTypeId.isEmpty,
                       let companyId = dataController.currentUser?.companyId else {

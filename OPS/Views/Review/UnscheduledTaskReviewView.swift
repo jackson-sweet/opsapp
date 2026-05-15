@@ -28,7 +28,6 @@ struct UnscheduledTaskReviewView: View {
     @State private var showCrewPicker: Bool = false
     @State private var pendingAssignTask: ProjectTask? = nil
     @State private var assignSelectedIds: Set<String> = []
-    @State private var crewPickerSource: CrewPickerSource = .swipeUp
     @State private var showAllDone: Bool = false
     @State private var celebrationScale: CGFloat = 0
     @State private var celebrationOpacity: Double = 0
@@ -40,12 +39,6 @@ struct UnscheduledTaskReviewView: View {
     @State private var toastMessage: String? = nil
     @State private var toastKind: ToastKind = .success
     @State private var toastDismissTask: Task<Void, Never>? = nil
-
-    /// Tracks why the crew picker was opened
-    private enum CrewPickerSource {
-        case swipeUp    // Explicit assign action
-        case swipeRight // Must assign before auto-scheduling
-    }
 
     private enum ToastKind {
         case success
@@ -514,7 +507,6 @@ struct UnscheduledTaskReviewView: View {
                 // Task has no crew — open picker, then auto-schedule after assignment
                 pendingAssignTask = task
                 assignSelectedIds = []
-                crewPickerSource = .swipeRight
                 showCrewPicker = true
             } else {
                 // Already assigned — auto-schedule immediately
@@ -531,10 +523,13 @@ struct UnscheduledTaskReviewView: View {
         case .up:
             let isUnassigned = task.getTeamMemberIds().isEmpty
             if isUnassigned {
-                // No crew yet — open picker so user can assign.
+                // No crew yet — open picker so user can assign. After the
+                // picker resolves, the dismiss handler auto-schedules the
+                // task so the operator's "resolve this card" intent is
+                // honored end-to-end instead of leaving the task assigned
+                // but still unscheduled.
                 pendingAssignTask = task
                 assignSelectedIds = Set(task.getTeamMemberIds())
-                crewPickerSource = .swipeUp
                 showCrewPicker = true
             } else {
                 // Assigned — mark complete via canonical path.
@@ -555,15 +550,19 @@ struct UnscheduledTaskReviewView: View {
         guard let task = pendingAssignTask else { return }
 
         if !assignSelectedIds.isEmpty {
-            // Apply crew assignment
+            // Apply crew assignment, then auto-schedule when the task still
+            // has no dates. The card has been bumped from the review stack
+            // either way — the operator's intent is "resolve this," so we
+            // finish the job rather than leaving the task assigned but
+            // still unscheduled.
+            let shouldAutoSchedule = task.startDate == nil
             Task {
                 try? await dataController.updateTaskTeamMembers(
                     task: task,
                     memberIds: Array(assignSelectedIds)
                 )
 
-                // If triggered by swipe-right on unassigned task, also auto-schedule
-                if crewPickerSource == .swipeRight && task.startDate == nil {
+                if shouldAutoSchedule {
                     await MainActor.run {
                         autoScheduleTask(task)
                     }

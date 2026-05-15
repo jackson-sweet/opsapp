@@ -65,10 +65,6 @@ struct ARCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text("A/R · ALL OPEN")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.errorStatus)
-
             Text(totalOutstanding, format: .currency(code: "USD").precision(.fractionLength(0)))
                 .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.errorStatus)
@@ -129,15 +125,25 @@ struct ARCard: View {
                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
             }
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .onAppear {
             withAnimation(reduceMotion ? .none : OPSStyle.Animation.standard) { appeared = true }
         }
     }
 }
+
+#if DEBUG
+#Preview("ARCard — seeded") {
+    ARCard(viewModel: .previewStub(), onTapTopChase: {})
+        .padding(.vertical, 24)
+        .background(OPSStyle.Colors.background)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("ARCard — empty") {
+    ARCard(viewModel: .previewEmpty(), onTapTopChase: {})
+        .padding(.vertical, 24)
+        .background(OPSStyle.Colors.background)
+        .preferredColorScheme(.dark)
+}
+#endif

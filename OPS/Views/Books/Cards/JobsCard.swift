@@ -23,10 +23,6 @@ struct JobsCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text("JOBS · NET BY PROJECT · \(viewModel.selectedPeriod.pillLabel)")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
             if viewModel.topProjectsByNet.isEmpty {
                 Text("—")
                     .font(OPSStyle.Typography.title)
@@ -70,13 +66,7 @@ struct JobsCard: View {
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .onAppear {
             withAnimation(reduceMotion ? .none : OPSStyle.Animation.standard) { appeared = true }
         }
@@ -101,3 +91,19 @@ struct JobsCard: View {
         value.formatted(.currency(code: "USD").precision(.fractionLength(0)))
     }
 }
+
+#if DEBUG
+#Preview("JobsCard — seeded") {
+    JobsCard(viewModel: .previewStub(), onTapProfitable: {}, onTapLosers: {})
+        .padding(.vertical, 24)
+        .background(OPSStyle.Colors.background)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("JobsCard — empty") {
+    JobsCard(viewModel: .previewEmpty(), onTapProfitable: {}, onTapLosers: {})
+        .padding(.vertical, 24)
+        .background(OPSStyle.Colors.background)
+        .preferredColorScheme(.dark)
+}
+#endif

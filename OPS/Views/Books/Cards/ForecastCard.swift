@@ -23,10 +23,6 @@ struct ForecastCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text("FORECAST · ACTIVE")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-
             Text(viewModel.weightedForecastValue, format: .currency(code: "USD").precision(.fractionLength(0)))
                 .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -83,13 +79,7 @@ struct ForecastCard: View {
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .onAppear {
             withAnimation(reduceMotion ? .none : OPSStyle.Animation.standard) { appeared = true }
         }
@@ -110,3 +100,19 @@ struct ForecastCard: View {
         .cornerRadius(OPSStyle.Layout.smallCornerRadius)
     }
 }
+
+#if DEBUG
+#Preview("ForecastCard — seeded") {
+    ForecastCard(viewModel: .previewStub(), onTapCloseRate: {}, onTapStale: {})
+        .padding(.vertical, 24)
+        .background(OPSStyle.Colors.background)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("ForecastCard — empty") {
+    ForecastCard(viewModel: .previewEmpty(), onTapCloseRate: {}, onTapStale: {})
+        .padding(.vertical, 24)
+        .background(OPSStyle.Colors.background)
+        .preferredColorScheme(.dark)
+}
+#endif

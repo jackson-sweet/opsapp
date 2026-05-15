@@ -128,3 +128,59 @@ struct BallInCourtBar: View {
         Text("·").foregroundColor(OPSStyle.Colors.tertiaryText)
     }
 }
+
+#if DEBUG
+#Preview("BallInCourtBar / tiers") {
+    VStack(spacing: 12) {
+        // Overdue dominant (red rail)
+        BallInCourtBar(
+            count: 7,
+            buckets: .init(overdue: 3, stale: 2, untouched: 2),
+            totalValue: 48_500,
+            filterActive: false,
+            isOffline: false,
+            onToggleFilter: {}
+        )
+        // Stale dominant (amber rail)
+        BallInCourtBar(
+            count: 4,
+            buckets: .init(overdue: 0, stale: 3, untouched: 1),
+            totalValue: 18_200,
+            filterActive: false,
+            isOffline: false,
+            onToggleFilter: {}
+        )
+        // Untouched only (blue rail)
+        BallInCourtBar(
+            count: 2,
+            buckets: .init(overdue: 0, stale: 0, untouched: 2),
+            totalValue: 7_400,
+            filterActive: false,
+            isOffline: false,
+            onToggleFilter: {}
+        )
+        // Filter active
+        BallInCourtBar(
+            count: 7,
+            buckets: .init(overdue: 3, stale: 2, untouched: 2),
+            totalValue: 48_500,
+            filterActive: true,
+            isOffline: false,
+            onToggleFilter: {}
+        )
+        // Offline
+        BallInCourtBar(
+            count: 3,
+            buckets: .init(overdue: 1, stale: 1, untouched: 1),
+            totalValue: 21_000,
+            filterActive: false,
+            isOffline: true,
+            onToggleFilter: {}
+        )
+    }
+    .padding(.vertical)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .background(OPSStyle.Colors.background)
+    .preferredColorScheme(.dark)
+}
+#endif

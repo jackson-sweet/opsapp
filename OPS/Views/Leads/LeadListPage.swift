@@ -79,3 +79,37 @@ struct LeadListPage: View {
         }
     }
 }
+
+#if DEBUG
+#Preview("LeadListPage / populated") {
+    LeadListPage(
+        viewModel: .previewLoaded(selectedStage: .qualifying),
+        stage: .qualifying,
+        inCourtFilterActive: false,
+        canManage: true,
+        onCardTap: { _ in },
+        onAdvance: { _ in },
+        onWon: { _ in },
+        onLost: { _ in },
+        onLongPress: { _ in }
+    )
+    .background(OPSStyle.Colors.background)
+    .preferredColorScheme(.dark)
+}
+
+#Preview("LeadListPage / empty") {
+    LeadListPage(
+        viewModel: .previewLoaded(opportunities: [], selectedStage: .quoting),
+        stage: .quoting,
+        inCourtFilterActive: false,
+        canManage: true,
+        onCardTap: { _ in },
+        onAdvance: { _ in },
+        onWon: { _ in },
+        onLost: { _ in },
+        onLongPress: { _ in }
+    )
+    .background(OPSStyle.Colors.background)
+    .preferredColorScheme(.dark)
+}
+#endif

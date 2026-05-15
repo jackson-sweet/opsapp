@@ -113,3 +113,35 @@ struct LeadStageStrip: View {
             .padding(.horizontal, OPSStyle.Layout.spacing2)
     }
 }
+
+#if DEBUG
+private struct LeadStageStripPreviewHost: View {
+    @State private var stage: PipelineStage = .qualifying
+    @State private var showClosed = false
+    private let counts: [PipelineStage: Int] = [
+        .newLead: 4, .qualifying: 7, .quoting: 3, .quoted: 2,
+        .followUp: 5, .negotiation: 1, .won: 12, .lost: 6
+    ]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Selected: \(stage.displayName)")
+                .font(.caption)
+                .foregroundColor(.white)
+                .padding(.horizontal)
+            LeadStageStrip(
+                selectedStage: $stage,
+                showClosed: $showClosed,
+                countProvider: { counts[$0] ?? 0 }
+            )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, 40)
+        .background(OPSStyle.Colors.background)
+    }
+}
+
+#Preview("LeadStageStrip") {
+    LeadStageStripPreviewHost()
+        .preferredColorScheme(.dark)
+}
+#endif

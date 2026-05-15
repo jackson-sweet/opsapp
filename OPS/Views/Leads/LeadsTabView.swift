@@ -21,9 +21,13 @@ private struct HeaderBottomKey: PreferenceKey {
 }
 
 struct LeadsTabView: View {
-    @StateObject private var viewModel = PipelineViewModel()
+    @StateObject private var viewModel: PipelineViewModel
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
+
+    init(viewModel: PipelineViewModel? = nil) {
+        _viewModel = StateObject(wrappedValue: viewModel ?? PipelineViewModel())
+    }
 
     @State private var headerCollapsed = false
     @State private var inCourtFilterActive = false
@@ -215,3 +219,15 @@ struct LeadsTabView: View {
         return active
     }
 }
+
+#if DEBUG
+#Preview("LeadsTabView / loaded") {
+    LeadsTabView(viewModel: .previewLoaded())
+        .leadsPreviewEnvironment()
+}
+
+#Preview("LeadsTabView / empty") {
+    LeadsTabView(viewModel: .previewLoaded(opportunities: []))
+        .leadsPreviewEnvironment()
+}
+#endif

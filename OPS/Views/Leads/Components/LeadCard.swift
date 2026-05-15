@@ -163,3 +163,85 @@ struct LeadCard: View {
         return parts.joined(separator: ", ")
     }
 }
+
+#if DEBUG
+#Preview("LeadCard / states") {
+    ScrollView {
+        VStack(spacing: 8) {
+            // Healthy
+            LeadCard(
+                opportunity: .preview(
+                    title: "Garcia kitchen remodel",
+                    contactName: "Lupita Garcia",
+                    stage: .qualifying,
+                    estimatedValue: 32_000,
+                    daysInStage: 2,
+                    lastActivityDaysAgo: 1
+                ),
+                canManage: true,
+                isPendingOfflineError: false,
+                onTap: {}, onAdvance: {}, onWon: {}, onLost: {}, onLongPress: {}
+            )
+            // Stale
+            LeadCard(
+                opportunity: .preview(
+                    title: "Hilltop pool deck",
+                    contactName: "Anna Patel",
+                    stage: .quoting,
+                    estimatedValue: 22_400,
+                    daysInStage: 9,
+                    lastActivityDaysAgo: 7
+                ),
+                canManage: true,
+                isPendingOfflineError: false,
+                onTap: {}, onAdvance: {}, onWon: {}, onLost: {}, onLongPress: {}
+            )
+            // Overdue
+            LeadCard(
+                opportunity: .preview(
+                    title: "Rivera siding job",
+                    contactName: "Sam Rivera",
+                    stage: .quoted,
+                    estimatedValue: 14_800,
+                    daysInStage: 5,
+                    lastActivityDaysAgo: 4,
+                    nextFollowUpDaysFromNow: -2
+                ),
+                canManage: true,
+                isPendingOfflineError: false,
+                onTap: {}, onAdvance: {}, onWon: {}, onLost: {}, onLongPress: {}
+            )
+            // Untouched newLead
+            LeadCard(
+                opportunity: .preview(
+                    title: "Smith deck addition",
+                    contactName: "Mike Smith",
+                    stage: .newLead,
+                    estimatedValue: 8_500,
+                    daysInStage: 0,
+                    lastActivityDaysAgo: nil
+                ),
+                canManage: true,
+                isPendingOfflineError: false,
+                onTap: {}, onAdvance: {}, onWon: {}, onLost: {}, onLongPress: {}
+            )
+            // Pending offline error
+            LeadCard(
+                opportunity: .preview(
+                    title: "Donovan fence rebuild",
+                    contactName: "Pat Donovan",
+                    stage: .followUp,
+                    estimatedValue: 6_200,
+                    daysInStage: 2
+                ),
+                canManage: false,
+                isPendingOfflineError: true,
+                onTap: {}, onAdvance: {}, onWon: {}, onLost: {}, onLongPress: {}
+            )
+        }
+        .padding()
+    }
+    .background(OPSStyle.Colors.background)
+    .preferredColorScheme(.dark)
+}
+#endif

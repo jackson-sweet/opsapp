@@ -85,3 +85,15 @@ struct ForecastBreakdownSheet: View {
         return f.string(from: NSNumber(value: value)) ?? "$0"
     }
 }
+
+#if DEBUG
+#Preview("ForecastBreakdownSheet") {
+    Color.clear.sheet(isPresented: .constant(true)) {
+        ForecastBreakdownSheet(
+            opportunities: Opportunity.previewMix,
+            onSelect: { _ in }
+        )
+        .preferredColorScheme(.dark)
+    }
+}
+#endif

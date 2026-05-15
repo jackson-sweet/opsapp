@@ -259,10 +259,6 @@ struct LeadsHeaderCarousel: View {
         }
         .frame(height: 88)
         .background(OPSStyle.Colors.cardBackground)
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-        )
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
     }
 
@@ -292,3 +288,56 @@ struct LeadsHeaderCarousel: View {
         )
     }
 }
+
+#if DEBUG
+#Preview("LeadsHeaderCarousel") {
+    LeadsHeaderCarousel(
+        weightedForecast: 184_240,
+        weightedForecastDelta: 12_400,
+        activeLeadCount: 7,
+        activePerStage: [
+            (.newLead, 2), (.qualifying, 1), (.quoting, 1),
+            (.quoted, 1), (.followUp, 1), (.negotiation, 1)
+        ],
+        closeRate: 0.42,
+        closeRateWonCount: 4,
+        closeRateLostCount: 2,
+        avgVelocityDays: 18,
+        avgVelocityDelta: -3,
+        staleLeadsCount: 2,
+        staleLeadsTotalValue: 100_900,
+        oldestStaleDescription: "9D IN QUOTING",
+        onForecastTap: {},
+        onActivePipelineTap: {},
+        onStaleRiskTap: {}
+    )
+    .padding(.vertical)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .background(OPSStyle.Colors.background)
+    .preferredColorScheme(.dark)
+}
+
+#Preview("LeadsHeaderCarousel / sparse data") {
+    LeadsHeaderCarousel(
+        weightedForecast: 0,
+        weightedForecastDelta: nil,
+        activeLeadCount: 0,
+        activePerStage: [
+            (.newLead, 0), (.qualifying, 0), (.quoting, 0),
+            (.quoted, 0), (.followUp, 0), (.negotiation, 0)
+        ],
+        closeRate: nil,
+        closeRateWonCount: 0,
+        closeRateLostCount: 0,
+        avgVelocityDays: nil,
+        avgVelocityDelta: nil,
+        staleLeadsCount: 0,
+        staleLeadsTotalValue: 0,
+        oldestStaleDescription: nil
+    )
+    .padding(.vertical)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .background(OPSStyle.Colors.background)
+    .preferredColorScheme(.dark)
+}
+#endif

@@ -3601,24 +3601,25 @@ class DataController: ObservableObject {
         }
     }
 
-    /// Updates project status when a NEW task is added
-    /// - If project is "completed" or "closed" and a non-completed/non-cancelled task is added → project becomes "inProgress"
-    /// - If project is "rfq" or "estimated" and task is "active" → project becomes "inProgress"
+    /// Updates project status when a NEW task is added.
+    /// Reopen rule only: if the project is `completed` or `closed` and a
+    /// non-completed/non-cancelled task is added, advance it back to
+    /// `inProgress` so a finished project doesn't quietly accept new work.
+    ///
+    /// Bug 1d1d9cf7 — the previous "rfq/estimated + active task →
+    /// inProgress" rule fired during new-project creation: the operator
+    /// picks a default status (rfq), adds a task via the quick-add row,
+    /// and the project silently jumped to inProgress. Removed — the
+    /// operator's chosen status is now respected.
     @MainActor
     func updateProjectStatusForNewTask(project: Project, taskStatus: TaskStatus) async {
         var shouldUpdateToInProgress = false
 
-        // Case 1: Project is "completed" or "closed" and new task is not completed/cancelled
+        // Reopen rule: project marked done but a fresh task arrived.
         if (project.status == .completed || project.status == .closed) &&
            (taskStatus != .completed && taskStatus != .cancelled) {
             shouldUpdateToInProgress = true
             print("[PROJECT_STATUS] Project '\(project.title)' is \(project.status.rawValue) but new task added with status \(taskStatus.rawValue) - updating project to inProgress")
-        }
-
-        // Case 2: Project is "rfq" or "estimated" and new task is "active"
-        if (project.status == .rfq || project.status == .estimated) && taskStatus == .active {
-            shouldUpdateToInProgress = true
-            print("[PROJECT_STATUS] Project '\(project.title)' is \(project.status.rawValue) and new task is \(taskStatus.rawValue) - updating project to inProgress")
         }
 
         if shouldUpdateToInProgress {

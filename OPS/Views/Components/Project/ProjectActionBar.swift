@@ -123,22 +123,30 @@ struct ProjectActionBar: View {
 
     var body: some View {
         let entries = actionEntries
-        let layout = ProjectActionBarLayout.plan(
-            availableWidth: UIScreen.main.bounds.width,
-            labels: entries.map(\.label)
-        )
 
-        // horizontalPadding: 4 gives the buttons more room while keeping the
-        // hairline container aligned with the active-project cards.
-        OPSActionBar(horizontalPadding: ProjectActionBarLayout.containerHorizontalPadding) {
-            actionRows(entries: entries, layout: layout)
+        // Bug 5eaa471d — mirror ProjectQuickActionsBar: horizontal scroll so
+        // long labels (e.g. "COMPLETE PUNCHLIST") and the optional MEASURE
+        // entry stay on a single line and overflow past the screen edge
+        // instead of wrapping into a multi-row grid.
+        ScrollView(.horizontal, showsIndicators: false) {
+            OPSActionBar {
+                HStack(spacing: 0) {
+                    ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                        actionButton(for: entry)
+                            .frame(minWidth: 64)
+
+                        if index < entries.count - 1 {
+                            Spacer().frame(width: 16)
+                            Rectangle()
+                                .fill(OPSStyle.Colors.cardBorderSubtle)
+                                .frame(width: 1, height: 32)
+                            Spacer().frame(width: 16)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
         }
-        .frame(maxWidth: .infinity)
-        // 16pt outer margin matches NavigationManeuverCard, ActiveProjectCard,
-        // and NavigationTripStrip so every floating card aligns to the same
-        // vertical gutter on both edges of the screen.
-        .padding(.horizontal, ProjectActionBarLayout.outerHorizontalPadding)
-        .contentMargins(.bottom, layout.rowCounts.count > 1 ? 140 : 90)
         // Bug aa3ec6d7 — confirmation copy + action follow whichever entity
         // (project or active task) the Complete button currently targets.
         // The alert content is computed once per render via `completeAlert`
@@ -235,49 +243,6 @@ struct ProjectActionBar: View {
     }
 
     @ViewBuilder
-    private func actionRows(
-        entries: [ProjectActionBarEntry],
-        layout: ProjectActionBarLayout
-    ) -> some View {
-        switch layout.arrangement {
-        case .singleRow:
-            actionRow(entries)
-        case .grid(let columns):
-            let rows = chunked(entries, columns: columns)
-
-            VStack(spacing: ProjectActionBarLayout.rowSpacing) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { index, rowEntries in
-                    actionRow(rowEntries)
-
-                    if index < rows.count - 1 {
-                        Rectangle()
-                            .fill(OPSStyle.Colors.cardBorderSubtle)
-                            .frame(height: ProjectActionBarLayout.horizontalDividerHeight)
-                    }
-                }
-            }
-        }
-    }
-
-    private func actionRow(_ entries: [ProjectActionBarEntry]) -> some View {
-        HStack(spacing: 0) {
-            ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                actionButton(for: entry)
-                    .frame(
-                        minWidth: ProjectActionBarLayout.minimumButtonWidth,
-                        maxWidth: .infinity
-                    )
-
-                if index < entries.count - 1 {
-                    Rectangle()
-                        .fill(OPSStyle.Colors.cardBorderSubtle)
-                        .frame(width: ProjectActionBarLayout.dividerWidth, height: 32)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
     private func actionButton(for entry: ProjectActionBarEntry) -> some View {
         switch entry {
         case .project(let action, let icon, let label):
@@ -298,24 +263,6 @@ struct ProjectActionBar: View {
         }
     }
 
-    private func chunked(
-        _ entries: [ProjectActionBarEntry],
-        columns: Int
-    ) -> [[ProjectActionBarEntry]] {
-        guard columns > 0 else { return [entries] }
-
-        var rows: [[ProjectActionBarEntry]] = []
-        var startIndex = 0
-
-        while startIndex < entries.count {
-            let endIndex = min(startIndex + columns, entries.count)
-            rows.append(Array(entries[startIndex..<endIndex]))
-            startIndex = endIndex
-        }
-
-        return rows
-    }
-    
     private func handleAction(_ action: ProjectAction) {
         switch action {
         case .navigate:

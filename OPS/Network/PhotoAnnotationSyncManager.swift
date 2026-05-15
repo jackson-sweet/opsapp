@@ -44,7 +44,28 @@ class PhotoAnnotationSyncManager {
                     companyId: companyId
                 )
             } catch {
-                print("[ANNOTATION SYNC] S3 upload failed, saving locally: \(error)")
+                // Auto-bug-reporting (May-12 follow-up): a permanent 4xx
+                // on the presigned-URL flow means the user's annotation
+                // will queue locally forever and never reach S3. We need
+                // to know. Transient errors fall through to the local-save
+                // fallback below — needsSync stays true so the cross-session
+                // sweeper can pick it up later.
+                await AutoBugReporter.shared.reportIfPermanent(
+                    error,
+                    screen: "PhotoAnnotationSyncManager.uploadAnnotationPNG",
+                    suspectedFile: "PhotoAnnotationSyncManager.swift",
+                    summary: "Annotation PNG S3 upload failed for project \(projectId): \(error.localizedDescription)",
+                    metadata: [
+                        "project_id": projectId,
+                        "company_id": companyId,
+                        "byte_count": pngData.count
+                    ]
+                )
+                DebugLogger.shared.log(
+                    "Annotation PNG upload failed, saving locally: \(error)",
+                    level: .warning,
+                    category: "PhotoAnnotationSyncManager"
+                )
             }
         }
 
@@ -281,7 +302,26 @@ class PhotoAnnotationSyncManager {
                 annotation.lastSyncedAt = Date()
                 try? modelContext.save()
             } catch {
-                print("[ANNOTATION SYNC] Failed to sync annotation \(annotation.id): \(error)")
+                // Auto-bug-reporting (May-12 follow-up): the retry loop
+                // hammers the same row every sweep — auto-bug on permanent
+                // so the dev team intervenes before the queue silently
+                // bloats with poisoned annotations.
+                await AutoBugReporter.shared.reportIfPermanent(
+                    error,
+                    screen: "PhotoAnnotationSyncManager.syncPendingAnnotations",
+                    suspectedFile: "PhotoAnnotationSyncManager.swift",
+                    summary: "Annotation retry failed for \(annotation.id): \(error.localizedDescription)",
+                    metadata: [
+                        "annotation_id": annotation.id,
+                        "project_id": annotation.projectId,
+                        "company_id": annotation.companyId
+                    ]
+                )
+                DebugLogger.shared.log(
+                    "Annotation sync retry failed for \(annotation.id): \(error)",
+                    level: .warning,
+                    category: "PhotoAnnotationSyncManager"
+                )
             }
         }
     }

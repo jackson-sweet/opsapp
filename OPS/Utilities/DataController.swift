@@ -176,6 +176,11 @@ class DataController: ObservableObject {
             self.connectivity = ConnectivityManager()
             // Wire up connectivity state changes now that the manager exists
             setupConnectivityMonitoring()
+
+            // AutoBugReporter needs a connectivity ref to populate
+            // bug_reports.network_type. Configure it here, the same spot
+            // every other DataController-managed singleton gets its deps.
+            AutoBugReporter.shared.configure(connectivity: self.connectivity)
         }
 
         // Create the DataActor + refresh bridge SYNCHRONOUSLY (flag-gated).

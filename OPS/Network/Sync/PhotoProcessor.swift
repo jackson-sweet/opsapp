@@ -184,18 +184,102 @@ final class PhotoProcessor {
     }
 
     /// Uploads a single photo, updating its status on success or failure.
+    ///
+    /// Retry semantics (May-12 auto-bug-reporting follow-up):
+    ///
+    ///   * IN-SESSION: exponential backoff 1s / 5s / 15s / 60s, cap 4 attempts.
+    ///     Each retry classifies the most recent error. Permanent errors
+    ///     break the loop immediately (no point hammering an RLS reject).
+    ///     The cap is the longest the user reasonably waits while watching
+    ///     a single photo upload.
+    ///
+    ///   * CROSS-SESSION: the `uploadRetryCount >= 20` threshold in
+    ///     `processUploadQueue` stays. A photo can rack up dozens of
+    ///     "session ended before signal returned" retries across days of
+    ///     bad coverage without being a bug — that's normal trades-life.
+    ///
+    /// Auto-bug fires when (a) any permanent error hits, or (b) the
+    /// in-session cap is exhausted with a non-pure-transient cause (the
+    /// latter signals "something is wrong beyond bad signal").
     private func processOneUpload(_ photo: LocalPhoto, context: ModelContext) async {
-        do {
-            let publicURL = try await uploadPhoto(photo)
-            photo.uploadedURL = publicURL
-            photo.status = "uploaded"
-            photo.uploadProgress = 1.0
-            photo.needsSync = false
-            photo.lastSyncedAt = Date()
-        } catch {
-            print("[PhotoProcessor] Upload failed for \(photo.id): \(error)")
-            photo.status = "failed"
-            photo.uploadProgress = 0
+        let backoffSeconds: [TimeInterval] = [1, 5, 15, 60]
+        var lastError: Error?
+        var lastKind: UploadErrorKind?
+
+        for attempt in 0..<backoffSeconds.count {
+            do {
+                let publicURL = try await uploadPhoto(photo)
+                photo.uploadedURL = publicURL
+                photo.status = "uploaded"
+                photo.uploadProgress = 1.0
+                photo.needsSync = false
+                photo.lastSyncedAt = Date()
+                return
+            } catch {
+                lastError = error
+                let kind = UploadErrorClassifier.classify(error)
+                lastKind = kind
+
+                // Permanent errors short-circuit the loop — retry won't help.
+                if case .permanent(let code, let reason) = kind {
+                    await AutoBugReporter.shared.report(
+                        screen: "PhotoProcessor.processOneUpload",
+                        suspectedFile: "PhotoProcessor.swift",
+                        errorCode: code,
+                        summary: "Photo upload permanent failure for \(photo.id): \(reason)",
+                        metadata: [
+                            "photo_id": photo.id,
+                            "entity_type": photo.entityType,
+                            "entity_id": photo.entityId,
+                            "company_id": photo.companyId,
+                            "in_session_attempt": attempt + 1,
+                            "cross_session_retry_count": photo.uploadRetryCount
+                        ]
+                    )
+                    break
+                }
+
+                // Transient / unknown — sleep before next attempt unless
+                // this was the final cap-exhaust pass.
+                if attempt < backoffSeconds.count - 1 {
+                    let ns = UInt64(backoffSeconds[attempt] * 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: ns)
+                }
+            }
+        }
+
+        // Upload didn't succeed in-session. Mark failed so the cross-session
+        // retry loop in processUploadQueue picks it up next time. The
+        // uploadRetryCount on the LocalPhoto bumps once per processUploadQueue
+        // pass, not once per in-session attempt — so 4 in-session retries
+        // count as 1 cross-session attempt against the 20 cap.
+        photo.status = "failed"
+        photo.uploadProgress = 0
+
+        // Auto-bug only if the cap-exhaust cause is NOT a pure transient
+        // (e.g. unknown error or repeated 5xx with no recovery). Pure
+        // transient = "the user is offline / has bad signal" which is
+        // normal in the field; the cross-session retry handles it.
+        if let kind = lastKind, let error = lastError {
+            await AutoBugReporter.shared.reportRetryExhausted(
+                kind: kind,
+                attempts: backoffSeconds.count,
+                screen: "PhotoProcessor.processOneUpload",
+                suspectedFile: "PhotoProcessor.swift",
+                summary: "Photo upload retry-exhausted for \(photo.id): \(error.localizedDescription)",
+                metadata: [
+                    "photo_id": photo.id,
+                    "entity_type": photo.entityType,
+                    "entity_id": photo.entityId,
+                    "company_id": photo.companyId,
+                    "cross_session_retry_count": photo.uploadRetryCount
+                ]
+            )
+            DebugLogger.shared.log(
+                "PhotoProcessor in-session retries exhausted for \(photo.id): \(error)",
+                level: .warning,
+                category: "PhotoProcessor"
+            )
         }
     }
 

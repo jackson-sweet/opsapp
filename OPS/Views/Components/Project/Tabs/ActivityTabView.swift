@@ -597,9 +597,30 @@ private struct ProjectPhotosCarousel: View {
                         // photos so the user sees their pick land on
                         // the right side of the carousel and slide left
                         // into the row once the upload finishes.
+                        //
+                        // Auto-bug-reporting (May-12 follow-up): failed
+                        // tiles stay rendered with a red badge so the
+                        // user knows the photo did NOT make it. Tap
+                        // retries (transient) or dismisses (permanent).
                         ForEach(pending) { upload in
-                            UploadingPhotoTile(image: upload.image)
-                                .transition(.opacity)
+                            UploadingPhotoTile(
+                                upload: upload,
+                                onRetry: {
+                                    Task {
+                                        await imageSyncManager.retryFailedInFlightUpload(
+                                            id: upload.id,
+                                            for: project.id
+                                        )
+                                    }
+                                },
+                                onDismiss: {
+                                    imageSyncManager.dismissFailedInFlightUpload(
+                                        id: upload.id,
+                                        for: project.id
+                                    )
+                                }
+                            )
+                            .transition(.opacity)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -707,13 +728,30 @@ private struct CarouselVisibilityButton: View {
 /// Small tile showing the user's just-picked image dimmed under a
 /// circular spinner. Replaces a `PhotoThumbnail` only while the upload
 /// is in flight. Pulses gently so the user knows the upload is alive.
+/// Bug e5310f3d + May-12 auto-bug-reporting follow-up. Renders an in-flight
+/// upload as either a spinner (default) or a red-badged failed tile with a
+/// tap-to-retry primary action and a long-press dismiss. Failed tiles stay
+/// in the carousel until the user acks them — silent disappearance was the
+/// May-12 outage UX, and we never repeat it.
 private struct UploadingPhotoTile: View {
-    let image: UIImage
+    let upload: InFlightUpload
+    let onRetry: () -> Void
+    let onDismiss: () -> Void
     @State private var pulse = false
 
     var body: some View {
+        Group {
+            if upload.failed {
+                failedTile
+            } else {
+                pendingTile
+            }
+        }
+    }
+
+    private var pendingTile: some View {
         ZStack {
-            Image(uiImage: image)
+            Image(uiImage: upload.image)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
                 .frame(width: 72, height: 72)
@@ -735,6 +773,58 @@ private struct UploadingPhotoTile: View {
             // network feels alive without being distracting in the field.
             withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
                 pulse = true
+            }
+        }
+    }
+
+    private var failedTile: some View {
+        Button(action: onRetry) {
+            ZStack(alignment: .topTrailing) {
+                Image(uiImage: upload.image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 72, height: 72)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .fill(Color.black.opacity(0.55))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .strokeBorder(OPSStyle.Colors.errorStatus, lineWidth: 1.5)
+                    )
+
+                // Red corner badge — tap-to-retry primary affordance lives
+                // on the whole tile, the badge is a visual signal.
+                ZStack {
+                    Circle()
+                        .fill(OPSStyle.Colors.errorStatus)
+                        .frame(width: 18, height: 18)
+                    Image(systemName: "exclamationmark")
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+                .offset(x: 4, y: -4)
+
+                // "RETRY" label centered for clarity when the tile is small.
+                Text("RETRY")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    .padding(.leading, 6)
+                    .padding(.bottom, 6)
+            }
+            .frame(width: 72, height: 72)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(
+            upload.lastError.map { "Upload failed: \($0). Tap to retry, long-press to dismiss." }
+                ?? "Upload failed. Tap to retry, long-press to dismiss."
+        )
+        .contextMenu {
+            Button(role: .destructive, action: onDismiss) {
+                Label("Dismiss", systemImage: "trash")
             }
         }
     }

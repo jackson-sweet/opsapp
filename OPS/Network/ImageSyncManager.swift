@@ -102,10 +102,22 @@ class ImageSyncManager: ObservableObject {
         // so the carousel can show placeholder cards with loaders. Each
         // pending upload carries a UIImage we can render right away while
         // the bytes climb to S3.
+        //
+        // Auto-bug-reporting (May-12 follow-up): only `endInFlightUploads`
+        // when we know the upload settled cleanly. If a permanent error
+        // hits, we flip the tile to failed state and KEEP it in the map so
+        // the user sees the red badge instead of a silent disappearance.
         let placeholders = beginInFlightUploads(images, for: project)
-        defer { endInFlightUploads(placeholders.map { $0.id }, for: project.id) }
-
+        let placeholderIds = placeholders.map { $0.id }
         var savedURLs: [String] = []
+        var tilesShouldRemainAsFailed = false
+
+        defer {
+            // Only clear tiles that did NOT end up in the failed state.
+            if !tilesShouldRemainAsFailed {
+                endInFlightUploads(placeholderIds, for: project.id)
+            }
+        }
 
         if connectivity.isConnected {
             do {
@@ -127,18 +139,29 @@ class ImageSyncManager: ObservableObject {
                     .eq("id", value: project.id)
                     .execute()
 
-                // Bug 7b43be32 — also insert one project_photos row per URL
-                // so the web client portal can see them. Without this row
-                // the photo appears in the iOS app but never reaches the
-                // portal because the portal only reads project_photos.
+                // Bug 7b43be32 + May-12 follow-up — also insert one
+                // project_photos row per URL so the web client portal can
+                // see them. The May-12 outage came from RLS rejecting this
+                // insert; insertProjectPhotoRows now auto-bugs + returns
+                // false so we can flip the tile to failed and surface the
+                // portal-sync failure even though S3+projects succeeded.
                 let uploaderId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
-                await insertProjectPhotoRows(
+                let portalMirrorSucceeded = await insertProjectPhotoRows(
                     urls: savedURLs,
                     projectId: project.id,
                     companyId: companyId,
                     uploadedBy: uploaderId,
                     source: "in_progress"
                 )
+
+                if !portalMirrorSucceeded {
+                    markInFlightUploadsFailed(
+                        ids: placeholderIds,
+                        for: project.id,
+                        lastError: "Portal sync failed — photo saved locally but not yet visible in the client portal."
+                    )
+                    tilesShouldRemainAsFailed = true
+                }
 
                 // Images uploaded to S3 and Supabase updated — no further sync needed
                 project.needsSync = false
@@ -149,10 +172,41 @@ class ImageSyncManager: ObservableObject {
                 }
 
             } catch {
-                // Offline fallback - save locally and queue for later
-                for (index, image) in images.enumerated() {
-                    if let localURL = await saveImageLocally(image, for: project, index: index) {
-                        savedURLs.append(localURL)
+                // Classify before falling through. Permanent errors here
+                // mean the projects row update or S3 upload itself was
+                // rejected — auto-bug + surface red badge. Transient is
+                // the normal offline-fallback path (save locally, drain
+                // later via syncPendingImages).
+                let kind = UploadErrorClassifier.classify(error)
+                if case .permanent(let code, let reason) = kind {
+                    await AutoBugReporter.shared.report(
+                        screen: "ImageSyncManager.saveImages",
+                        suspectedFile: "ImageSyncManager.swift",
+                        errorCode: code,
+                        summary: "saveImages permanent failure for project \(project.id): \(reason)",
+                        metadata: [
+                            "project_id": project.id,
+                            "image_count": images.count
+                        ]
+                    )
+                    markInFlightUploadsFailed(
+                        ids: placeholderIds,
+                        for: project.id,
+                        lastError: "Upload rejected by server — \(reason). Tap to retry."
+                    )
+                    tilesShouldRemainAsFailed = true
+                } else {
+                    // Transient (or unknown) — fall back to local save so
+                    // the periodic retry timer picks it up later.
+                    DebugLogger.shared.log(
+                        "saveImages transient/unknown failure (\(kind)) for \(project.id): \(error)",
+                        level: .warning,
+                        category: "ImageSyncManager"
+                    )
+                    for (index, image) in images.enumerated() {
+                        if let localURL = await saveImageLocally(image, for: project, index: index) {
+                            savedURLs.append(localURL)
+                        }
                     }
                 }
             }
@@ -175,14 +229,18 @@ class ImageSyncManager: ObservableObject {
     /// the portal until the next reconciliation pass. We default
     /// `is_client_visible` to false to match the column default; the crew
     /// opts each photo in via the per-photo toggle.
+    ///
+    /// Returns whether the insert succeeded so the caller can drive the
+    /// in-flight tile state (May-12 follow-up).
+    @discardableResult
     private func insertProjectPhotoRows(
         urls: [String],
         projectId: String,
         companyId: String,
         uploadedBy: String,
         source: String
-    ) async {
-        guard !urls.isEmpty else { return }
+    ) async -> Bool {
+        guard !urls.isEmpty else { return true }
 
         struct ProjectPhotoInsert: Codable {
             let project_id: String
@@ -215,8 +273,31 @@ class ImageSyncManager: ObservableObject {
                 .from("project_photos")
                 .insert(rows)
                 .execute()
+            return true
         } catch {
-            print("[IMAGE_SYNC] Failed to insert project_photos rows for \(projectId): \(error)")
+            // May-12 outage site. Was: `print(error)` and continue silently,
+            // which let an RLS tightening on project_photos.INSERT swallow
+            // 3 days of Crew/Unassigned uploads with zero signal. Now:
+            // classify, auto-bug if permanent, return false so the carousel
+            // can render a failed tile.
+            let kind = await AutoBugReporter.shared.reportIfPermanent(
+                error,
+                screen: "ImageSyncManager.insertProjectPhotoRows",
+                suspectedFile: "ImageSyncManager.swift",
+                summary: "project_photos INSERT failed for project \(projectId): \(error.localizedDescription)",
+                metadata: [
+                    "project_id": projectId,
+                    "company_id": companyId,
+                    "url_count": urls.count,
+                    "source": source
+                ]
+            )
+            DebugLogger.shared.log(
+                "project_photos insert failed (\(kind)) for \(projectId): \(error)",
+                level: .error,
+                category: "ImageSyncManager"
+            )
+            return false
         }
     }
 
@@ -502,11 +583,41 @@ class ImageSyncManager: ObservableObject {
             }
 
         } catch {
-            print("[IMAGE_SYNC] Failed to sync images for project \(projectId): \(error)")
-            // Bug b171536b — failure path: keep the queue intact and
-            // make sure the retry timer is alive so the next pass fires
-            // automatically. Weak connections often need several tries
-            // before succeeding.
+            // Bug b171536b — keep the queue intact and ensure the retry
+            // timer is alive so the next pass fires automatically. Weak
+            // connections often need several tries.
+            //
+            // Auto-bug-reporting (May-12 follow-up): classify before
+            // retrying. A permanent rejection (RLS 42501, 4xx) will keep
+            // failing forever on the same poisoned item — auto-bug AND
+            // drop the offending uploads from the queue so we don't burn
+            // the retry timer on a rejection the server will never accept.
+            // Transient errors stay queued for the next pass.
+            let kind = UploadErrorClassifier.classify(error)
+            if case .permanent(let code, let reason) = kind {
+                await AutoBugReporter.shared.report(
+                    screen: "ImageSyncManager.syncImagesForProject",
+                    suspectedFile: "ImageSyncManager.swift",
+                    errorCode: code,
+                    summary: "Offline-drain permanent failure for project \(projectId): \(reason)",
+                    metadata: [
+                        "project_id": projectId,
+                        "queued_count": uploads.count
+                    ]
+                )
+                // Drop the poisoned items — the retry loop would otherwise
+                // hit the same rejection every 30s forever.
+                pendingUploads.removeAll { upload in
+                    uploads.contains { $0.localURL == upload.localURL }
+                }
+                savePendingUploads()
+            } else {
+                DebugLogger.shared.log(
+                    "syncImagesForProject transient/unknown failure (\(kind)) for \(projectId): \(error)",
+                    level: .warning,
+                    category: "ImageSyncManager"
+                )
+            }
             startRetryTimerIfNeeded()
         }
     }
@@ -628,9 +739,61 @@ class ImageSyncManager: ObservableObject {
         }
     }
 
+    /// Auto-bug-reporting (May-12 follow-up): flip the failed flag for a
+    /// set of in-flight tiles so the carousel can render them with a red
+    /// badge + tap-to-retry instead of silently disappearing. Called from
+    /// catch sites that hit a permanent rejection (RLS, 4xx, validation).
+    func markInFlightUploadsFailed(
+        ids: [String],
+        for projectId: String,
+        lastError: String?
+    ) {
+        guard var current = inFlightUploads[projectId] else { return }
+        let idSet = Set(ids)
+        for index in current.indices where idSet.contains(current[index].id) {
+            current[index].failed = true
+            current[index].lastError = lastError
+        }
+        inFlightUploads[projectId] = current
+    }
+
+    /// Drop a single failed tile from the carousel — used when the user
+    /// taps "dismiss" on a permanent-failure tile after acknowledging it.
+    /// (Tap-to-retry uses retryFailedInFlightUpload instead.)
+    func dismissFailedInFlightUpload(id: String, for projectId: String) {
+        endInFlightUploads([id], for: projectId)
+    }
+
     /// Public accessor — used by the carousel to render upload spinners.
     func currentInFlightUploads(for projectId: String) -> [InFlightUpload] {
         return inFlightUploads[projectId] ?? []
+    }
+
+    /// Re-attempt a failed in-flight upload. The tile flips back to the
+    /// in-flight state (spinner), then runs the same upload pipeline. If
+    /// the underlying cause was permanent (likely), the tile fails again
+    /// and the user can dismiss it. If it was a transient that lingered
+    /// past the in-session retry cap, this is the manual retry path.
+    func retryFailedInFlightUpload(id: String, for projectId: String) async {
+        guard var current = inFlightUploads[projectId],
+              let index = current.firstIndex(where: { $0.id == id }),
+              current[index].failed else { return }
+
+        let image = current[index].image
+        current[index].failed = false
+        current[index].lastError = nil
+        inFlightUploads[projectId] = current
+
+        guard let project = getProject(by: projectId) else {
+            // Project went away under us — drop the tile.
+            endInFlightUploads([id], for: projectId)
+            return
+        }
+        _ = await saveImages([image], for: project)
+        // saveImages owns its own in-flight lifecycle for the new batch.
+        // The old failed tile (same id) gets cleared once the new batch
+        // settles or fails again.
+        endInFlightUploads([id], for: projectId)
     }
 
     // MARK: - Image Processing Helpers
@@ -681,9 +844,24 @@ class ImageSyncManager: ObservableObject {
 /// to S3 and Supabase. The carousel renders one placeholder per item
 /// in this list while the upload finishes; the placeholder dissolves
 /// into the real photo once `inFlightUploads` no longer contains it.
+///
+/// Auto-bug-reporting (May-12 follow-up): when an upload hits a permanent
+/// server rejection (RLS denied, validation, 4xx), `failed = true` and
+/// `lastError` carries the human-readable cause. The carousel renders
+/// the tile with a red corner badge and tap-to-retry instead of removing
+/// it, so the user sees that the photo did NOT make it to the project.
 public struct InFlightUpload: Identifiable {
     public let id: String
     public let image: UIImage
+    public var failed: Bool
+    public var lastError: String?
+
+    public init(id: String, image: UIImage, failed: Bool = false, lastError: String? = nil) {
+        self.id = id
+        self.image = image
+        self.failed = failed
+        self.lastError = lastError
+    }
 }
 
 /// Model for a pending image upload

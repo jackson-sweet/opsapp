@@ -431,6 +431,10 @@ public final class DimensionedPhotoSyncManager {
         // 4. Best-effort `project_photos` row so the web portal sees the photo.
         // Mirrors the `ImageSyncManager.insertProjectPhotoRows` pattern — a
         // failure here logs but doesn't block the annotation insert.
+        //
+        // Auto-bug-reporting (May-12 follow-up): same RLS-tightening shape
+        // that triggered the original outage applies here too. Classify
+        // and auto-bug if permanent so we don't repeat the silent loss.
         do {
             try await persister.insertProjectPhotoRow(
                 url: heicURLString,
@@ -440,7 +444,22 @@ public final class DimensionedPhotoSyncManager {
                 takenAt: captured.captureFinishedAt
             )
         } catch {
-            print("[DIMENSIONED_SYNC] project_photos insert failed (continuing): \(error)")
+            await AutoBugReporter.shared.reportIfPermanent(
+                error,
+                screen: "DimensionedPhotoSyncManager.insertProjectPhotoRow",
+                suspectedFile: "DimensionedPhotoSyncManager.swift",
+                summary: "LiDAR project_photos INSERT failed for \(projectId): \(error.localizedDescription)",
+                metadata: [
+                    "project_id": projectId,
+                    "company_id": companyId,
+                    "capture_id": captured.captureID.uuidString
+                ]
+            )
+            DebugLogger.shared.log(
+                "LiDAR project_photos insert failed (continuing): \(error)",
+                level: .warning,
+                category: "DimensionedPhotoSyncManager"
+            )
         }
 
         // 5. Authoritative `project_photo_annotations` insert with dimensions jsonb.
@@ -454,6 +473,22 @@ public final class DimensionedPhotoSyncManager {
                 dimensions: enriched
             )
         } catch {
+            // Auto-bug if permanent — a 42501 on annotation insert means
+            // a parallel RLS tightening on project_photo_annotations and
+            // would silently kill measurement sync if we just queued it.
+            await AutoBugReporter.shared.reportIfPermanent(
+                error,
+                screen: "DimensionedPhotoSyncManager.insertAnnotationRow",
+                suspectedFile: "DimensionedPhotoSyncManager.swift",
+                summary: "LiDAR annotation INSERT failed for \(projectId): \(error.localizedDescription)",
+                metadata: [
+                    "project_id": projectId,
+                    "company_id": companyId,
+                    "capture_id": captured.captureID.uuidString,
+                    "photo_url": heicURLString
+                ]
+            )
+
             let stub = makeQueuedAnnotation(
                 captured: captured,
                 dimensions: enriched,
@@ -708,7 +743,27 @@ public final class DimensionedPhotoSyncManager {
                 annotation.lastSyncedAt = Date()
                 try? modelContext.save()
             } catch {
-                print("[DIMENSIONED_SYNC] Retry failed for \(annotation.id): \(error)")
+                // Auto-bug-reporting (May-12 follow-up): the queued-retry
+                // loop will hammer the same poisoned row every retry pass.
+                // If the underlying cause is permanent, we need to know
+                // immediately so the dev team can intervene before the
+                // user's measurement queue silently bloats.
+                await AutoBugReporter.shared.reportIfPermanent(
+                    error,
+                    screen: "DimensionedPhotoSyncManager.retryQueued",
+                    suspectedFile: "DimensionedPhotoSyncManager.swift",
+                    summary: "Queued LiDAR annotation retry failed for \(annotation.id): \(error.localizedDescription)",
+                    metadata: [
+                        "annotation_id": annotation.id,
+                        "project_id": annotation.projectId,
+                        "company_id": annotation.companyId
+                    ]
+                )
+                DebugLogger.shared.log(
+                    "DimensionedPhotoSyncManager retry failed for \(annotation.id): \(error)",
+                    level: .warning,
+                    category: "DimensionedPhotoSyncManager"
+                )
             }
         }
     }

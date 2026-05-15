@@ -29,6 +29,8 @@ struct ActivityEntryView: View {
     let onEdit: (String) -> Void
     let onPhotoTap: (([String], Int) -> Void)?
 
+    @EnvironmentObject private var dataController: DataController
+
     @State private var isEditing = false
     @State private var editText = ""
     @State private var showDeleteConfirmation = false
@@ -39,6 +41,12 @@ struct ActivityEntryView: View {
     @State private var editMentionSuggestions: [TeamMember] = []
     @State private var editShowAllTeam = false
     @State private var editShowMentionPicker = false
+
+    // Bug f6cd3c43 — tapping an `@mention` in the rendered note opens
+    // that teammate's contact sheet inline. Kept local to the entry
+    // card so we don't have to thread a callback through ActivityTabView
+    // and ProjectDetailsView (the latter currently has parallel WIP).
+    @State private var contactSheetMember: User? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -166,6 +174,11 @@ struct ActivityEntryView: View {
         } message: {
             Text("Are you sure you want to delete this note?")
         }
+        // Bug f6cd3c43 — opens when the user taps an `@member` span.
+        .sheet(item: $contactSheetMember) { member in
+            ContactDetailView(user: member)
+                .environmentObject(dataController)
+        }
     }
 
     // MARK: - Helpers
@@ -277,52 +290,66 @@ struct ActivityEntryView: View {
         clearEditMentionState()
     }
 
-    /// Bug 213bbaa4 — render `@Mention` spans in the accent colour with
-    /// the rest of the body in the primary colour. Mentions can contain
-    /// spaces (e.g. "@Harrison Sweet", "@All Team"), so a naive
-    /// `split(separator: " ")` paints only the first word. Instead we
-    /// scan for `@`, look ahead for the longest match against
-    /// `mentionNames` (sorted longest-first so "All Team" wins over
-    /// "All"), and highlight that whole span. Unrecognised `@<token>`
-    /// strings still highlight the single token as a graceful fallback —
-    /// preserves intent when the mention's referent has been removed
-    /// from the team or when the post comes from another platform
-    /// using a slightly different mention shape.
+    /// Bug 213bbaa4 + f6cd3c43 — render `@Mention` spans in the accent
+    /// colour and (when the matched span is a real teammate) attach a
+    /// link so tapping the mention opens that teammate's contact sheet.
+    /// Mentions can contain spaces (e.g. "@Harrison Sweet", "@All Team"),
+    /// so a naive split-on-space paints only the first word. We scan
+    /// for `@`, look ahead for the longest match against `mentionNames`
+    /// (sorted longest-first so "All Team" wins over "All"), and
+    /// highlight the whole span. Unrecognised `@<token>` strings still
+    /// highlight as a graceful fallback — preserves intent when the
+    /// mention's referent has been removed from the team or when the
+    /// post comes from another platform.
     private func mentionHighlightedText(_ text: String) -> some View {
+        Text(mentionAttributedText(text))
+            .environment(\.openURL, OpenURLAction { url in
+                guard url.scheme == "opsmention", let memberId = url.host else {
+                    return .systemAction
+                }
+                openContactSheet(forMemberId: memberId)
+                return .handled
+            })
+    }
+
+    private func mentionAttributedText(_ text: String) -> AttributedString {
         // Sort longest-first so "All Team" wins the prefix match against
         // "All" if both happen to be valid.
         let sortedNames = mentionNames.sorted { $0.count > $1.count }
 
-        var segments: [(text: String, isMention: Bool)] = []
+        var result = AttributedString()
         var buffer = ""
         var i = text.startIndex
 
+        func flushPlainBuffer() {
+            guard !buffer.isEmpty else { return }
+            var plain = AttributedString(buffer)
+            plain.font = OPSStyle.Typography.body
+            plain.foregroundColor = OPSStyle.Colors.primaryText
+            result.append(plain)
+            buffer = ""
+        }
+
         while i < text.endIndex {
             if text[i] == "@" {
-                if !buffer.isEmpty {
-                    segments.append((buffer, false))
-                    buffer = ""
-                }
+                flushPlainBuffer()
                 let afterAt = text.index(after: i)
                 let remainder = text[afterAt...]
 
-                // Try the longest-known-mention match first.
                 if let matched = sortedNames.first(where: { remainder.hasPrefix($0) }) {
-                    segments.append(("@" + matched, true))
+                    result.append(mentionSpan(matched))
                     i = text.index(afterAt, offsetBy: matched.count)
                     continue
                 }
 
-                // Fallback: highlight the contiguous non-space token after `@`.
                 let tokenEnd = remainder.firstIndex(where: { $0 == " " || $0 == "\n" }) ?? text.endIndex
                 let token = String(remainder[..<tokenEnd])
                 if !token.isEmpty {
-                    segments.append(("@" + token, true))
+                    result.append(mentionSpan(token))
                     i = tokenEnd
                     continue
                 }
 
-                // Bare "@" with nothing after it — treat as plain text.
                 buffer.append("@")
                 i = afterAt
             } else {
@@ -331,16 +358,34 @@ struct ActivityEntryView: View {
             }
         }
 
-        if !buffer.isEmpty {
-            segments.append((buffer, false))
-        }
-
-        var result = Text("")
-        for segment in segments {
-            result = result + Text(segment.text)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(segment.isMention ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
-        }
+        flushPlainBuffer()
         return result
+    }
+
+    /// Build the styled `@Name` span. Attaches a custom-scheme link only
+    /// when the name resolves to a known TeamMember — `@All Team` and
+    /// orphaned mentions render coloured but inert (no link, no tap).
+    private func mentionSpan(_ name: String) -> AttributedString {
+        var span = AttributedString("@\(name)")
+        span.font = OPSStyle.Typography.body
+        span.foregroundColor = OPSStyle.Colors.primaryAccent
+        if let member = allTeamMembers.first(where: { $0.fullName == name }),
+           let url = URL(string: "opsmention://\(member.id)") {
+            span.link = url
+        }
+        return span
+    }
+
+    /// Resolve the tapped mention to a `User` via DataController and
+    /// surface its contact sheet. Silently no-ops when the teammate is
+    /// no longer on the company roster (e.g. removed since the note was
+    /// posted) — same graceful-degradation policy as the renderer.
+    private func openContactSheet(forMemberId memberId: String) {
+        guard let companyId = dataController.currentUser?.companyId else { return }
+        let users = dataController.getTeamMembers(companyId: companyId)
+        if let user = users.first(where: { $0.id == memberId }) {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            contactSheetMember = user
+        }
     }
 }

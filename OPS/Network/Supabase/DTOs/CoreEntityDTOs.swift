@@ -229,6 +229,11 @@ struct SupabaseProjectDTO: Codable, Identifiable {
     let deletedAt: String?
     let createdAt: String?
     let createdBy: String?
+    /// Server-maintained `projects.updated_at` (bug 70a4d9fd). Read-only
+    /// from iOS — Supabase auto-bumps it on every write, so outbound
+    /// callers don't pass it. Declared as `var` with a default so the
+    /// synthesized memberwise init keeps its existing arity.
+    var updatedAt: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, title, status, address, latitude, longitude, notes, description, duration
@@ -245,6 +250,7 @@ struct SupabaseProjectDTO: Codable, Identifiable {
         case deletedAt      = "deleted_at"
         case createdAt      = "created_at"
         case createdBy      = "created_by"
+        case updatedAt      = "updated_at"
     }
 }
 

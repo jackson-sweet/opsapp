@@ -110,19 +110,19 @@ struct JobBoardProjectListView: View {
         switch sortOption.wrappedValue {
         case .latestEdited:
             return filtered.sorted { p1, p2 in
-                // Proxy "last edited" as the most recent of lastSyncedAt
-                // (updated on every outbound sync) or the scheduled start
-                // date. lastSyncedAt alone is populated by inbound syncs
-                // too, but for the user it still represents "recency".
-                let p1Stamp = p1.lastSyncedAt ?? p1.startDate ?? Date.distantPast
-                let p2Stamp = p2.lastSyncedAt ?? p2.startDate ?? Date.distantPast
-                return p1Stamp > p2Stamp
+                // Bug 70a4d9fd — "most recently touched" means the
+                // server-side `projects.updated_at`, which is bumped on
+                // every write. `lastSyncedAt` (previous proxy) shifts on
+                // every inbound sync regardless of who edited what, and
+                // `startDate` is the scheduled day, not a recency signal.
+                // Take max(updatedAt, createdAt) so legacy rows synced
+                // before updated_at was plumbed still rank by their
+                // creation time instead of falling to the bottom.
+                return Self.recencyStamp(for: p1) > Self.recencyStamp(for: p2)
             }
         case .earliestEdited:
             return filtered.sorted { p1, p2 in
-                let p1Stamp = p1.lastSyncedAt ?? p1.startDate ?? Date.distantFuture
-                let p2Stamp = p2.lastSyncedAt ?? p2.startDate ?? Date.distantFuture
-                return p1Stamp < p2Stamp
+                return Self.recencyStamp(for: p1) < Self.recencyStamp(for: p2)
             }
         case .scheduledDateDescending:
             return filtered.sorted { p1, p2 in
@@ -187,6 +187,13 @@ struct JobBoardProjectListView: View {
         filteredProjects
             .filter { $0.status == .archived }
             .sorted { ($0.completedAt ?? $0.endDate ?? .distantPast) > ($1.completedAt ?? $1.endDate ?? .distantPast) }
+    }
+
+    /// Bug 70a4d9fd — "most recently touched" stamp for the latest/earliest
+    /// edited sorts. Prefers the server-maintained `updatedAt`; falls back
+    /// to `createdAt` for legacy rows synced before that column was plumbed.
+    private static func recencyStamp(for project: Project) -> Date {
+        max(project.updatedAt ?? .distantPast, project.createdAt ?? .distantPast)
     }
 
     var body: some View {

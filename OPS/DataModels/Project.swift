@@ -72,6 +72,13 @@ final class Project: Identifiable {
     var createdAt: Date?
     var createdBy: String?
 
+    // Server-maintained "row touched" timestamp from `projects.updated_at`.
+    // Auto-bumped on every Supabase write. Drives the JobBoard "latest
+    // edited" sort (bug 70a4d9fd). Nil for rows synced before this
+    // column was plumbed; the sort falls back to `createdAt` in that
+    // case so legacy projects still rank coherently.
+    var updatedAt: Date?
+
     // Transient properties (not persisted to database)
     @Transient var lastTapped: Date?
     @Transient var coordinatorData: [String: Any]?

@@ -226,6 +226,7 @@ extension SupabaseProjectDTO {
         project.deletedAt = deletedAt.flatMap { SupabaseDate.parse($0) }
         project.createdAt = createdAt.flatMap { SupabaseDate.parse($0) }
         project.createdBy = createdBy
+        project.updatedAt = updatedAt.flatMap { SupabaseDate.parse($0) }
         return project
     }
 }

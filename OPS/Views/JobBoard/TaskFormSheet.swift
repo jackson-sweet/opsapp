@@ -1850,6 +1850,13 @@ struct TeamMemberPickerSheet: View {
     /// "your usual crew" and the rest. Empty when no task type is selected
     /// or no prior assignments exist.
     var recentMemberIds: Set<String> = []
+    /// Bug 040e4482 — fired only when the operator taps DONE. Drag-to-dismiss
+    /// does NOT call this, so callers that need to distinguish "explicit
+    /// commit" from "swipe away" (e.g. the unscheduled review's swipe-right
+    /// path, which auto-schedules after a commit) can act conditionally.
+    /// Optional so existing callers that treat dismiss-equals-commit
+    /// (TaskFormSheet's live-binding flow) keep their current behavior.
+    var onConfirm: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.tutorialMode) private var isTutorialMode
 
@@ -1945,6 +1952,7 @@ struct TeamMemberPickerSheet: View {
 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("DONE") {
+                        onConfirm?()
                         dismiss()
                     }
                     .font(OPSStyle.Typography.bodyBold)

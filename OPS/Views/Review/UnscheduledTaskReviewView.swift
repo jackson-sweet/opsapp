@@ -28,6 +28,11 @@ struct UnscheduledTaskReviewView: View {
     @State private var showCrewPicker: Bool = false
     @State private var pendingAssignTask: ProjectTask? = nil
     @State private var assignSelectedIds: Set<String> = []
+    /// Bug 040e4482 — true only after the operator explicitly taps DONE in
+    /// the crew picker. Drag-to-dismiss leaves this false so we treat the
+    /// gesture as a back-out instead of silently applying whatever rows the
+    /// operator was tapping through.
+    @State private var pickerDidConfirm: Bool = false
     @State private var showAllDone: Bool = false
     @State private var celebrationScale: CGFloat = 0
     @State private var celebrationOpacity: Double = 0
@@ -193,7 +198,8 @@ struct UnscheduledTaskReviewView: View {
             TeamMemberPickerSheet(
                 selectedTeamMemberIds: $assignSelectedIds,
                 allTeamMembers: ordered,
-                recentMemberIds: recentIds
+                recentMemberIds: recentIds,
+                onConfirm: { pickerDidConfirm = true }
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
@@ -507,6 +513,7 @@ struct UnscheduledTaskReviewView: View {
                 // Task has no crew — open picker, then auto-schedule after assignment
                 pendingAssignTask = task
                 assignSelectedIds = []
+                pickerDidConfirm = false
                 showCrewPicker = true
             } else {
                 // Already assigned — auto-schedule immediately
@@ -530,6 +537,7 @@ struct UnscheduledTaskReviewView: View {
                 // but still unscheduled.
                 pendingAssignTask = task
                 assignSelectedIds = Set(task.getTeamMemberIds())
+                pickerDidConfirm = false
                 showCrewPicker = true
             } else {
                 // Assigned — mark complete via canonical path.
@@ -549,7 +557,15 @@ struct UnscheduledTaskReviewView: View {
     private func handleCrewPickerDismiss() {
         guard let task = pendingAssignTask else { return }
 
-        if !assignSelectedIds.isEmpty {
+        // Bug 040e4482 — only commit the picker selections when the operator
+        // explicitly tapped DONE. Drag-to-dismiss is a back-out gesture; the
+        // ephemeral row taps the user made while exploring should not turn
+        // into a silent crew assignment + auto-schedule. The card still
+        // counts as reviewed since the operator has seen and decided on it.
+        let confirmed = pickerDidConfirm
+        let selectionsToApply = confirmed ? assignSelectedIds : Set<String>()
+
+        if !selectionsToApply.isEmpty {
             // Apply crew assignment, then auto-schedule when the task still
             // has no dates. The card has been bumped from the review stack
             // either way — the operator's intent is "resolve this," so we
@@ -559,7 +575,7 @@ struct UnscheduledTaskReviewView: View {
             Task {
                 try? await dataController.updateTaskTeamMembers(
                     task: task,
-                    memberIds: Array(assignSelectedIds)
+                    memberIds: Array(selectionsToApply)
                 )
 
                 if shouldAutoSchedule {
@@ -568,11 +584,18 @@ struct UnscheduledTaskReviewView: View {
                     }
                 }
             }
+        } else if confirmed {
+            // Operator hit DONE with no selections — explicit no-op. Surface
+            // a toast so the swipe has a visible effect instead of feeling
+            // like the gesture was swallowed.
+            showToast("NO CREW SELECTED — TASK LEFT UNASSIGNED", kind: .error)
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
         }
 
         reviewedCount += 1
         pendingAssignTask = nil
         assignSelectedIds = []
+        pickerDidConfirm = false
         checkCompletion()
     }
 

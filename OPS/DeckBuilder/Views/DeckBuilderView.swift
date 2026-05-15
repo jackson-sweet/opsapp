@@ -36,12 +36,17 @@ struct DeckBuilderView: View {
         return keyWindow?.safeAreaInsets.top ?? 0
     }
 
-    /// Top padding applied to every floating canvas overlay (title pill,
-    /// edit cluster, live-dim pill, screenshot button). Uses the device
-    /// safe-area top so the header always sits below the Dynamic Island /
-    /// notch instead of being clipped by it.
+    /// Extra top padding applied to every floating canvas overlay (title
+    /// pill, edit cluster, live-dim pill, screenshot button) ON TOP of the
+    /// inherited safe-area inset. The container ZStack/VStack already
+    /// pushes its children below the safe-area top, so this only needs to
+    /// top up to a minimum visual gap on devices without a hardware cutout
+    /// (e.g. iPhone SE with the status bar hidden). On Dynamic Island /
+    /// notch devices the inherited inset already covers the minimum and
+    /// this returns 0 — bug 432a4e34 fixed the double-padding that pushed
+    /// the title visibly far below the island.
     private var floatingHeaderTopPadding: CGFloat {
-        max(OPSStyle.Layout.spacing3, topSafeAreaInset)
+        max(0, OPSStyle.Layout.spacing3 - topSafeAreaInset)
     }
 
     init(deckDesign: DeckDesign, modelContext: ModelContext, syncEngine: SyncEngine? = nil) {

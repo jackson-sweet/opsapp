@@ -769,31 +769,27 @@ class ImageSyncManager: ObservableObject {
         return inFlightUploads[projectId] ?? []
     }
 
-    /// Re-attempt a failed in-flight upload. The tile flips back to the
-    /// in-flight state (spinner), then runs the same upload pipeline. If
-    /// the underlying cause was permanent (likely), the tile fails again
-    /// and the user can dismiss it. If it was a transient that lingered
-    /// past the in-session retry cap, this is the manual retry path.
+    /// Re-attempt a failed in-flight upload by running a fresh upload
+    /// through `saveImages`. The old failed tile is removed BEFORE
+    /// `saveImages` runs so the carousel transitions cleanly:
+    /// `[failed tile]` → (briefly nothing) → `[new spinning tile]` →
+    /// `[resolved photo OR new failed tile]`. Removing the old tile after
+    /// `saveImages` returns would leave the user looking at TWO tiles
+    /// for the duration of the upload (the old failed one and the new
+    /// spinning one) — confusing.
     func retryFailedInFlightUpload(id: String, for projectId: String) async {
-        guard var current = inFlightUploads[projectId],
-              let index = current.firstIndex(where: { $0.id == id }),
-              current[index].failed else { return }
+        guard let current = inFlightUploads[projectId],
+              let upload = current.first(where: { $0.id == id }),
+              upload.failed else { return }
 
-        let image = current[index].image
-        current[index].failed = false
-        current[index].lastError = nil
-        inFlightUploads[projectId] = current
+        let image = upload.image
 
-        guard let project = getProject(by: projectId) else {
-            // Project went away under us — drop the tile.
-            endInFlightUploads([id], for: projectId)
-            return
-        }
-        _ = await saveImages([image], for: project)
-        // saveImages owns its own in-flight lifecycle for the new batch.
-        // The old failed tile (same id) gets cleared once the new batch
-        // settles or fails again.
+        // Drop the failed tile first so the carousel doesn't briefly
+        // render two tiles for the same retry.
         endInFlightUploads([id], for: projectId)
+
+        guard let project = getProject(by: projectId) else { return }
+        _ = await saveImages([image], for: project)
     }
 
     // MARK: - Image Processing Helpers

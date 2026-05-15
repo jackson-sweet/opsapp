@@ -49,9 +49,9 @@ enum UploadErrorKind: Equatable {
     /// the underlying reason category.
     var dedupeCode: String {
         switch self {
-        case .transient(let reason): return "TRANSIENT_\(reason.prefix(40))"
+        case .transient(let reason): return "TRANSIENT_\(String(reason.prefix(40)))"
         case .permanent(let code, _): return code
-        case .unknown(let reason): return "UNKNOWN_\(reason.prefix(40))"
+        case .unknown(let reason): return "UNKNOWN_\(String(reason.prefix(40)))"
         }
     }
 }

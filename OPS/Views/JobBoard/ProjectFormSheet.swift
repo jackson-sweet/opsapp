@@ -126,9 +126,15 @@ struct ProjectFormSheet: View {
     /// scheduler). Lookup by id so a list edit (insert/delete) doesn't shift
     /// the sheet onto the wrong row.
     @State private var rowEditingTaskId: UUID?
-    @State private var showingRowTeamPicker = false
-    @State private var showingRowScheduler = false
-    @State private var showingRowCreateTaskType = false
+    /// Bug 4890bdee — row team picker, scheduler, and create-task-type
+    /// sheets used to be three separate `.sheet(isPresented:)` modifiers
+    /// attached only to `tutorialModeProjectContent`. In standard mode they
+    /// were never in the view hierarchy, so tapping the team or date chip
+    /// silently did nothing. The three are now driven by a single enum and
+    /// presented from `mainProjectContent` (shared by both modes) via
+    /// `.sheet(item:)`, which also dodges any multi-sheet stacking edge
+    /// case.
+    @State private var rowSheetTarget: RowSheetTarget?
     /// Local mirror of the row's dates while the scheduler sheet is open.
     /// Bound into `CalendarSchedulerSheet`, then written back to the row on
     /// confirm. Mirrors the pattern used by `TaskFormSheet`.
@@ -170,6 +176,33 @@ struct ProjectFormSheet: View {
         case notes
         case tasks
         case photos
+    }
+
+    /// Bug 4890bdee — drives the single `.sheet(item:)` that hosts every
+    /// inline-task-row sheet. Replaces three separate `@State` flags so the
+    /// row sheets attach to the shared `mainProjectContent` and work in
+    /// both tutorial and standard modes. Each case carries the row's
+    /// `LocalTask.id` so a row reorder during presentation can't shift
+    /// the sheet onto the wrong row.
+    enum RowSheetTarget: Identifiable, Equatable {
+        case team(UUID)
+        case schedule(UUID)
+        case createTaskType(UUID)
+
+        var id: String {
+            switch self {
+            case .team(let id): return "team:\(id.uuidString)"
+            case .schedule(let id): return "schedule:\(id.uuidString)"
+            case .createTaskType(let id): return "createTaskType:\(id.uuidString)"
+            }
+        }
+
+        var taskId: UUID {
+            switch self {
+            case .team(let id), .schedule(let id), .createTaskType(let id):
+                return id
+            }
+        }
     }
 
     @State private var isSaving = false
@@ -476,7 +509,7 @@ struct ProjectFormSheet: View {
     /// Open the team picker sheet for a specific row.
     private func presentTeamPicker(forTaskId id: UUID) {
         rowEditingTaskId = id
-        showingRowTeamPicker = true
+        rowSheetTarget = .team(id)
     }
 
     /// Open the scheduler sheet for a specific row, mirroring its current
@@ -490,7 +523,35 @@ struct ProjectFormSheet: View {
         rowSchedulerConfirmed = false
         rowSchedulerStart = existingStart ?? Date()
         rowSchedulerEnd = existingEnd ?? rowSchedulerStart
-        showingRowScheduler = true
+        rowSheetTarget = .schedule(id)
+    }
+
+    /// Open the create-task-type sheet for a specific row.
+    private func presentCreateTaskType(forTaskId id: UUID) {
+        rowEditingTaskId = id
+        rowSheetTarget = .createTaskType(id)
+    }
+
+    /// Bug 4890bdee — fires when the single row-sheet binding nils out.
+    /// Per-case cleanup runs based on the target that was dismissed; the
+    /// `oldTarget` snapshot is captured by the `.onChange` modifier on
+    /// `rowSheetTarget` so we know which sheet category just closed even
+    /// though the binding has already cleared.
+    private func handleRowSheetDismiss(oldTarget: RowSheetTarget) {
+        switch oldTarget {
+        case .schedule:
+            // Mirror `TaskFormSheet` behaviour: if the scheduler was
+            // dismissed without an explicit confirm AND no dates existed
+            // before opening, clear the row's dates back out.
+            if !rowSchedulerConfirmed && !rowDatesExistedBeforeScheduler,
+               let idx = localTasks.firstIndex(where: { $0.id == oldTarget.taskId }) {
+                localTasks[idx].startDate = nil
+                localTasks[idx].endDate = nil
+            }
+        case .team, .createTaskType:
+            break
+        }
+        rowEditingTaskId = nil
     }
 
     init(mode: Mode, preselectedClient: Client? = nil, initialTitle: String? = nil, onSave: @escaping (Project) -> Void) {
@@ -680,84 +741,6 @@ struct ProjectFormSheet: View {
                     break
                 }
             }
-        }
-        // MARK: - Inline task row sheets (bug 2daf95f2)
-        .sheet(isPresented: $showingRowTeamPicker, onDismiss: {
-            rowEditingTaskId = nil
-        }) {
-            if let id = rowEditingTaskId,
-               let idx = localTasks.firstIndex(where: { $0.id == id }) {
-                let typeId = localTasks[idx].taskTypeId
-                let ordered = teamUsersOrdered(forTaskTypeId: typeId)
-                let recentIds: Set<String> = {
-                    guard !typeId.isEmpty,
-                          let companyId = dataController.currentUser?.companyId else {
-                        return []
-                    }
-                    return Set(dataController.recentTeamMemberIds(
-                        forTaskType: typeId,
-                        companyId: companyId
-                    ))
-                }()
-                TeamMemberPickerSheet(
-                    selectedTeamMemberIds: teamSelectionBinding(forTaskId: id),
-                    allTeamMembers: ordered,
-                    recentMemberIds: recentIds
-                )
-                .environmentObject(dataController)
-            }
-        }
-        .sheet(isPresented: $showingRowScheduler, onDismiss: {
-            // Mirror TaskFormSheet behaviour: if the scheduler was dismissed
-            // without an explicit confirm AND no dates existed before opening,
-            // clear the row's dates back out.
-            if !rowSchedulerConfirmed && !rowDatesExistedBeforeScheduler,
-               let id = rowEditingTaskId,
-               let idx = localTasks.firstIndex(where: { $0.id == id }) {
-                localTasks[idx].startDate = nil
-                localTasks[idx].endDate = nil
-            }
-            rowEditingTaskId = nil
-        }) {
-            if let id = rowEditingTaskId,
-               let idx = localTasks.firstIndex(where: { $0.id == id }) {
-                let typeId = localTasks[idx].taskTypeId
-                let teamIds = Set(localTasks[idx].teamMemberIds)
-                CalendarSchedulerSheet(
-                    isPresented: $showingRowScheduler,
-                    itemType: .draftTask(
-                        taskTypeId: typeId,
-                        teamMemberIds: localTasks[idx].teamMemberIds,
-                        projectId: nil
-                    ),
-                    currentStartDate: rowSchedulerStart,
-                    currentEndDate: rowSchedulerEnd,
-                    onScheduleUpdate: { newStart, newEnd in
-                        rowSchedulerConfirmed = true
-                        guard let editIdx = localTasks.firstIndex(where: { $0.id == id }) else { return }
-                        localTasks[editIdx].startDate = newStart
-                        localTasks[editIdx].endDate = newEnd
-                    },
-                    onClearDates: {
-                        guard let editIdx = localTasks.firstIndex(where: { $0.id == id }) else { return }
-                        localTasks[editIdx].startDate = nil
-                        localTasks[editIdx].endDate = nil
-                    },
-                    preselectedTeamMemberIds: teamIds.isEmpty ? nil : teamIds
-                )
-                .environmentObject(dataController)
-            }
-        }
-        .sheet(isPresented: $showingRowCreateTaskType, onDismiss: {
-            rowEditingTaskId = nil
-        }) {
-            TaskTypeSheet(mode: .create { newType in
-                if let id = rowEditingTaskId,
-                   let idx = localTasks.firstIndex(where: { $0.id == id }) {
-                    localTasks[idx].taskTypeId = newType.id
-                }
-            })
-            .environmentObject(dataController)
         }
         .loadingOverlay(isPresented: $isSaving, message: "Saving...")
     }
@@ -1048,6 +1031,118 @@ struct ProjectFormSheet: View {
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
         }
+        // Bug 4890bdee — single inline-task-row sheet attached to the
+        // shared content so the team picker, scheduler, and create-task-
+        // type flows present from both tutorial and standard modes. The
+        // companion `.onChange` captures the dismissed target so per-case
+        // cleanup (e.g. scheduler "clear dates on unconfirmed dismiss")
+        // can run after the binding has nilled.
+        .sheet(item: $rowSheetTarget) { target in
+            rowSheet(for: target)
+        }
+        .onChange(of: rowSheetTarget) { oldValue, newValue in
+            if let oldTarget = oldValue, newValue == nil {
+                handleRowSheetDismiss(oldTarget: oldTarget)
+            }
+        }
+    }
+
+    // MARK: - Row sheet content (bug 4890bdee)
+
+    /// Dispatches the row-sheet binding onto the correct child sheet for
+    /// each case. Kept as a `@ViewBuilder` so the if-let unwraps stay
+    /// readable per case.
+    @ViewBuilder
+    private func rowSheet(for target: RowSheetTarget) -> some View {
+        switch target {
+        case .team(let id):
+            rowTeamPickerSheet(forTaskId: id)
+        case .schedule(let id):
+            rowSchedulerSheet(forTaskId: id)
+        case .createTaskType:
+            rowCreateTaskTypeSheet()
+        }
+    }
+
+    @ViewBuilder
+    private func rowTeamPickerSheet(forTaskId id: UUID) -> some View {
+        if let idx = localTasks.firstIndex(where: { $0.id == id }) {
+            let typeId = localTasks[idx].taskTypeId
+            let ordered = teamUsersOrdered(forTaskTypeId: typeId)
+            let recentIds: Set<String> = {
+                guard !typeId.isEmpty,
+                      let companyId = dataController.currentUser?.companyId else {
+                    return []
+                }
+                return Set(dataController.recentTeamMemberIds(
+                    forTaskType: typeId,
+                    companyId: companyId
+                ))
+            }()
+            TeamMemberPickerSheet(
+                selectedTeamMemberIds: teamSelectionBinding(forTaskId: id),
+                allTeamMembers: ordered,
+                recentMemberIds: recentIds
+            )
+            .environmentObject(dataController)
+        }
+    }
+
+    @ViewBuilder
+    private func rowSchedulerSheet(forTaskId id: UUID) -> some View {
+        if let idx = localTasks.firstIndex(where: { $0.id == id }) {
+            let typeId = localTasks[idx].taskTypeId
+            let teamIds = Set(localTasks[idx].teamMemberIds)
+            CalendarSchedulerSheet(
+                isPresented: schedulerIsPresentedBinding,
+                itemType: .draftTask(
+                    taskTypeId: typeId,
+                    teamMemberIds: localTasks[idx].teamMemberIds,
+                    projectId: nil
+                ),
+                currentStartDate: rowSchedulerStart,
+                currentEndDate: rowSchedulerEnd,
+                onScheduleUpdate: { newStart, newEnd in
+                    rowSchedulerConfirmed = true
+                    guard let editIdx = localTasks.firstIndex(where: { $0.id == id }) else { return }
+                    localTasks[editIdx].startDate = newStart
+                    localTasks[editIdx].endDate = newEnd
+                },
+                onClearDates: {
+                    guard let editIdx = localTasks.firstIndex(where: { $0.id == id }) else { return }
+                    localTasks[editIdx].startDate = nil
+                    localTasks[editIdx].endDate = nil
+                },
+                preselectedTeamMemberIds: teamIds.isEmpty ? nil : teamIds
+            )
+            .environmentObject(dataController)
+        }
+    }
+
+    @ViewBuilder
+    private func rowCreateTaskTypeSheet() -> some View {
+        TaskTypeSheet(mode: .create { newType in
+            if let id = rowEditingTaskId,
+               let idx = localTasks.firstIndex(where: { $0.id == id }) {
+                localTasks[idx].taskTypeId = newType.id
+            }
+        })
+        .environmentObject(dataController)
+    }
+
+    /// Bridges `CalendarSchedulerSheet`'s `isPresented:` Binding<Bool>
+    /// parameter into the enum-driven row-sheet state — true while a
+    /// `.schedule` target is presenting, settable to false to dismiss.
+    private var schedulerIsPresentedBinding: Binding<Bool> {
+        Binding(
+            get: {
+                if case .schedule = rowSheetTarget { return true }
+                return false
+            },
+            set: { newValue in
+                if !newValue { rowSheetTarget = nil }
+            }
+        )
     }
 
     // MARK: - Mandatory Fields Section
@@ -1805,8 +1900,7 @@ struct ProjectFormSheet: View {
                 localTasks[index].taskTypeId = newTypeId
             },
             onCreateNewTaskType: {
-                rowEditingTaskId = task.id
-                showingRowCreateTaskType = true
+                presentCreateTaskType(forTaskId: task.id)
             },
             onTeamTap: {
                 presentTeamPicker(forTaskId: task.id)

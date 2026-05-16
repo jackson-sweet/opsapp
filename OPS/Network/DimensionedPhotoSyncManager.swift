@@ -112,6 +112,12 @@ public protocol DimensionedAnnotationPersister {
     ) async throws -> InsertedAnnotation
 }
 
+@MainActor
+protocol DimensionedPendingSyncing: AnyObject {
+    func pendingDimensionedAnnotationCount(modelContext: ModelContext) -> Int
+    func syncPendingDimensions(modelContext: ModelContext) async
+}
+
 /// Slim DTO returned by the persister so the manager can hydrate a
 /// `PhotoAnnotation` SwiftData model with the server-assigned id + timestamps.
 public struct InsertedAnnotation: Equatable {
@@ -297,7 +303,7 @@ public enum DimensionedSyncError: Error, LocalizedError, Equatable {
 // MARK: - Manager
 
 @MainActor
-public final class DimensionedPhotoSyncManager {
+public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
 
     public static let shared = DimensionedPhotoSyncManager()
 
@@ -766,6 +772,17 @@ public final class DimensionedPhotoSyncManager {
                 )
             }
         }
+    }
+
+    func pendingDimensionedAnnotationCount(modelContext: ModelContext) -> Int {
+        let descriptor = FetchDescriptor<PhotoAnnotation>(
+            predicate: #Predicate {
+                $0.needsSync == true
+                    && $0.dimensionsData != nil
+                    && $0.deletedAt == nil
+            }
+        )
+        return (try? modelContext.fetchCount(descriptor)) ?? 0
     }
 
     // MARK: - Internal — per-asset retry with exponential backoff

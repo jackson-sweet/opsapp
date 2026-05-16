@@ -26,6 +26,7 @@ import SwiftUI
 import AVFoundation
 import ARKit
 import UIKit
+import SwiftData
 
 public struct DimensionedCaptureView: View {
 
@@ -69,6 +70,7 @@ public struct DimensionedCaptureView: View {
     @State private var calibrationSession: DimensionedCalibrationSession?
     @State private var saveInFlight = false
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
@@ -116,6 +118,9 @@ public struct DimensionedCaptureView: View {
         }
         .statusBarHidden(true)
         .gesture(swipeDownToDismiss)
+        .interactiveDismissDisabled(
+            activeMode == .calibration || pendingAnnotation != nil || saveInFlight
+        )
         .task { await prepare() }
         .onDisappear {
             coordinatorBox.coordinator?.reset()
@@ -129,11 +134,10 @@ public struct DimensionedCaptureView: View {
             // Phase E annotation view — Phase G wires the save + calibrate
             // closures to real implementations.
             //
-            // onSaveToProject  → DimensionedPhotoSyncManager.sync(...) (Phase F).
-            //                    Success → parent's onSavedSuccessfully + dismiss.
-            //                    Failure → parent's onError + leave annotation
-            //                    view open so the user can retry without losing
-            //                    measurements.
+            // onSaveToProject  → DimensionedPhotoSyncManager.sync(...).
+            //                    Success persists the returned annotation locally,
+            //                    then dismisses. Retryable failures persist the
+            //                    queued local stub and leave annotation open.
             // onRequestCalibrate → snapshot dimensions, return to the same
             //                      capture view in calibration mode, then
             //                      reopen this annotation on cancel/success.
@@ -162,11 +166,7 @@ public struct DimensionedCaptureView: View {
                         enterCalibrationMode()
                     },
                     onSaveToProject: { dimensions in
-                        guard !saveInFlight else { return }
-                        saveInFlight = true
-                        Task {
-                            await dispatchSave(assets: assets, dimensions: dimensions)
-                        }
+                        try await saveFromAnnotation(assets: assets, dimensions: dimensions)
                     },
                     onDismiss: {
                         pendingAnnotation = nil
@@ -654,13 +654,29 @@ public struct DimensionedCaptureView: View {
 
     /// Delegates the 3-asset upload + PhotoAnnotation row creation to Phase F's
     /// `DimensionedPhotoSyncManager`. The manager itself fires the three rail
-    /// notifications per spec §6 — this call site only routes the success or
-    /// error back to the parent so the action bar can dismiss / surface UX.
-    ///
-    /// Until Phase F (P3-1) lands, this call references a symbol that does not
-    /// exist on `main` — the PR description marks this as the merge dependency.
-    private func dispatchSave(assets: CapturedAssets, dimensions: DimensionsData) async {
-        defer { Task { @MainActor in saveInFlight = false } }
+    /// notifications per spec §6. This call site owns local SwiftData continuity
+    /// so a remote failure still leaves a retryable local annotation row.
+    @MainActor
+    private func saveFromAnnotation(
+        assets: CapturedAssets,
+        dimensions: DimensionsData
+    ) async throws -> DimensionedAnnotationSaveResult {
+        guard !saveInFlight else {
+            throw DimensionedCaptureSaveStoreError.saveAlreadyInFlight
+        }
+        saveInFlight = true
+        defer { saveInFlight = false }
+        return try await dispatchSave(assets: assets, dimensions: dimensions)
+    }
+
+    /// Returns `.queuedForRetry` only after the queued `PhotoAnnotation` stub
+    /// has been saved into SwiftData with its local HEIC/depth/sidecar paths.
+    /// The annotation view stays open so the operator sees the retry state.
+    @MainActor
+    private func dispatchSave(
+        assets: CapturedAssets,
+        dimensions: DimensionsData
+    ) async throws -> DimensionedAnnotationSaveResult {
         do {
             let annotation = try await DimensionedPhotoSyncManager.shared.sync(
                 captured: assets,
@@ -670,16 +686,30 @@ public struct DimensionedCaptureView: View {
                 companyId: companyId,
                 userId: userId
             )
+            try DimensionedCaptureSaveStore.persistSyncedAnnotation(
+                annotation,
+                captured: assets,
+                modelContext: modelContext
+            )
             await MainActor.run {
                 pendingAnnotation = nil
                 onSavedSuccessfully(annotation)
                 dismiss()
             }
-        } catch {
-            await MainActor.run {
-                onError(error)
-                showError(toast: ErrorToast(copy: "// SAVE FAILED · RETRY"))
+            return .synced
+        } catch let error as DimensionedSyncError {
+            switch error {
+            case .queuedForRetry, .annotationInsertFailed:
+                _ = try DimensionedCaptureSaveStore.persistQueuedAnnotation(
+                    captured: assets,
+                    modelContext: modelContext
+                )
+                return .queuedForRetry
+            case .missingLocalAsset, .missingRequiredDepthAsset:
+                throw error
             }
+        } catch {
+            throw error
         }
     }
 

@@ -22,6 +22,7 @@
 //      §6 (queued-for-sync notification mapping — caller responsibility)
 //
 
+import SwiftData
 import XCTest
 @testable import OPS
 
@@ -107,6 +108,16 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
             .appendingPathComponent("dim-sync-tests-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
+    }
+
+    private func makeInMemoryContainer() throws -> ModelContainer {
+        let schema = Schema([PhotoAnnotation.self])
+        let configuration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: true,
+            allowsSave: true
+        )
+        return try ModelContainer(for: schema, configurations: [configuration])
     }
 
     // MARK: - 1. Happy path
@@ -313,6 +324,59 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
         XCTAssertEqual(queued.photoURL, uploader.calls[0].returnedURL,
                        "Once the HEIC has uploaded, the queued stub should reference the remote URL so retry only re-inserts the annotation row")
         DimensionedPhotoSyncManager.lastQueuedAnnotation = nil
+    }
+
+    @MainActor
+    func test_syncPendingDimensionsRetriesQueuedCaptureAfterAnnotationViewDismisses() async throws {
+        let captureID = UUID(uuidString: "BBBBBBBB-CCCC-DDDD-EEEE-FFFFFFFFFFFF")!
+        let captured = try fixtureCaptured(captureID: captureID)
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let queued = PhotoAnnotation(
+            id: "local-\(captureID.uuidString)",
+            projectId: "project-123",
+            companyId: "company-abc",
+            photoURL: captured.heicURL.path,
+            authorId: "user-xyz",
+            createdAt: captured.captureFinishedAt
+        )
+        queued.dimensions = fixtureDimensions()
+        queued.localDepthMapPath = captured.depthURL?.path
+        queued.localSidecarPath = captured.sidecarURL.path
+        queued.localCaptureFinishedAt = captured.captureFinishedAt
+        queued.needsSync = true
+        context.insert(queued)
+        try context.save()
+
+        let uploader = RecordingUploader(plan: .alwaysSucceed)
+        let persister = RecordingPersister()
+        let manager = DimensionedPhotoSyncManager(
+            uploader: uploader,
+            persister: persister,
+            notifier: NoopDimensionedNotificationDispatcher()
+        )
+
+        await manager.syncPendingDimensions(modelContext: context)
+
+        XCTAssertEqual(uploader.calls.count, 3)
+        XCTAssertEqual(uploader.calls[0].filename, "\(captureID.uuidString).heic")
+        XCTAssertEqual(uploader.calls[1].filename, "\(captureID.uuidString).metadata.json")
+        XCTAssertEqual(uploader.calls[2].filename, "\(captureID.uuidString).depth.fp32")
+        XCTAssertEqual(persister.projectPhotoInserts.count, 1)
+        XCTAssertEqual(persister.annotationInserts.count, 1)
+
+        let annotations = try context.fetch(FetchDescriptor<PhotoAnnotation>())
+        XCTAssertEqual(annotations.count, 1)
+        let retried = try XCTUnwrap(annotations.first)
+        XCTAssertEqual(retried.id, "server-id-1")
+        XCTAssertEqual(retried.photoURL, uploader.calls[0].returnedURL)
+        XCTAssertFalse(retried.needsSync)
+        XCTAssertNotNil(retried.lastSyncedAt)
+        XCTAssertEqual(retried.dimensions?.sidecarMetadataUrl, uploader.calls[1].returnedURL)
+        XCTAssertEqual(retried.dimensions?.depthAssetUrl, uploader.calls[2].returnedURL)
+        XCTAssertEqual(retried.localDepthMapPath, captured.depthURL?.path)
+        XCTAssertEqual(retried.localSidecarPath, captured.sidecarURL.path)
+        XCTAssertEqual(retried.localCaptureFinishedAt, captured.captureFinishedAt)
     }
 
     // MARK: - 4. Notification firing (spec §6)

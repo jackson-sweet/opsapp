@@ -52,6 +52,7 @@ final class SyncEngine {
     private var photoProcessor: PhotoProcessor?
     private var realtimeProcessor: RealtimeProcessor?
     private var backgroundScheduler: BackgroundSyncScheduler?
+    private let dimensionedPendingSyncer: DimensionedPendingSyncing
 
     // MARK: - DataActor Path
 
@@ -67,7 +68,9 @@ final class SyncEngine {
 
     // MARK: - Lifecycle
 
-    init() {}
+    init(dimensionedPendingSyncer: DimensionedPendingSyncing? = nil) {
+        self.dimensionedPendingSyncer = dimensionedPendingSyncer ?? DimensionedPhotoSyncManager.shared
+    }
 
     deinit {
         syncRetryTimer?.invalidate()
@@ -424,6 +427,7 @@ final class SyncEngine {
 
         // Push local changes first, then pull server changes
         await pushPending()
+        await syncPendingLocalArtifacts()
         await pullDelta()
 
         if !hasError {
@@ -568,6 +572,7 @@ final class SyncEngine {
 
         // Push any pending local operations
         await pushPending()
+        await syncPendingLocalArtifacts()
 
         statusText = hasError ? "Sync error" : "Full sync complete"
         print("[SYNC_ENGINE] Full sync complete")
@@ -616,6 +621,19 @@ final class SyncEngine {
             )
         }
 
+        refreshPendingCount()
+    }
+
+    /// Drains local artifact queues that do not use `SyncOperation` rows.
+    /// Dimensioned captures queue as `PhotoAnnotation.needsSync` so their
+    /// HEIC/depth/sidecar assets survive annotation dismissal and retry here
+    /// during the same pending-sync sweep as standard offline operations.
+    func syncPendingLocalArtifacts() async {
+        guard let modelContext else {
+            print("[SYNC_ENGINE] Cannot sync local artifacts — not configured")
+            return
+        }
+        await dimensionedPendingSyncer.syncPendingDimensions(modelContext: modelContext)
         refreshPendingCount()
     }
 
@@ -921,7 +939,14 @@ final class SyncEngine {
     /// Refreshes the pendingOperationCount from SwiftData.
     private func refreshPendingCount() {
         let pending = getPendingOperations()
-        pendingOperationCount = pending.count
+        let dimensionedCount: Int
+        if let modelContext {
+            dimensionedCount = dimensionedPendingSyncer
+                .pendingDimensionedAnnotationCount(modelContext: modelContext)
+        } else {
+            dimensionedCount = 0
+        }
+        pendingOperationCount = pending.count + dimensionedCount
 
         // Manage the retry timer based on pending operations
         if pendingOperationCount > 0 {

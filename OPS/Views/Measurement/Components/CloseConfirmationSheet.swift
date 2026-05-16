@@ -3,7 +3,8 @@
 //  OPS
 //
 //  Bottom sheet shown when the user taps × close on `DimensionedAnnotationView`
-//  with unsaved measurements (spec §5.2 close confirmation policy):
+//  with unsaved measurements or calibration changes (spec §5.2 close
+//  confirmation policy):
 //
 //      // DISCARD MEASUREMENTS?
 //      [ DISCARD ]   [ KEEP EDITING ]
@@ -21,25 +22,34 @@ import UIKit
 public struct CloseConfirmationSheet: View {
 
     public let measurementCount: Int
+    public let includesCalibrationChange: Bool
     public var onDiscard: () -> Void
     public var onKeepEditing: () -> Void
 
     public init(measurementCount: Int,
+                includesCalibrationChange: Bool = false,
                 onDiscard: @escaping () -> Void,
                 onKeepEditing: @escaping () -> Void) {
         self.measurementCount = measurementCount
+        self.includesCalibrationChange = includesCalibrationChange
         self.onDiscard = onDiscard
         self.onKeepEditing = onKeepEditing
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("// DISCARD MEASUREMENTS?")
+            Text(CloseConfirmationSheetCopy.title(
+                measurementCount: measurementCount,
+                includesCalibrationChange: includesCalibrationChange
+            ))
                 .font(.custom("CakeMono-Light", size: 14))
                 .tracking(1)
                 .foregroundColor(OPSStyle.Colors.text)
 
-            Text(bodyCopy)
+            Text(CloseConfirmationSheetCopy.body(
+                measurementCount: measurementCount,
+                includesCalibrationChange: includesCalibrationChange
+            ))
                 .font(.custom("JetBrainsMono-Regular", size: 12))
                 .foregroundColor(OPSStyle.Colors.text2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -92,9 +102,33 @@ public struct CloseConfirmationSheet: View {
         .presentationDetents([.height(220)])
         .presentationDragIndicator(.visible)
     }
+}
 
-    private var bodyCopy: String {
+enum CloseConfirmationSheetCopy {
+    static func title(
+        measurementCount: Int,
+        includesCalibrationChange: Bool
+    ) -> String {
+        if measurementCount == 0 && includesCalibrationChange {
+            return "// DISCARD CALIBRATION?"
+        }
+        if includesCalibrationChange {
+            return "// DISCARD CHANGES?"
+        }
+        return "// DISCARD MEASUREMENTS?"
+    }
+
+    static func body(
+        measurementCount: Int,
+        includesCalibrationChange: Bool
+    ) -> String {
+        if measurementCount == 0 && includesCalibrationChange {
+            return "CALIBRATION CHANGE HAS NOT BEEN SAVED. THIS CANNOT BE UNDONE."
+        }
         let unit = measurementCount == 1 ? "MEASUREMENT" : "MEASUREMENTS"
+        if includesCalibrationChange {
+            return "\(measurementCount) \(unit) AND CALIBRATION HAVE NOT BEEN SAVED. THIS CANNOT BE UNDONE."
+        }
         return "\(measurementCount) \(unit) HAVE NOT BEEN SAVED. THIS CANNOT BE UNDONE."
     }
 }

@@ -72,7 +72,8 @@ public struct DimensionedCalibrationSession {
             handoff: originalHandoff,
             dimensions: updated,
             coplanarOnly: result.coplanarOnly,
-            hasUnsavedChanges: true
+            hasUnsavedChanges: DimensionedAnnotationWorkflow
+                .dirtyAfterCalibrationResult(previouslyDirty: originalHasUnsavedChanges)
         )
     }
 }

@@ -62,7 +62,7 @@ public struct DimensionedAnnotationView: View {
     public let existingDimensions: DimensionsData?
 
     public var onRequestCalibrate: (DimensionsData, Bool) -> Void
-    public var onSaveToProject: (DimensionsData) -> Void
+    public var onSaveToProject: (DimensionsData) async throws -> DimensionedAnnotationSaveResult
     public var onDismiss: () -> Void
 
     // MARK: - State
@@ -99,6 +99,7 @@ public struct DimensionedAnnotationView: View {
     @State private var sillUnavailableReason: SillUnavailableReason?
     @State private var annotationFeedback: AnnotationFeedback?
     @State private var annotationFeedbackDismissTask: Task<Void, Never>?
+    @State private var saveState: DimensionedAnnotationSaveState = .idle
 
     @State private var pencilDrawing = PKDrawing()
 
@@ -116,7 +117,7 @@ public struct DimensionedAnnotationView: View {
         existingDimensions: DimensionsData? = nil,
         initialHasUnsavedChanges: Bool = false,
         onRequestCalibrate: @escaping (DimensionsData, Bool) -> Void = { _, _ in },
-        onSaveToProject: @escaping (DimensionsData) -> Void = { _ in },
+        onSaveToProject: @escaping (DimensionsData) async throws -> DimensionedAnnotationSaveResult = { _ in .synced },
         onDismiss: @escaping () -> Void = {},
         // Initial-state convenience for re-open and tests:
         startingMeasurements: [DimensionsData.Measurement] = []
@@ -162,12 +163,28 @@ public struct DimensionedAnnotationView: View {
                 )
             }
 
+            if saveState.isVisible {
+                VStack {
+                    AnnotationSaveStateBanner(
+                        state: saveState,
+                        onRetry: {
+                            Task { await saveCurrentAnnotation() }
+                        }
+                    )
+                    .padding(.top, 56)
+                    .padding(.horizontal, 12)
+                    Spacer()
+                }
+                .transition(feedbackTransition)
+                .zIndex(11)
+            }
+
             if let feedback = annotationFeedback {
                 VStack {
                     AnnotationFeedbackToast(feedback: feedback) {
                         dismissAnnotationFeedback()
                     }
-                    .padding(.top, 56)
+                    .padding(.top, saveState.isVisible ? 108 : 56)
                     .padding(.horizontal, 12)
                     Spacer()
                 }
@@ -185,6 +202,7 @@ public struct DimensionedAnnotationView: View {
         .sheet(isPresented: $showingCloseConfirmation) {
             CloseConfirmationSheet(
                 measurementCount: measurements.count,
+                includesCalibrationChange: hasUnsavedCalibrationChange,
                 onDiscard: {
                     showingCloseConfirmation = false
                     onDismiss()
@@ -208,6 +226,7 @@ public struct DimensionedAnnotationView: View {
                 onCancel: { showingExport = false }
             )
         }
+        .interactiveDismissDisabled(true)
     }
 
     // MARK: - Top bar
@@ -474,7 +493,8 @@ public struct DimensionedAnnotationView: View {
         var m2 = m
         m2.primaryDisplayUnit = primaryUnit
         measurements.append(m2)
-        hasUnsavedChanges = true
+        hasUnsavedChanges = DimensionedAnnotationWorkflow
+            .dirtyAfterMeasurementCommit(previouslyDirty: hasUnsavedChanges)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
@@ -511,7 +531,10 @@ public struct DimensionedAnnotationView: View {
                     labelOpacity[m.id] = 1.0
                 }
             }
-            hasUnsavedChanges = true
+            hasUnsavedChanges = DimensionedAnnotationWorkflow.dirtyAfterAutoMeasure(
+                addedMeasurementCount: toAdd.count,
+                previouslyDirty: hasUnsavedChanges
+            )
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             return
         }
@@ -538,7 +561,10 @@ public struct DimensionedAnnotationView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + totalDuration) {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
-        hasUnsavedChanges = true
+        hasUnsavedChanges = DimensionedAnnotationWorkflow.dirtyAfterAutoMeasure(
+            addedMeasurementCount: toAdd.count,
+            previouslyDirty: hasUnsavedChanges
+        )
     }
 
     private func inlineHint(for m: DimensionsData.Measurement) -> String? {
@@ -644,9 +670,33 @@ public struct DimensionedAnnotationView: View {
     // MARK: - Export
 
     private func persistAndSave() {
+        Task { await saveCurrentAnnotation() }
+    }
+
+    @MainActor
+    private func saveCurrentAnnotation() async {
+        if case .saving = saveState { return }
+
         let payload = currentDimensionsData()
-        hasUnsavedChanges = false
-        onSaveToProject(payload)
+        saveState = .saving(copy: DimensionedAnnotationWorkflow.savingCopy)
+        do {
+            let result = try await onSaveToProject(payload)
+            switch result {
+            case .synced:
+                hasUnsavedChanges = false
+                saveState = .idle
+            case .queuedForRetry:
+                let continuity = DimensionedAnnotationWorkflow.queuedSaveState()
+                hasUnsavedChanges = continuity.leavesAnnotationDirty
+                saveState = continuity.saveState
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            }
+        } catch {
+            let continuity = DimensionedAnnotationWorkflow.saveFailureState()
+            hasUnsavedChanges = continuity.leavesAnnotationDirty
+            saveState = continuity.saveState
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
     }
 
     private func exportPDF() async {
@@ -678,9 +728,13 @@ public struct DimensionedAnnotationView: View {
     // MARK: - Close
 
     private func handleCloseTap() {
-        if hasUnsavedChanges {
+        switch DimensionedAnnotationWorkflow.closeDecision(
+            hasUnsavedChanges: hasUnsavedChanges,
+            saveState: saveState
+        ) {
+        case .confirmDiscard:
             showingCloseConfirmation = true
-        } else {
+        case .dismiss:
             onDismiss()
         }
     }
@@ -737,6 +791,10 @@ public struct DimensionedAnnotationView: View {
         case .visual:  return .visualSlam
         case .noDepth: return .noDepth
         }
+    }
+
+    private var hasUnsavedCalibrationChange: Bool {
+        calibration != initialCalibration
     }
 
     private var photoPixelSize: CGSize {
@@ -873,6 +931,75 @@ private struct AnnotationFeedbackToast: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(feedback.copy)
+    }
+}
+
+private struct AnnotationSaveStateBanner: View {
+    let state: DimensionedAnnotationSaveState
+    let onRetry: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let copy = state.copy {
+                Text(copy)
+                    .font(.panelTitle)
+                    .textCase(.uppercase)
+                    .foregroundColor(foreground)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if state.allowsRetry {
+                Button(action: onRetry) {
+                    Text("RETRY")
+                        .font(.panelTitle)
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(OPSStyle.Colors.surfaceActive)
+                        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Retry save")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                .fill(OPSStyle.Colors.glassDenseApprox)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                        .strokeBorder(border, lineWidth: 1)
+                )
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private var foreground: Color {
+        switch state {
+        case .idle, .saving:
+            return OPSStyle.Colors.text2
+        case .failed:
+            return OPSStyle.Colors.rose
+        case .queued:
+            return OPSStyle.Colors.tan
+        }
+    }
+
+    private var border: Color {
+        switch state {
+        case .idle, .saving:
+            return OPSStyle.Colors.line
+        case .failed:
+            return OPSStyle.Colors.roseLine
+        case .queued:
+            return OPSStyle.Colors.tanLine
+        }
     }
 }
 

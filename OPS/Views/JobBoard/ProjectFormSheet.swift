@@ -203,9 +203,13 @@ struct ProjectFormSheet: View {
     @State private var hasInteractedWithRecentSuggestions: Bool = false
 
     enum FormField: Hashable, CaseIterable {
+        // Bug 705cc320 — site address sits above project name visually, so the
+        // keyboard "next" chain follows the same order. The cases are
+        // referenced by name elsewhere (tutorial auto-focus, onSubmit
+        // handlers, advanceToNextField), so reordering is safe.
         case client
-        case title
         case address
+        case title
         case notes
         case description
     }
@@ -945,6 +949,20 @@ struct ProjectFormSheet: View {
                                         }
                                     }
                                 }
+                                // Bug 705cc320 — when the tasks section is
+                                // expanded for the first time and no tasks
+                                // exist yet, append a blank row so the
+                                // operator types into the chip instead of
+                                // hunting for the "Add Task" button.
+                                // Subsequent expansions (re-opens after
+                                // collapse) leave existing rows alone.
+                                // Skipped in tutorial mode — the scripted
+                                // task-creation phase wants the empty state.
+                                .onChange(of: isTasksExpanded) { oldValue, newValue in
+                                    guard !oldValue, newValue, !tutorialMode,
+                                          localTasks.isEmpty else { return }
+                                    appendBlankTaskRow()
+                                }
 
                         // COPY FROM BUTTON (at bottom) - disabled in tutorial mode
                         if mode.isCreate && !tutorialMode {
@@ -1049,12 +1067,16 @@ struct ProjectFormSheet: View {
                         clientField
                             .allowsHitTesting(isClientFieldEnabled)
                             .opacity(tutorialMode && !isClientFieldEnabled ? 0.5 : 1.0)
-                        titleField
-                            .allowsHitTesting(isNameFieldEnabled)
-                            .opacity(tutorialMode && !isNameFieldEnabled ? 0.5 : 1.0)
+                        // Bug 705cc320 — site address sits above project name so
+                        // operators anchor the job to a location before naming
+                        // it. The autofill chips on the name field can then
+                        // pull from the entered address without backtracking.
                         addressField
                             .allowsHitTesting(!tutorialMode)
                             .opacity(tutorialMode ? 0.5 : 1.0)
+                        titleField
+                            .allowsHitTesting(isNameFieldEnabled)
+                            .opacity(tutorialMode && !isNameFieldEnabled ? 0.5 : 1.0)
                         statusField
                             .allowsHitTesting(!tutorialMode) // Always disabled in tutorial
                             .opacity(tutorialMode ? 0.5 : 1.0)

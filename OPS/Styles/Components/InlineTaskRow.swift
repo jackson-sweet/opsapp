@@ -17,12 +17,15 @@ import SwiftUI
 /// - TYPE menu chip (flex width, primary identity, required)
 /// - TEAM chip (icon + count, opens parent's team-picker sheet)
 /// - DATE chip (icon + abbreviated date, opens parent's scheduler sheet)
+/// - Open editor chevron (opens the full `TaskFormSheet`)
 /// - Delete (trailing)
 ///
 /// Status changes, full notes editing, dependencies, duplication, and the
 /// destructive confirmation all live in a `.contextMenu` reached by
 /// long-pressing the row. Tapping the row body (between or around chips)
-/// opens the full `TaskFormSheet` for advanced edits.
+/// also opens the full `TaskFormSheet`, but bug 705cc320 surfaced that the
+/// implicit tap was undiscoverable — the trailing chevron is the explicit
+/// affordance.
 ///
 /// All tokens come from `OPSStyle`; no hardcoded colors, fonts, spacing,
 /// or motion values. Reduced-motion is respected via `accessibleEaseInOut`.
@@ -88,14 +91,15 @@ struct InlineTaskRow: View {
                 .fill(typeColor)
                 .frame(width: 4)
 
-            // Chips + delete. `typeChip` is the only flex element — team and
-            // date are intrinsic chips, delete is fixed-width, so the type
-            // chip absorbs all remaining horizontal space and the row stays
+            // Chips + open + delete. `typeChip` is the only flex element —
+            // team / date / open / delete are intrinsic, so the type chip
+            // absorbs all remaining horizontal space and the row stays
             // single-line on iPhone widths.
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 typeChip
                 teamChip
                 dateChip
+                openEditorButton
                 deleteButton
             }
             .padding(.horizontal, OPSStyle.Layout.spacing2_5)
@@ -254,6 +258,27 @@ struct InlineTaskRow: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Open editor (bug 705cc320)
+
+    /// Trailing chevron that opens the full `TaskFormSheet` for status notes,
+    /// dependencies, and other advanced fields. The row body itself is also
+    /// tappable, but the chevron is the visible "this row drills in"
+    /// affordance the inline pattern was missing.
+    private var openEditorButton: some View {
+        Button {
+            chipHaptic()
+            onOpenFullEditor()
+        } label: {
+            Image(systemName: OPSStyle.Icons.chevronRight)
+                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.text3)
+                .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open full task editor")
     }
 
     // MARK: - Delete

@@ -10,6 +10,11 @@ import SwiftUI
 import SwiftData
 import PhotosUI
 import Supabase
+// Bug 33403492 — system contacts read path. The contact picker view itself
+// is wrapped in `ContactPicker` (UIViewControllerRepresentable for
+// `CNContactPickerViewController`); we only need the contact data model
+// here to extract names, addresses, phones, emails.
+import Contacts
 
 struct ProjectFormSheet: View {
     enum Mode {
@@ -95,6 +100,14 @@ struct ProjectFormSheet: View {
 
     // MARK: - UI State
     @State private var showingCreateClient = false
+    /// Bug 33403492 — drives the system contact picker that lets the
+    /// operator import a contact and auto-create the matching client
+    /// without leaving the project form.
+    @State private var showingContactPicker = false
+    /// Bug 33403492 — true while the contacts-import async flow is in
+    /// flight. Used to suppress double-taps on the import button and to
+    /// show a subtle indicator on the client field.
+    @State private var isImportingContact = false
     @State private var clientSearchText = ""
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var showingImagePicker = false
@@ -1045,6 +1058,20 @@ struct ProjectFormSheet: View {
                 handleRowSheetDismiss(oldTarget: oldTarget)
             }
         }
+        // Bug 33403492 — system contact picker. The button on
+        // `clientSearchField` flips `showingContactPicker`, and the
+        // selected contact is funnelled to `handleContactSelected` which
+        // auto-creates the matching client and selects it on the form.
+        .sheet(isPresented: $showingContactPicker) {
+            ContactPicker(
+                onContactSelected: { contact in
+                    Task { @MainActor in
+                        await handleContactSelected(contact)
+                    }
+                },
+                onDismiss: nil
+            )
+        }
     }
 
     // MARK: - Row sheet content (bug 4890bdee)
@@ -1246,27 +1273,60 @@ struct ProjectFormSheet: View {
 
     private var clientSearchField: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+            HStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                TextField("Search or create client...", text: $clientSearchText)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .autocorrectionDisabled(true)
-                    .focused($focusedField, equals: .client)
+                    TextField("Search or create client...", text: $clientSearchText)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .autocorrectionDisabled(true)
+                        .focused($focusedField, equals: .client)
 
-                if !clientSearchText.isEmpty {
-                    Button(action: {
-                        clientSearchText = ""
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    if !clientSearchText.isEmpty {
+                        Button(action: {
+                            clientSearchText = ""
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
                     }
                 }
+                .padding(.vertical, 12)
+                .padding(.leading, 16)
+                .padding(.trailing, tutorialMode ? 16 : 8)
+
+                // Bug 33403492 — import from contacts. Hidden in tutorial
+                // mode where the scripted DEMO_ client flow handles client
+                // creation on its own. A short pressed-state shows the
+                // tertiary tint while the async create flow runs so a
+                // second tap can't fire while the first is in flight.
+                if !tutorialMode {
+                    Rectangle()
+                        .fill(OPSStyle.Colors.inputFieldBorder)
+                        .frame(width: 1, height: 28)
+
+                    Button(action: {
+                        guard !isImportingContact else { return }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showingContactPicker = true
+                    }) {
+                        Image(systemName: OPSStyle.Icons.addContact)
+                            .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .regular))
+                            .foregroundColor(
+                                isImportingContact
+                                    ? OPSStyle.Colors.tertiaryText
+                                    : OPSStyle.Colors.primaryAccent
+                            )
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .disabled(isImportingContact)
+                    .accessibilityLabel("Import from contacts")
+                    .accessibilityHint("Opens your device contacts and auto-creates a client from the chosen entry.")
+                }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
             .background(Color.clear)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -2473,6 +2533,189 @@ struct ProjectFormSheet: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d, yyyy"
         return formatter.string(from: date)
+    }
+
+    // MARK: - Contact Import (bug 33403492)
+
+    /// Auto-creates a `Client` from the picked `CNContact` and attaches it
+    /// to the form. Mirrors `ClientSheet.createNewClient` for parity with
+    /// the manual-create path — the new client lands in SwiftData via
+    /// `dataController.createClient`, the matching pipeline lead is
+    /// best-effort, the success toast posts the same notification the
+    /// rest of the app already listens for, and avatars from the contact
+    /// are uploaded to S3 when present.
+    @MainActor
+    private func handleContactSelected(_ contact: CNContact) async {
+        guard !isImportingContact else { return }
+        guard let companyId = dataController.currentUser?.companyId else {
+            errorMessage = "Cannot import contact — no company configured for the current user."
+            showingError = true
+            return
+        }
+
+        let name = composeContactName(from: contact)
+        guard !name.isEmpty else {
+            errorMessage = "Contact has no name. Edit the contact in iOS Contacts and try again."
+            showingError = true
+            return
+        }
+
+        isImportingContact = true
+        defer { isImportingContact = false }
+
+        let tempId = UUID().uuidString.lowercased()
+        let phoneRaw = contact.phoneNumbers.first?.value.stringValue
+        let phone = (phoneRaw?.isEmpty ?? true) ? nil : phoneRaw
+        let emailRaw: String? = contact.emailAddresses.first.map { $0.value as String }
+        let email = (emailRaw?.isEmpty ?? true) ? nil : emailRaw
+        let address = composeContactAddress(from: contact)
+
+        // Best-effort avatar upload — failure should not block client
+        // creation (matches `ClientSheet.createNewClient`).
+        var profileImageURL: String? = nil
+        if let imageData = contact.imageData,
+           let image = UIImage(data: imageData) {
+            do {
+                profileImageURL = try await S3UploadService.shared.uploadClientProfileImage(
+                    image,
+                    clientId: tempId,
+                    companyId: companyId
+                )
+            } catch {
+                print("[CONTACT_IMPORT] ⚠️ Profile image upload failed: \(error.localizedDescription)")
+            }
+        }
+
+        let dto = SupabaseClientDTO(
+            id: tempId,
+            bubbleId: nil,
+            companyId: companyId,
+            name: name,
+            email: email,
+            phoneNumber: phone,
+            address: address,
+            latitude: nil,
+            longitude: nil,
+            notes: nil,
+            profileImageUrl: profileImageURL,
+            deletedAt: nil
+        )
+
+        do {
+            _ = try await dataController.createClient(dto: dto)
+            guard let savedClient = dataController.getAllClients(for: companyId).first(where: { $0.id == tempId }) else {
+                errorMessage = "Imported the contact, but couldn't load the new client. Try refreshing."
+                showingError = true
+                return
+            }
+
+            selectedClientId = savedClient.id
+            clientSearchText = savedClient.name
+            focusedField = nil
+
+            #if !targetEnvironment(simulator)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            #endif
+
+            // Pipeline lead is non-blocking (matches ClientSheet).
+            Task {
+                _ = await createPipelineLeadForClient(savedClient, companyId: companyId)
+            }
+
+            // Match the success-toast wiring used by `ClientSheet`.
+            NotificationCenter.default.post(
+                name: Notification.Name("ClientCreatedSuccess"),
+                object: nil,
+                userInfo: [
+                    "clientName": savedClient.name,
+                    "clientId": savedClient.id,
+                    "leadCreated": false
+                ]
+            )
+
+            // Wizard system sees the import as equivalent to manual create.
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardProjectClientSelected"),
+                object: nil
+            )
+        } catch {
+            errorMessage = "Failed to import contact: \(error.localizedDescription)"
+            showingError = true
+            #if !targetEnvironment(simulator)
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            #endif
+        }
+    }
+
+    /// Build a display name from a `CNContact`. Falls back to organization
+    /// when both given/family names are empty. Empty result means the
+    /// contact has no usable name and the import should error out.
+    private func composeContactName(from contact: CNContact) -> String {
+        let given = contact.givenName.trimmingCharacters(in: .whitespaces)
+        let family = contact.familyName.trimmingCharacters(in: .whitespaces)
+        let fullName = [given, family].filter { !$0.isEmpty }.joined(separator: " ")
+        if !fullName.isEmpty { return fullName }
+        return contact.organizationName.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Compose a single comma-separated address line from the first postal
+    /// address on the contact. Mirrors the format used by
+    /// `AddressAutocompleteField` outputs so the field looks the same
+    /// whether the user typed the address or imported it.
+    private func composeContactAddress(from contact: CNContact) -> String? {
+        guard let postal = contact.postalAddresses.first?.value else { return nil }
+        var components: [String] = []
+        if !postal.street.isEmpty { components.append(postal.street) }
+        if !postal.city.isEmpty { components.append(postal.city) }
+        if !postal.state.isEmpty { components.append(postal.state) }
+        if !postal.postalCode.isEmpty { components.append(postal.postalCode) }
+        let joined = components.joined(separator: ", ")
+        return joined.isEmpty ? nil : joined
+    }
+
+    /// Best-effort matching pipeline lead for a freshly imported client.
+    /// Mirrors `ClientSheet.createMatchingLead` so an imported client
+    /// surfaces in the sales pipeline exactly like a manually-created
+    /// one. Failures are non-fatal — the client is already saved.
+    private func createPipelineLeadForClient(_ client: Client, companyId: String) async -> String? {
+        let trimmedName = client.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return nil }
+
+        let dto = CreateOpportunityDTO(
+            companyId: companyId,
+            title: "\(trimmedName) — lead",
+            contactName: trimmedName,
+            contactEmail: client.email,
+            contactPhone: client.phoneNumber,
+            description: nil,
+            estimatedValue: nil,
+            source: "client_created",
+            quoteDeliveryMethod: nil,
+            clientId: client.id
+        )
+
+        let repository = OpportunityRepository(companyId: companyId)
+        do {
+            let created = try await repository.create(dto)
+            await MainActor.run {
+                let model = created.toModel()
+                if let context = dataController.modelContext {
+                    let oppId = created.id
+                    let descriptor = FetchDescriptor<Opportunity>(
+                        predicate: #Predicate<Opportunity> { $0.id == oppId }
+                    )
+                    let existing = (try? context.fetch(descriptor)) ?? []
+                    if existing.isEmpty {
+                        context.insert(model)
+                        try? context.save()
+                    }
+                }
+            }
+            return created.id
+        } catch {
+            print("[CONTACT_IMPORT] ⚠️ Failed to create matching lead for client \(client.id): \(error)")
+            return nil
+        }
     }
 
     private func saveProject() {

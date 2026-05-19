@@ -33,18 +33,34 @@
 //  Calendar Mirror feature. Originally landed as V3 on the calendar-mirror
 //  branch; renumbered to V5 during the catalog-variant-model merge.
 //
+//  V5 → V6 stage: lightweight additive — `PhotoAnnotation.renderedPhotoURL`
+//  for the burned-in dimensioned-photo deliverable. Mint of V6 was forced
+//  because the live `PhotoAnnotation` class is referenced by V4 and V5 via
+//  `OPSSchemaCommon.unchangedModels`; without a new versioned schema both
+//  picked up the added property and their stage hashes collided at
+//  ModelContainer init ("Duplicate version checksums across stages detected").
+//
 
 import Foundation
 import SwiftData
 
 enum OPSMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [OPSSchemaV1.self, OPSSchemaV2.self, OPSSchemaV3.self, OPSSchemaV4.self, OPSSchemaV5.self]
+        [OPSSchemaV1.self, OPSSchemaV2.self, OPSSchemaV3.self, OPSSchemaV4.self, OPSSchemaV5.self, OPSSchemaV6.self]
     }
 
     static var stages: [MigrationStage] {
-        [migrateWizardStateIdV1toV2, migrateInventoryToCatalogV2toV3, migrateAddTaskRemindersV3toV4, addCalendarMirrorMapV4toV5]
+        [migrateWizardStateIdV1toV2, migrateInventoryToCatalogV2toV3, migrateAddTaskRemindersV3toV4, addCalendarMirrorMapV4toV5, addRenderedPhotoURLV5toV6]
     }
+
+    /// V5 → V6: purely additive — `PhotoAnnotation` gains a nullable
+    /// `renderedPhotoURL` scalar. SwiftData lightweight migration handles
+    /// the existing V5 store transparently because no existing column is
+    /// renamed, retyped, or made non-optional.
+    static let addRenderedPhotoURLV5toV6 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV5.self,
+        toVersion: OPSSchemaV6.self
+    )
 
     /// V4 → V5: purely additive — `CalendarMirrorMap` is a brand-new model
     /// with no pre-existing rows to transform. SwiftData lightweight migration

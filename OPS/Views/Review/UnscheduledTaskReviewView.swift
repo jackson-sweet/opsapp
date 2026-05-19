@@ -45,10 +45,27 @@ struct UnscheduledTaskReviewView: View {
     @State private var toastMessage: String? = nil
     @State private var toastKind: ToastKind = .success
     @State private var toastDismissTask: Task<Void, Never>? = nil
+    /// Bug e90acdaf — when mark-complete or auto-schedule fails, the card
+    /// has already left the stack. Holding the failed task + action here
+    /// powers the RETRY button on the persistent error toast so the
+    /// operator has an in-flow recovery path instead of being told to
+    /// "try again" with no surface to do so.
+    @State private var retryContext: RetryContext? = nil
+    @State private var retryInFlight: Bool = false
 
     private enum ToastKind {
         case success
         case error
+    }
+
+    private enum RetryAction {
+        case autoSchedule
+        case markComplete
+    }
+
+    private struct RetryContext {
+        let task: ProjectTask
+        let action: RetryAction
     }
 
     private var activeTeamMembers: [User] {
@@ -370,11 +387,41 @@ struct UnscheduledTaskReviewView: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
+
+                    if retryContext != nil {
+                        Button(action: performRetry) {
+                            Text("RETRY")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .padding(.horizontal, 10)
+                                .frame(height: 28)
+                                .background(OPSStyle.Colors.errorStatus.opacity(0.18))
+                                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                        .strokeBorder(OPSStyle.Colors.errorStatus.opacity(0.45), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(retryInFlight)
+                        .opacity(retryInFlight ? 0.5 : 1)
+                        .accessibilityLabel("Retry failed action")
+
+                        Button(action: dismissToast) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Dismiss")
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(OPSStyle.Colors.cardBackground.opacity(0.96))
                 .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                .contentShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                         .strokeBorder((toastKind == .success ? OPSStyle.Colors.successStatus : OPSStyle.Colors.errorStatus).opacity(0.35), lineWidth: 1)
@@ -386,7 +433,11 @@ struct UnscheduledTaskReviewView: View {
             }
             Spacer()
         }
-        .allowsHitTesting(false)
+        // Hits pass through to the card stack unless the retry toast is up —
+        // we don't want a transient success toast eating swipe gestures. The
+        // pill's contentShape keeps hits inside the rounded rectangle even
+        // when retry buttons widen it.
+        .allowsHitTesting(retryContext != nil)
         .animation(toastAnimation, value: toastMessage)
     }
 
@@ -396,16 +447,59 @@ struct UnscheduledTaskReviewView: View {
             : .spring(response: 0.35, dampingFraction: 0.82)
     }
 
-    private func showToast(_ message: String, kind: ToastKind) {
+    private func showToast(_ message: String, kind: ToastKind, retry: RetryContext? = nil) {
         toastDismissTask?.cancel()
         toastMessage = message
         toastKind = kind
+        retryContext = retry
+        retryInFlight = false
 
+        // Bug e90acdaf — error toasts that carry a RETRY action persist until
+        // the operator acts on them; the failed task may already be several
+        // cards behind the current top so we can't trust a 2.6s fuse. Plain
+        // errors still auto-dismiss, but on a longer fuse than successes so
+        // the operator has time to read the failure reason.
+        let lifetimeNanoseconds: UInt64? = {
+            if retry != nil { return nil }
+            if kind == .error { return 6_000_000_000 }
+            return 2_600_000_000
+        }()
+
+        guard let nanos = lifetimeNanoseconds else { return }
         toastDismissTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            try? await Task.sleep(nanoseconds: nanos)
             guard !Task.isCancelled else { return }
             toastMessage = nil
+            retryContext = nil
         }
+    }
+
+    private func performRetry() {
+        guard let ctx = retryContext, !retryInFlight else { return }
+        retryInFlight = true
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        // Clear the failed-action toast immediately. The retried action shows
+        // its own result toast; leaving the previous "TRY AGAIN" message up
+        // while the retry is in flight would conflict with whatever lands
+        // a moment later.
+        toastDismissTask?.cancel()
+        toastMessage = nil
+        let captured = ctx
+        retryContext = nil
+
+        switch captured.action {
+        case .autoSchedule: autoScheduleTask(captured.task)
+        case .markComplete: markTaskComplete(captured.task)
+        }
+        retryInFlight = false
+    }
+
+    private func dismissToast() {
+        toastDismissTask?.cancel()
+        toastMessage = nil
+        retryContext = nil
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     private func formatScheduledRange(start: Date, end: Date) -> String {
@@ -648,6 +742,17 @@ struct UnscheduledTaskReviewView: View {
         // error toast is worse than no buzz at all.
         let taskTitle = task.displayTitle
 
+        // Bug adc0feb3 — realtime sync may have completed this task between
+        // the operator opening the review and swiping the card. Skip the
+        // canonical path entirely; firing it again would re-emit team
+        // notifications, push, and analytics for a state change that didn't
+        // actually happen on this device.
+        if task.status == .completed {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showToast("ALREADY COMPLETE — \(taskTitle.uppercased())", kind: .success)
+            return
+        }
+
         Task {
             do {
                 try await dataController.updateTaskStatus(task: task, to: .completed)
@@ -658,14 +763,32 @@ struct UnscheduledTaskReviewView: View {
             } catch {
                 print("[UNSCHEDULED_REVIEW] Failed to mark task complete: \(error)")
                 await MainActor.run {
-                    showToast("COULDN'T MARK COMPLETE — TRY AGAIN", kind: .error)
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    showToast(
+                        "COULDN'T MARK COMPLETE — TRY AGAIN",
+                        kind: .error,
+                        retry: RetryContext(task: task, action: .markComplete)
+                    )
                 }
             }
         }
     }
 
     private func autoScheduleTask(_ task: ProjectTask) {
+        // Bug adc0feb3 — realtime sync can land a schedule on the task
+        // between the operator opening this review and swiping the card.
+        // Re-running the scheduler here would overwrite the dates that
+        // just arrived (the operator never saw them). Treat the swipe as
+        // a confirm of the already-applied schedule instead.
+        if let existingStart = task.startDate, let existingEnd = task.endDate {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showToast(
+                "ALREADY SCHEDULED \(formatScheduledRange(start: existingStart, end: existingEnd))",
+                kind: .success
+            )
+            return
+        }
+
         let plan = dataController.autoScheduleSingleTask(
             task,
             teamMemberIds: Set(task.getTeamMemberIds()),
@@ -705,8 +828,12 @@ struct UnscheduledTaskReviewView: View {
             } catch {
                 print("[UNSCHEDULED_REVIEW] Failed to auto-schedule task: \(error)")
                 await MainActor.run {
-                    showToast("SCHEDULE FAILED — TAP TASK LATER TO RETRY", kind: .error)
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    showToast(
+                        "SCHEDULE FAILED — TRY AGAIN",
+                        kind: .error,
+                        retry: RetryContext(task: task, action: .autoSchedule)
+                    )
                 }
             }
         }

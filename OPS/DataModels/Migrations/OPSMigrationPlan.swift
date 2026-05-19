@@ -33,12 +33,14 @@
 //  Calendar Mirror feature. Originally landed as V3 on the calendar-mirror
 //  branch; renumbered to V5 during the catalog-variant-model merge.
 //
-//  V5 → V6 stage: lightweight additive — `PhotoAnnotation.renderedPhotoURL`
-//  for the burned-in dimensioned-photo deliverable. Mint of V6 was forced
-//  because the live `PhotoAnnotation` class is referenced by V4 and V5 via
-//  `OPSSchemaCommon.unchangedModels`; without a new versioned schema both
-//  picked up the added property and their stage hashes collided at
-//  ModelContainer init ("Duplicate version checksums across stages detected").
+//  V5 → V6 stage: lightweight additive — PaymentMilestone (iOS parity for
+//  the existing server table) and RecurringExpense (new) for the Cashflow
+//  Forecast feature. Spec at docs/superpowers/specs/2026-05-11-cashflow-forecast-design.md.
+//  The new model types in `v6ForecastModels` are also what gives V6 a real
+//  checksum differentiator from V5 — see the OPSSchemaV6.swift docblock for
+//  why that matters when a sibling property change (PhotoAnnotation.
+//  renderedPhotoURL, commit 6b62f40) lands on a live @Model class referenced
+//  by every historical schema.
 //
 
 import Foundation
@@ -50,14 +52,13 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
     }
 
     static var stages: [MigrationStage] {
-        [migrateWizardStateIdV1toV2, migrateInventoryToCatalogV2toV3, migrateAddTaskRemindersV3toV4, addCalendarMirrorMapV4toV5, addRenderedPhotoURLV5toV6]
+        [migrateWizardStateIdV1toV2, migrateInventoryToCatalogV2toV3, migrateAddTaskRemindersV3toV4, addCalendarMirrorMapV4toV5, addForecastModelsV5toV6]
     }
 
-    /// V5 → V6: purely additive — `PhotoAnnotation` gains a nullable
-    /// `renderedPhotoURL` scalar. SwiftData lightweight migration handles
-    /// the existing V5 store transparently because no existing column is
-    /// renamed, retyped, or made non-optional.
-    static let addRenderedPhotoURLV5toV6 = MigrationStage.lightweight(
+    /// V5 → V6: purely additive — `PaymentMilestone` and `RecurringExpense` are
+    /// new models with no pre-existing rows to transform. SwiftData lightweight
+    /// migration handles the schema diff transparently.
+    static let addForecastModelsV5toV6 = MigrationStage.lightweight(
         fromVersion: OPSSchemaV5.self,
         toVersion: OPSSchemaV6.self
     )

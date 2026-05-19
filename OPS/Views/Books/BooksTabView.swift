@@ -22,6 +22,7 @@ struct BooksTabView: View {
     @StateObject private var estimateVM = EstimateViewModel()
     @StateObject private var invoiceVM = InvoiceViewModel()
     @StateObject private var expenseVM = ExpenseViewModel()
+    @StateObject private var cashflowVM = CashflowForecastViewModel()
 
     init() {
         _dashboardVM = StateObject(wrappedValue: MoneyDashboardViewModel())
@@ -47,6 +48,7 @@ struct BooksTabView: View {
 
     @State private var headerCollapsed = false
     @State private var showARDetail = false
+    @State private var showCashflowForecast = false
 
     private var selectedSegment: BooksSection {
         BooksSection(rawValue: selectedSegmentRaw) ?? .invoices
@@ -55,6 +57,11 @@ struct BooksTabView: View {
     private var visibleSegments: [BooksSection] {
         BooksSection.allCases.filter { permissionStore.can($0.requiredPermission) }
     }
+
+    /// Convenience gate for the Cashflow Forecast surfaces (preview card +
+    /// notification deep link). Same permission the Books-segment finances
+    /// section checks.
+    private var hasFinances: Bool { permissionStore.can("finances.view") }
 
     private var carouselVisible: Bool {
         permissionStore.can("finances.view") || permissionStore.can("pipeline.view")
@@ -129,6 +136,15 @@ struct BooksTabView: View {
                             )
                         }
 
+                        // Cashflow forecast preview card — gated on finances.view.
+                        // Sits below the dashboard header until the Books carousel
+                        // reconstruction lands (see spec §13 coordination notes).
+                        if hasFinances {
+                            CashflowForecastCard(viewModel: cashflowVM)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                .padding(.top, OPSStyle.Layout.spacing2)
+                        }
+
                         if !headerCollapsed {
                             underlineSegmentedControl
                         }
@@ -151,6 +167,9 @@ struct BooksTabView: View {
                 ARAgingDetailView()
                     .environmentObject(dataController)
             }
+            .fullScreenCover(isPresented: $showCashflowForecast) {
+                CashflowForecastScreen(viewModel: cashflowVM)
+            }
         }
         .trackScreen("Books")
         .task {
@@ -169,6 +188,12 @@ struct BooksTabView: View {
             withAnimation(OPSStyle.Animation.fast) {
                 selectedSegmentRaw = segment.rawValue
             }
+        }
+        // Cashflow forecast deep-link from notification rail. Presents the
+        // full forecast screen on top of the Books surface.
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenCashflowForecast"))) { _ in
+            guard hasFinances else { return }
+            showCashflowForecast = true
         }
     }
 
@@ -239,6 +264,7 @@ struct BooksTabView: View {
         estimateVM.setup(companyId: companyId, modelContext: modelContext)
         invoiceVM.setup(companyId: companyId, modelContext: modelContext)
         expenseVM.setup(companyId: companyId)
+        cashflowVM.setup(companyId: companyId, dashboardVM: dashboardVM)
     }
 }
 

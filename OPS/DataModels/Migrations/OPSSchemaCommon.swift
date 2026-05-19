@@ -74,6 +74,13 @@ enum OPSSchemaCommon {
         TaskReminder.self
     ]
 
+    /// V6 forecast entities. Layered on top of V5 (additive). Cashflow Forecast feature —
+    /// see docs/superpowers/specs/2026-05-11-cashflow-forecast-design.md.
+    static let v6ForecastModels: [any PersistentModel.Type] = [
+        PaymentMilestone.self,
+        RecurringExpense.self
+    ]
+
     /// V3-only models: catalog & variant model + configurable Products +
     /// the company-defaults adapter map. Replaces the V2 inventory entities.
     static let v3CatalogModels: [any PersistentModel.Type] = [

@@ -2,24 +2,35 @@
 //  OPSSchemaV6.swift
 //  OPS
 //
-//  Schema version 6.0.0 — Dimensioned Photo Deliverables.
+//  Schema version 6.0.0 — Cashflow Forecast (with consolidated PhotoAnnotation
+//  rendered-deliverable parity).
 //
-//  V6 adds `PhotoAnnotation.renderedPhotoURL` — a derived 2048-long-edge PNG
-//  deliverable with burned-in dimensions, kept alongside the source HEIC.
-//  Purely additive (nullable scalar). SwiftData lightweight migration handles
-//  the V5 store transparently because no existing column is renamed, retyped,
-//  or made non-optional.
+//  V6 adds two new SwiftData entities used by the Cashflow Forecast feature:
+//   • `PaymentMilestone` — iOS parity for the existing server `payment_milestones`
+//     table (was Supabase-only until this version). Read-side only in v1; estimate
+//     form writes via `EstimateService` payload.
+//   • `RecurringExpense` — owner-managed recurring outflows (rent, insurance,
+//     payroll, subscriptions). Drives the recurring layer of the forecast.
+//  These two new model types are the *real* checksum differentiator vs V5 — V6's
+//  hash diverges from V5 organically because `v6ForecastModels` is appended.
 //
-//  Reason the bump exists: V4 and V5 both reference the live `PhotoAnnotation`
-//  type via `OPSSchemaCommon.unchangedModels`. The moment a new persistent
-//  property landed on the live class (sibling commit 6b62f40 — "Persist
-//  rendered dimensioned photo deliverables"), both V4 and V5 silently picked
-//  it up and their migration-stage hashes collided, producing the
-//  "Duplicate version checksums across stages detected" runtime crash at
-//  ModelContainer init. The fix is to mint a new VersionedSchema that owns
-//  the new property explicitly, append a `.lightweight` V5 → V6 stage, and
-//  bump `OPSApp.sharedModelContainer` to declare V6 as the latest. See the
-//  comment block at the top of `OPSApp.swift` for the long-form playbook.
+//  V6 also implicitly absorbs the `PhotoAnnotation.renderedPhotoURL` property
+//  added by ops-ios commit 6b62f40 ("Persist rendered dimensioned photo
+//  deliverables"). That property lives on the live `PhotoAnnotation` class which
+//  is referenced by every historical schema via `OPSSchemaCommon.unchangedModels`
+//  — when a persistent property lands on a live `@Model` like that, every
+//  schema's hash shifts by the same delta, so the relative distinctness between
+//  schemas is preserved. The crash that surfaced on `main` before this merge
+//  ("Duplicate version checksums across stages detected") came from minting a
+//  V6 whose models list was *identical* to V5 — collapsing the stage chain. The
+//  fix is exactly this V6 — a V6 with at least one real new model so it differs
+//  from V5 by design, not by accident.
+//
+//  Purely additive over V5 — no rename, retype, or drop. SwiftData lightweight
+//  migration handles the schema diff transparently.
+//
+//  See docs/superpowers/specs/2026-05-11-cashflow-forecast-design.md and
+//  ops-software-bible/09_FINANCIAL_SYSTEM.md § Cashflow Forecast.
 //
 
 import Foundation
@@ -32,6 +43,7 @@ enum OPSSchemaV6: VersionedSchema {
         OPSSchemaCommon.unchangedModels
             + OPSSchemaCommon.v3CatalogModels
             + OPSSchemaCommon.v4ReminderModels
+            + OPSSchemaCommon.v6ForecastModels
             + [WizardState.self, CalendarMirrorMap.self]
     }
 }

@@ -11,7 +11,7 @@ import SwiftUI
 
 /// The main styling system for the OPS app — spec v2 (2026-04-17).
 ///
-/// Canonical source of truth: `/.interface-design/system.md` at the repo root.
+/// Canonical source of truth: `ops-design-system/project/DESIGN.md` + `mobile/MOBILE.md`.
 ///
 /// Semantic tokens (prefer these for new code):
 ///
@@ -58,11 +58,11 @@ enum OPSStyle {
         static let cardBackgroundDark = Color("CardBackgroundDark") // #0D0D0D (legacy — deprecated)
         static let statusBackground = Color("StatusBackground")    // #1D1D1D (legacy — deprecated)
 
-        // Border colors
-        static let cardBorder = Color.white.opacity(0.2) // Standard card border (consolidated from 0.1, 0.15, 0.2 variations)
+        // Border colors (spec v2 — hairline-quiet, not heavy)
+        static let cardBorder = Color.white.opacity(0.09) // Glass panel edge — was 0.2, aligned to --glass-border
         static let cardBorderSubtle = Color.white.opacity(0.05) // Subtle card border for less prominent cards
-        static let inputFieldBorder = Color.white.opacity(0.2) // Input fields, text editors, form controls, avatar circles
-        static let buttonBorder = Color.white.opacity(0.4) // Secondary action buttons
+        static let inputFieldBorder = Color.white.opacity(0.10) // Input fields, text editors — was 0.2, aligned to --line
+        static let buttonBorder = Color.white.opacity(0.10) // Secondary action buttons — was 0.4, aligned to --line
         static let darkBorder = Color.black.opacity(0.5) // Dark borders; used by GracePeriodBanner
         
         // Text colors (prefer `text` / `text2` / `text3` / `textMute` below)
@@ -118,7 +118,7 @@ enum OPSStyle {
         static let shadowColor = Color.black.opacity(0.15)  // Standard shadow (consolidated from 0.15, 0.3, 0.5 variations)
 
         // Separators & Subtle Backgrounds
-        static let separator = Color.white.opacity(0.15)  // For divider lines
+        static let separator = Color.white.opacity(0.10)  // For divider lines — was 0.15, aligned to --line
         static let subtleBackground = Color.white.opacity(0.1) // Subtle row backgrounds within cards (consolidated from 0.05, 0.1 variations)
 
         // Accounting palette
@@ -423,7 +423,8 @@ enum OPSStyle {
             static let heavy = 0.9    // Almost opaque
         }
 
-        // Shadow presets
+        // Shadow presets — DEPRECATED (spec v2: zero box-shadows on dark backgrounds.
+        // Depth = glass + hairlines only. Kept for backward compat — do NOT use in new code.)
         enum Shadow {
             static let card = (color: Color.black.opacity(0.1), radius: 4.0, x: 0.0, y: 2.0)
             static let elevated = (color: Color.black.opacity(0.2), radius: 8.0, x: 0.0, y: 4.0)
@@ -553,6 +554,8 @@ enum OPSStyle {
         /// Deprecated — prefer `.hover` (150ms).
         static let fast     = SwiftUI.Animation.easeInOut(duration: 0.2)
         static let faster   = SwiftUI.Animation.easeOut(duration: 0.15)
+        // Spring — DEPRECATED (spec v2: no spring physics, no bounce. Exception: drag-and-drop reorder only.)
+        // Kept for backward compat — migrate call sites to .hover / .panel / .page.
         static let spring     = SwiftUI.Animation.spring(response: 0.3, dampingFraction: 0.7)
         static let springFast = SwiftUI.Animation.spring(response: 0.2, dampingFraction: 0.7)
     }

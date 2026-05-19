@@ -42,8 +42,12 @@ struct OPSApp: App {
     // overshoot the declared schema. Equivalently: adding a new persistent
     // property to a live `@Model` that's referenced by any historical
     // VersionedSchema (e.g. anything in `OPSSchemaCommon.unchangedModels`)
-    // will silently break the hash of every schema that references it
-    // unless you also mint a new schema version + stage to own the change.
+    // shifts every schema's hash by the same delta — the relative distinctness
+    // between schemas survives only if every adjacent pair (Vn, Vn+1) already
+    // declared a real model-list difference. Mint a new schema version when
+    // the only thing differentiating it is the property add, OR ensure your
+    // schema bump also introduces a new @Model (which is what V6 does via
+    // `v6ForecastModels`).
     //
     // Error 134504 ("unknown model version") means the on-disk store was created
     // before this app introduced versioned schemas. SwiftData can't map it to any

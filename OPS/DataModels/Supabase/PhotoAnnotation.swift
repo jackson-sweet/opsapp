@@ -21,6 +21,11 @@ class PhotoAnnotation: Identifiable {
     var updatedAt: Date?
     var deletedAt: Date?
 
+    /// Synced to `project_photo_annotations.rendered_photo_url`.
+    /// Derived 2048-long-edge PNG deliverable with burned-in dimensions;
+    /// `photoURL` remains the source HEIC/photo URL.
+    var renderedPhotoURL: String?
+
     // Sync tracking
     var lastSyncedAt: Date?
     var needsSync: Bool = false

@@ -2,7 +2,7 @@
 //  DimensionedPhotoSyncManager.swift
 //  OPS
 //
-//  Phase F — orchestrates the HEIC + sidecar + optional-depth upload pipeline
+//  Phase F — orchestrates the HEIC + rendered PNG + sidecar + optional-depth upload pipeline
 //  for a dimensioned capture (spec §7) and inserts the matching SwiftData +
 //  Supabase rows so the photo appears in the gallery and in the office
 //  web portal.
@@ -13,10 +13,14 @@
 //         → S3, content-type `image/heic`
 //         → URL stored on a new `project_photos` row with
 //           `source = 'measurement'`, `is_client_visible = false`
-//    2. Sidecar metadata JSON (ARKit anchors + intrinsics + device pose)
+//    2. Rendered PNG deliverable with burned-in dimensions
+//         → S3, content-type `image/png`
+//         → URL stored in `project_photos.rendered_url` and
+//           `project_photo_annotations.rendered_photo_url`
+//    3. Sidecar metadata JSON (ARKit anchors + intrinsics + device pose)
 //         → S3, content-type `application/json`
 //         → URL stored in `DimensionsData.sidecarMetadataUrl`
-//    3. Standalone FP32 depth grid (LiDAR only)
+//    4. Standalone FP32 depth grid (LiDAR only)
 //         → S3, content-type `application/octet-stream`
 //         → URL stored in `DimensionsData.depthAssetUrl`
 //
@@ -50,13 +54,14 @@
 //  Spec reference:
 //    ops-software-bible/specs/2026-05-10-lidar-dimensioned-photo-capture-design.md
 //      §3.7 (output / deliverable)
-//      §7   (storage, three-asset pipeline, 90-day FP32 lifecycle)
+//      §7   (storage, source/derived asset pipeline, 90-day FP32 lifecycle)
 //      §6   (notification mapping)
 //
 
 import Foundation
 import SwiftData
 import Supabase
+import UIKit
 
 // MARK: - Protocols for testability
 
@@ -97,6 +102,7 @@ public struct LivePresignedAssetUploader: DimensionedAssetUploader {
 public protocol DimensionedAnnotationPersister {
     func insertProjectPhotoRow(
         url: String,
+        renderedUrl: String,
         projectId: String,
         companyId: String,
         uploadedBy: String,
@@ -105,6 +111,7 @@ public protocol DimensionedAnnotationPersister {
 
     func insertAnnotationRow(
         photoUrl: String,
+        renderedPhotoUrl: String,
         projectId: String,
         companyId: String,
         authorId: String,
@@ -141,6 +148,7 @@ public struct LiveDimensionedAnnotationPersister: DimensionedAnnotationPersister
     @MainActor
     public func insertProjectPhotoRow(
         url: String,
+        renderedUrl: String,
         projectId: String,
         companyId: String,
         uploadedBy: String,
@@ -150,6 +158,7 @@ public struct LiveDimensionedAnnotationPersister: DimensionedAnnotationPersister
             let project_id: String
             let company_id: String
             let url: String
+            let rendered_url: String
             let source: String
             let uploaded_by: String
             let is_client_visible: Bool
@@ -160,6 +169,7 @@ public struct LiveDimensionedAnnotationPersister: DimensionedAnnotationPersister
             project_id: projectId,
             company_id: companyId,
             url: url,
+            rendered_url: renderedUrl,
             source: "measurement",
             uploaded_by: uploadedBy,
             is_client_visible: false,
@@ -175,6 +185,7 @@ public struct LiveDimensionedAnnotationPersister: DimensionedAnnotationPersister
     @MainActor
     public func insertAnnotationRow(
         photoUrl: String,
+        renderedPhotoUrl: String,
         projectId: String,
         companyId: String,
         authorId: String,
@@ -189,6 +200,7 @@ public struct LiveDimensionedAnnotationPersister: DimensionedAnnotationPersister
             project_id: projectId,
             company_id: companyId,
             photo_url: photoUrl,
+            rendered_photo_url: renderedPhotoUrl,
             annotation_url: nil,
             note: "",
             author_id: authorId,
@@ -211,6 +223,7 @@ public struct LiveDimensionedAnnotationPersister: DimensionedAnnotationPersister
         let project_id: String
         let company_id: String
         let photo_url: String
+        let rendered_photo_url: String
         let annotation_url: String?
         let note: String
         let author_id: String
@@ -272,7 +285,7 @@ public indirect enum DimensionsJSONValue: Codable, Equatable {
 // MARK: - Errors
 
 public enum DimensionedSyncError: Error, LocalizedError, Equatable {
-    /// All three asset uploads attempted; at least one still failed after
+    /// Asset uploads attempted; at least one still failed after
     /// retries. The local cache paths have been persisted to a
     /// `PhotoAnnotation` row marked `needsSync = true` — call
     /// `syncPendingDimensions` after connectivity returns.
@@ -290,12 +303,17 @@ public enum DimensionedSyncError: Error, LocalizedError, Equatable {
     /// FP32 depth asset. Visual captures may omit depth; LiDAR captures may not.
     case missingRequiredDepthAsset
 
+    /// Source image bytes could not be decoded or composed into the spec §3.7
+    /// 2048-long-edge rendered PNG deliverable.
+    case renderedDeliverableFailed
+
     public var errorDescription: String? {
         switch self {
         case .queuedForRetry(let r):       return "Dimensioned capture queued for retry: \(r)"
         case .annotationInsertFailed(let r): return "Annotation row insert failed: \(r)"
         case .missingLocalAsset(let url):  return "Local asset missing: \(url.lastPathComponent)"
         case .missingRequiredDepthAsset:   return "LiDAR capture missing required depth asset"
+        case .renderedDeliverableFailed:   return "Rendered dimensioned-photo deliverable failed"
         }
     }
 }
@@ -335,7 +353,7 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
 
     // MARK: - Public API (per brief)
 
-    /// Upload the three assets, insert the project_photos row + annotation row,
+    /// Upload source + derived assets, insert the project_photos row + annotation row,
     /// return a hydrated `PhotoAnnotation` model. Caller is responsible for
     /// `modelContext.insert(_:)` and `modelContext.save()` after success — this
     /// keeps the manager free of SwiftData store coupling and lets the caller
@@ -361,6 +379,10 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
         let heicData = try readAsset(captured.heicURL)
         let sidecarData = try readAsset(captured.sidecarURL)
         let depthData = try captured.depthURL.map { try readAsset($0) }
+        let renderedData = try renderDeliverable(
+            from: heicData,
+            dimensions: dimensions
+        )
 
         let folder = "measurements/\(companyId)/\(projectId)"
         let captureID = captured.captureID.uuidString
@@ -368,6 +390,7 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
         // 2. Attempt all present uploads with per-asset retry. Any failure after
         // retries falls through to the queue-for-retry path.
         var uploadedHeic: String?
+        var uploadedRendered: String?
         var uploadedSidecar: String?
         var uploadedDepth: String?
         var failureReason: String?
@@ -379,6 +402,13 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
                 folder: folder,
                 contentType: "image/heic",
                 label: "heic"
+            )
+            uploadedRendered = try await uploadWithRetry(
+                data: renderedData,
+                filename: "\(captureID).rendered.png",
+                folder: folder,
+                contentType: "image/png",
+                label: "rendered"
             )
             uploadedSidecar = try await uploadWithRetry(
                 data: sidecarData,
@@ -402,6 +432,7 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
 
         guard
             let heicURLString = uploadedHeic,
+            let renderedURLString = uploadedRendered,
             let sidecarURLString = uploadedSidecar,
             depthData == nil || uploadedDepth != nil
         else {
@@ -444,6 +475,7 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
         do {
             try await persister.insertProjectPhotoRow(
                 url: heicURLString,
+                renderedUrl: renderedURLString,
                 projectId: projectId,
                 companyId: companyId,
                 uploadedBy: userId,
@@ -473,6 +505,7 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
         do {
             inserted = try await persister.insertAnnotationRow(
                 photoUrl: heicURLString,
+                renderedPhotoUrl: renderedURLString,
                 projectId: projectId,
                 companyId: companyId,
                 authorId: userId,
@@ -505,6 +538,7 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
             // Override the photoURL since the upload DID succeed — re-sync only
             // needs to retry the annotation row, not the asset uploads.
             stub.photoURL = heicURLString
+            stub.renderedPhotoURL = renderedURLString
             await MainActor.run {
                 Self.lastQueuedAnnotation = stub
             }
@@ -529,6 +563,7 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
             authorId: userId,
             createdAt: inserted.createdAt
         )
+        model.renderedPhotoURL = renderedURLString
         model.dimensions = enriched
         model.localDepthMapPath = captured.depthURL?.path
         model.localSidecarPath = captured.sidecarURL.path
@@ -682,6 +717,13 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
                 print("[DIMENSIONED_SYNC] Skipping \(annotation.id) — local asset missing")
                 continue
             }
+            guard let renderedData = try? renderDeliverable(
+                from: heicData,
+                dimensions: dims
+            ) else {
+                print("[DIMENSIONED_SYNC] Skipping \(annotation.id) — rendered deliverable failed")
+                continue
+            }
             let depthData: Data?
             if let depthURL {
                 guard let data = try? Data(contentsOf: depthURL) else {
@@ -701,6 +743,13 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
                     folder: folder,
                     contentType: "image/heic",
                     label: "heic"
+                )
+                let renderedURLString = try await uploadWithRetry(
+                    data: renderedData,
+                    filename: "\(captureID).rendered.png",
+                    folder: folder,
+                    contentType: "image/png",
+                    label: "rendered"
                 )
                 let sidecarURLString = try await uploadWithRetry(
                     data: sidecarData,
@@ -728,6 +777,7 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
 
                 try? await persister.insertProjectPhotoRow(
                     url: heicURLString,
+                    renderedUrl: renderedURLString,
                     projectId: annotation.projectId,
                     companyId: annotation.companyId,
                     uploadedBy: annotation.authorId,
@@ -736,6 +786,7 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
 
                 let inserted = try await persister.insertAnnotationRow(
                     photoUrl: heicURLString,
+                    renderedPhotoUrl: renderedURLString,
                     projectId: annotation.projectId,
                     companyId: annotation.companyId,
                     authorId: annotation.authorId,
@@ -744,6 +795,7 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
 
                 annotation.id = inserted.id
                 annotation.photoURL = heicURLString
+                annotation.renderedPhotoURL = renderedURLString
                 annotation.dimensions = enriched
                 annotation.needsSync = false
                 annotation.lastSyncedAt = Date()
@@ -841,6 +893,46 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
         model.localCaptureFinishedAt = captured.captureFinishedAt
         model.needsSync = true
         return model
+    }
+
+    // MARK: - Internal — rendered deliverable
+
+    private func renderDeliverable(
+        from sourcePhotoData: Data,
+        dimensions: DimensionsData
+    ) throws -> Data {
+        guard
+            let sourcePhoto = UIImage(data: sourcePhotoData),
+            let rendered = RenderedPhotoComposer.render(
+                photo: sourcePhoto,
+                dimensions: dimensions,
+                accuracy: Self.accuracyState(for: dimensions),
+                coplanarOnly: Self.coplanarOnly(for: dimensions)
+            )
+        else {
+            throw DimensionedSyncError.renderedDeliverableFailed
+        }
+        return rendered
+    }
+
+    static func accuracyState(for dimensions: DimensionsData) -> AccuracyState {
+        if dimensions.calibration.method == .referenceObject {
+            return .calibrated
+        }
+
+        switch dimensions.captureMode {
+        case .lidar:
+            return .lidarUncalibrated
+        case .visual:
+            return .visualSlam
+        case .manualScale:
+            return .noDepth
+        }
+    }
+
+    static func coplanarOnly(for dimensions: DimensionsData) -> Bool {
+        dimensions.captureMode == .visual
+            && dimensions.calibration.method == .referenceObject
     }
 
     // MARK: - Internal — disk reads

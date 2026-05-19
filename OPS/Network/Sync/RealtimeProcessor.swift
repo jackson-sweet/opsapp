@@ -1071,6 +1071,7 @@ final class RealtimeProcessor: ObservableObject {
         let descriptor = FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == id })
         if let existing = try context.fetch(descriptor).first {
             if !pendingFields.contains("annotationURL")     { existing.annotationURL = model.annotationURL }
+            if !pendingFields.contains("renderedPhotoURL")  { existing.renderedPhotoURL = model.renderedPhotoURL }
             if !pendingFields.contains("note")              { existing.note = model.note }
             if !pendingFields.contains("updatedAt")         { existing.updatedAt = model.updatedAt }
             if !pendingFields.contains("deletedAt")         { existing.deletedAt = model.deletedAt }

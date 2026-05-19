@@ -1141,11 +1141,12 @@ actor DataActor {
                 entityType: .photoAnnotation,
                 entityId: id,
                 fields: [
-                    "annotationURL", "note", "updatedAt", "deletedAt", "dimensions"
+                    "annotationURL", "renderedPhotoURL", "note", "updatedAt", "deletedAt", "dimensions"
                 ]
             )
 
             if accept.contains("annotationURL") { existing.annotationURL = dto.annotationUrl }
+            if accept.contains("renderedPhotoURL") { existing.renderedPhotoURL = dto.renderedPhotoUrl }
             if accept.contains("note") { existing.note = dto.note ?? "" }
             if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
             if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }

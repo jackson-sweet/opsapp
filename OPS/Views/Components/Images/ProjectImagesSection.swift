@@ -15,6 +15,8 @@ struct ProjectImagesSection: View {
     /// `PhotoAnnotation` rows for this project that carry a non-null
     /// `dimensionsData`. Drives the per-thumbnail `ruler` badge overlay.
     @State private var dimensionedURLs: Set<String> = []
+    @State private var renderedURLsBySource: [String: String] = [:]
+    @State private var renderedDeliverableURLs: [String] = []
     @Environment(\.modelContext) private var modelContext
     
     var body: some View {
@@ -24,7 +26,7 @@ struct ProjectImagesSection: View {
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             
-            let imageUrls = project.getProjectImages()
+            let imageUrls = displayedImageURLs(from: project.getProjectImages())
             
             if imageUrls.isEmpty {
                 // Empty state - shown immediately if no images
@@ -63,6 +65,24 @@ struct ProjectImagesSection: View {
                 }
             }
         }
+    }
+
+    private func displayedImageURLs(from sourceURLs: [String]) -> [String] {
+        var result: [String] = []
+        var seen = Set<String>()
+
+        for sourceURL in sourceURLs {
+            let displayURL = renderedURLsBySource[sourceURL] ?? sourceURL
+            if seen.insert(displayURL).inserted {
+                result.append(displayURL)
+            }
+        }
+
+        for renderedURL in renderedDeliverableURLs where seen.insert(renderedURL).inserted {
+            result.append(renderedURL)
+        }
+
+        return result
     }
     
     // Empty state view
@@ -137,5 +157,9 @@ struct ProjectImagesSection: View {
         )
         guard let annotations = try? modelContext.fetch(descriptor) else { return }
         dimensionedURLs = DimensionBadgeOverlay.dimensionedURLs(in: annotations)
+        renderedURLsBySource = DimensionBadgeOverlay.renderedDeliverableURLsBySource(in: annotations)
+        renderedDeliverableURLs = annotations
+            .sorted { $0.createdAt < $1.createdAt }
+            .compactMap { $0.renderedPhotoURL?.isEmpty == false ? $0.renderedPhotoURL : nil }
     }
 }

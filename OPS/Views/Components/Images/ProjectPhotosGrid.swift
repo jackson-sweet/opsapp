@@ -24,6 +24,8 @@ struct ProjectPhotosGrid: View {
     /// Phase F — set of photo URLs for this project that carry a dimensioned
     /// capture (non-null `dimensions` jsonb on the matching annotation row).
     @State private var dimensionedURLs: Set<String> = []
+    @State private var renderedURLsBySource: [String: String] = [:]
+    @State private var renderedDeliverableURLs: [String] = []
     @EnvironmentObject private var dataController: DataController
     
     // Three-column grid with minimal spacing
@@ -40,7 +42,7 @@ struct ProjectPhotosGrid: View {
                 OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
                 
                 VStack(spacing: 0) {
-                    let photos = project.getProjectImages()
+                    let photos = displayedImageURLs(from: project.getProjectImages())
                     
                     if photos.isEmpty {
                         emptyStateView
@@ -160,7 +162,7 @@ struct ProjectPhotosGrid: View {
             set: { item in selectedPhotoIndex = item?.index }
         )) { item in
             BasicPhotoViewer(
-                photos: project.getProjectImages(),
+                photos: displayedImageURLs(from: project.getProjectImages()),
                 initialIndex: item.index,
                 onDismiss: { selectedPhotoIndex = nil },
                 projectId: project.id
@@ -674,6 +676,24 @@ struct SinglePhotoView: View {
 // MARK: - Project Photo Management
 extension ProjectPhotosGrid {
 
+    fileprivate func displayedImageURLs(from sourceURLs: [String]) -> [String] {
+        var result: [String] = []
+        var seen = Set<String>()
+
+        for sourceURL in sourceURLs {
+            let displayURL = renderedURLsBySource[sourceURL] ?? sourceURL
+            if seen.insert(displayURL).inserted {
+                result.append(displayURL)
+            }
+        }
+
+        for renderedURL in renderedDeliverableURLs where seen.insert(renderedURL).inserted {
+            result.append(renderedURL)
+        }
+
+        return result
+    }
+
     /// Phase F — pulls `PhotoAnnotation` rows with non-null dimensions for this
     /// project and converts them into the URL set consumed by `PhotoThumbnail`.
     @MainActor
@@ -688,6 +708,10 @@ extension ProjectPhotosGrid {
         )
         guard let annotations = try? modelContext.fetch(descriptor) else { return }
         dimensionedURLs = DimensionBadgeOverlay.dimensionedURLs(in: annotations)
+        renderedURLsBySource = DimensionBadgeOverlay.renderedDeliverableURLsBySource(in: annotations)
+        renderedDeliverableURLs = annotations
+            .sorted { $0.createdAt < $1.createdAt }
+            .compactMap { $0.renderedPhotoURL?.isEmpty == false ? $0.renderedPhotoURL : nil }
     }
 
     /// Delete a single photo from the project

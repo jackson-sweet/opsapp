@@ -2,7 +2,7 @@
 //  DimensionedPhotoSyncManagerTests.swift
 //  OPSTests
 //
-//  Phase F — verifies the three-asset upload pipeline + annotation row insert.
+//  Phase F — verifies the source/derived asset upload pipeline + annotation row insert.
 //  Uses an in-process mock uploader and persister so the test runs without
 //  network, S3, or Supabase.
 //
@@ -18,12 +18,13 @@
 //
 //  Spec reference:
 //    ops-software-bible/specs/2026-05-10-lidar-dimensioned-photo-capture-design.md
-//      §7 (three-asset upload + retry)
+//      §7 (source/derived asset upload + retry)
 //      §6 (queued-for-sync notification mapping — caller responsibility)
 //
 
 import SwiftData
 import XCTest
+import UIKit
 @testable import OPS
 
 final class DimensionedPhotoSyncManagerTests: XCTestCase {
@@ -54,7 +55,7 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
         let dir = directory ?? makeTempDir()
         let urls = CapturedAssets.in(directory: dir, captureID: captureID)
         let depthURL = try XCTUnwrap(urls.depthURL)
-        try Data("FAKE_HEIC_BYTES".utf8).write(to: urls.heicURL)
+        try fixtureSourcePhotoData().write(to: urls.heicURL)
         try Data("{\"meshAnchors\":[]}".utf8).write(to: urls.sidecarURL)
         try Data([0x00, 0x00, 0x80, 0x3F]).write(to: depthURL)
         return CapturedAssets(
@@ -83,7 +84,7 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
             captureID: captureID,
             includesDepthAsset: false
         )
-        try Data("FAKE_HEIC_BYTES".utf8).write(to: urls.heicURL)
+        try fixtureSourcePhotoData().write(to: urls.heicURL)
         try Data("{\"meshAnchors\":[]}".utf8).write(to: urls.sidecarURL)
         return CapturedAssets(
             heicURL: urls.heicURL,
@@ -108,6 +109,19 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
             .appendingPathComponent("dim-sync-tests-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
+    }
+
+    private func fixtureSourcePhotoData() throws -> Data {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 1600, height: 1200))
+        let image = renderer.image { ctx in
+            UIColor.darkGray.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 1600, height: 1200))
+            UIColor.white.withAlphaComponent(0.35).setStroke()
+            let path = UIBezierPath(rect: CGRect(x: 360, y: 260, width: 720, height: 560))
+            path.lineWidth = 10
+            path.stroke()
+        }
+        return try XCTUnwrap(image.pngData())
     }
 
     private func makeInMemoryContainer() throws -> ModelContainer {
@@ -139,29 +153,36 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
             userId: "user-xyz"
         )
 
-        // Three uploads, in the contractual order HEIC → sidecar → depth.
-        XCTAssertEqual(uploader.calls.count, 3)
+        // Four uploads, in the contractual order HEIC → rendered PNG → sidecar → depth.
+        XCTAssertEqual(uploader.calls.count, 4)
         XCTAssertEqual(uploader.calls[0].filename, "\(captureID.uuidString).heic")
         XCTAssertEqual(uploader.calls[0].contentType, "image/heic")
-        XCTAssertEqual(uploader.calls[1].filename, "\(captureID.uuidString).metadata.json")
-        XCTAssertEqual(uploader.calls[1].contentType, "application/json")
-        XCTAssertEqual(uploader.calls[2].filename, "\(captureID.uuidString).depth.fp32")
-        XCTAssertEqual(uploader.calls[2].contentType, "application/octet-stream")
+        XCTAssertEqual(uploader.calls[1].filename, "\(captureID.uuidString).rendered.png")
+        XCTAssertEqual(uploader.calls[1].contentType, "image/png")
+        XCTAssertGreaterThan(uploader.calls[1].byteCount, 0)
+        XCTAssertEqual(uploader.calls[2].filename, "\(captureID.uuidString).metadata.json")
+        XCTAssertEqual(uploader.calls[2].contentType, "application/json")
+        XCTAssertEqual(uploader.calls[3].filename, "\(captureID.uuidString).depth.fp32")
+        XCTAssertEqual(uploader.calls[3].contentType, "application/octet-stream")
         XCTAssertEqual(uploader.calls[0].folder, "measurements/company-abc/project-123")
 
-        // project_photos row was inserted with source=measurement, default invisible.
+        // project_photos row stores HEIC as source of truth and rendered PNG as derived deliverable.
         XCTAssertEqual(persister.projectPhotoInserts.count, 1)
         XCTAssertEqual(persister.projectPhotoInserts.first?.uploadedBy, "user-xyz")
+        XCTAssertEqual(persister.projectPhotoInserts.first?.url, uploader.calls[0].returnedURL)
+        XCTAssertEqual(persister.projectPhotoInserts.first?.renderedUrl, uploader.calls[1].returnedURL)
 
-        // Annotation row was inserted with the enriched dimensions blob.
+        // Annotation row was inserted with the enriched dimensions blob and rendered URL.
         XCTAssertEqual(persister.annotationInserts.count, 1)
         let inserted = try XCTUnwrap(persister.annotationInserts.first)
         XCTAssertNotNil(inserted.dimensions.depthAssetUrl)
         XCTAssertNotNil(inserted.dimensions.sidecarMetadataUrl)
         XCTAssertEqual(inserted.photoUrl, uploader.calls[0].returnedURL)
+        XCTAssertEqual(inserted.renderedPhotoUrl, uploader.calls[1].returnedURL)
 
         // Returned annotation reflects the inserted row + local cache paths.
         XCTAssertEqual(annotation.photoURL, uploader.calls[0].returnedURL)
+        XCTAssertEqual(annotation.renderedPhotoURL, uploader.calls[1].returnedURL)
         XCTAssertFalse(annotation.needsSync)
         XCTAssertNotNil(annotation.dimensions?.sidecarMetadataUrl)
         XCTAssertNotNil(annotation.dimensions?.depthAssetUrl)
@@ -191,13 +212,17 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
             userId: "user-xyz"
         )
 
-        XCTAssertEqual(uploader.calls.count, 2)
+        XCTAssertEqual(uploader.calls.count, 3)
         XCTAssertEqual(uploader.calls[0].filename, "\(captureID.uuidString).heic")
-        XCTAssertEqual(uploader.calls[1].filename, "\(captureID.uuidString).metadata.json")
+        XCTAssertEqual(uploader.calls[1].filename, "\(captureID.uuidString).rendered.png")
+        XCTAssertEqual(uploader.calls[1].contentType, "image/png")
+        XCTAssertEqual(uploader.calls[2].filename, "\(captureID.uuidString).metadata.json")
         XCTAssertNil(persister.annotationInserts.first?.dimensions.depthAssetUrl)
         XCTAssertNotNil(persister.annotationInserts.first?.dimensions.sidecarMetadataUrl)
+        XCTAssertEqual(persister.annotationInserts.first?.renderedPhotoUrl, uploader.calls[1].returnedURL)
         XCTAssertNil(annotation.localDepthMapPath)
         XCTAssertNil(annotation.dimensions?.depthAssetUrl)
+        XCTAssertEqual(annotation.renderedPhotoURL, uploader.calls[1].returnedURL)
     }
 
     @MainActor
@@ -248,8 +273,8 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
             userId: "u"
         )
 
-        // 3 asset uploads × (1 fail + 1 success) = 6 attempts total.
-        XCTAssertEqual(uploader.calls.count, 6)
+        // 4 asset uploads × (1 fail + 1 success) = 8 attempts total.
+        XCTAssertEqual(uploader.calls.count, 8)
         XCTAssertEqual(persister.annotationInserts.count, 1)
         XCTAssertFalse(annotation.needsSync)
     }
@@ -323,6 +348,7 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
         XCTAssertTrue(queued.needsSync)
         XCTAssertEqual(queued.photoURL, uploader.calls[0].returnedURL,
                        "Once the HEIC has uploaded, the queued stub should reference the remote URL so retry only re-inserts the annotation row")
+        XCTAssertEqual(queued.renderedPhotoURL, uploader.calls[1].returnedURL)
         DimensionedPhotoSyncManager.lastQueuedAnnotation = nil
     }
 
@@ -358,10 +384,11 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
 
         await manager.syncPendingDimensions(modelContext: context)
 
-        XCTAssertEqual(uploader.calls.count, 3)
+        XCTAssertEqual(uploader.calls.count, 4)
         XCTAssertEqual(uploader.calls[0].filename, "\(captureID.uuidString).heic")
-        XCTAssertEqual(uploader.calls[1].filename, "\(captureID.uuidString).metadata.json")
-        XCTAssertEqual(uploader.calls[2].filename, "\(captureID.uuidString).depth.fp32")
+        XCTAssertEqual(uploader.calls[1].filename, "\(captureID.uuidString).rendered.png")
+        XCTAssertEqual(uploader.calls[2].filename, "\(captureID.uuidString).metadata.json")
+        XCTAssertEqual(uploader.calls[3].filename, "\(captureID.uuidString).depth.fp32")
         XCTAssertEqual(persister.projectPhotoInserts.count, 1)
         XCTAssertEqual(persister.annotationInserts.count, 1)
 
@@ -370,10 +397,11 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
         let retried = try XCTUnwrap(annotations.first)
         XCTAssertEqual(retried.id, "server-id-1")
         XCTAssertEqual(retried.photoURL, uploader.calls[0].returnedURL)
+        XCTAssertEqual(retried.renderedPhotoURL, uploader.calls[1].returnedURL)
         XCTAssertFalse(retried.needsSync)
         XCTAssertNotNil(retried.lastSyncedAt)
-        XCTAssertEqual(retried.dimensions?.sidecarMetadataUrl, uploader.calls[1].returnedURL)
-        XCTAssertEqual(retried.dimensions?.depthAssetUrl, uploader.calls[2].returnedURL)
+        XCTAssertEqual(retried.dimensions?.sidecarMetadataUrl, uploader.calls[2].returnedURL)
+        XCTAssertEqual(retried.dimensions?.depthAssetUrl, uploader.calls[3].returnedURL)
         XCTAssertEqual(retried.localDepthMapPath, captured.depthURL?.path)
         XCTAssertEqual(retried.localSidecarPath, captured.sidecarURL.path)
         XCTAssertEqual(retried.localCaptureFinishedAt, captured.captureFinishedAt)
@@ -564,6 +592,7 @@ private final class RecordingUploader: DimensionedAssetUploader, @unchecked Send
         let filename: String
         let folder: String
         let contentType: String
+        let byteCount: Int
         let returnedURL: String
     }
 
@@ -585,19 +614,19 @@ private final class RecordingUploader: DimensionedAssetUploader, @unchecked Send
         case .alwaysSucceed:
             let url = "https://test.example/\(folder)/\(filename)"
             calls.append(.init(filename: filename, folder: folder,
-                               contentType: contentType, returnedURL: url))
+                               contentType: contentType, byteCount: data.count, returnedURL: url))
             return url
 
         case .alwaysFail:
             calls.append(.init(filename: filename, folder: folder,
-                               contentType: contentType,
+                               contentType: contentType, byteCount: data.count,
                                returnedURL: ""))
             throw UploadError.s3Error(statusCode: 500)
 
         case .failThenSucceed(let failCount):
             let prior = failuresByFilename[filename] ?? 0
             calls.append(.init(filename: filename, folder: folder,
-                               contentType: contentType,
+                               contentType: contentType, byteCount: data.count,
                                returnedURL: prior < failCount ? "" :
                                 "https://test.example/\(folder)/\(filename)"))
             if prior < failCount {
@@ -613,6 +642,7 @@ private final class RecordingPersister: DimensionedAnnotationPersister, @uncheck
 
     struct PhotoInsert {
         let url: String
+        let renderedUrl: String
         let projectId: String
         let companyId: String
         let uploadedBy: String
@@ -621,6 +651,7 @@ private final class RecordingPersister: DimensionedAnnotationPersister, @uncheck
 
     struct AnnotationInsert {
         let photoUrl: String
+        let renderedPhotoUrl: String
         let projectId: String
         let companyId: String
         let authorId: String
@@ -637,19 +668,21 @@ private final class RecordingPersister: DimensionedAnnotationPersister, @uncheck
 
     func insertProjectPhotoRow(
         url: String,
+        renderedUrl: String,
         projectId: String,
         companyId: String,
         uploadedBy: String,
         takenAt: Date
     ) async throws {
         projectPhotoInserts.append(.init(
-            url: url, projectId: projectId, companyId: companyId,
+            url: url, renderedUrl: renderedUrl, projectId: projectId, companyId: companyId,
             uploadedBy: uploadedBy, takenAt: takenAt
         ))
     }
 
     func insertAnnotationRow(
         photoUrl: String,
+        renderedPhotoUrl: String,
         projectId: String,
         companyId: String,
         authorId: String,
@@ -660,7 +693,7 @@ private final class RecordingPersister: DimensionedAnnotationPersister, @uncheck
                           userInfo: [NSLocalizedDescriptionKey: "simulated insert failure"])
         }
         annotationInserts.append(.init(
-            photoUrl: photoUrl, projectId: projectId, companyId: companyId,
+            photoUrl: photoUrl, renderedPhotoUrl: renderedPhotoUrl, projectId: projectId, companyId: companyId,
             authorId: authorId, dimensions: dimensions
         ))
         return InsertedAnnotation(

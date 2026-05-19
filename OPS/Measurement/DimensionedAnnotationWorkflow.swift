@@ -191,6 +191,7 @@ enum DimensionedCaptureSaveStore {
         target.createdAt = source.createdAt
         target.updatedAt = source.updatedAt
         target.deletedAt = source.deletedAt
+        target.renderedPhotoURL = source.renderedPhotoURL
         target.lastSyncedAt = source.lastSyncedAt
         target.needsSync = source.needsSync
         target.localDrawingData = source.localDrawingData

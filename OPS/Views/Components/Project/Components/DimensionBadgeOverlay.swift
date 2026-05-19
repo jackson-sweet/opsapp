@@ -107,6 +107,25 @@ extension DimensionBadgeOverlay {
         var result = Set<String>()
         for a in annotations where a.dimensionsData != nil && a.deletedAt == nil {
             result.insert(a.photoURL)
+            if let renderedPhotoURL = a.renderedPhotoURL, !renderedPhotoURL.isEmpty {
+                result.insert(renderedPhotoURL)
+            }
+        }
+        return result
+    }
+
+    /// Returns the source-photo URL → rendered-deliverable URL map for saved
+    /// dimensioned captures. Gallery views use this to show the burned-in PNG
+    /// when it exists while keeping `photoURL` as the source asset pointer.
+    static func renderedDeliverableURLsBySource(
+        in annotations: [PhotoAnnotation]
+    ) -> [String: String] {
+        var result: [String: String] = [:]
+        for a in annotations where a.dimensionsData != nil && a.deletedAt == nil {
+            guard let renderedPhotoURL = a.renderedPhotoURL, !renderedPhotoURL.isEmpty else {
+                continue
+            }
+            result[a.photoURL] = renderedPhotoURL
         }
         return result
     }

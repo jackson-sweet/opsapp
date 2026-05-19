@@ -705,7 +705,7 @@ public struct DimensionedCaptureView: View {
                     modelContext: modelContext
                 )
                 return .queuedForRetry
-            case .missingLocalAsset, .missingRequiredDepthAsset:
+            case .missingLocalAsset, .missingRequiredDepthAsset, .renderedDeliverableFailed:
                 throw error
             }
         } catch {

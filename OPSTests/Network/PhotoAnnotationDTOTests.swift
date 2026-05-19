@@ -14,10 +14,15 @@ import XCTest
 final class PhotoAnnotationDTOTests: XCTestCase {
 
     func test_PhotoAnnotationDTO_decodesDimensionsJSON_intoModelDimensionsData() throws {
-        let dto = try decodeDTO(dimensionsJSON: fixtureDimensionsJSONObject)
+        let dto = try decodeDTO(
+            renderedPhotoURL: "https://example.test/photo.rendered.png",
+            dimensionsJSON: fixtureDimensionsJSONObject
+        )
 
         let model = dto.toModel()
 
+        XCTAssertEqual(model.photoURL, "https://example.test/photo.heic")
+        XCTAssertEqual(model.renderedPhotoURL, "https://example.test/photo.rendered.png")
         let dimensionsData = try XCTUnwrap(model.dimensionsData)
         XCTAssertGreaterThan(dimensionsData.count, 0)
 
@@ -72,6 +77,7 @@ final class PhotoAnnotationDTOTests: XCTestCase {
         await actor.configure()
         let dto = try decodeDTO(
             id: annotationID,
+            renderedPhotoURL: "https://example.test/photo.rendered.png",
             annotationURL: "https://example.test/overlay.png",
             note: "remote note",
             dimensionsJSON: fixtureDimensionsJSONObject
@@ -84,6 +90,7 @@ final class PhotoAnnotationDTOTests: XCTestCase {
             predicate: #Predicate { $0.id == annotationID }
         )
         let merged = try XCTUnwrap(try verificationContext.fetch(descriptor).first)
+        XCTAssertEqual(merged.renderedPhotoURL, "https://example.test/photo.rendered.png")
         XCTAssertEqual(merged.annotationURL, "https://example.test/overlay.png")
         XCTAssertEqual(merged.note, "remote note")
         XCTAssertNotNil(merged.dimensionsData)
@@ -159,22 +166,35 @@ final class PhotoAnnotationDTOTests: XCTestCase {
 
     private func decodeDTO(
         id: String = "11111111-1111-1111-1111-111111111111",
+        renderedPhotoURL: String? = nil,
         annotationURL: String? = nil,
         note: String? = "remote note",
         dimensionsJSON: String?
     ) throws -> PhotoAnnotationDTO {
-        var fields = [
-            #""id": "\#(id)""#,
-            #""project_id": "project-123""#,
-            #""company_id": "company-abc""#,
-            #""photo_url": "https://example.test/photo.heic""#,
-            annotationURL.map { #""annotation_url": "\#($0)""# } ?? #""annotation_url": null"#,
-            note.map { #""note": "\#($0)""# } ?? #""note": null"#,
-            #""author_id": "user-xyz""#,
-            #""created_at": "2026-05-12T12:00:00Z""#,
-            #""updated_at": "2026-05-12T12:30:00Z""#,
-            #""deleted_at": null"#
-        ]
+        var fields: [String] = []
+        fields.append(#""id": "\#(id)""#)
+        fields.append(#""project_id": "project-123""#)
+        fields.append(#""company_id": "company-abc""#)
+        fields.append(#""photo_url": "https://example.test/photo.heic""#)
+        if let renderedPhotoURL {
+            fields.append(#""rendered_photo_url": "\#(renderedPhotoURL)""#)
+        } else {
+            fields.append(#""rendered_photo_url": null"#)
+        }
+        if let annotationURL {
+            fields.append(#""annotation_url": "\#(annotationURL)""#)
+        } else {
+            fields.append(#""annotation_url": null"#)
+        }
+        if let note {
+            fields.append(#""note": "\#(note)""#)
+        } else {
+            fields.append(#""note": null"#)
+        }
+        fields.append(#""author_id": "user-xyz""#)
+        fields.append(#""created_at": "2026-05-12T12:00:00Z""#)
+        fields.append(#""updated_at": "2026-05-12T12:30:00Z""#)
+        fields.append(#""deleted_at": null"#)
 
         if let dimensionsJSON {
             fields.append(#""dimensions": \#(dimensionsJSON)"#)

@@ -12,6 +12,7 @@ struct PhotoAnnotationDTO: Codable, Identifiable {
     let projectId: String
     let companyId: String
     let photoUrl: String
+    let renderedPhotoUrl: String?
     let annotationUrl: String?
     let note: String?
     let authorId: String
@@ -29,6 +30,7 @@ struct PhotoAnnotationDTO: Codable, Identifiable {
         case projectId     = "project_id"
         case companyId     = "company_id"
         case photoUrl      = "photo_url"
+        case renderedPhotoUrl = "rendered_photo_url"
         case annotationUrl = "annotation_url"
         case note
         case authorId      = "author_id"
@@ -47,6 +49,7 @@ struct PhotoAnnotationDTO: Codable, Identifiable {
             authorId: authorId,
             createdAt: SupabaseDate.parse(createdAt) ?? Date()
         )
+        annotation.renderedPhotoURL = renderedPhotoUrl
         annotation.annotationURL = annotationUrl
         annotation.note = note ?? ""
         if let updatedAt = updatedAt {
@@ -69,15 +72,35 @@ struct UpsertPhotoAnnotationDTO: Codable {
     let projectId: String
     let companyId: String
     let photoUrl: String
+    let renderedPhotoUrl: String?
     let annotationUrl: String?
     let note: String
     let authorId: String
     let dimensions: DimensionsJSONValue? = nil
 
+    init(
+        projectId: String,
+        companyId: String,
+        photoUrl: String,
+        renderedPhotoUrl: String? = nil,
+        annotationUrl: String?,
+        note: String,
+        authorId: String
+    ) {
+        self.projectId = projectId
+        self.companyId = companyId
+        self.photoUrl = photoUrl
+        self.renderedPhotoUrl = renderedPhotoUrl
+        self.annotationUrl = annotationUrl
+        self.note = note
+        self.authorId = authorId
+    }
+
     enum CodingKeys: String, CodingKey {
         case projectId     = "project_id"
         case companyId     = "company_id"
         case photoUrl      = "photo_url"
+        case renderedPhotoUrl = "rendered_photo_url"
         case annotationUrl = "annotation_url"
         case note
         case authorId      = "author_id"

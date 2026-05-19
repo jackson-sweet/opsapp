@@ -1207,7 +1207,8 @@ struct ProjectDetailsView: View {
             companyId: companyId,
             currentUserId: currentUser.id,
             teamMembers: teamMemberObjects,
-            modelContext: modelContext
+            modelContext: modelContext,
+            dataController: dataController
         )
         Task { await notesViewModel.loadNotes() }
     }

@@ -175,30 +175,81 @@ class ProjectNotesViewModel: ObservableObject {
         // Extract @mentions
         let mentionedIds = extractMentionedUserIds(from: text)
 
-        // Upload images if any
+        // Upload images if any. Bug ad97e11c — operators expect any photo
+        // attached to a comment to appear in the project gallery alongside
+        // camera/library photos. The previous note-only path uploaded each
+        // photo to a separate `notes/<co>/<proj>/` S3 folder and only mirrored
+        // the URL into the project's local gallery; without a `dataController`
+        // injected into the ViewModel the Supabase update was skipped, no
+        // `project_photos` row was written for the web client portal, and on
+        // the next inbound sync the local addition was clobbered by server
+        // state — so the photo silently vanished from the gallery.
+        //
+        // The fix routes comment-attached photos through
+        // `ImageSyncManager.saveImages`, the canonical project-photo pipeline
+        // shared with the project-level camera/library buttons. One photo,
+        // one S3 object (in the project folder), mirrored into:
+        //   - project.projectImagesString (local gallery carousel)
+        //   - projects.project_images on Supabase (cross-device gallery)
+        //   - a project_photos row (web client portal)
+        //   - the in-flight tile carousel (operator sees a spinner while
+        //     bytes climb to S3)
+        // The returned publicUrls are reused for `note.attachments` so the
+        // same S3 object is referenced from both the comment thread and the
+        // project gallery — never duplicated.
         var attachmentURLs: [String] = []
         if hasImages {
             isUploading = true
             let imagesToUpload = pendingImages
-            do {
-                attachmentURLs = try await PresignedURLUploadService.shared.uploadNoteImages(
-                    imagesToUpload,
-                    projectId: projectId,
-                    companyId: companyId
-                )
-            } catch {
-                print("[NOTES] Image upload failed: \(error)")
-                self.error = "Photo upload failed. Try again."
-                isUploading = false
-                return
+
+            if let imageSyncManager = dataController?.imageSyncManager,
+               let project = fetchProject() {
+                // Primary path — canonical project-photo pipeline. Handles
+                // online (S3 upload + Supabase + project_photos), offline
+                // (local URLs + pending-upload queue + retry timer), and
+                // permanent rejection (failed-tile carousel + auto-bug).
+                attachmentURLs = await imageSyncManager.saveImages(imagesToUpload, for: project)
+
+                if attachmentURLs.isEmpty {
+                    // Every image was rejected and no local placeholder
+                    // landed either. Surface so the user can retry — posting
+                    // a comment with no attached photos when they intended to
+                    // attach some would hide the failure.
+                    print("[NOTES] saveImages returned no URLs for \(imagesToUpload.count) image(s)")
+                    self.error = "Photo upload failed. Try again."
+                    isUploading = false
+                    return
+                }
+
+                // Bump outbound sync priority so the gallery additions
+                // propagate to crew on other devices on the next sync pass.
+                project.syncPriority = 2
+                try? modelContext?.save()
+            } else {
+                // Cold-start race fallback — DataController has not yet
+                // booted ImageSyncManager (rare, possible during first
+                // navigation into the project before init finishes). Use
+                // the legacy note-only S3 upload path so the comment can
+                // still post, then mirror the URLs into the project's
+                // gallery via the local-write helper. The fallback does
+                // not insert project_photos rows (the web portal won't
+                // see them) — the cold-start window is narrow enough that
+                // we accept that gap rather than block the post.
+                do {
+                    attachmentURLs = try await PresignedURLUploadService.shared.uploadNoteImages(
+                        imagesToUpload,
+                        projectId: projectId,
+                        companyId: companyId
+                    )
+                } catch {
+                    print("[NOTES] Image upload failed: \(error)")
+                    self.error = "Photo upload failed. Try again."
+                    isUploading = false
+                    return
+                }
+                await addAttachmentsToProjectGallery(attachmentURLs)
             }
             isUploading = false
-
-            // Also surface comment attachments in the project photo gallery.
-            // Without this the image lives only on the note and never appears
-            // in the project photo grid — which users expect as the single
-            // place to see every photo taken on a project.
-            await addAttachmentsToProjectGallery(attachmentURLs)
         }
 
         // Bug d77b49a2 — when the user uploads photos with no caption, leave
@@ -277,18 +328,34 @@ class ProjectNotesViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Gallery Sync
+    // MARK: - Project Lookup
 
-    /// Append note-comment attachments to the project's photo gallery and
-    /// queue a Supabase sync op so the gallery stays in sync on other
-    /// devices. Called from `postNote()` after the note images upload
-    /// successfully. No-op when called with an empty URL list.
+    /// Fetch the Project model for this view model's project id from the
+    /// shared SwiftData context. Returns nil if the context is missing or
+    /// the project no longer exists locally. The returned instance is the
+    /// same identity SwiftUI is observing, so mutations are visible to
+    /// every view bound to the project.
+    private func fetchProject() -> Project? {
+        guard let context = modelContext else { return nil }
+        let pid = projectId
+        let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == pid })
+        return try? context.fetch(descriptor).first
+    }
+
+    // MARK: - Gallery Sync (cold-start fallback)
+
+    /// Local-write helper used only by the cold-start fallback path in
+    /// `postNote()` — when `ImageSyncManager` is not yet available, this
+    /// appends note-attachment URLs into the project's gallery string and
+    /// queues a Supabase update so the gallery stays consistent across
+    /// devices. The primary path uses `ImageSyncManager.saveImages` which
+    /// also writes `project_photos` rows for the web portal; this fallback
+    /// intentionally does not, to keep the fallback simple. No-op when
+    /// called with an empty URL list.
     private func addAttachmentsToProjectGallery(_ urls: [String]) async {
         guard !urls.isEmpty, let context = modelContext else { return }
 
-        let pid = projectId
-        let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == pid })
-        guard let project = try? context.fetch(descriptor).first else { return }
+        guard let project = fetchProject() else { return }
 
         var gallery = project.getProjectImageURLs()
         var added = false
@@ -310,7 +377,7 @@ class ProjectNotesViewModel: ObservableObject {
         guard let dataController = dataController else { return }
         do {
             try await dataController.updateProjectFields(
-                projectId: pid,
+                projectId: projectId,
                 fields: [
                     "project_images": .array(gallery.map { .string($0) })
                 ]

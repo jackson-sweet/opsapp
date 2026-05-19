@@ -26,15 +26,15 @@ struct ProjectImagesSection: View {
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             
-            let imageUrls = displayedImageURLs(from: project.getProjectImages())
+            let imageItems = displayedPhotoItems(from: project.getProjectImages())
             
-            if imageUrls.isEmpty {
+            if imageItems.isEmpty {
                 // Empty state - shown immediately if no images
                 emptyState
             } else {
                 VStack(spacing: 8) {
                     // Image grid - images load independently
-                    imageGrid(urls: imageUrls)
+                    imageGrid(items: imageItems)
 
                     // Show message if there are unsynced images
                     if !project.getUnsyncedImages().isEmpty {
@@ -67,22 +67,12 @@ struct ProjectImagesSection: View {
         }
     }
 
-    private func displayedImageURLs(from sourceURLs: [String]) -> [String] {
-        var result: [String] = []
-        var seen = Set<String>()
-
-        for sourceURL in sourceURLs {
-            let displayURL = renderedURLsBySource[sourceURL] ?? sourceURL
-            if seen.insert(displayURL).inserted {
-                result.append(displayURL)
-            }
-        }
-
-        for renderedURL in renderedDeliverableURLs where seen.insert(renderedURL).inserted {
-            result.append(renderedURL)
-        }
-
-        return result
+    private func displayedPhotoItems(from sourceURLs: [String]) -> [ProjectPhotoDisplayItem] {
+        ProjectPhotoDisplayMapper.items(
+            sourceURLs: sourceURLs,
+            renderedURLsBySource: renderedURLsBySource,
+            renderedDeliverableURLs: renderedDeliverableURLs
+        )
     }
     
     // Empty state view
@@ -122,19 +112,21 @@ struct ProjectImagesSection: View {
     }
     
     // Image grid
-    private func imageGrid(urls: [String]) -> some View {
+    private func imageGrid(items: [ProjectPhotoDisplayItem]) -> some View {
         LazyVGrid(columns: [
             GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2),
             GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2)
         ], spacing: OPSStyle.Layout.spacing2) {
-            ForEach(urls, id: \.self) { url in
+            ForEach(items) { item in
                 ProjectImageView(
-                    urlString: url,
+                    urlString: item.displayURL,
                     project: project,
-                    isDimensioned: dimensionedURLs.contains(url)
+                    isDimensioned: dimensionedURLs.contains(item.displayURL)
+                        || dimensionedURLs.contains(item.sourceURL),
+                    syncStatusURLString: item.syncStatusURL
                 )
                 .onTapGesture {
-                    selectedImageURL = url
+                    selectedImageURL = item.displayURL
                 }
             }
         }

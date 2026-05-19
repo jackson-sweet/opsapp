@@ -42,20 +42,21 @@ struct ProjectPhotosGrid: View {
                 OPSStyle.Colors.background.edgesIgnoringSafeArea(.all)
                 
                 VStack(spacing: 0) {
-                    let photos = displayedImageURLs(from: project.getProjectImages())
+                    let photoItems = displayedPhotoItems(from: project.getProjectImages())
                     
-                    if photos.isEmpty {
+                    if photoItems.isEmpty {
                         emptyStateView
                     } else {
                         // Grid layout of photos
                         ScrollView {
                             LazyVGrid(columns: columns, spacing: 2) {
-                                ForEach(Array(photos.enumerated()), id: \.element) { index, url in
+                                ForEach(Array(photoItems.enumerated()), id: \.element.id) { index, item in
                                     ZStack(alignment: .topLeading) {
                                         PhotoThumbnail(
-                                            url: url,
+                                            url: item.displayURL,
                                             project: project,
-                                            isDimensioned: dimensionedURLs.contains(url)
+                                            isDimensioned: dimensionedURLs.contains(item.displayURL)
+                                                || dimensionedURLs.contains(item.sourceURL)
                                         )
                                             .aspectRatio(1, contentMode: .fill)
                                             .clipped()
@@ -65,7 +66,7 @@ struct ProjectPhotosGrid: View {
                                         // because the 2pt grid spacing leaves no
                                         // room to protrude past the corner like the
                                         // smaller carousels do.
-                                        if !project.isImageSynced(url) {
+                                        if !project.isImageSynced(item.syncStatusURL) {
                                             PhotoSyncFailBadge()
                                                 .padding(4)
                                                 .allowsHitTesting(false)
@@ -98,7 +99,7 @@ struct ProjectPhotosGrid: View {
                                         longPressingPhotoIndex = nil
                                         
                                         // Show delete confirmation
-                                        photoToDelete = url
+                                        photoToDelete = item.sourceURL
                                         showingDeleteConfirmation = true
                                     } onPressingChanged: { isPressing in
                                         // Visual feedback while pressing - happens immediately
@@ -161,8 +162,10 @@ struct ProjectPhotosGrid: View {
             get: { selectedPhotoIndex.map { PhotoViewerItem(index: $0) } },
             set: { item in selectedPhotoIndex = item?.index }
         )) { item in
+            let photoItems = displayedPhotoItems(from: project.getProjectImages())
             BasicPhotoViewer(
-                photos: displayedImageURLs(from: project.getProjectImages()),
+                photos: photoItems.map(\.displayURL),
+                sourcePhotos: photoItems.map(\.sourceURL),
                 initialIndex: item.index,
                 onDismiss: { selectedPhotoIndex = nil },
                 projectId: project.id
@@ -444,6 +447,7 @@ struct PhotoSyncFailBadge: View {
 // Super simple photo viewer with no fancy animations - just works
 struct BasicPhotoViewer: View {
     let photos: [String]
+    let sourcePhotos: [String]
     let initialIndex: Int
     let onDismiss: () -> Void
     var projectId: String? = nil
@@ -451,8 +455,15 @@ struct BasicPhotoViewer: View {
     @State private var currentIndex: Int
     @State private var showingAnnotation = false
 
-    init(photos: [String], initialIndex: Int, onDismiss: @escaping () -> Void, projectId: String? = nil) {
+    init(
+        photos: [String],
+        sourcePhotos: [String]? = nil,
+        initialIndex: Int,
+        onDismiss: @escaping () -> Void,
+        projectId: String? = nil
+    ) {
         self.photos = photos
+        self.sourcePhotos = sourcePhotos ?? photos
         self.initialIndex = initialIndex
         self.onDismiss = onDismiss
         self.projectId = projectId
@@ -512,7 +523,7 @@ struct BasicPhotoViewer: View {
                     .fullScreenCover(isPresented: $showingAnnotation) {
                         if currentIndex < photos.count {
                             PhotoAnnotationView(
-                                photoURL: photos[currentIndex],
+                                photoURL: sourcePhotoURL(at: currentIndex),
                                 projectId: projectId
                             )
                         }
@@ -520,6 +531,11 @@ struct BasicPhotoViewer: View {
                 }
             }
         }
+    }
+
+    private func sourcePhotoURL(at index: Int) -> String {
+        guard sourcePhotos.indices.contains(index) else { return photos[index] }
+        return sourcePhotos[index]
     }
 }
 
@@ -676,22 +692,12 @@ struct SinglePhotoView: View {
 // MARK: - Project Photo Management
 extension ProjectPhotosGrid {
 
-    fileprivate func displayedImageURLs(from sourceURLs: [String]) -> [String] {
-        var result: [String] = []
-        var seen = Set<String>()
-
-        for sourceURL in sourceURLs {
-            let displayURL = renderedURLsBySource[sourceURL] ?? sourceURL
-            if seen.insert(displayURL).inserted {
-                result.append(displayURL)
-            }
-        }
-
-        for renderedURL in renderedDeliverableURLs where seen.insert(renderedURL).inserted {
-            result.append(renderedURL)
-        }
-
-        return result
+    fileprivate func displayedPhotoItems(from sourceURLs: [String]) -> [ProjectPhotoDisplayItem] {
+        ProjectPhotoDisplayMapper.items(
+            sourceURLs: sourceURLs,
+            renderedURLsBySource: renderedURLsBySource,
+            renderedDeliverableURLs: renderedDeliverableURLs
+        )
     }
 
     /// Phase F — pulls `PhotoAnnotation` rows with non-null dimensions for this

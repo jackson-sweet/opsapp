@@ -16,16 +16,24 @@ struct ProjectImageView: View {
     /// `project_photos.source == 'measurement'` row. Drives the small `ruler`
     /// SF Symbol badge overlay in the corner.
     let isDimensioned: Bool
+    let syncStatusURLString: String
 
     @State private var image: UIImage?
     @State private var isLoading = true
     @State private var loadFailed = false
 
-    init(urlString: String, project: Project, size: CGSize = CGSize(width: 150, height: 150), isDimensioned: Bool = false) {
+    init(
+        urlString: String,
+        project: Project,
+        size: CGSize = CGSize(width: 150, height: 150),
+        isDimensioned: Bool = false,
+        syncStatusURLString: String? = nil
+    ) {
         self.urlString = urlString
         self.project = project
         self.size = size
         self.isDimensioned = isDimensioned
+        self.syncStatusURLString = syncStatusURLString ?? urlString
     }
     
     var body: some View {
@@ -46,7 +54,7 @@ struct ProjectImageView: View {
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                 
                 // Overlay a cloud with slash icon if image is not synced
-                if !project.isImageSynced(urlString) {
+                if !project.isImageSynced(syncStatusURLString) {
                     VStack {
                         HStack {
                             Spacer()

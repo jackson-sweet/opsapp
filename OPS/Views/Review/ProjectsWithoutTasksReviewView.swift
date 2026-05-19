@@ -13,6 +13,7 @@ import SwiftData
 
 struct ProjectsWithoutTasksReviewView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var dataController: DataController
 
     @Query private var allTaskTypes: [TaskType]
@@ -24,6 +25,22 @@ struct ProjectsWithoutTasksReviewView: View {
     /// different row collapses the previous one. `nil` means every row
     /// is in its collapsed default state.
     @State private var expandedProjectId: String? = nil
+
+    // MARK: - Motion (spec: one curve, no spring; reduce-motion → fade only)
+
+    private var expandAnimation: Animation {
+        reduceMotion
+            ? .easeOut(duration: 0.1)
+            : OPSStyle.Animation.standard
+    }
+
+    /// Inline composer transition: full reveal with slide on default, fade
+    /// only when reduce-motion is on (per DESIGN.md §8 fallback).
+    private var composerTransition: AnyTransition {
+        reduceMotion
+            ? .opacity
+            : .opacity.combined(with: .move(edge: .top))
+    }
 
     var body: some View {
         ZStack {
@@ -96,14 +113,14 @@ struct ProjectsWithoutTasksReviewView: View {
                                     onCancel: { collapseRow() }
                                 )
                                 .padding(.top, OPSStyle.Layout.spacing2)
-                                .transition(.opacity.combined(with: .move(edge: .top)))
+                                .transition(composerTransition)
                             }
                         }
                     }
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.bottom, OPSStyle.Layout.spacing4)
-                .animation(OPSStyle.Animation.standard, value: expandedProjectId)
+                .animation(expandAnimation, value: expandedProjectId)
             }
         }
     }

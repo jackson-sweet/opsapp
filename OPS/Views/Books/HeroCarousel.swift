@@ -85,29 +85,41 @@ struct HeroCarousel: View {
     }
 
     /// Top line of the hero: active card's label on the left, period pill on the right.
-    /// Cards 3 (A/R) and 4 (Forecast) include a colored scope hint (ALL OPEN / ACTIVE)
-    /// so the user understands why those cards don't respond to the pill.
+    /// Cards 3 (A/R) and 4 (Forecast) render a colored scope-hint badge beside the label
+    /// (ALL OPEN / ACTIVE) so the user understands why those cards don't respond to the pill.
     private var inlineHeader: some View {
         let active = scrollPosition ?? visibleCards.first ?? .pl
-        let header = headerLabel(for: active)
         return HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
-            Text(header.text)
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(header.color)
+            Text(headerLabel(for: active))
+                .font(.custom("JetBrainsMono-Medium", size: 11).weight(.semibold))
+                .tracking(1.76)  // 0.16em at 11pt
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .textCase(.uppercase)
                 .contentTransition(.opacity)
+            if let badge = scopeBadge(for: active) {
+                badge
+            }
             Spacer()
             PeriodPill(selected: $viewModel.selectedPeriod)
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
-    private func headerLabel(for card: CardID) -> (text: String, color: Color) {
+    private func headerLabel(for card: CardID) -> String {
         switch card {
-        case .pl:       return ("P&L",                  OPSStyle.Colors.secondaryText)
-        case .cashFlow: return ("CASH FLOW",            OPSStyle.Colors.secondaryText)
-        case .ar:       return ("A/R · ALL OPEN",       OPSStyle.Colors.errorStatus)
-        case .forecast: return ("FORECAST · ACTIVE",    OPSStyle.Colors.primaryAccent)
-        case .jobs:     return ("JOBS · NET BY PROJECT", OPSStyle.Colors.secondaryText)
+        case .pl:       return "P&L"
+        case .cashFlow: return "CASH FLOW"
+        case .ar:       return "A/R"
+        case .forecast: return "FORECAST"
+        case .jobs:     return "JOBS"
+        }
+    }
+
+    private func scopeBadge(for card: CardID) -> BooksScopeHintBadge? {
+        switch card {
+        case .ar:       return BooksScopeHintBadge(variant: .allOpen)
+        case .forecast: return BooksScopeHintBadge(variant: .active)
+        default:        return nil
         }
     }
 
@@ -128,15 +140,18 @@ struct HeroCarousel: View {
     }
 
     private var dots: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 6) {
             ForEach(visibleCards) { card in
                 let isActive = scrollPosition == card
                 Capsule()
-                    .fill(isActive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder)
-                    .frame(width: isActive ? 16 : 5, height: 5)
-                    .animation(reduceMotion ? .none : OPSStyle.Animation.standard, value: scrollPosition)
+                    .fill(isActive ? OPSStyle.Colors.primaryText
+                                   : OPSStyle.Colors.textMute.opacity(0.5))
+                    .frame(width: isActive ? 22 : 6, height: 6)
+                    .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: scrollPosition)
+                    .frame(minWidth: 44, minHeight: 44)  // 44pt hit target — visible dot stays centered
+                    .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(reduceMotion ? .none : OPSStyle.Animation.standard) {
+                        withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
                             scrollPosition = card
                         }
                     }

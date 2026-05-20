@@ -11,6 +11,18 @@ struct MaterialPickerSheet: View {
     private var products: [Product]
     @Query(sort: \TaskType.displayOrder) private var taskTypes: [TaskType]
     @Query private var companyDefaults: [CompanyDefaultProduct]
+    /// Catalog units are the structured source of truth for "what dimension is
+    /// this product priced in" (length/area/count/...). Both iOS and ops-web
+    /// write Product.unitId pointing at a row here. We join through this rather
+    /// than parsing the legacy free-text `unit` field, because:
+    ///   - iOS writes `unit = catalog_unit.display` (e.g. "linear_ft", "sqft"),
+    ///     ops-web does the same, but neither writes consistent values
+    ///     ("sqft" vs "sq ft" vs "ft²") — string parsing would miss them all.
+    ///   - The `pricing_unit` text column defaults to 'each' and ops-web never
+    ///     overrides it; iOS overrides it but earlier-version products are
+    ///     stuck at 'each' regardless of true dimension.
+    /// Bug ee787f29.
+    @Query private var catalogUnits: [CatalogUnit]
 
     /// Whether we're showing linear (edge) or area (footprint) materials
     private var isLinearMode: Bool {
@@ -24,31 +36,25 @@ struct MaterialPickerSheet: View {
     /// Explanation surfaced both in the empty state and behind the (?) button.
     /// Kept short — field crews don't read paragraphs.
     private var sourceHintBody: String {
-        let unitNeeded = isLinearMode ? "linear ft" : "sq ft"
-        return "Pulled from your Company Products. The picker filters by unit — only products in \(unitNeeded) show up here. Add or edit products in Settings → Products."
+        let unitNeeded = isLinearMode ? "a length unit (ft, m, linear_ft)" : "an area unit (sqft, m²)"
+        return "Pulled from your Company Products. Only products priced in \(unitNeeded) show up here. Add or edit products and units in Settings → Products."
     }
 
-    // MARK: - Unit Type Mapping
+    // MARK: - Unit Filtering
 
-    static func unitType(from unitString: String?) -> UnitType? {
-        guard let unit = unitString?.lowercased().trimmingCharacters(in: .whitespaces) else { return nil }
-        let linearPatterns = ["linear ft", "linear foot", "lin ft", "lf", "linear meter", "lm"]
-        let areaPatterns = ["sq ft", "square foot", "sf", "sq meter", "square meter", "sm"]
-        if linearPatterns.contains(where: { unit.contains($0) }) { return .linearFoot }
-        if areaPatterns.contains(where: { unit.contains($0) }) { return .squareFoot }
-        if unit == "each" { return .each }
-        if unit == "set" { return .set }
-        return nil
-    }
-
-    /// Company products filtered by unit type
+    /// Company products filtered by unit dimension. Linear (edge) mode shows
+    /// length-dimensioned products; surface mode shows area-dimensioned. We
+    /// intentionally drop `.other` so a stray each-priced product doesn't
+    /// pollute the picker — those belong in the toolbar's quick-add path.
+    /// Dimension resolution lives in `ProductUnitResolver` (shared with
+    /// `AssignmentWheelView` so both surfaces behave identically).
     private var filteredProducts: [Product] {
         products.filter { product in
-            guard let mapped = Self.unitType(from: product.unit) else { return false }
-            if isLinearMode {
-                return mapped == .linearFoot || mapped == .linearMeter
-            } else {
-                return mapped == .squareFoot || mapped == .squareMeter
+            let dim = ProductUnitResolver.dimension(of: product, catalogUnits: catalogUnits)
+            switch dim {
+            case .length: return isLinearMode
+            case .area:   return !isLinearMode
+            case .other:  return false
             }
         }
     }
@@ -166,7 +172,17 @@ struct MaterialPickerSheet: View {
 
     @ViewBuilder
     private func productRow(_ product: Product) -> some View {
-        let mapped = Self.unitType(from: product.unit) ?? (isLinearMode ? .linearFoot : .squareFoot)
+        // Wrapped in an immediately-invoked closure because @ViewBuilder
+        // rejects top-level switch statements (would be inferred as a void
+        // expression). Same outcome, just packaged so the result builder
+        // never sees the switch.
+        let mapped: UnitType = {
+            switch ProductUnitResolver.dimension(of: product, catalogUnits: catalogUnits) {
+            case .length: return .linearFoot
+            case .area:   return .squareFoot
+            case .other:  return isLinearMode ? .linearFoot : .squareFoot
+            }
+        }()
         // Gate-detection per deck-catalog spec § 3.5 — products whose
         // category (legacy free-text on Product) contains "gate" auto-flag
         // the assignment as a gate, which drives the gate-component

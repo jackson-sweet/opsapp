@@ -483,6 +483,13 @@ struct MainTabView: View {
             )
             .zIndex(2)
         }
+        // Toast surface for LEADS sheet-action confirmations. Mounted at the
+        // app root (not the LEADS tab) so a confirmation survives a tab swap
+        // — the operator who saves a lead and immediately switches to PROJECTS
+        // still sees the "// LEAD CREATED" pill. Overlay sits above the
+        // ZStack (and therefore above PushInMessage at zIndex 2).
+        .toastHost()
+        .leadsToastSubscriber()
         .sheet(isPresented: $appState.showingUniversalSearch) {
             UniversalSearchSheet()
                 .environmentObject(dataController)

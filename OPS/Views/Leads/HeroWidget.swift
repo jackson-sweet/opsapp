@@ -8,16 +8,18 @@
 //      // WEIGHTED FORECAST · 30D                     ↑ 12% VS PRIOR
 //      $184,240                                       ← Mohave Light 38pt
 //      ─────────────────────────────────────────────
-//      OVERDUE      DUE TODAY    OPEN
-//      04           03           17
-//      NEEDS NOW    FOLLOW UP    03 WAITING
+//      OVERDUE      DUE TODAY    OPEN         VELOCITY
+//      04           03           17           18D
+//      NEEDS NOW    FOLLOW UP    03 WAITING   90D AVG
 //
 //  Per ops-design-system mobile/MOBILE.md § 5 (Hero carousel) — but rendered
 //  as a single card here, not a carousel. The carousel pattern (5 KPI tiles)
 //  was the prototype that we replaced in this rebuild.
 //
-//  The forecast-delta line is hidden until the data pipeline is wired up
-//  (plan §2.1 decision Q1 = option a).
+//  The forecast-delta line surfaces when the VM passes a non-nil
+//  `forecastDeltaPct` (LEADS polish P1-3 — was hidden behind the plan §2.1
+//  Q1 deferred decision). The VELOCITY column surfaces only when there are
+//  ≥5 wins in the trailing 90D — same nil-on-low-N idiom as `closeRate`.
 //
 
 import SwiftUI
@@ -31,6 +33,11 @@ struct HeroWidget: View {
     let dueTodayCount: Int
     let openLeadCount: Int
     let waitingCount: Int
+
+    /// Average days new → won across the last 90D. nil hides the 4th column.
+    /// Gating is the caller's responsibility (per `PipelineViewModel.avgVelocityDays`
+    /// — nil when fewer than 5 qualifying wins).
+    var avgVelocityDays: Int? = nil
 
     /// Tap target — opens a future ForecastBreakdownSheet. nil disables the tap.
     var onForecastTap: (() -> Void)? = nil
@@ -131,6 +138,14 @@ struct HeroWidget: View {
                 hint: "\(String(format: "%02d", waitingCount)) WAITING",
                 tone: .neutral
             )
+            if let velocity = avgVelocityDays {
+                SubMetric(
+                    label: "VELOCITY",
+                    value: "\(velocity)D",
+                    hint: "90D AVG",
+                    tone: .neutral
+                )
+            }
         }
     }
 
@@ -151,22 +166,37 @@ struct HeroWidget: View {
     ZStack {
         OPSStyle.Colors.background.ignoresSafeArea()
         VStack(spacing: 20) {
+            // Full data: delta + 4th velocity column.
             HeroWidget(
                 forecastValue: 184_240,
-                forecastDeltaPct: nil,        // delta line hidden per plan Q1 = (a)
+                forecastDeltaPct: 12,
                 overdueCount: 4,
                 dueTodayCount: 3,
                 openLeadCount: 17,
                 waitingCount: 3,
+                avgVelocityDays: 18,
                 onForecastTap: {}
             )
+            // Down delta, no velocity (not enough wins yet).
+            HeroWidget(
+                forecastValue: 92_500,
+                forecastDeltaPct: -7,
+                overdueCount: 1,
+                dueTodayCount: 2,
+                openLeadCount: 9,
+                waitingCount: 2,
+                avgVelocityDays: nil,
+                onForecastTap: {}
+            )
+            // Empty pipeline.
             HeroWidget(
                 forecastValue: 0,
                 forecastDeltaPct: nil,
                 overdueCount: 0,
                 dueTodayCount: 0,
                 openLeadCount: 0,
-                waitingCount: 0
+                waitingCount: 0,
+                avgVelocityDays: nil
             )
         }
         .padding(.horizontal, 20)

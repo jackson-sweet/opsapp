@@ -13,6 +13,10 @@ import SwiftData
 class PipelineViewModel: ObservableObject {
 
     @Published var allOpportunities: [Opportunity] = []
+    /// Full stage_transitions history for the company. Drives the hero widget's
+    /// forecast-delta baseline (30D-ago pipeline reconstruction) and the
+    /// avg-velocity computation. Loaded in parallel with opportunities.
+    @Published var allStageTransitions: [StageTransition] = []
     @Published var isLoading: Bool = false
     @Published var loadError: String? = nil
     @Published var selectedStage: PipelineStage = .newLead
@@ -42,8 +46,11 @@ class PipelineViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            let dtos = try await repo.fetchAll()
-            allOpportunities = dtos.map { $0.toModel() }
+            async let oppsTask  = repo.fetchAll()
+            async let txTask    = repo.fetchAllStageTransitions()
+            let (oppDtos, txDtos) = try await (oppsTask, txTask)
+            allOpportunities    = oppDtos.map { $0.toModel() }
+            allStageTransitions = txDtos.map { $0.toModel() }
         } catch {
             if !error.isCancellation {
                 print("[Pipeline] Load failed: \(error)")
@@ -388,5 +395,109 @@ class PipelineViewModel: ObservableObject {
     var waitingCount: Int {
         let b = triageBuckets
         return b.waitingOnYou.count + b.waitingOnThem.count
+    }
+
+    // MARK: - Forecast delta (vs 30 days ago)
+    //
+    // Reconstructs the pipeline state 30 days ago using `allStageTransitions`
+    // and re-runs the weighted-forecast sum against that historical state.
+    // Approach = Option A ("what it would have been") from the LEADS polish
+    // P1-3 brief: every opp gets its stage-as-of-T queried via the latest
+    // transition with `transitionedAt <= T`. When an opp has no transition
+    // on or before T, the fallback is `.newLead` (the schema's implicit
+    // initial stage) provided `createdAt <= T`.
+    //
+    // Caveats:
+    //  - Opps created directly in a non-newLead stage via the API would be
+    //    misclassified as newLead at the priorDate baseline. Rare; baseline
+    //    is approximate by design.
+    //  - Won/lost opps as of priorDate contribute zero to the baseline
+    //    (terminal stages are excluded from weighted forecast).
+
+    /// Percent change in weighted forecast value vs 30 days ago. nil when
+    /// the prior baseline is zero (no opportunities existed 30D ago) or when
+    /// stage transitions haven't been fetched yet.
+    var forecastDeltaPct: Double? {
+        guard !allStageTransitions.isEmpty else { return nil }
+        let priorDate = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+        let current = weightedForecastValue
+        let priorBaseline = weightedForecast(asOf: priorDate)
+        guard priorBaseline > 0 else { return nil }
+        return ((current - priorBaseline) / priorBaseline) * 100.0
+    }
+
+    /// Sum of (estimatedValue × stage.winProbability) across opportunities
+    /// that existed and were non-terminal on the given date. Used to
+    /// reconstruct historical baselines for the forecast-delta chip.
+    private func weightedForecast(asOf date: Date) -> Double {
+        let txByOpp = Dictionary(grouping: allStageTransitions, by: \.opportunityId)
+        var baseline: Double = 0
+        for opp in allOpportunities {
+            guard !opp.isDeleted else { continue }
+            guard opp.createdAt <= date else { continue }
+            if let archived = opp.archivedAt, archived <= date { continue }
+            if let deleted  = opp.deletedAt,  deleted  <= date { continue }
+            let priorStage = stage(for: opp, asOf: date, transitions: txByOpp[opp.id] ?? [])
+            if priorStage.isTerminal { continue }
+            let est = opp.estimatedValue ?? 0
+            baseline += est * Double(priorStage.winProbability) / 100.0
+        }
+        return baseline
+    }
+
+    /// The stage an opportunity occupied on a given date. Returns the latest
+    /// `toStage` from a transition with `transitionedAt <= date`; falls back
+    /// to `.newLead` when no such transition exists (the schema's implicit
+    /// initial stage for any opportunity).
+    private func stage(for opp: Opportunity, asOf date: Date, transitions: [StageTransition]) -> PipelineStage {
+        let priors = transitions.filter { $0.transitionedAt <= date }
+        if let last = priors.max(by: { $0.transitionedAt < $1.transitionedAt }) {
+            return last.toStage
+        }
+        return .newLead
+    }
+
+    // MARK: - Velocity (avg newLead → won, last 90D)
+    //
+    // Mirrors the closeRate(periodDays:) nil-on-low-N idiom — returns nil
+    // when fewer than 5 wins land in the window. Per-opp duration =
+    // (won-transition time) − (newLead-transition time), with fallbacks to
+    // `actualCloseDate` and `createdAt` when transition rows are missing
+    // (older / migrated opps).
+
+    /// Average days from `newLead` entry to `won` entry across opportunities
+    /// won in the last `periodDays`. nil when fewer than 5 qualifying wins.
+    func avgVelocityDays(periodDays: Int = 90) -> Int? {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -periodDays, to: Date()) ?? Date.distantPast
+        let recentWins = allOpportunities.filter { opp in
+            guard !opp.isDeleted, opp.stage == .won else { return false }
+            guard let close = opp.actualCloseDate else { return false }
+            return close >= cutoff
+        }
+        guard recentWins.count >= 5 else { return nil }
+
+        let txByOpp = Dictionary(grouping: allStageTransitions, by: \.opportunityId)
+        var totalDays: Double = 0
+        var counted = 0
+        for opp in recentWins {
+            let transitions = txByOpp[opp.id] ?? []
+            let newLeadStart: Date = transitions
+                .filter { $0.toStage == .newLead }
+                .map(\.transitionedAt)
+                .min()
+                ?? opp.createdAt
+            let wonAt: Date? = transitions
+                .filter { $0.toStage == .won }
+                .map(\.transitionedAt)
+                .min()
+                ?? opp.actualCloseDate
+            guard let wonAt else { continue }
+            let days = wonAt.timeIntervalSince(newLeadStart) / 86_400
+            guard days >= 0 else { continue }
+            totalDays += days
+            counted += 1
+        }
+        guard counted >= 5 else { return nil }
+        return Int((totalDays / Double(counted)).rounded())
     }
 }

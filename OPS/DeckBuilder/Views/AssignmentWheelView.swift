@@ -1,6 +1,7 @@
 // OPS/OPS/DeckBuilder/Views/AssignmentWheelView.swift
 
 import SwiftUI
+import SwiftData
 
 struct AssignmentWheelView: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
@@ -8,27 +9,145 @@ struct AssignmentWheelView: View {
     @State private var dragAngle: Double?
     @State private var highlightedIndex: Int?
 
+    // Catalog inputs — the wheel pulls railing-eligible (linear-dimensioned)
+    // company products into its first 3 slots so the operator picks an actual
+    // catalog SKU instead of a generic style. Falls back to the legacy
+    // Glass/Picket/Cable Rail placeholders when the company hasn't set up
+    // products yet. Bug ee787f29.
+    @Query(filter: #Predicate<Product> { $0.isActive }, sort: \Product.name)
+    private var products: [Product]
+    @Query private var catalogUnits: [CatalogUnit]
+    @Query private var companyDefaults: [CompanyDefaultProduct]
+    @Query(sort: \TaskType.displayOrder) private var taskTypes: [TaskType]
+
     private let wheelRadius: CGFloat = 110
     private let slotCount = 8
 
-    // Built-in edge type items + slot for company products
+    /// Linear-dimensioned products that could plausibly be assigned to a
+    /// railing edge. We hoist the company's `CompanyDefaultProduct` for the
+    /// current component type (railing / stairSet) to the top of the list so
+    /// it lands in slot 0 — same default-pinning pattern MaterialPickerSheet
+    /// uses. Sorted: default first, then alphabetical (matches what @Query
+    /// returns).
+    private var railingProducts: [Product] {
+        let linear = products.filter { product in
+            ProductUnitResolver.dimension(of: product, catalogUnits: catalogUnits) == .length
+        }
+        guard let defaultId = defaultProductId,
+              let pinned = linear.first(where: { $0.id == defaultId }) else {
+            return linear
+        }
+        let rest = linear.filter { $0.id != defaultId }
+        return [pinned] + rest
+    }
+
+    /// Component type the wheel is filling for, mirrors `MaterialPickerSheet`'s
+    /// `surfaceContext`. Stair context wins over railing when the selected
+    /// edge already carries a stair set — picking another product there is
+    /// presumptively for the stair.
+    private var surfaceContext: DesignComponentType {
+        let firstId = viewModel.selection.selectedEdgeIds.first
+        if let firstId,
+           let edge = viewModel.findEdge(byId: firstId),
+           edge.stairConfig != nil {
+            return .stairSet
+        }
+        return .railing
+    }
+
+    private var defaultProductId: String? {
+        let companyId = viewModel.deckDesign.companyId
+        return companyDefaults.first(where: {
+            $0.companyId == companyId && $0.componentType == surfaceContext
+        })?.productId
+    }
+
+    /// Slot list for the current selection. 8 slots total:
+    ///   slot 0–2: catalog railing products (default first), backfilled with
+    ///            generic Glass/Picket/Cable placeholders when the catalog is
+    ///            short. Field crews with no catalog still get a working wheel.
+    ///   slot 3 : No Railing
+    ///   slot 4 : Add Stairs
+    ///   slot 5 : Dimension
+    ///   slot 6 : House Edge
+    ///   slot 7 : Deck Edge
+    /// The legacy `selectedFootprint` branch is dead code — DeckBuilderView
+    /// hides the wheel entirely when no edge is selected — but kept here as a
+    /// belt-and-braces fallback so the assertion stays load-bearing.
     private var wheelItems: [WheelSlot] {
         var items: [WheelSlot] = []
 
         if viewModel.selection.hasEdges {
-            items.append(WheelSlot(name: "House Edge", icon: "house", action: .edgeType(.houseEdge)))
-            items.append(WheelSlot(name: "Deck Edge", icon: "rectangle", action: .edgeType(.deckEdge)))
-            items.append(WheelSlot(name: "Glass Rail", icon: "rectangle.split.3x1", action: .railing(.glass)))
-            items.append(WheelSlot(name: "Picket Rail", icon: "line.3.horizontal", action: .railing(.picket)))
-            items.append(WheelSlot(name: "Cable Rail", icon: "cable.connector.horizontal", action: .railing(.cable)))
-            items.append(WheelSlot(name: "No Railing", icon: "xmark", action: .removeRailing))
-            items.append(WheelSlot(name: "Add Stairs", icon: "stairs", action: .addStairs))
-            items.append(WheelSlot(name: "Dimension", icon: "ruler", action: .dimension))
+            // Slots 0–2: company catalog (with generic backfill).
+            let placeholders: [WheelSlot] = [
+                WheelSlot(name: "Glass Rail", icon: "rectangle.split.3x1", initials: nil, isDefault: false, action: .railing(.glass)),
+                WheelSlot(name: "Picket Rail", icon: "line.3.horizontal",  initials: nil, isDefault: false, action: .railing(.picket)),
+                WheelSlot(name: "Cable Rail",  icon: "cable.connector.horizontal", initials: nil, isDefault: false, action: .railing(.cable))
+            ]
+            let catalogSlots = railingProducts.prefix(3).map { product -> WheelSlot in
+                let isDefault = product.id == defaultProductId
+                let railingType = derivedRailingType(from: product)
+                let assigned = AssignedItem(
+                    productId: product.id,
+                    name: product.name,
+                    unitType: .linearFoot,
+                    unitPrice: product.basePrice,
+                    taskTypeId: product.taskTypeId,
+                    taskTypeColor: taskTypes.first(where: { $0.id == product.taskTypeId && $0.deletedAt == nil })?.color,
+                    isGate: product.category?.lowercased().contains("gate") == true
+                )
+                return WheelSlot(
+                    name: product.name,
+                    icon: railingIcon(for: railingType),
+                    initials: String(product.name.prefix(3)).uppercased(),
+                    isDefault: isDefault,
+                    action: .assignRailingProduct(item: assigned, railingType: railingType)
+                )
+            }
+            for i in 0..<3 {
+                if i < catalogSlots.count {
+                    items.append(catalogSlots[i])
+                } else {
+                    items.append(placeholders[i])
+                }
+            }
+
+            // Slots 3–7: structural utilities + edge type.
+            items.append(WheelSlot(name: "No Railing", icon: "xmark", initials: nil, isDefault: false, action: .removeRailing))
+            items.append(WheelSlot(name: "Add Stairs", icon: "stairs", initials: nil, isDefault: false, action: .addStairs))
+            items.append(WheelSlot(name: "Dimension",  icon: "ruler",  initials: nil, isDefault: false, action: .dimension))
+            items.append(WheelSlot(name: "House Edge", icon: "house",     initials: nil, isDefault: false, action: .edgeType(.houseEdge)))
+            items.append(WheelSlot(name: "Deck Edge",  icon: "rectangle", initials: nil, isDefault: false, action: .edgeType(.deckEdge)))
         } else if viewModel.selection.selectedFootprint {
-            items.append(WheelSlot(name: "Material", icon: "shippingbox", action: .openMaterialPicker))
+            items.append(WheelSlot(name: "Material", icon: "shippingbox", initials: nil, isDefault: false, action: .openMaterialPicker))
         }
 
         return items
+    }
+
+    /// Best-guess railing type from a product's name/category. Drives the 3D
+    /// preview style when the user picks a catalog product directly from the
+    /// wheel — we want the picket SKU to render as a picket railing, not as
+    /// whatever the previous railing config was. Defaults to `.picket` because
+    /// it's the most common style; the operator can override via the property
+    /// sheet if the inference is wrong.
+    private func derivedRailingType(from product: Product) -> RailingType {
+        let haystack = ((product.name) + " " + (product.category ?? "")).lowercased()
+        if haystack.contains("glass") { return .glass }
+        if haystack.contains("cable") { return .cable }
+        if haystack.contains("horizontal") { return .horizontal }
+        if haystack.contains("wood") || haystack.contains("cedar") { return .wood }
+        return .picket
+    }
+
+    private func railingIcon(for type: RailingType) -> String {
+        switch type {
+        case .glass:      return "rectangle.split.3x1"
+        case .picket:     return "line.3.horizontal"
+        case .cable:      return "cable.connector.horizontal"
+        case .horizontal: return "rectangle.split.1x2"
+        case .wood:       return "square.grid.2x2"
+        }
     }
 
     var body: some View {
@@ -39,19 +158,39 @@ struct AssignmentWheelView: View {
                     .ignoresSafeArea()
                     .onTapGesture { collapse() }
 
-                // Wheel slots
+                // Wheel slots. Two interaction paths into `executeAction`:
+                //  - tap a slot directly (added for bug ee787f29 — the original
+                //    long-press → drag → release path discovered approximately
+                //    no one in field testing; users would expand the wheel via
+                //    tap, then tap a slot and get no response).
+                //  - long-press the center, drag to a slot, release (power path
+                //    for muscle-memory single-handed use; still wired on the
+                //    center button below).
                 ForEach(Array(wheelItems.enumerated()), id: \.offset) { index, slot in
                     let angle = slotAngle(index: index)
                     let isHighlighted = highlightedIndex == index
 
                     VStack(spacing: 3) {
-                        Image(systemName: slot.icon)
-                            .font(.system(size: isHighlighted ? OPSStyle.Layout.IconSize.lg : OPSStyle.Layout.IconSize.md, weight: .medium))
-                            .foregroundColor(isHighlighted ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                        // Catalog products render as a 3-letter mono badge
+                        // (matches the active-assignment indicator on the
+                        // center button); generic placeholders keep their SF
+                        // Symbol icon.
+                        if let initials = slot.initials {
+                            Text(initials)
+                                .font(.system(size: isHighlighted ? 13 : 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(isHighlighted ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                        } else {
+                            Image(systemName: slot.icon)
+                                .font(.system(size: isHighlighted ? OPSStyle.Layout.IconSize.lg : OPSStyle.Layout.IconSize.md, weight: .medium))
+                                .foregroundColor(isHighlighted ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText)
+                        }
 
                         Text(slot.name)
                             .font(OPSStyle.Typography.miniLabel)
                             .foregroundColor(isHighlighted ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: 56)
                     }
                     .frame(width: 60, height: 60)
                     .background(
@@ -60,6 +199,25 @@ struct AssignmentWheelView: View {
                                   ? OPSStyle.Colors.primaryAccent.opacity(0.2)
                                   : OPSStyle.Colors.cardBackground)
                     )
+                    .overlay(alignment: .topTrailing) {
+                        // Subtle 6pt accent dot marks the company default
+                        // (slot 0 when a default exists). Mirrors the
+                        // "// DEFAULT" tag MaterialPickerSheet uses, scaled
+                        // down for the wheel.
+                        if slot.isDefault {
+                            Circle()
+                                .fill(OPSStyle.Colors.primaryAccent)
+                                .frame(width: 6, height: 6)
+                                .offset(x: -4, y: 4)
+                        }
+                    }
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        let impact = UIImpactFeedbackGenerator(style: .light)
+                        impact.impactOccurred()
+                        executeAction(slot.action)
+                        collapse()
+                    }
                     .offset(
                         x: cos(angle) * wheelRadius,
                         y: sin(angle) * wheelRadius
@@ -196,6 +354,27 @@ struct AssignmentWheelView: View {
             viewModel.showingDimensionInput = true
         case .assignItem(let item):
             viewModel.assignItemToSelectedEdges(item)
+        case .assignRailingProduct(let item, let railingType):
+            // Two-step: set railing config first (so the 3D scene renders the
+            // right style) then attach the catalog product to every selected
+            // edge. If the edge already has a railingConfig, only its
+            // railingType + maxPostSpacing get overwritten — color, mount type
+            // etc. stay so the user doesn't lose prior config every time they
+            // tap a new product.
+            for id in viewModel.selection.selectedEdgeIds {
+                if let edge = viewModel.findEdge(byId: id), var existing = edge.railingConfig {
+                    existing.railingType = railingType
+                    existing.maxPostSpacing = railingType.defaultMaxPostSpacing
+                    viewModel.setRailing(id, config: existing)
+                } else {
+                    let config = RailingConfig(
+                        railingType: railingType,
+                        maxPostSpacing: railingType.defaultMaxPostSpacing
+                    )
+                    viewModel.setRailing(id, config: config)
+                }
+            }
+            viewModel.assignItemToSelectedEdges(item)
         case .openMaterialPicker:
             viewModel.showingMaterialPicker = true
         }
@@ -207,6 +386,12 @@ struct AssignmentWheelView: View {
 private struct WheelSlot {
     let name: String
     let icon: String
+    /// 3-letter mono badge shown in place of the SF Symbol when the slot
+    /// represents a specific catalog product. nil for generic/structural slots.
+    let initials: String?
+    /// Whether this slot is the company's pinned default for the current
+    /// component type — drives the small accent dot on the slot circle.
+    let isDefault: Bool
     let action: WheelAction
 }
 
@@ -217,5 +402,9 @@ private enum WheelAction {
     case addStairs
     case dimension
     case assignItem(AssignedItem)
+    /// Tap on a catalog-driven slot: sets railing type structurally AND
+    /// attaches the chosen product as an `AssignedItem` so the cut list /
+    /// estimate knows which SKU to bill. Bug ee787f29.
+    case assignRailingProduct(item: AssignedItem, railingType: RailingType)
     case openMaterialPicker
 }

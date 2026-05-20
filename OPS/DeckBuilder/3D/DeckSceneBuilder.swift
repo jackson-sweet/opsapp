@@ -49,28 +49,34 @@ struct DeckSceneBuilder {
         var allPositions: [CGPoint] = []
 
         if drawingData.isMultiLevel {
+            // Bug ee787f29 / bc9109ef — the multi-level scene must share ONE
+            // centroid across ALL levels. The previous per-level centroid
+            // re-centered each level to its own bbox midpoint, so levels with
+            // different canvas positions (e.g. an upper deck tucked into a
+            // corner) collapsed onto the lower deck at the 3D origin. Build
+            // the shared centroid from every position on every level — empty
+            // levels contribute nothing, populated ones anchor the frame.
+            var globalUnion: [CGPoint] = []
+            for level in drawingData.levels {
+                globalUnion.append(contentsOf: level.orderedPositions)
+                globalUnion.append(contentsOf: level.detectedSurfaces.flatMap { $0.positions })
+                globalUnion.append(contentsOf: level.vertices.map { $0.position })
+            }
+            let sharedBounds = DeckMeshGenerator.boundingRect(for: globalUnion)
+            let sharedCenter = CGPoint(x: sharedBounds.midX, y: sharedBounds.midY)
+
             for level in drawingData.levels {
                 // DECK-NEW-1 — render every detected closed face on this level
                 // (multiple surfaces, even sharing edges). Per-surface material
                 // resolved against the level's persisted DeckSurface store.
                 let detected = level.detectedSurfaces
                 guard !detected.isEmpty || level.isClosed else { continue }
-                // Bug bc9109ef — every face / edge / vertex on this level must
-                // share ONE coordinate frame, otherwise multiple closed shapes
-                // re-center to their own bbox and stack at the origin. Build a
-                // shared centroid from the union of every position on the level
-                // (detected surfaces + the ordered fallback + raw vertices).
-                var levelUnion: [CGPoint] = level.orderedPositions
-                levelUnion.append(contentsOf: detected.flatMap { $0.positions })
-                levelUnion.append(contentsOf: level.vertices.map { $0.position })
-                let levelBounds = DeckMeshGenerator.boundingRect(for: levelUnion)
-                let levelCenter = CGPoint(x: levelBounds.midX, y: levelBounds.midY)
 
                 let surfacesIn3D: [SurfaceMesh3D]? = detected.isEmpty ? nil : detected.map { face in
                     let metersPositions = convertToMeters(
                         vertices: face.positions,
                         scaleFactor: scaleFactor,
-                        center: levelCenter
+                        center: sharedCenter
                     )
                     let resolved = resolvedAssignedItems(for: face, in: level.surfaces)
                     return SurfaceMesh3D(
@@ -82,7 +88,7 @@ struct DeckSceneBuilder {
                 let primaryFallback = convertToMeters(
                     vertices: level.orderedPositions,
                     scaleFactor: scaleFactor,
-                    center: levelCenter
+                    center: sharedCenter
                 )
                 allPositions.append(contentsOf: detected.flatMap { $0.positions })
                 if detected.isEmpty { allPositions.append(contentsOf: level.orderedPositions) }
@@ -176,8 +182,22 @@ struct DeckSceneBuilder {
         }
 
         if drawingData.isMultiLevel {
+            // Same shared-centroid fix as `buildScene` — multi-level AR view
+            // also needs every level converted against ONE frame, otherwise
+            // levels stack at the origin in the AR placement scene.
+            var globalUnion: [CGPoint] = []
             for level in drawingData.levels where level.isClosed {
-                let metersVerts = convertToMeters(vertices: level.orderedPositions, scaleFactor: scaleFactor)
+                globalUnion.append(contentsOf: level.orderedPositions)
+            }
+            let sharedBounds = DeckMeshGenerator.boundingRect(for: globalUnion)
+            let sharedCenter = CGPoint(x: sharedBounds.midX, y: sharedBounds.midY)
+
+            for level in drawingData.levels where level.isClosed {
+                let metersVerts = convertToMeters(
+                    vertices: level.orderedPositions,
+                    scaleFactor: scaleFactor,
+                    center: sharedCenter
+                )
                 let elevationFeet = level.elevation ?? 2.5
                 let elevationM = Float(elevationFeet) * feetToMeters
                 buildDeckLevel(

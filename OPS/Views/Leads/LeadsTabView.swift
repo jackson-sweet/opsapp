@@ -171,6 +171,27 @@ struct LeadsTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadCreatedSuccess"))) { _ in
             Task { await viewModel.loadData() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadUpdatedSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadActivityLoggedSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadMarkedLostSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadMarkedWonSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadConvertedSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadArchivedSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadDeletedSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
     }
 
     // MARK: - Top rows

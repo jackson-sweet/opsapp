@@ -86,7 +86,37 @@ final class LeadConversionService {
     /// local SwiftData cache as a side-effect of the standard
     /// `EstimateDTO.toModel()` mapping. Returns the in-memory models.
     func estimates(for lead: Opportunity) async throws -> [Estimate] {
-        let dtos: [EstimateDTO] = try await client
+        let dtos: [EstimateDTO] = try await fetchEstimateDTOs(for: lead)
+        return dtos.map { $0.toModel() }
+    }
+
+    /// Bundle of estimates + their line items, materialised in one round-trip.
+    /// `ConvertToProjectSheet` uses this to surface line-item counts in the
+    /// "ATTACHED ESTIMATES" section and to render LABOR rows in the
+    /// "TASKS TO BE CREATED" preview. `Estimate.toModel()` discards the
+    /// line-item array; this method keeps it.
+    struct EstimateBundle {
+        let estimate: Estimate
+        let lineItems: [EstimateLineItem]
+
+        /// LABOR-typed line items only — the rows that become `ProjectTask`s
+        /// when the RPC materialises tasks.
+        var laborItems: [EstimateLineItem] {
+            lineItems.filter { $0.type == .labor }
+        }
+    }
+
+    func estimateBundles(for lead: Opportunity) async throws -> [EstimateBundle] {
+        let dtos: [EstimateDTO] = try await fetchEstimateDTOs(for: lead)
+        return dtos.map { dto in
+            let estimate = dto.toModel()
+            let lineItems = (dto.lineItems ?? []).map { $0.toModel() }
+            return EstimateBundle(estimate: estimate, lineItems: lineItems)
+        }
+    }
+
+    private func fetchEstimateDTOs(for lead: Opportunity) async throws -> [EstimateDTO] {
+        try await client
             .from("estimates")
             .select("*, line_items(*)")
             .eq("company_id", value: companyId)
@@ -95,7 +125,6 @@ final class LeadConversionService {
             .order("created_at", ascending: false)
             .execute()
             .value
-        return dtos.map { $0.toModel() }
     }
 
     // MARK: - Convert transaction (RPC-backed)

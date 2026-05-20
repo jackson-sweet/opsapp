@@ -1,0 +1,237 @@
+//
+//  ContactCard.swift
+//  OPS
+//
+//  L1 contact card on LeadDetailView. Single panel containing:
+//
+//      [40pt initials avatar]   Helen Calloway
+//                               (555) 123-4567 · 1240 Maple Ave
+//
+//      [CALL] [TEXT] [EMAIL] [MAP]    ← 4-up button row, all equal weight
+//
+//  Per Phase 3 brief: NO accent color on any contact CTA. The only accent
+//  on the entire LeadDetailView is the MARK WON button in StickyActionBar.
+//  All four contact buttons share the surfaceInput + line treatment.
+//
+//  Buttons whose underlying field is empty render disabled (35% opacity).
+//
+
+import SwiftUI
+
+struct ContactCard: View {
+    let opportunity: Opportunity
+
+    var body: some View {
+        VStack(spacing: 12) {
+            header
+            actionRow
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassSurface()
+        .padding(.horizontal, 20)
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            InitialsAvatar(name: displayName, size: 40)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayName)
+                    .font(.custom("Mohave-Medium", size: 15))
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Text(contactSubline)
+                    .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                    .foregroundColor(OPSStyle.Colors.text3)
+                    .kerning(0.8)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: - 4-up CTA row
+
+    private var actionRow: some View {
+        HStack(spacing: 6) {
+            CTAButton(label: "CALL",  icon: "phone",
+                      isEnabled: hasPhone,
+                      action: { open("tel:\(sanitizedPhone)") })
+
+            CTAButton(label: "TEXT",  icon: "bubble.left",
+                      isEnabled: hasPhone,
+                      action: { open("sms:\(sanitizedPhone)") })
+
+            CTAButton(label: "EMAIL", icon: "envelope",
+                      isEnabled: hasEmail,
+                      action: { open("mailto:\(opportunity.contactEmail ?? "")") })
+
+            CTAButton(label: "MAP",   icon: "mappin.and.ellipse",
+                      isEnabled: hasAddress,
+                      action: { open(mapURLString) })
+        }
+    }
+
+    // MARK: - Derived
+
+    private var displayName: String {
+        if !opportunity.contactName.isEmpty { return opportunity.contactName }
+        if let title = opportunity.title, !title.isEmpty { return title }
+        return "Unnamed lead"
+    }
+
+    private var contactSubline: String {
+        var parts: [String] = []
+        if let phone = opportunity.contactPhone, !phone.isEmpty { parts.append(phone) }
+        if let addr  = opportunity.address,      !addr.isEmpty  { parts.append(addr) }
+        return parts.isEmpty ? "—" : parts.joined(separator: " · ")
+    }
+
+    private var hasPhone: Bool {
+        guard let p = opportunity.contactPhone else { return false }
+        return !p.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private var hasEmail: Bool {
+        guard let e = opportunity.contactEmail else { return false }
+        return !e.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private var hasAddress: Bool {
+        guard let a = opportunity.address else { return false }
+        return !a.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// Strips spaces, dashes, parens so `tel:` and `sms:` accept the URL on iOS.
+    private var sanitizedPhone: String {
+        (opportunity.contactPhone ?? "")
+            .filter { "0123456789+".contains($0) }
+    }
+
+    private var mapURLString: String {
+        let encoded = (opportunity.address ?? "")
+            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        return "https://maps.apple.com/?address=\(encoded)"
+    }
+
+    private func open(_ urlString: String) {
+        guard let url = URL(string: urlString) else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        UIApplication.shared.open(url)
+    }
+}
+
+// MARK: - CTAButton (private)
+
+/// One equal-weight contact CTA. Stroke + surfaceInput fill, text2 foreground.
+/// 44pt min height per MOBILE.md §1. Disabled appearance: 35% opacity,
+/// `accessibilityHidden` for screen readers.
+private struct CTAButton: View {
+    let label: String
+    let icon: String
+    let isEnabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .regular))
+                Text(label)
+                    .font(.custom("CakeMono-Light", size: 11.5))
+                    .kerning(0.46)
+                    .textCase(.uppercase)
+            }
+            .foregroundColor(OPSStyle.Colors.text2)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .fill(OPSStyle.Colors.surfaceInput)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1.0 : 0.35)
+        .accessibilityLabel(label)
+        .accessibilityHidden(!isEnabled)
+    }
+}
+
+// MARK: - InitialsAvatar (private)
+
+/// Simple 40pt circle with up to two initials. Glass-quiet styling — no
+/// accent, no semantic color. The contact card is informational, not status.
+private struct InitialsAvatar: View {
+    let name: String
+    var size: CGFloat = 40
+
+    private var initials: String {
+        let parts = name
+            .split(separator: " ", omittingEmptySubsequences: true)
+            .map(String.init)
+        let first = parts.first.map { String($0.prefix(1)) } ?? "?"
+        let last = parts.count > 1 ? String(parts.last!.prefix(1)) : ""
+        return (first + last).uppercased()
+    }
+
+    var body: some View {
+        Text(initials)
+            .font(.custom("JetBrainsMono-Medium", size: size * 0.34))
+            .foregroundColor(OPSStyle.Colors.text2)
+            .frame(width: size, height: size)
+            .background(Circle().fill(Color.white.opacity(0.06)))
+            .overlay(Circle().strokeBorder(Color.white.opacity(0.10), lineWidth: 1))
+    }
+}
+
+// MARK: - Previews
+
+#if DEBUG
+#Preview("ContactCard / states") {
+    ScrollView {
+        VStack(spacing: 16) {
+            ContactCard(opportunity: {
+                let o = Opportunity.preview(
+                    contactName: "Helen Calloway",
+                    stage: .quoted,
+                    estimatedValue: 14_200
+                )
+                o.contactPhone = "(555) 123-4567"
+                o.contactEmail = "helen@example.com"
+                o.address = "1240 Maple Ave"
+                return o
+            }())
+
+            ContactCard(opportunity: {
+                let o = Opportunity.preview(
+                    contactName: "Joel Lioudakis",
+                    stage: .qualifying,
+                    estimatedValue: 6_200
+                )
+                o.contactPhone = "(555) 234-5678"
+                return o
+            }())
+
+            ContactCard(opportunity: Opportunity.preview(
+                contactName: "Aimee Watari",
+                stage: .newLead,
+                estimatedValue: nil
+            ))
+        }
+        .padding(.vertical, 20)
+    }
+    .background(OPSStyle.Colors.background)
+    .preferredColorScheme(.dark)
+}
+#endif

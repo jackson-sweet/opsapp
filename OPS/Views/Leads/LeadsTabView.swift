@@ -133,9 +133,14 @@ struct LeadsTabView: View {
             }
             .navigationBarHidden(true)
             .navigationDestination(item: $detailLead) { lead in
-                LeadDetailView(opportunity: lead)
-                    .environmentObject(dataController)
-                    .environmentObject(permissionStore)
+                LeadDetailView(
+                    opportunity: lead,
+                    onMarkLost: { activeSheet = .lost(lead) },
+                    onEdit:     { activeSheet = .edit(lead) },
+                    onMarkWon:  { activeSheet = .convert(lead) }
+                )
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
             }
             .sheet(item: $activeSheet) { sheet in
                 sheetView(for: sheet)

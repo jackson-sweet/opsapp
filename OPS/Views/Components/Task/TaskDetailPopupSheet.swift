@@ -18,13 +18,30 @@ struct TaskDetailPopupSheet: View {
     @Binding var selectedTeamMemberIds: Set<String>
     let allTeamMembers: [TeamMember]
     var isProjectCompleted: Bool = false
+    /// Bug 0aa825fe + 62481022 — fired only when the operator explicitly taps
+    /// DONE on the inline team picker. Drag-to-dismiss does NOT call this, so
+    /// the parent can keep the save off the sheet-dismiss critical path
+    /// (which was tearing down ProjectDetails via the SwiftData notification
+    /// cascade triggered mid-animation by updateTaskTeamMembers' multiple
+    /// modelContext.save() calls).
+    var onCommitTeam: ((Set<String>) -> Void)? = nil
 
     @State private var showReopenAlert = false
     @State private var showCancelAlert = false
     @State private var showTeamPicker = false
+    /// Draft team selection that lives only inside this sheet — the operator
+    /// can tap rows freely without each tap immediately mutating the parent
+    /// state. Only committed back to `selectedTeamMemberIds` when DONE is
+    /// tapped. Resets from the committed value every time the picker
+    /// expands so a discarded picker leaves no trace.
+    @State private var draftTeamMemberIds: Set<String> = []
 
     private var isInactive: Bool {
         task.status == .completed || task.status == .cancelled
+    }
+
+    private var teamDraftIsDirty: Bool {
+        draftTeamMemberIds != selectedTeamMemberIds
     }
 
     var body: some View {
@@ -242,7 +259,17 @@ struct TaskDetailPopupSheet: View {
     private var teamHeader: some View {
         Button(action: {
             withAnimation(.easeInOut(duration: 0.2)) {
-                showTeamPicker.toggle()
+                if showTeamPicker {
+                    // Collapsing without DONE = discard. Draft is reset on
+                    // the next open via the `if !showTeamPicker` branch.
+                    showTeamPicker = false
+                } else {
+                    // Opening — seed the draft from the committed selection
+                    // so the picker shows what's actually on the task, not
+                    // a stale draft from an earlier abandoned session.
+                    draftTeamMemberIds = selectedTeamMemberIds
+                    showTeamPicker = true
+                }
             }
         }) {
             HStack(spacing: 12) {
@@ -312,13 +339,14 @@ struct TaskDetailPopupSheet: View {
     private var teamMemberList: some View {
         VStack(spacing: 0) {
             ForEach(allTeamMembers, id: \.id) { member in
-                let isSelected = selectedTeamMemberIds.contains(member.id)
+                let isSelected = draftTeamMemberIds.contains(member.id)
 
                 Button(action: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     if isSelected {
-                        selectedTeamMemberIds.remove(member.id)
+                        draftTeamMemberIds.remove(member.id)
                     } else {
-                        selectedTeamMemberIds.insert(member.id)
+                        draftTeamMemberIds.insert(member.id)
                     }
                 }) {
                     HStack(spacing: 10) {
@@ -352,9 +380,72 @@ struct TaskDetailPopupSheet: View {
                 }
                 .buttonStyle(PlainButtonStyle())
             }
+
+            // Explicit commit row — DONE applies the draft to the
+            // task team binding and fires `onCommitTeam`. CANCEL discards
+            // the draft. Drag-to-dismiss the parent sheet OR collapsing
+            // the section via the chevron both count as discard.
+            teamCommitRow
         }
         .padding(.bottom, 4)
         .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private var teamCommitRow: some View {
+        HStack(spacing: 10) {
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showTeamPicker = false
+                }
+            }) {
+                Text("CANCEL")
+                    .font(OPSStyle.Typography.captionBold)
+                    .tracking(0.5)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(OPSStyle.Colors.cardBackground)
+                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                    )
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            Button(action: {
+                let committed = draftTeamMemberIds
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                // Update the binding so subsequent reads see the new
+                // committed value, then collapse the picker. The actual
+                // SwiftData write happens via onCommitTeam in the parent —
+                // the parent defers it off the dismiss critical path.
+                selectedTeamMemberIds = committed
+                onCommitTeam?(committed)
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showTeamPicker = false
+                }
+            }) {
+                Text("DONE")
+                    .font(OPSStyle.Typography.captionBold)
+                    .tracking(0.5)
+                    .foregroundColor(teamDraftIsDirty
+                        ? OPSStyle.Colors.invertedText
+                        : OPSStyle.Colors.tertiaryText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(teamDraftIsDirty
+                        ? OPSStyle.Colors.primaryAccent
+                        : OPSStyle.Colors.cardBackground)
+                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .disabled(!teamDraftIsDirty)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
     }
 
     // MARK: - Static Info Row

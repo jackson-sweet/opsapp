@@ -44,6 +44,13 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var showingStairConfig: Bool = false
     @Published var showingAssignmentWheel: Bool = false
     @Published var showingMaterialPicker: Bool = false
+    /// Properties sheet (PropertySheetView). Opens full edit controls for
+    /// the current selection — edge type, house cladding, railing config,
+    /// stair config, surface metadata, vertex elevation, etc. Previously
+    /// orphaned with no UI entry point (bug ee787f29 — "no way to change
+    /// the type of siding on a house edge"); now reachable from a
+    /// "Properties" button on every selection toolbar.
+    @Published var showingPropertySheet: Bool = false
     var taskTypes: [TaskType] = []
     @Published var showingSettings: Bool = false
     @Published var showingClearConfirm: Bool = false
@@ -1691,6 +1698,50 @@ class DeckBuilderViewModel: ObservableObject {
         pushUndo("label edge")
         edge.label = value
         activeUpdateEdge(edge)
+        save()
+    }
+
+    /// Creates a fresh level (migrating from single-level if needed) and
+    /// hands the current surface selection to it in one atomic step. Wraps
+    /// addLevel + moveSelectedSurfacesToLevel because addLevel clears
+    /// selection — calling the two in sequence at the UI layer would lose
+    /// the surface ids mid-flight. Capped at 3 levels per existing addLevel
+    /// constraint; no-op when at the cap. Bug ee787f29 follow-up.
+    func moveSelectedSurfacesToNewLevel() {
+        let targetIds = selection.selectedSurfaceIds
+        guard !targetIds.isEmpty else { return }
+        guard drawingData.levels.count < 3 || !drawingData.isMultiLevel else { return }
+
+        pushUndo("split to new level")
+        if !drawingData.isMultiLevel {
+            drawingData.migrateToMultiLevel()
+        }
+        let usedColors = drawingData.levels.map { $0.displayColor }
+        let newLevel = DeckLevel(
+            name: "Level \(drawingData.levels.count + 1)",
+            displayColor: LevelColor.nextAvailable(excluding: usedColors),
+            sortOrder: drawingData.levels.count
+        )
+        drawingData.levels.append(newLevel)
+        let destinationIndex = drawingData.levels.count - 1
+
+        var moved: [DeckSurface] = []
+        for li in drawingData.levels.indices where li != destinationIndex {
+            var surfaces = drawingData.levels[li].surfaces
+            let migrated = surfaces.filter { targetIds.contains($0.id) }
+            if !migrated.isEmpty {
+                surfaces.removeAll { targetIds.contains($0.id) }
+                drawingData.levels[li].surfaces = surfaces
+                moved.append(contentsOf: migrated)
+            }
+        }
+        if !moved.isEmpty {
+            drawingData.levels[destinationIndex].surfaces.append(contentsOf: moved)
+        }
+
+        activeLevelIndex = destinationIndex
+        selection.clear()
+        hapticMedium()
         save()
     }
 

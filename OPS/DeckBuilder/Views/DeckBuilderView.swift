@@ -4,16 +4,6 @@ import SwiftUI
 import SwiftData
 import UIKit
 
-/// Measured height of the floating header card (title bar + optional level
-/// tabs). Lets the edit cluster + live-dimension pill anchor immediately
-/// below the actual card, even when the level tab bar grows the card.
-private struct HeaderCardHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
 struct DeckBuilderView: View {
     @StateObject private var viewModel: DeckBuilderViewModel
     @Environment(\.dismiss) private var dismiss
@@ -31,12 +21,6 @@ struct DeckBuilderView: View {
     @StateObject private var estimateVM = EstimateViewModel()
     @Environment(\.modelContext) private var env_modelContext
     @Query(sort: \TaskType.displayOrder) private var taskTypes: [TaskType]
-
-    /// Live-measured height of the floating header card (title + optional
-    /// level tabs). The edit cluster and live-dimension pill anchor just
-    /// below the card using this value, so they slide down automatically
-    /// when the level tab bar appears and shrink back up when it hides.
-    @State private var headerCardHeight: CGFloat = 0
 
     let projectId: String?
     let companyId: String
@@ -232,17 +216,33 @@ struct DeckBuilderView: View {
                                 .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
                         )
                         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
-                        .background(
-                            // Measure the card height so the edit cluster +
-                            // live-dim pill anchor immediately below it.
-                            GeometryReader { proxy in
-                                Color.clear.preference(
-                                    key: HeaderCardHeightKey.self,
-                                    value: proxy.size.height
-                                )
-                            }
-                        )
                         .animation(OPSStyle.Animation.fast, value: viewModel.isMultiLevel)
+
+                        // Edit cluster / live-dim row — sits in the VStack
+                        // flow immediately below the header card so it can
+                        // never overlap (the prior absolute-positioned
+                        // approach raced the PreferenceKey measurement and
+                        // landed the cluster on top of the title bar on first
+                        // render — bug ee787f29 follow-up). Edit cluster
+                        // anchors trailing; live-dim pill anchors leading per
+                        // the reporter's request — the drawing finger sits on
+                        // the right edge of the canvas, so the live-dim
+                        // readout works harder on the opposite side.
+                        if PermissionStore.shared.can("deck_builder.edit"),
+                           viewModel.liveDimensionLabel == nil {
+                            HStack(spacing: 0) {
+                                Spacer(minLength: 0)
+                                editCluster2D
+                            }
+                        }
+                        if let liveLabel = viewModel.liveDimensionLabel {
+                            HStack(spacing: 0) {
+                                liveDimensionPill(label: liveLabel)
+                                Spacer(minLength: 0)
+                            }
+                            .transition(.opacity)
+                            .animation(OPSStyle.Animation.fast, value: viewModel.liveDimensionLabel)
+                        }
 
                         // Combined metrics + AR row — when both apply they
                         // share a single horizontal row instead of stacking
@@ -264,43 +264,7 @@ struct DeckBuilderView: View {
                     .padding(.top, floatingHeaderTopPadding)
                     .allowsHitTesting(true)
 
-                    // Edit cluster (undo + redo + import) — floats below the
-                    // title bar at the trailing edge of the canvas. Hidden while
-                    // a draw is in flight: the live-dimension pill takes this
-                    // slot, undo/redo can't fire mid-stroke anyway, and stacking
-                    // both clusters at the same anchor caused the right-edge
-                    // bleed reported in bug 55083a46.
-                    if PermissionStore.shared.can("deck_builder.edit"),
-                       viewModel.liveDimensionLabel == nil {
-                        editCluster2D
-                            .padding(.trailing, OPSStyle.Layout.spacing4)
-                            .padding(.top, floatingHeaderTopPadding + headerCardHeight + OPSStyle.Layout.spacing2)
-                            .frame(maxWidth: .infinity, alignment: .topTrailing)
-                            .allowsHitTesting(true)
-                    }
-
-                    // Live dimension pill — right-aligned, anchored just below
-                    // the title bar so it sits at the top of the canvas where
-                    // the user's drawing finger can't block it. Latitude matches
-                    // the (now-hidden) edit cluster so the layout doesn't shift
-                    // when drawing begins. Bugs 4e9057d2, 9c2b8866, bc9109ef.
-                    if let liveLabel = viewModel.liveDimensionLabel {
-                        liveDimensionPill(label: liveLabel)
-                            .padding(.trailing, OPSStyle.Layout.spacing4)
-                            .padding(.top, floatingHeaderTopPadding + headerCardHeight + OPSStyle.Layout.spacing2)
-                            .frame(maxWidth: .infinity, alignment: .topTrailing)
-                            .transition(.opacity)
-                            .animation(OPSStyle.Animation.fast, value: viewModel.liveDimensionLabel)
-                            .allowsHitTesting(false)
-                    }
                 } // end ZStack (top-aligned, floating title over canvas)
-                .onPreferenceChange(HeaderCardHeightKey.self) { newHeight in
-                    // Animate so the edit cluster + live-dim pill slide down
-                    // smoothly when the level tab bar appears.
-                    withAnimation(OPSStyle.Animation.fast) {
-                        headerCardHeight = newHeight
-                    }
-                }
 
                 // Toolbar — below the canvas. Wrapped in horizontal padding +
                 // bottom gap + clipped corners so its cardBackground reads as a
@@ -333,6 +297,9 @@ struct DeckBuilderView: View {
         }
         .sheet(isPresented: $viewModel.showingMaterialPicker) {
             MaterialPickerSheet(viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.showingPropertySheet) {
+            PropertySheetView(viewModel: viewModel)
         }
         .sheet(isPresented: $viewModel.showingLevelConnectionSheet) {
             LevelConnectionSheet(viewModel: viewModel)
@@ -860,11 +827,6 @@ struct DeckBuilderView: View {
                 .shadow(color: Color.black.opacity(0.25), radius: 10, y: 4)
         )
     }
-
-    // `headerOverlayBelowTitleOffset` removed — the edit cluster and
-    // live-dim pill now anchor off the runtime-measured `headerCardHeight`
-    // (HeaderCardHeightKey preference), so they track the actual card
-    // height including the level tab bar when it appears.
 
     // MARK: - Combined metrics + AR row
 

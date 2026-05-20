@@ -134,8 +134,12 @@ struct DeckToolbar: View {
 
         // Material only makes sense when at least one edge or surface is selected
         let canAssignMaterial = edgeCount > 0 || surfaceSelected
-        // Move-to-level applies only to surfaces in a multi-level design.
-        let canMoveToLevel = viewModel.isMultiLevel && !viewModel.selection.selectedSurfaceIds.isEmpty
+        // Move-to-level shows whenever a surface is selected — even in
+        // single-level mode it offers "+ New level" so the operator can split
+        // off a second deck. Cap is 3 levels.
+        let hasSurfaceSelection = !viewModel.selection.selectedSurfaceIds.isEmpty
+        let canMoveToLevel = hasSurfaceSelection
+            && (viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3)
         _ = vertexCount  // silence unused-warning while we keep the readable line above
 
         return ScrollView(.horizontal, showsIndicators: false) {
@@ -207,16 +211,32 @@ struct DeckToolbar: View {
         .cornerRadius(4)
     }
 
-    /// Move-to-level menu — assigns every selected surface (and only the
-    /// surfaces; geometry stays in place) to a different level. DECK-NEW-4.
+    /// Move-to-level menu — assigns every selected surface to a different
+    /// level. Existing levels listed first, then a "+ New Level" option that
+    /// spawns a fresh level and moves the selection there in one step (capped
+    /// at 3 levels per DeckBuilderViewModel.addLevel). DECK-NEW-4 + bug
+    /// ee787f29 follow-up: previously this menu only showed in multi-level
+    /// designs, which hid the "create a second deck on a new level" path.
     @ViewBuilder
     private var moveToLevelMenu: some View {
         Menu {
-            ForEach(Array(viewModel.drawingData.levels.enumerated()), id: \.element.id) { idx, level in
+            if viewModel.isMultiLevel {
+                ForEach(Array(viewModel.drawingData.levels.enumerated()), id: \.element.id) { idx, level in
+                    Button {
+                        viewModel.moveSelectedSurfacesToLevel(at: idx)
+                    } label: {
+                        Label(level.name, systemImage: "square.stack.3d.up")
+                    }
+                }
+                if viewModel.drawingData.levels.count < 3 {
+                    Divider()
+                }
+            }
+            if viewModel.drawingData.levels.count < 3 {
                 Button {
-                    viewModel.moveSelectedSurfacesToLevel(at: idx)
+                    viewModel.moveSelectedSurfacesToNewLevel()
                 } label: {
-                    Label(level.name, systemImage: "square.stack.3d.up")
+                    Label("New Level", systemImage: "plus.square.on.square")
                 }
             }
         } label: {
@@ -382,6 +402,14 @@ struct DeckToolbar: View {
                     viewModel.showingMaterialPicker = true
                 }
 
+                // Properties — opens PropertySheetView for edge type, house
+                // cladding, railing config, stair metadata, labels. Previously
+                // orphaned with no entry point so cladding/labels were
+                // unreachable. Bug ee787f29.
+                actionButton(icon: "slider.horizontal.3", label: "Properties") {
+                    viewModel.showingPropertySheet = true
+                }
+
                 Spacer()
 
                 actionButton(icon: "trash", label: "Delete", tint: OPSStyle.Colors.errorStatus) {
@@ -409,6 +437,10 @@ struct DeckToolbar: View {
 
             actionButton(icon: "arrow.up.and.down.circle", label: "Elevation") {
                 viewModel.showingElevationInput = true
+            }
+
+            actionButton(icon: "slider.horizontal.3", label: "Properties") {
+                viewModel.showingPropertySheet = true
             }
 
             Spacer()

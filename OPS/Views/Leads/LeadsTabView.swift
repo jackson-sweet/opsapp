@@ -87,11 +87,12 @@ struct LeadsTabView: View {
 
                         HeroWidget(
                             forecastValue: viewModel.weightedForecastValue,
-                            forecastDeltaPct: nil,
+                            forecastDeltaPct: viewModel.forecastDeltaPct,
                             overdueCount: buckets.overdue.count,
                             dueTodayCount: buckets.dueToday.count,
                             openLeadCount: viewModel.openLeadCount,
-                            waitingCount: viewModel.waitingCount
+                            waitingCount: viewModel.waitingCount,
+                            avgVelocityDays: viewModel.avgVelocityDays()
                         )
                         .padding(.horizontal, 20)
                         .padding(.top, 4)

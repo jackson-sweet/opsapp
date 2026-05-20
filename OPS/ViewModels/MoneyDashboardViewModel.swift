@@ -349,8 +349,14 @@ class MoneyDashboardViewModel: ObservableObject {
         } else {
             syncState = .synced
             lastSyncedAt = Date()
-            if !hasEverLoaded { hasEverLoaded = true }
         }
+
+        // Flip `hasEverLoaded` on ANY load that ran to completion — even one
+        // with per-card failures. Successful cards should exit skeleton on the
+        // first attempt; per-card failures render `BooksCardError` instead.
+        // Keeping the skeleton locked until a fully-clean load means a single
+        // transient error on first launch traps the user in skeleton forever.
+        if !hasEverLoaded { hasEverLoaded = true }
     }
 
     /// Recompute all metrics from cached data for the selected period.

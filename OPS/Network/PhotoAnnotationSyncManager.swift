@@ -271,13 +271,42 @@ class PhotoAnnotationSyncManager {
     /// Upload any annotations that were saved locally (offline) and now need to be synced
     func syncPendingAnnotations(modelContext: ModelContext) async {
         let descriptor = FetchDescriptor<PhotoAnnotation>(
-            predicate: #Predicate { $0.needsSync == true && $0.deletedAt == nil }
+            predicate: #Predicate { $0.needsSync == true }
         )
 
         guard let pending = try? modelContext.fetch(descriptor), !pending.isEmpty else { return }
         print("[ANNOTATION SYNC] Found \(pending.count) pending annotations to sync")
 
         for annotation in pending {
+            if annotation.deletedAt != nil {
+                do {
+                    let repo = PhotoAnnotationRepository(companyId: annotation.companyId)
+                    try await repo.softDelete(annotation.id)
+
+                    annotation.needsSync = false
+                    annotation.lastSyncedAt = Date()
+                    try? modelContext.save()
+                } catch {
+                    await AutoBugReporter.shared.reportIfPermanent(
+                        error,
+                        screen: "PhotoAnnotationSyncManager.syncPendingAnnotations",
+                        suspectedFile: "PhotoAnnotationSyncManager.swift",
+                        summary: "Annotation delete retry failed for \(annotation.id): \(error.localizedDescription)",
+                        metadata: [
+                            "annotation_id": annotation.id,
+                            "project_id": annotation.projectId,
+                            "company_id": annotation.companyId
+                        ]
+                    )
+                    DebugLogger.shared.log(
+                        "Annotation delete retry failed for \(annotation.id): \(error)",
+                        level: .warning,
+                        category: "PhotoAnnotationSyncManager"
+                    )
+                }
+                continue
+            }
+
             guard let drawingData = annotation.localDrawingData else { continue }
 
             do {

@@ -60,6 +60,7 @@ final class ProjectPhotoDisplayMapperTests: XCTestCase {
             renderedDeliverableURLs: [renderedURL]
         ).first
 
+        XCTAssertEqual(item?.displayURL, renderedURL)
         XCTAssertEqual(item?.sourceURL, sourceURL)
         XCTAssertEqual(item?.syncStatusURL, sourceURL)
         XCTAssertEqual(

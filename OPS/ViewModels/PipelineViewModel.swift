@@ -99,81 +99,12 @@ class PipelineViewModel: ObservableObject {
         allOpportunities.allSatisfy { $0.isDeleted || $0.isArchived }
     }
 
-    // MARK: - Ball-in-court derivations
-
-    /// Severity buckets — each in-court lead lands in exactly one bucket,
-    /// highest severity wins. `followUp`-stage-only signal rolls into stale.
-    struct InCourtBuckets: Equatable {
-        var overdue: Int
-        var stale: Int
-        var untouched: Int
-
-        var total: Int { overdue + stale + untouched }
-    }
-
-    /// Filtered list — leads where the next move is the current user's.
-    /// Returns empty when `currentUserId == nil`.
-    private var inCourtOpportunities: [Opportunity] {
-        guard let me = currentUserId else { return [] }
-        let now = Date()
-        return allOpportunities.filter { opp in
-            guard opp.assignedTo == me else { return false }
-            guard !opp.stage.isTerminal else { return false }
-            guard !opp.isDeleted, !opp.isArchived else { return false }
-
-            let isOverdue = (opp.nextFollowUpAt.map { $0 <= now }) ?? false
-            let isStale = opp.isStale
-            let isFollowUpStage = opp.stage == .followUp
-            let isUntouched = (opp.stage == .newLead && opp.lastActivityAt == nil)
-
-            return isOverdue || isStale || isFollowUpStage || isUntouched
-        }
-    }
-
-    var inCourtCount: Int {
-        inCourtOpportunities.count
-    }
-
-    var inCourtBuckets: InCourtBuckets {
-        let now = Date()
-        var b = InCourtBuckets(overdue: 0, stale: 0, untouched: 0)
-        for opp in inCourtOpportunities {
-            let isOverdue = (opp.nextFollowUpAt.map { $0 <= now }) ?? false
-            if isOverdue {
-                b.overdue += 1
-            } else if opp.isStale || opp.stage == .followUp {
-                b.stale += 1
-            } else if opp.stage == .newLead && opp.lastActivityAt == nil {
-                b.untouched += 1
-            }
-        }
-        return b
-    }
-
-    var inCourtTotalValue: Double {
-        inCourtOpportunities.reduce(0) { $0 + ($1.estimatedValue ?? 0) }
-    }
-
-    var inCourtOpportunityIds: Set<String> {
-        Set(inCourtOpportunities.map { $0.id })
-    }
-
-    // MARK: - Stat-card computeds
-
-    var staleLeadsTotalValue: Double {
-        allOpportunities
-            .filter { !$0.stage.isTerminal && !$0.isDeleted && !$0.isArchived && $0.isStale }
-            .reduce(0) { $0 + ($1.estimatedValue ?? 0) }
-    }
-
-    /// Summary string for the STALE RISK card sub-line, or nil when no stale leads.
-    /// Format: `"12D IN QUOTING"` — oldest stale lead's days-in-stage and stage display name.
-    var oldestStaleDescription: String? {
-        let stale = allOpportunities
-            .filter { !$0.stage.isTerminal && !$0.isDeleted && !$0.isArchived && $0.isStale }
-        guard let oldest = stale.max(by: { $0.daysInStage < $1.daysInStage }) else { return nil }
-        return "\(oldest.daysInStage)D IN \(oldest.stage.displayName)"
-    }
+    // MARK: - Close-rate (consumed by MoneyDashboardViewModel for BOOKS tab)
+    //
+    // The 2026-05-19 LEADS rebuild removed the in-court derivations, the
+    // STALE RISK stat card, and the oldest-stale summary string — see the
+    // new triage bucketize section below. `closeRate` survived because
+    // BOOKS still calls it.
 
     /// Win rate over the given period. Returns nil if fewer than 5 closes in the window.
     /// Period bounded by `actualCloseDate`. Closed = won OR lost.

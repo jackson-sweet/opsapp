@@ -442,3 +442,44 @@ Engineering will accept the handoff, draft an implementation plan (`docs/superpo
 ## 22 · NEXT STEP
 
 Designer reads this brief end-to-end. Designer produces handoff per §19. Engineering picks up the handoff and drafts a plan against the live `#Preview` scaffolding in `OPS/Views/Leads/`. Spec drift documented in this file's "Drift" subsection (to be added) before any code change lands.
+
+---
+
+## 23 · RESOLVED (closed out 2026-05-19, post-implementation)
+
+The designer's handoff (Direction A · TRIAGE) shipped across 7 commits on `feat/leads-tab-rebuild`. Decisions on every open question from § 16 are recorded inline in the implementation plan (`docs/superpowers/plans/2026-05-19-leads-tab-rebuild.md` § 2.1 + § 2.2). Restated here for the historical record:
+
+| # | Open question (§ 16) | Resolution |
+|---|---|---|
+| 1 | Top-of-screen pattern | Single forecast hero + 3-cell sub-metric row + conditional WonConvert carousel above the chip filter. The 5-tile KPI carousel was dropped. |
+| 2 | "Ball in your court" placement | Subsumed into the triage chip filter (chips include OVERDUE / DUE TODAY / REPLY DUE / NEW / WAITING). The standalone bar is gone. |
+| 3 | Stage navigation pattern | Replaced with a chip filter for triage + a 6-row pipeline footer at the bottom for drill-by-stage. The 8-tab paged TabView is gone. |
+| 4 | Stage identity on cards | Stage-color leading rail dropped (it violated DESIGN.md § 14). Stage identity now reads from a JBM Mono short-label caption in the row's right column (e.g. `QUOTED · 9D`). Earth-tone tag chips are used on the detail hero. |
+| 5 | Closed leads placement | Per-stage drill from the pipeline footer can list won/lost. The CLOSED reveal in the stage strip is gone. |
+| 6 | Hero card chrome | The card itself is gone (no carousel); the new hero is a single `.glassSurface()` L1 card. |
+| 7 | Forecast breakdown | Drill-in deferred — `ForecastBreakdownSheet` deleted. May return as a future tap target on the hero. |
+| 8 | Filter affordance | Single-select chip row in place. Multi-filter (source / tag / assignee / value) deferred to a future ticket. The filter icon in the meta row was deleted per Q4. |
+| 9 | Empty-state framing | Per bucket: `00` hero + `// — NO <BUCKET MESSAGE>` mono caption. No illustrations. |
+| 10 | Add-lead surface | Both kept: FAB MONEY · ADD LEAD remains canonical, with a parallel `+` icon in the triage meta row for one-tap parallel access. |
+
+### Drift register closeout (§ 10 three drifts)
+
+| Drift | Resolution |
+|---|---|
+| Hero carousel cards borderless vs spec | **Resolved.** The carousel itself was deleted. The single L1 hero card uses the canonical glass + hairline treatment. |
+| `primaryAccent` leakage on chrome | **Resolved.** Accent now only appears on (1) the `MARK WON →` sticky button, (2) the WonConvertCarousel's `CONVERT → PROJECT` outline button, (3) the Add/Edit/Convert sheet save CTAs, and (4) `FilterChipRow`'s `waitingOnYou` dot color (semantic — "reply is on you"). All page-indicator dots, tab underlines, stage strips, and pipeline-footer chevrons are now `text-3` / `text-mute`. |
+| Card with rounded corners + colored left-border accent | **Resolved.** No stage-color leading rail anywhere in the rebuild. Stage identity in lead cards is captioned, not chrome'd; on the detail view it's a StatusBadge-style tag chip with earth-tone mobile-contrast fills. |
+
+### Phase summary
+
+| Phase | Commit | What landed |
+|---|---|---|
+| P0 | `a4ebb57` | Mobile-contrast earth-tone variants + glass-surface modifiers (`.glassSurface()` / `.glassDense()` / `.nestedCard()`) |
+| P1 | `daa7605` | `FilterChipRow` + `PanelSectionHeader` + `SubMetric` primitives |
+| P2 | `1dddb7b` | Triage screen — `LeadsTabView` rewrite, `HeroWidget`, `WonConvertCarousel`, `PipelineFooter`, `LeadActionCard`, `Atmosphere`, VM triage extensions, deletion of all Phase-1 file orphans |
+| P3 | `1d420b4` | `LeadDetailView` rebuild — hero, KPI strip, contact card, follow-ups card, activity timeline, stage history, sticky action bar |
+| P5 | `38c9256` (iOS) + `6b062c0` (bible) | `LeadConversionService` + `convert_lead_to_project` Postgres RPC + bible doc |
+| P4 | `cd4bbaf` | Five sheets (Add, Edit, Lost, Convert, Log) + shared `LeadFormView` + form primitives |
+| P6 | (this commit) | VM dead-code removal, doc supersede, drift register closeout, `.derived-data/` to `.gitignore` |
+
+Total: 8 commits on `feat/leads-tab-rebuild` + 1 on the bible repo. xcodebuild verified green at every phase.

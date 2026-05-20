@@ -1,5 +1,14 @@
 # Pipeline Tab Promotion — Design Spec
 
+> **SUPERSEDED 2026-05-19** by `2026-05-19-leads-tab-rebuild.md` (implementation plan)
+> and `2026-05-19-leads-tab-design-intent.md` (design brief). The Phase 1
+> design described here shipped on 2026-05-12 (commits `0c684c3..ce2c3ca`
+> + tab wiring) but was rebuilt around the triage-queue direction from
+> the 2026-05-19 designer handoff. The Phase 1 file inventory (hero
+> carousel, ball-in-court bar, stage strip, paged TabView, ForecastBreakdownSheet)
+> was deleted in commit `1dddb7b`. This doc remains as a historical record
+> of the v1 thinking; **do not use it as an implementation reference.**
+
 **Date:** 2026-05-11
 **Status:** ⚠️ **BLOCKED** — gated on Books Phase 2 (`2026-05-11-books-tab-phase-2-design.md` + matching plan). See § 0 below before reading further.
 **Coordinated with:** Books reconstruction (10:50 spec, bug `1b038315-fb4a-44a1-b118-8e5e67578980`) AND Books Phase 2 (11:09 spec, discovered after this spec was written).

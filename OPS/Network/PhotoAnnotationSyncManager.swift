@@ -279,6 +279,12 @@ class PhotoAnnotationSyncManager {
 
         for annotation in pending {
             if annotation.deletedAt != nil {
+                if ProjectPhotoAnnotationDeletePlanner.isLocalOnlyAnnotationID(annotation.id) {
+                    annotation.needsSync = false
+                    try? modelContext.save()
+                    continue
+                }
+
                 do {
                     let repo = PhotoAnnotationRepository(companyId: annotation.companyId)
                     try await repo.softDelete(annotation.id)

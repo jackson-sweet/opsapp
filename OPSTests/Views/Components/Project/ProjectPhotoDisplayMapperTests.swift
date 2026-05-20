@@ -90,6 +90,57 @@ final class ProjectPhotoDisplayMapperTests: XCTestCase {
         )
     }
 
+    func test_localQueuedAnnotationOnlyRenderedDeletePlanRemovesRenderedStateWithoutRemoteSoftDelete() {
+        let sourceURL = "local://project_images/source-photo.heic"
+        let renderedURL = "local://project_images/source-photo.rendered.png"
+        let localID = "local-3E7D4E50-5A4A-4AC4-9D98-3D6D94DA8A20"
+        let candidate = ProjectPhotoAnnotationDeleteCandidate(
+            id: localID,
+            companyId: "company-1"
+        )
+        let item = ProjectPhotoDisplayMapper.items(
+            sourceURLs: [],
+            renderedURLsBySource: [sourceURL: renderedURL],
+            renderedDeliverableURLs: [renderedURL]
+        ).first
+
+        let plan = ProjectPhotoAnnotationDeletePlanner.plan(candidates: [candidate])
+
+        XCTAssertEqual(item?.deleteTarget, .annotation(sourceURL: sourceURL, renderedURL: renderedURL))
+        XCTAssertEqual(plan.remoteSoftDeleteCandidates, [])
+        XCTAssertEqual(plan.localOnlyCandidateIDs, [localID])
+        XCTAssertFalse(ProjectPhotoAnnotationDeletePlanner.shouldMarkNeedsSyncAfterLocalDelete(annotationID: localID))
+
+        let state = ProjectPhotoRenderedDeleteState(
+            dimensionedURLs: [sourceURL, renderedURL],
+            renderedURLsBySource: [sourceURL: renderedURL],
+            renderedDeliverableURLs: [renderedURL]
+        )
+        let updated = ProjectPhotoAnnotationDeletePlanner.removingRenderedState(
+            sourceURL: sourceURL,
+            renderedURL: renderedURL,
+            from: state
+        )
+
+        XCTAssertFalse(updated.dimensionedURLs.contains(sourceURL))
+        XCTAssertFalse(updated.dimensionedURLs.contains(renderedURL))
+        XCTAssertNil(updated.renderedURLsBySource[sourceURL])
+        XCTAssertFalse(updated.renderedDeliverableURLs.contains(renderedURL))
+    }
+
+    func test_serverBackedAnnotationDeletePlanKeepsRemoteSoftDeleteAndPendingTombstone() {
+        let candidate = ProjectPhotoAnnotationDeleteCandidate(
+            id: "annotation-server-id",
+            companyId: "company-1"
+        )
+
+        let plan = ProjectPhotoAnnotationDeletePlanner.plan(candidates: [candidate])
+
+        XCTAssertEqual(plan.remoteSoftDeleteCandidates, [candidate])
+        XCTAssertEqual(plan.localOnlyCandidateIDs, [])
+        XCTAssertTrue(ProjectPhotoAnnotationDeletePlanner.shouldMarkNeedsSyncAfterLocalDelete(annotationID: candidate.id))
+    }
+
     func test_syncStatusURLForRenderedDisplayURLUsesSourcePhotoURL() {
         let sourceURL = "local://project_images/source-photo.heic"
         let renderedURL = "https://example.test/source-photo.rendered.png"

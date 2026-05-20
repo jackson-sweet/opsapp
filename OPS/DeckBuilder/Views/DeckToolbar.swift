@@ -54,14 +54,21 @@ struct DeckToolbar: View {
                       + viewModel.selection.selectedVertexIds.count
                       + viewModel.selection.selectedSurfaceIds.count
 
-            // Count pill — primary mode indicator.
+            // Count pill — primary mode indicator. Number only, no "SELECTED"
+            // label: the checkmark icon already conveys the meaning, and the
+            // toolbar can't afford the extra width on narrow phones (it was
+            // wrapping mid-label on iPhone SE — bug 6d1c0a2a follow-up). One-
+            // line, intrinsic-width so the pill stays compact regardless of
+            // count digits.
             HStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
-                Text("\(total) SELECTED")
-                    .font(OPSStyle.Typography.miniLabel)
+                Text("\(total)")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
                     .foregroundColor(total > 0 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing2)
             .padding(.vertical, OPSStyle.Layout.spacing1)
@@ -71,6 +78,7 @@ struct DeckToolbar: View {
                     .stroke(OPSStyle.Colors.primaryAccent.opacity(total > 0 ? 0.4 : 0.2), lineWidth: OPSStyle.Layout.Border.standard)
             )
             .cornerRadius(4)
+            .accessibilityLabel(total == 1 ? "1 element selected" : "\(total) elements selected")
 
             // Marquee / Lasso shape toggle — DECK-NEW-4. Picks the drag
             // shape used when the user drags from empty canvas while in
@@ -101,6 +109,8 @@ struct DeckToolbar: View {
                 Text("FILTER")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                     .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .padding(.vertical, OPSStyle.Layout.spacing1 + 2)
                     .background(OPSStyle.Colors.primaryAccent.opacity(0.1))
@@ -113,6 +123,8 @@ struct DeckToolbar: View {
                 Text("DONE")
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.buttonText)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.vertical, OPSStyle.Layout.spacing2)
                     .background(OPSStyle.Colors.primaryAccent)
@@ -134,11 +146,14 @@ struct DeckToolbar: View {
 
         // Material only makes sense when at least one edge or surface is selected
         let canAssignMaterial = edgeCount > 0 || surfaceSelected
-        // Move-to-level shows whenever a surface is selected — even in
-        // single-level mode it offers "+ New level" so the operator can split
-        // off a second deck. Cap is 3 levels.
+        // Move-to-level shows whenever a surface OR edge selection exists —
+        // even in single-level mode it offers "+ New level" so the operator
+        // can split off a second deck. Cap is 3 levels. Edge migration also
+        // moves the bounding vertices and invalidates any surface whose
+        // perimeter the move breaks (bug 6d1c0a2a).
         let hasSurfaceSelection = !viewModel.selection.selectedSurfaceIds.isEmpty
-        let canMoveToLevel = hasSurfaceSelection
+        let hasEdgeSelection = edgeCount > 0
+        let canMoveToLevel = (hasSurfaceSelection || hasEdgeSelection)
             && (viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3)
         _ = vertexCount  // silence unused-warning while we keep the readable line above
 
@@ -211,19 +226,23 @@ struct DeckToolbar: View {
         .cornerRadius(4)
     }
 
-    /// Move-to-level menu — assigns every selected surface to a different
-    /// level. Existing levels listed first, then a "+ New Level" option that
-    /// spawns a fresh level and moves the selection there in one step (capped
-    /// at 3 levels per DeckBuilderViewModel.addLevel). DECK-NEW-4 + bug
-    /// ee787f29 follow-up: previously this menu only showed in multi-level
-    /// designs, which hid the "create a second deck on a new level" path.
+    /// Move-to-level menu — sends the current selection (surfaces and/or
+    /// edges) to a different level. Existing levels listed first, then a
+    /// "+ New Level" option that spawns a fresh level and moves the
+    /// selection there in one step (capped at 3 levels). DECK-NEW-4 + bug
+    /// 6d1c0a2a: now handles edge selections too — moving edges also moves
+    /// their bounding vertices and drops any surface whose perimeter the
+    /// move broke.
     @ViewBuilder
     private var moveToLevelMenu: some View {
+        let hasSurfaces = !viewModel.selection.selectedSurfaceIds.isEmpty
+        let hasEdges = !viewModel.selection.selectedEdgeIds.isEmpty
         Menu {
             if viewModel.isMultiLevel {
                 ForEach(Array(viewModel.drawingData.levels.enumerated()), id: \.element.id) { idx, level in
                     Button {
-                        viewModel.moveSelectedSurfacesToLevel(at: idx)
+                        if hasSurfaces { viewModel.moveSelectedSurfacesToLevel(at: idx) }
+                        if hasEdges    { viewModel.moveSelectedEdgesToLevel(at: idx) }
                     } label: {
                         Label(level.name, systemImage: "square.stack.3d.up")
                     }
@@ -234,7 +253,11 @@ struct DeckToolbar: View {
             }
             if viewModel.drawingData.levels.count < 3 {
                 Button {
-                    viewModel.moveSelectedSurfacesToNewLevel()
+                    if hasEdges {
+                        viewModel.moveSelectedEdgesToNewLevel()
+                    } else if hasSurfaces {
+                        viewModel.moveSelectedSurfacesToNewLevel()
+                    }
                 } label: {
                     Label("New Level", systemImage: "plus.square.on.square")
                 }
@@ -398,8 +421,20 @@ struct DeckToolbar: View {
                     viewModel.showingStairConfig = true
                 }
 
-                actionButton(icon: "square.grid.3x3", label: "Material") {
-                    viewModel.showingMaterialPicker = true
+                // Material entry removed from edge toolbar — the floating
+                // assignment wheel (center-right of the canvas) is the
+                // canonical material-pick path for edge selections. Bug
+                // 6d1c0a2a — reporter saw two material buttons (toolbar +
+                // wheel) and didn't know which to use. Surface selections
+                // keep the toolbar Material button below because the wheel
+                // is hidden in surface-only mode.
+
+                // Move-to-level — edges + bounding vertices migrate; any
+                // source-level surface whose perimeter the move breaks gets
+                // dropped from level.surfaces (the operator's reshaped graph
+                // is what now defines closure). Capped at 3 levels.
+                if viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3 {
+                    moveToLevelMenu
                 }
 
                 // Properties — opens PropertySheetView for edge type, house

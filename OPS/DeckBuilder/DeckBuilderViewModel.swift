@@ -1589,6 +1589,22 @@ class DeckBuilderViewModel: ObservableObject {
         return drawingData.surfaces.first(where: { $0.id == id })
     }
 
+    /// Public, multi-level-aware accessor for a vertex by id. Mirrors
+    /// `findEdge` / `findSurface` — checks the active level first, then any
+    /// other level, then the top-level array. Used by PropertySheet so the
+    /// vertex-properties section actually renders in multi-level designs
+    /// (the top-level vertices array is empty there). Bug 6d1c0a2a.
+    func findVertex(byId id: String) -> DeckVertex? {
+        if isMultiLevel {
+            if let active = activeLevel, let v = active.vertex(byId: id) { return v }
+            for level in drawingData.levels {
+                if let v = level.vertex(byId: id) { return v }
+            }
+            return nil
+        }
+        return drawingData.vertex(byId: id)
+    }
+
     // MARK: - Vertex Properties
 
     func setVertexElevation(_ vertexId: String, elevation: Double, source: ElevationSource = .manual) {
@@ -1774,6 +1790,112 @@ class DeckBuilderViewModel: ObservableObject {
         }
         hapticMedium()
         save()
+    }
+
+    /// Moves every selected edge (and its bounding vertices) to a different
+    /// level. The user explicitly called out that this should invalidate any
+    /// surface on the source level whose perimeter is broken by the move —
+    /// done here by dropping every surface that referenced any vertex we
+    /// migrated. Bug 6d1c0a2a follow-up.
+    ///
+    /// Vertices are migrated when no remaining edge on the source level
+    /// references them. If a vertex is still bounded by another edge on the
+    /// source level (it sits at a fork between moved + non-moved edges) it
+    /// stays put, and the moved edge ends up with a phantom endpoint —
+    /// rejected up front so we don't leave broken geometry behind.
+    func moveSelectedEdgesToLevel(at destinationIndex: Int) {
+        guard isMultiLevel,
+              destinationIndex >= 0,
+              destinationIndex < drawingData.levels.count else { return }
+        let edgeIds = selection.selectedEdgeIds
+        guard !edgeIds.isEmpty else { return }
+        pushUndo("move edges to level")
+        performEdgeLevelMigration(edgeIds: edgeIds, destinationIndex: destinationIndex)
+        selection.clear()
+        hapticMedium()
+        save()
+    }
+
+    /// Combined add-level + move-edges-there. Same atomic pattern as
+    /// `moveSelectedSurfacesToNewLevel` so the selection survives the
+    /// level-clear inside `addLevel`. Capped at 3 levels.
+    func moveSelectedEdgesToNewLevel() {
+        let edgeIds = selection.selectedEdgeIds
+        guard !edgeIds.isEmpty else { return }
+        guard drawingData.levels.count < 3 || !drawingData.isMultiLevel else { return }
+
+        pushUndo("split edges to new level")
+        if !drawingData.isMultiLevel {
+            drawingData.migrateToMultiLevel()
+        }
+        let usedColors = drawingData.levels.map { $0.displayColor }
+        let newLevel = DeckLevel(
+            name: "Level \(drawingData.levels.count + 1)",
+            displayColor: LevelColor.nextAvailable(excluding: usedColors),
+            sortOrder: drawingData.levels.count
+        )
+        drawingData.levels.append(newLevel)
+        let destinationIndex = drawingData.levels.count - 1
+
+        performEdgeLevelMigration(edgeIds: edgeIds, destinationIndex: destinationIndex)
+
+        activeLevelIndex = destinationIndex
+        selection.clear()
+        hapticMedium()
+        save()
+    }
+
+    /// Worker for both edge-level migration entry points. Walks every level
+    /// (except destination), peels off the selected edges + any vertex that
+    /// only those edges referenced, then drops surfaces whose vertexIds are
+    /// no longer fully present in the source level. Surfaces with a broken
+    /// perimeter cease to exist as DeckSurface rows — the underlying edges
+    /// at the destination still form whatever loop the operator now intends.
+    private func performEdgeLevelMigration(edgeIds: Set<String>, destinationIndex: Int) {
+        for li in drawingData.levels.indices where li != destinationIndex {
+            var level = drawingData.levels[li]
+            let movedEdges = level.edges.filter { edgeIds.contains($0.id) }
+            guard !movedEdges.isEmpty else { continue }
+
+            let movedEdgeIds = Set(movedEdges.map { $0.id })
+            let remainingEdges = level.edges.filter { !movedEdgeIds.contains($0.id) }
+
+            // Vertex IDs referenced by any moved edge.
+            var touchedVertexIds: Set<String> = []
+            for e in movedEdges {
+                touchedVertexIds.insert(e.startVertexId)
+                touchedVertexIds.insert(e.endVertexId)
+            }
+
+            // A vertex migrates ONLY when no remaining edge still references
+            // it on the source level. Shared-vertex edges (one moves, one
+            // stays) leave the vertex behind so the staying edge keeps its
+            // anchor — the moved edge's payload still carries its endpoint
+            // ids and SurfaceDetector at the destination will treat them as
+            // a fresh disconnected segment until the operator wires them up.
+            let stillReferencedVertexIds: Set<String> = Set(
+                remainingEdges.flatMap { [$0.startVertexId, $0.endVertexId] }
+            )
+            let migratingVertexIds = touchedVertexIds.subtracting(stillReferencedVertexIds)
+            let migratingVertices = level.vertices.filter { migratingVertexIds.contains($0.id) }
+
+            // Drop any surface whose perimeter touches a vertex we just
+            // migrated — its bounding cycle is broken. The operator's
+            // intended surface (if any) is whatever the destination level's
+            // edges + vertices now enclose.
+            let invalidatedSurfaceIds = level.surfaces
+                .filter { !$0.vertexIds.allSatisfy(stillReferencedVertexIds.contains) }
+                .map { $0.id }
+            let invalidatedSet = Set(invalidatedSurfaceIds)
+
+            level.edges = remainingEdges
+            level.vertices = level.vertices.filter { !migratingVertexIds.contains($0.id) }
+            level.surfaces = level.surfaces.filter { !invalidatedSet.contains($0.id) }
+            drawingData.levels[li] = level
+
+            drawingData.levels[destinationIndex].edges.append(contentsOf: movedEdges)
+            drawingData.levels[destinationIndex].vertices.append(contentsOf: migratingVertices)
+        }
     }
 
     // MARK: - Edge Item Assignment

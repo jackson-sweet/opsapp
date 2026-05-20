@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=1440, initial-scale=1"/>
+  <title>OPS · Books Tab — Engineering Handoff</title>
+  <link rel="stylesheet" href="tokens.css"/>
+  <style>
+    body { background: var(--bg); min-height: 100vh; margin: 0; }
+    #root { min-height: 100vh; }
+
+    .handoff-page {
+      max-width: 1320px; margin: 0 auto;
+      padding: 48px 56px 96px;
+    }
+
+    .handoff-header {
+      display: flex; align-items: flex-end; justify-content: space-between;
+      gap: 32px; padding-bottom: 24px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 48px;
+    }
+    .handoff-header h1 {
+      margin: 0; font-family: var(--font-cakemono); font-weight: 300;
+      font-size: 48px; color: var(--text); text-transform: uppercase;
+      letter-spacing: 0.01em; line-height: 1;
+    }
+    .handoff-header .pre {
+      font-family: var(--font-mono); font-size: 11px; color: var(--text-mute);
+      letter-spacing: 0.20em; text-transform: uppercase;
+      margin-bottom: 6px; display: block;
+    }
+    .handoff-header .meta {
+      display: flex; flex-direction: column; gap: 6px; align-items: flex-end;
+      font-family: var(--font-mono); font-size: 10.5px;
+      letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-3);
+    }
+    .handoff-header .meta strong { color: var(--text); font-weight: 600; }
+
+    .links {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+      margin-bottom: 56px;
+    }
+    .link {
+      display: flex; flex-direction: column; gap: 8px;
+      padding: 20px 22px;
+      background: var(--nested); border: 1px solid var(--nested-border);
+      border-radius: var(--r-l2);
+      text-decoration: none; color: inherit;
+      transition: background 150ms var(--ease-smooth), border-color 150ms var(--ease-smooth);
+    }
+    .link:hover { background: var(--surface-hover); border-color: rgba(255,255,255,0.18); }
+    .link-eyebrow {
+      font-family: var(--font-mono); font-size: 10px; color: var(--text-3);
+      letter-spacing: 0.20em; text-transform: uppercase;
+    }
+    .link-title {
+      font-family: var(--font-cakemono); font-weight: 300; font-size: 22px;
+      color: var(--text); text-transform: uppercase; letter-spacing: 0.02em;
+      line-height: 1.1;
+    }
+    .link-desc {
+      font-family: var(--font-mohave); font-size: 13px; color: var(--text-2);
+      line-height: 1.4;
+    }
+    .link-arrow {
+      margin-top: 4px;
+      font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+      letter-spacing: 0.16em; text-transform: uppercase;
+    }
+
+    .row {
+      display: grid; grid-template-columns: auto 1fr; gap: 56px;
+      align-items: flex-start;
+    }
+
+    .prototype-side {
+      position: sticky; top: 32px;
+    }
+
+    .notes-side h2 {
+      margin: 0 0 6px; font-family: var(--font-cakemono); font-weight: 300;
+      font-size: 24px; color: var(--text); text-transform: uppercase;
+      letter-spacing: 0.04em; line-height: 1.1;
+    }
+    .notes-side .h2-pre {
+      font-family: var(--font-mono); font-size: 10px; color: var(--text-mute);
+      letter-spacing: 0.20em; text-transform: uppercase;
+      display: block; margin-bottom: 24px;
+    }
+
+    .note-block { margin-bottom: 36px; }
+    .note-block h3 {
+      margin: 0 0 12px;
+      font-family: var(--font-mono); font-size: 10px; color: var(--text-3);
+      letter-spacing: 0.18em; text-transform: uppercase; font-weight: 600;
+    }
+
+    .check-row {
+      display: grid; grid-template-columns: 18px 1fr;
+      gap: 12px; padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+      align-items: flex-start;
+    }
+    .check-row:last-child { border-bottom: 0; }
+    .check-mark {
+      font-family: var(--font-mono); font-size: 10px;
+      color: var(--olive); letter-spacing: 0.10em;
+      margin-top: 2px;
+    }
+    .check-text {
+      font-family: var(--font-mohave); font-size: 13px;
+      color: var(--text-2); line-height: 1.5;
+    }
+    .check-text code {
+      font-family: var(--font-mono); font-size: 12px;
+      color: var(--text); background: var(--surface-input);
+      padding: 1px 5px; border-radius: 3px;
+      letter-spacing: 0.02em;
+    }
+    .check-text strong { color: var(--text); font-weight: 500; }
+
+    .open-row {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .open-row:last-child { border-bottom: 0; }
+    .open-title {
+      font-family: var(--font-mono); font-size: 11px; color: var(--tan);
+      letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .open-body {
+      font-family: var(--font-mohave); font-size: 13px;
+      color: var(--text-2); line-height: 1.5;
+    }
+
+    .footer {
+      margin-top: 96px; padding-top: 24px;
+      border-top: 1px solid var(--line);
+      display: flex; justify-content: space-between; align-items: center;
+      font-family: var(--font-mono); font-size: 10px; color: var(--text-mute);
+      letter-spacing: 0.18em; text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script src="src/tokens.js"></script>
+  <script src="src/seed.js"></script>
+  <script type="text/babel" src="src/frame.jsx"></script>
+  <script type="text/babel" src="src/direction-a.jsx"></script>
+  <script type="text/babel" src="src/direction-b.jsx"></script>
+  <script type="text/babel" src="src/b-prototype.jsx"></script>
+  <script type="text/babel" src="src/handoff.jsx"></script>
+
+  <script type="text/babel" data-presets="env,react">
+    function HandoffPage() {
+      return (
+        <div className="handoff-page">
+          {/* Header */}
+          <div className="handoff-header">
+            <div>
+              <span className="pre">// BOOKS TAB · ENGINEERING HANDOFF</span>
+              <h1>Mission Deck</h1>
+            </div>
+            <div className="meta">
+              <span><strong>V1</strong> · 2026-05-19</span>
+              <span>iPhone 14/15 Pro · 390 × 844 pt</span>
+              <span>OPS DESIGN SYSTEM · MOBILE</span>
+            </div>
+          </div>
+
+          {/* Quick links */}
+          <div className="links">
+            <a className="link" href="HANDOFF.md">
+              <span className="link-eyebrow">// 01</span>
+              <span className="link-title">Written brief</span>
+              <span className="link-desc">Locked decisions, behavior spec, diff from current MVP, anti-patterns, open questions.</span>
+              <span className="link-arrow">HANDOFF.md →</span>
+            </a>
+            <a className="link" href="index.html">
+              <span className="link-eyebrow">// 02</span>
+              <span className="link-title">Design exploration</span>
+              <span className="link-desc">Three directions side-by-side (A · B · C), all edge states, and the token sheet. The "why this and not that" reference.</span>
+              <span className="link-arrow">index.html →</span>
+            </a>
+            <a className="link" href="#tokens">
+              <span className="link-eyebrow">// 03</span>
+              <span className="link-title">Token sheet</span>
+              <span className="link-desc">Every color · type role · spacing · radius · motion duration. Below this page.</span>
+              <span className="link-arrow">↓ inline</span>
+            </a>
+          </div>
+
+          {/* Prototype + notes row */}
+          <div className="row">
+            {/* Sticky prototype on left */}
+            <div className="prototype-side">
+              <IOSFrame label="Mission Deck · live" sublabel="swipe · tap · scroll">
+                <BPrototype/>
+              </IOSFrame>
+            </div>
+
+            {/* Notes column on right */}
+            <div className="notes-side">
+              <span className="h2-pre">// 04 · QUICK REFERENCE</span>
+              <h2>How to read this</h2>
+
+              <div className="note-block">
+                <h3>WHAT'S IN THE PROTOTYPE</h3>
+                <div className="check-row"><span className="check-mark">✓</span><span className="check-text">Swipe the carousel — <strong>activeCard</strong>, header label, scope-hint badge, and dot pagination update live. Light haptic on each swap (real device only).</span></div>
+                <div className="check-row"><span className="check-mark">✓</span><span className="check-text">Tap the period pill — modal menu rises with all 8 options, current selection shows checkmark. Dismiss via scrim or selection.</span></div>
+                <div className="check-row"><span className="check-mark">✓</span><span className="check-text">Switch segments — <code>INVOICES · ESTIMATES · EXPENSES</code> — list re-renders. Clears any active filter.</span></div>
+                <div className="check-row"><span className="check-mark">✓</span><span className="check-text">Scroll the inner area — hero collapses to single-line strip. AppHeader title shrinks 28 → 22px. Scroll up to re-expand.</span></div>
+                <div className="check-row"><span className="check-mark">✓</span><span className="check-text">Tap the <strong>OUTSTANDING</strong> tile on P&amp;L — switches to INVOICES with an <code>OVERDUE</code> filter chip applied. Tap × to clear.</span></div>
+                <div className="check-row"><span className="check-mark">✓</span><span className="check-text">Tap <strong>TOP CHASE</strong> on the A/R card — 62%-height half-sheet rises with the full chase list. Drag-handle dismisses.</span></div>
+                <div className="check-row"><span className="check-mark">✓</span><span className="check-text"><code>prefers-reduced-motion</code> is respected — all animations fall back to 150ms opacity, snap behavior on card swap.</span></div>
+              </div>
+
+              <div className="note-block">
+                <h3>FOR THE PORT</h3>
+                <div className="check-row"><span className="check-mark">→</span><span className="check-text">The prototype's inline styles are <strong>portable, not canonical</strong>. Lift to SwiftUI modifiers using the canonical token names (<code>--ops-accent</code>, <code>--rose</code>, <code>--r-l2</code>, etc.).</span></div>
+                <div className="check-row"><span className="check-mark">→</span><span className="check-text">Numbers always tabular. Apply <code>monospacedDigit()</code> to every numeric <code>Text</code> — including hero numbers in Mohave 300.</span></div>
+                <div className="check-row"><span className="check-mark">→</span><span className="check-text">Carousel: keep <code>containerRelativeFrame(.horizontal)</code> + <code>scrollTargetBehavior(.paging)</code> from the current code. Don't replace with a custom solution.</span></div>
+                <div className="check-row"><span className="check-mark">→</span><span className="check-text">A/R sheet: <code>.sheet</code> with <code>.presentationDetents([.medium, .large])</code> for drag-to-expand. Half-sheet is the default.</span></div>
+                <div className="check-row"><span className="check-mark">→</span><span className="check-text">Persistence: <code>@AppStorage("books.lastViewedCard")</code> and <code>@AppStorage("books.selectedSegment")</code> — already in the current code, keep them.</span></div>
+                <div className="check-row"><span className="check-mark">→</span><span className="check-text">Touch targets: 44 × 44pt minimum everywhere, even when the visible element is smaller. Period pill, dots, drill tiles all extend.</span></div>
+              </div>
+
+              <div className="note-block">
+                <h3>OPEN QUESTIONS — DESIGN INPUT NEEDED</h3>
+                <div className="open-row">
+                  <div className="open-title">CARD 2 · SPARKLINE VS PAIRED BARS</div>
+                  <div className="open-body">The current MVP uses paired weekly bars; this design proposes a sparkline of net cash with a rose dot on the bad week. If the sparkline reads as too abstract once you wire real data, flag it and we'll re-evaluate.</div>
+                </div>
+                <div className="open-row">
+                  <div className="open-title">CARD 5 · WORST-LOSER INCLUSION</div>
+                  <div className="open-body">Current rule: always include the worst-margin job even if it falls outside top-5 by absolute net. Confirm against business intent before locking.</div>
+                </div>
+                <div className="open-row">
+                  <div className="open-title">HERO COUNT-UP (800ms)</div>
+                  <div className="open-body">Optional. Cut if perf budget is tight or if the snap-when-period-changes feels better without it.</div>
+                </div>
+                <div className="open-row">
+                  <div className="open-title">CARD 1 · MARGIN CAPTION FORMAT</div>
+                  <div className="open-body">Currently <code>"36% MARGIN · +$42,180 ON $118.4K"</code>. Verify this reads cleanly with real data shapes — especially with very small margins or large numbers.</div>
+                </div>
+              </div>
+
+              <div className="note-block">
+                <h3>BANNED — DO NOT INTRODUCE</h3>
+                <div className="check-row"><span className="check-mark" style={{ color: 'var(--rose)' }}>×</span><span className="check-text">Drop shadows on dark backgrounds (depth = glass + hairlines).</span></div>
+                <div className="check-row"><span className="check-mark" style={{ color: 'var(--rose)' }}>×</span><span className="check-text">Steel-blue accent on toggles, links, segmented active state, sidebar nav. <strong>CTA + focus + Card 4 bars only.</strong></span></div>
+                <div className="check-row"><span className="check-mark" style={{ color: 'var(--rose)' }}>×</span><span className="check-text">Cake Mono in body text. Always uppercase, always weight 300, display roles only.</span></div>
+                <div className="check-row"><span className="check-mark" style={{ color: 'var(--rose)' }}>×</span><span className="check-text">Mohave for numbers. Numbers are always JetBrains Mono with tabular features.</span></div>
+                <div className="check-row"><span className="check-mark" style={{ color: 'var(--rose)' }}>×</span><span className="check-text">Emoji anywhere. Exclamation points in copy. "Welcome back!" or coaching language.</span></div>
+                <div className="check-row"><span className="check-mark" style={{ color: 'var(--rose)' }}>×</span><span className="check-text">Spring physics. Bouncing. 999px pills (avatars excepted).</span></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Token sheet inline */}
+          <div id="tokens" style={{ marginTop: 96, paddingTop: 48, borderTop: '1px solid var(--line)' }}>
+            <span style={{
+              fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-mute)',
+              letterSpacing: '0.20em', textTransform: 'uppercase', display: 'block', marginBottom: 8,
+            }}>// 05 · COMPLETE TOKEN SHEET</span>
+            <HandoffSheet/>
+          </div>
+
+          {/* Footer */}
+          <div className="footer">
+            <span>OPS DESIGN SYSTEM · BOOKS TAB · V1 · 2026-05-19</span>
+            <span>QUESTIONS → DESIGN CHANNEL</span>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<HandoffPage/>);
+  </script>
+</body>
+</html>

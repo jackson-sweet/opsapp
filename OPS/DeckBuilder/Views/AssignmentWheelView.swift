@@ -78,12 +78,15 @@ struct AssignmentWheelView: View {
         var items: [WheelSlot] = []
 
         if viewModel.selection.hasEdges {
-            // Slots 0–2: company catalog (with generic backfill).
-            let placeholders: [WheelSlot] = [
-                WheelSlot(name: "Glass Rail", icon: "rectangle.split.3x1", initials: nil, isDefault: false, action: .railing(.glass)),
-                WheelSlot(name: "Picket Rail", icon: "line.3.horizontal",  initials: nil, isDefault: false, action: .railing(.picket)),
-                WheelSlot(name: "Cable Rail",  icon: "cable.connector.horizontal", initials: nil, isDefault: false, action: .railing(.cable))
-            ]
+            // Slots 0–2: company catalog products if any; built-in standards
+            // backfill the rest. Bug ee787f29 follow-up — the previous
+            // backfill used bare `.railing(type)` actions, which only set
+            // railingConfig without ever creating an AssignedItem. The
+            // assignment never appeared in the cut list / estimate, which
+            // read as "the wheel still shows placeholders" because tapping
+            // a placeholder did nothing trackable. Now both code paths route
+            // through `.assignRailingProduct` so a tap always produces a
+            // proper material assignment alongside the railing-type change.
             let catalogSlots = railingProducts.prefix(3).map { product -> WheelSlot in
                 let isDefault = product.id == defaultProductId
                 let railingType = derivedRailingType(from: product)
@@ -104,11 +107,12 @@ struct AssignmentWheelView: View {
                     action: .assignRailingProduct(item: assigned, railingType: railingType)
                 )
             }
+            let standardBackfill = wheelStandardSlots()
             for i in 0..<3 {
                 if i < catalogSlots.count {
                     items.append(catalogSlots[i])
-                } else {
-                    items.append(placeholders[i])
+                } else if i - catalogSlots.count < standardBackfill.count {
+                    items.append(standardBackfill[i - catalogSlots.count])
                 }
             }
 
@@ -123,6 +127,51 @@ struct AssignmentWheelView: View {
         }
 
         return items
+    }
+
+    /// Built-in standard slots used to backfill the first three wheel
+    /// positions when the company catalog has fewer than three linear
+    /// products. Pulled from `BuiltInMaterial.linearStandards` (same source
+    /// the MaterialPickerSheet shows) so the operator picks an industry
+    /// standard with a real `AssignedItem` rather than a structural-only
+    /// railing toggle. Each tap creates an item with `productId = nil` —
+    /// estimate flow + cut list already handle that case.
+    private func wheelStandardSlots() -> [WheelSlot] {
+        let chosen: [BuiltInMaterial] = [
+            BuiltInMaterial.linearStandards.first(where: { $0.id == "std.railing.glass" }),
+            BuiltInMaterial.linearStandards.first(where: { $0.id == "std.railing.picket" }),
+            BuiltInMaterial.linearStandards.first(where: { $0.id == "std.railing.cable" })
+        ].compactMap { $0 }
+
+        return chosen.map { standard in
+            let railingType = derivedRailingType(name: standard.name)
+            let assigned = AssignedItem(
+                productId: nil,
+                name: standard.name,
+                unitType: .linearFoot,
+                unitPrice: nil,
+                taskTypeId: nil,
+                taskTypeColor: nil,
+                isGate: standard.id.contains("gate")
+            )
+            return WheelSlot(
+                name: standard.name,
+                icon: railingIcon(for: railingType),
+                initials: nil,
+                isDefault: false,
+                action: .assignRailingProduct(item: assigned, railingType: railingType)
+            )
+        }
+    }
+
+    /// Name-only derivation (no category context) for built-in standards.
+    private func derivedRailingType(name: String) -> RailingType {
+        let haystack = name.lowercased()
+        if haystack.contains("glass") { return .glass }
+        if haystack.contains("cable") { return .cable }
+        if haystack.contains("horizontal") { return .horizontal }
+        if haystack.contains("wood") || haystack.contains("cedar") { return .wood }
+        return .picket
     }
 
     /// Best-guess railing type from a product's name/category. Drives the 3D

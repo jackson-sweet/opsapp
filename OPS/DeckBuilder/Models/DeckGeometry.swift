@@ -661,12 +661,24 @@ struct DeckDrawingData: Codable {
         SurfaceDetector.detect(vertices: vertices, edges: edges)
     }
 
-    /// True when the drawing has at least one closed surface. More permissive
-    /// than `isClosed`, which requires every vertex to be on the perimeter
-    /// of one Hamiltonian cycle. Use this when you want to know "is there
-    /// any fillable shape on screen yet".
+    /// True when the drawing has at least one closed surface — anywhere.
+    /// More permissive than `isClosed`, which requires every vertex to be
+    /// on the perimeter of one Hamiltonian cycle (so two disjoint deck
+    /// footprints, or two separate levels each with their own footprint,
+    /// both register as "not closed" via the single-loop walk). Use this
+    /// to gate UI that should appear as soon as ANY closed shape exists —
+    /// 3D preview, area/perimeter badges, estimate eligibility.
+    /// Multi-level aware: in multi-level mode the top-level vertices/edges
+    /// arrays are empty (all geometry lives on the levels), so we ask each
+    /// level for its own detected surfaces. Bug ee787f29 follow-up — the
+    /// DeckTabView 3D viewer was gating on `isClosed`, which always
+    /// returned false in multi-level mode and falsely shows the "close the
+    /// polygon" empty state.
     var hasAnyClosedSurface: Bool {
-        !detectedSurfaces.isEmpty
+        if isMultiLevel {
+            return levels.contains(where: { !$0.detectedSurfaces.isEmpty })
+        }
+        return !detectedSurfaces.isEmpty
     }
 
     // MARK: - Multi-Level Helpers

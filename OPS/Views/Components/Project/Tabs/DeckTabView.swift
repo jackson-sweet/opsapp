@@ -73,7 +73,13 @@ struct DeckTabView: View {
             Group {
                 switch viewMode {
                 case .threeD:
-                    if design.drawingData.isClosed {
+                    // `hasAnyClosedSurface` rather than `isClosed` — the latter
+                    // requires a single Hamiltonian cycle (false for two
+                    // disjoint deck footprints, false for any multi-level
+                    // design where the top-level vertices/edges arrays are
+                    // empty). `hasAnyClosedSurface` returns true as soon as
+                    // any face is closed on any level. Bug ee787f29 follow-up.
+                    if design.drawingData.hasAnyClosedSurface {
                         DeckTab3DView(drawingData: design.drawingData)
                     } else {
                         incompleteDesignMessage

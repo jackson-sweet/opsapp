@@ -4,15 +4,18 @@
 //
 //  Orchestrates the lead → project conversion that lands when an operator
 //  marks a pipeline opportunity won. Wraps the canonical `convert_lead_to_project`
-//  Postgres RPC (migrations/2026-05-19-convert-lead-to-project-rpc.sql) which
+//  Postgres RPC (migrations/2026-05-19-convert-lead-to-project-rpc.sql, extended
+//  by 2026-05-20-extend-convert-lead-to-project-site-visit-photos.sql) which
 //  runs the entire conversion in a single transaction:
 //
 //    1. Insert projects row (status='accepted', opportunity_id back-link)
 //    2. Forward-link estimates (project_id + project_ref)
 //    3. Materialize LABOR line items as project_tasks rows
-//    4. Update opportunity (stage='won', actual_value, actual_close_date,
+//    4. Auto-attach site visit photos as project_photos rows with
+//       source='site_visit' and site_visit_id back-link (added 2026-05-20)
+//    5. Update opportunity (stage='won', actual_value, actual_close_date,
 //       project_id, project_ref, stage_entered_at, stage_manually_set)
-//    5. Insert stage_transitions row (duration_in_stage captured)
+//    6. Insert stage_transitions row (duration_in_stage captured)
 //
 //  Atomicity is the whole point — partial failure cannot leave the lead in an
 //  inconsistent state (e.g. project created but tasks missing). The RPC either
@@ -20,8 +23,10 @@
 //
 //  Behavior parallels the canonical 'won' flow documented in
 //  ops-software-bible/10_JOB_LIFECYCLE_AND_DATA_RELATIONSHIPS.md § 'won'.
-//  Site-visit photo auto-attach and the Task Generation modal remain deferred
-//  per bible §10:289–290; v1 silently materializes every LABOR line item.
+//  The Task Generation modal (bible §10:290) remains deferred; v1 silently
+//  materializes every LABOR line item with no per-task toggle. Historical
+//  wins (leads converted before 2026-05-20) keep their site visit photos
+//  unattached — backfill is out of scope here.
 //
 
 import Foundation

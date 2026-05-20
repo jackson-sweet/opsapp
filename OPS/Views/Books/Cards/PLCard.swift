@@ -2,9 +2,11 @@
 //  PLCard.swift
 //  OPS
 //
-//  Books Phase 2 — Card 1 of the hero carousel.
-//  P&L narrative: PAYMENTS IN − EXPENSES OUT = NET, margin bar, two drill tiles.
+//  Books Phase 3 (Mission Deck) — Card 1 of the hero carousel.
+//  P&L narrative: net cash hero + margin meter + IN/OUT row + two drill tiles.
 //  "Am I making money this period?"
+//
+//  Spec: docs/superpowers/specs/2026-05-19-books-tab-mission-deck-rebuild.md § 5.1
 //
 
 import SwiftUI
@@ -15,104 +17,221 @@ struct PLCard: View {
     var onTapForecast: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var appeared = false
 
-    private var marginFraction: Double {
-        viewModel.totalPayments > 0
-            ? max(0, viewModel.netCash / viewModel.totalPayments)
-            : 0
+    // MARK: - Derived
+
+    /// Raw margin percent in -∞..100 range, used for the caption + color keying.
+    /// Signed so the caption can read "-12% MARGIN" in rose on a loss month.
+    private var marginPctSigned: Int {
+        guard viewModel.totalPayments > 0 else { return 0 }
+        return Int((viewModel.netCash / viewModel.totalPayments * 100).rounded())
     }
+
+    /// Meter fill fraction clamped 0…1. Negative margins render an empty meter
+    /// (the caption + hero number carry the sign instead).
+    private var meterFraction: Double {
+        guard viewModel.totalPayments > 0 else { return 0 }
+        return max(0, min(1, viewModel.netCash / viewModel.totalPayments))
+    }
+
+    private var marginColor: Color {
+        if marginPctSigned > 0 { return OPSStyle.Colors.olive }
+        if marginPctSigned < 0 { return OPSStyle.Colors.rose }
+        return OPSStyle.Colors.tertiaryText
+    }
+
+    private var isEmpty: Bool {
+        viewModel.totalPayments == 0 && viewModel.totalExpenses == 0
+    }
+
+    private var isSkeleton: Bool {
+        !viewModel.hasEverLoaded && viewModel.isLoading
+    }
+
+    // MARK: - Body
 
     var body: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            row(label: "PAYMENTS IN", value: viewModel.totalPayments, color: OPSStyle.Colors.successStatus, sign: "+")
-            row(label: "EXPENSES OUT", value: viewModel.totalExpenses, color: OPSStyle.Colors.warningStatus, sign: "−")
-
-            Divider().background(OPSStyle.Colors.cardBorder)
-
-            HStack(alignment: .lastTextBaseline) {
-                Text("NET CASH")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Spacer()
-                Text(viewModel.netCash, format: .currency(code: "USD").precision(.fractionLength(0)))
-                    .font(OPSStyle.Typography.title)
-                    .foregroundColor(viewModel.netCash >= 0 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.errorStatus)
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-            }
-
-            marginBar
-
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                tile(label: "OUTSTANDING", value: viewModel.overdueInvoicesValue, count: viewModel.overdueInvoicesCount, valueColor: OPSStyle.Colors.errorStatus, action: onTapOutstanding)
-                tile(label: "FORECAST", value: viewModel.pendingEstimatesValue, count: viewModel.pendingEstimatesCount, valueColor: OPSStyle.Colors.primaryAccent, action: onTapForecast)
-            }
-        }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .onAppear {
-            withAnimation(reduceMotion ? .none : OPSStyle.Animation.standard) {
-                appeared = true
-            }
+        if isSkeleton {
+            skeletonView.padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        } else if viewModel.cardError(.pl) {
+            BooksCardError(onRetry: { Task { await viewModel.retry(.pl) } })
+        } else if isEmpty {
+            emptyView.padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        } else {
+            normalBody.padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
-    private func row(label: String, value: Double, color: Color, sign: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label)
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(color)
-            Spacer()
-            Text("\(sign)\(currencyString(value))")
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(color)
+    // MARK: - Normal body
+
+    private var normalBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            heroBlock
+            marginMeter.padding(.top, OPSStyle.Layout.spacing2)
+            inOutRow.padding(.top, 10)
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                BooksDrillTile(
+                    label: "OUTSTANDING",
+                    value: currencyString(viewModel.overdueInvoicesValue),
+                    sub: itemsLabel(viewModel.overdueInvoicesCount),
+                    valueColor: OPSStyle.Colors.rose,
+                    onTap: onTapOutstanding
+                )
+                BooksDrillTile(
+                    label: "FORECAST",
+                    value: currencyString(viewModel.pendingEstimatesValue),
+                    sub: itemsLabel(viewModel.pendingEstimatesCount),
+                    valueColor: OPSStyle.Colors.primaryAccent,
+                    onTap: onTapForecast
+                )
+            }
+            .padding(.top, OPSStyle.Layout.spacing4)
+        }
+    }
+
+    private var heroBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("NET CASH")
+                .font(.custom("JetBrainsMono-Medium", size: 10))
+                .tracking(2.0)  // 0.20em at 10pt
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            Text(viewModel.netCash, format: .currency(code: "USD").precision(.fractionLength(0)))
+                .font(OPSStyle.Typography.heroNumber)
+                .tracking(-1.5)  // ~-0.025em at 60pt
+                .foregroundColor(viewModel.netCash >= 0 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.rose)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .contentTransition(.numericText())
+
+            Text("\(marginPctSigned)% MARGIN")
+                .font(.custom("JetBrainsMono-Medium", size: 11))
+                .tracking(0.44)  // 0.04em at 11pt
+                .foregroundColor(marginColor)
                 .monospacedDigit()
                 .contentTransition(.numericText())
         }
     }
 
-    private var marginBar: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(OPSStyle.Colors.warningStatus.opacity(0.3))
-                        .frame(height: 4)
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(OPSStyle.Colors.successStatus)
-                        .frame(width: appeared ? geo.size.width * marginFraction : 0, height: 4)
-                        .animation(reduceMotion ? .none : OPSStyle.Animation.standard, value: appeared)
-                }
+    private var marginMeter: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
+                    .fill(OPSStyle.Colors.warningStatus.opacity(0.30))  // tan-soft track per § 5.1
+                    .frame(height: 6)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
+                    .fill(OPSStyle.Colors.olive)
+                    .frame(width: geo.size.width * meterFraction, height: 6)
             }
-            .frame(height: 4)
-            Text("\(Int((marginFraction * 100).rounded()))% MARGIN")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+        .frame(height: 6)
+        .accessibilityHidden(true)  // value is carried by margin caption
+    }
+
+    private var inOutRow: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("PAYMENTS IN")
+                    .font(.custom("JetBrainsMono-Medium", size: 9.5))
+                    .tracking(1.71)  // 0.18em at 9.5pt
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Text("+\(currencyString(viewModel.totalPayments))")
+                    .font(.custom("JetBrainsMono-Medium", size: 14))
+                    .foregroundColor(OPSStyle.Colors.oliveMobile)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("EXPENSES OUT")
+                    .font(.custom("JetBrainsMono-Medium", size: 9.5))
+                    .tracking(1.71)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Text("\u{2212}\(currencyString(viewModel.totalExpenses))")  // U+2212 minus sign
+                    .font(.custom("JetBrainsMono-Medium", size: 14))
+                    .foregroundColor(OPSStyle.Colors.tanMobile)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
         }
     }
 
-    private func tile(label: String, value: Double, count: Int, valueColor: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(OPSStyle.Typography.smallCaption).foregroundColor(OPSStyle.Colors.secondaryText)
-                Text(currencyString(value)).font(OPSStyle.Typography.bodyBold).foregroundColor(valueColor).monospacedDigit()
-                Text("\(count) \(count == 1 ? "ITEM" : "ITEMS")").font(OPSStyle.Typography.smallCaption).foregroundColor(OPSStyle.Colors.tertiaryText)
+    // MARK: - Empty
+
+    private var emptyView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("NET CASH")
+                    .font(.custom("JetBrainsMono-Medium", size: 10))
+                    .tracking(2.0)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Text("$0")
+                    .font(OPSStyle.Typography.heroNumber)
+                    .tracking(-1.5)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .monospacedDigit()
+                Text("// NO ACTIVITY THIS PERIOD")
+                    .font(.custom("JetBrainsMono-Medium", size: 11))
+                    .tracking(1.76)  // 0.16em at 11pt
+                    .foregroundColor(OPSStyle.Colors.inactiveText)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.cardBackgroundDark)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                BooksDrillTile(
+                    label: "OUTSTANDING",
+                    value: "$0",
+                    sub: "0 ITEMS",
+                    valueColor: OPSStyle.Colors.tertiaryText
+                )
+                BooksDrillTile(
+                    label: "FORECAST",
+                    value: "$0",
+                    sub: "0 ITEMS",
+                    valueColor: OPSStyle.Colors.tertiaryText
+                )
+            }
+            .padding(.top, OPSStyle.Layout.spacing4)
         }
-        .buttonStyle(PlainButtonStyle())
-        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
     }
+
+    // MARK: - Skeleton
+
+    private var skeletonView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                BooksSkeleton.bar(width: 80, height: 10)
+                BooksSkeleton.bar(width: 220, height: 60)
+                BooksSkeleton.bar(width: 100, height: 11)
+            }
+            BooksSkeleton.bar(width: nil, height: 6).padding(.top, OPSStyle.Layout.spacing2)
+            HStack {
+                VStack(alignment: .leading, spacing: 6) {
+                    BooksSkeleton.bar(width: 80, height: 9)
+                    BooksSkeleton.bar(width: 110, height: 14)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 6) {
+                    BooksSkeleton.bar(width: 80, height: 9)
+                    BooksSkeleton.bar(width: 110, height: 14)
+                }
+            }
+            .padding(.top, 10)
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                BooksSkeleton.tile()
+                BooksSkeleton.tile()
+            }
+            .padding(.top, OPSStyle.Layout.spacing4)
+        }
+    }
+
+    // MARK: - Format helpers
 
     private func currencyString(_ value: Double) -> String {
         value.formatted(.currency(code: "USD").precision(.fractionLength(0)))
+    }
+
+    private func itemsLabel(_ count: Int) -> String {
+        "\(count) \(count == 1 ? "ITEM" : "ITEMS")"
     }
 }
 

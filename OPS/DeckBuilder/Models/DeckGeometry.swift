@@ -97,14 +97,25 @@ enum EdgeType: String, Codable, CaseIterable {
 /// fill/normal in the 3D scene.
 enum HouseEdgeMaterial: String, Codable, CaseIterable {
     case stucco
-    case hardie         // Hardie board / fiber cement plank
-    case woodVertical   // Vertical board-and-batten / shiplap
+    case hardie             // Hardie board / fiber cement plank
+    case woodVertical       // Vertical board-and-batten / shiplap
+    case brick              // Brick veneer / clay masonry
+    case stone              // Stone veneer / natural stone cladding
+    case vinyl              // Vinyl siding
+    case parapet            // Low capped wall — half-height masonry, used on
+                            // rooftop decks and modern flat-faced builds.
+                            // Bug ee787f29 — explicitly requested as a
+                            // cladding option for high-end residential.
 
     var displayName: String {
         switch self {
         case .stucco:       return "Stucco"
         case .hardie:       return "Hardie Plank"
         case .woodVertical: return "Wood Vertical"
+        case .brick:        return "Brick"
+        case .stone:        return "Stone Veneer"
+        case .vinyl:        return "Vinyl Siding"
+        case .parapet:      return "Parapet Wall"
         }
     }
 
@@ -116,6 +127,10 @@ enum HouseEdgeMaterial: String, Codable, CaseIterable {
         case .stucco:       return "#D6CFC2"   // warm off-white
         case .hardie:       return "#A6A8A3"   // light gray-green
         case .woodVertical: return "#8B6F4F"   // walnut brown
+        case .brick:        return "#8C5A4F"   // muted brick red
+        case .stone:        return "#7A7466"   // weathered limestone
+        case .vinyl:        return "#C2C5C0"   // cool gray-beige
+        case .parapet:      return "#9A8F7E"   // sand-toned masonry cap
         }
     }
 }

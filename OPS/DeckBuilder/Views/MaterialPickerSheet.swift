@@ -115,7 +115,37 @@ struct MaterialPickerSheet: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-                    if filteredProducts.isEmpty {
+                    // Section 1: Company catalog (when populated).
+                    if !filteredProducts.isEmpty {
+                        sectionHeader("// FROM CATALOG")
+                        ForEach(orderedProducts) { product in
+                            productRow(product)
+                        }
+                    }
+
+                    // Section 2: Built-in standards — common industry types so
+                    // a fresh-install company can still spec a real material
+                    // without having to populate Products first. Each pick
+                    // creates an AssignedItem with no productId and a $0 base
+                    // price — the operator fills in price at estimate time.
+                    // Bug ee787f29 — "Material pickers still need to support
+                    // some default types like house edge, parapet wall…".
+                    if !builtInDefaults.isEmpty {
+                        if !filteredProducts.isEmpty {
+                            Divider()
+                                .background(OPSStyle.Colors.separator)
+                                .padding(.vertical, OPSStyle.Layout.spacing1)
+                        }
+                        sectionHeader("// STANDARDS")
+                        ForEach(builtInDefaults, id: \.id) { standard in
+                            builtInRow(standard)
+                        }
+                    }
+
+                    // Empty state — only when BOTH catalog AND standards are
+                    // dry (e.g. an each-priced selection where neither linear
+                    // nor area standards apply). Practically rare.
+                    if filteredProducts.isEmpty && builtInDefaults.isEmpty {
                         VStack(spacing: OPSStyle.Layout.spacing2) {
                             Image(systemName: "shippingbox")
                                 .font(.system(size: 32))
@@ -131,10 +161,6 @@ struct MaterialPickerSheet: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, OPSStyle.Layout.spacing4)
-                    } else {
-                        ForEach(orderedProducts) { product in
-                            productRow(product)
-                        }
                     }
                 }
                 .padding(20)
@@ -236,6 +262,71 @@ struct MaterialPickerSheet: View {
                                 .foregroundColor(taskTypeColor(for: product.taskTypeId) ?? OPSStyle.Colors.tertiaryText)
                         }
                     }
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(OPSStyle.Layout.spacing2_5)
+            .background(OPSStyle.Colors.cardBackground)
+            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+        }
+    }
+
+    // MARK: - Built-in Standards
+
+    /// Static built-in defaults shown in the "// STANDARDS" section. Each
+    /// entry produces an `AssignedItem` with no `productId` — downstream
+    /// code already handles that (estimate falls back to operator-supplied
+    /// price; cut list emits a generic line). The list is filtered by
+    /// `isLinearMode` so surface picks don't see railing entries.
+    private var builtInDefaults: [BuiltInMaterial] {
+        if isLinearMode {
+            return BuiltInMaterial.linearStandards
+        } else {
+            return BuiltInMaterial.areaStandards
+        }
+    }
+
+    @ViewBuilder
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text)
+            .font(OPSStyle.Typography.smallCaption.monospaced())
+            .foregroundColor(OPSStyle.Colors.tertiaryText)
+            .tracking(0.5)
+    }
+
+    @ViewBuilder
+    private func builtInRow(_ standard: BuiltInMaterial) -> some View {
+        Button {
+            let item = AssignedItem(
+                productId: nil,
+                name: standard.name,
+                unitType: isLinearMode ? .linearFoot : .squareFoot,
+                unitPrice: nil,
+                taskTypeId: nil,
+                taskTypeColor: nil,
+                isGate: standard.id.contains("gate")
+            )
+            applyMaterial(item)
+            dismiss()
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                Image(systemName: standard.icon)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .frame(width: 24)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(standard.name)
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                    Text(standard.subtitle)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
 
                 Spacer()

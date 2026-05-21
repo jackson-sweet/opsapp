@@ -20,14 +20,16 @@
 //
 //  Exit semantics (plan §2.1 Q3, restated in the Phase 4 brief):
 //
-//    Every exit from this sheet marks the lead WON. The decision to win was
-//    already committed when the operator tapped MARK WON →. This sheet only
-//    asks "do you also want a project?". A `didCommitWon` flag prevents
-//    double-firing.
+//    The decision to win was already committed when the operator tapped
+//    MARK WON →; this sheet only asks "do you also want a project?". Every
+//    *committing* exit marks the lead WON — a `didCommitWon` flag prevents
+//    double-firing. The lone non-committing exit is the CLIENT-HAS-OTHERS
+//    review peek: investigating a related project is not a conversion.
 //
 //    × / CANCEL / drag / scrim    → markWonNoProject(actualValue)
 //    CREATE PROJECT →             → convertLeadToProject(...), stay on LEADS
 //    OPEN PROJECT → (DUPLICATE)   → mark won with existing project, then open it
+//    other-project chip           → review peek, no commit, then open it
 //
 
 import SwiftUI
@@ -65,6 +67,11 @@ struct ConvertToProjectSheet: View {
     /// CREATE PROJECT would mark-won-again and overwrite actualValue with stale
     /// state.
     @State private var didCommitWon = false
+    /// Set only by the CLIENT-HAS-OTHERS review peek. Tapping an "other
+    /// project" chip is an investigation, not a conversion — the operator has
+    /// not committed to winning this lead — so this flag suppresses the
+    /// onDisappear escape hatch and the sheet dismisses without marking won.
+    @State private var didDismissForReview = false
 
     // MARK: - Computed
 
@@ -128,8 +135,10 @@ struct ConvertToProjectSheet: View {
         .onDisappear {
             // Drag-down / scrim / interactive dismiss all funnel through here.
             // Tap-driven dismisses already fire their own markWon/convert path
-            // and set didCommitWon = true, so we'd skip work here.
-            guard !didCommitWon else { return }
+            // and set didCommitWon = true, so we'd skip work here. The
+            // CLIENT-HAS-OTHERS review peek sets didDismissForReview so it can
+            // leave the sheet without committing the lead.
+            guard !didCommitWon, !didDismissForReview else { return }
             didCommitWon = true
             Task { await markWonNoProjectSilently() }
         }
@@ -702,15 +711,16 @@ struct ConvertToProjectSheet: View {
     }
 
     private func openExistingProject(_ projectId: String) {
-        // Tapping a chip in CLIENT-HAS-OTHERS is an explicit browse escape,
-        // not a link for this lead. Preserve the sheet's exit contract by
-        // marking this lead won-no-project, then open the referenced project.
+        // CLIENT-HAS-OTHERS info chip — a non-committing review peek. The
+        // operator is investigating a related project before deciding, NOT
+        // converting this lead, so this exit must not mark the lead won.
+        // didDismissForReview suppresses the onDisappear escape hatch; the
+        // lead is left untouched and the operator can re-open convert later.
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        Task {
-            await commitNoProjectAndDismiss()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                appState.viewProjectDetailsById(projectId)
-            }
+        didDismissForReview = true
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            appState.viewProjectDetailsById(projectId)
         }
     }
 

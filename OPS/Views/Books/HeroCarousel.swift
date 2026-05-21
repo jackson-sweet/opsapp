@@ -95,7 +95,6 @@ struct HeroCarousel: View {
             // hardcoded to 5.
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Books dashboard, \(visibleCards.count) cards")
-            .accessibilityHint("Swipe with two fingers to navigate")
             .accessibilityAddTraits(.isHeader)
         }
     }

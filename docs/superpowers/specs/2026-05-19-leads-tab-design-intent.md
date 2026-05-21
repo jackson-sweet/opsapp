@@ -483,3 +483,40 @@ The designer's handoff (Direction A · TRIAGE) shipped across 7 commits on `feat
 | P6 | (this commit) | VM dead-code removal, doc supersede, drift register closeout, `.derived-data/` to `.gitignore` |
 
 Total: 8 commits on `feat/leads-tab-rebuild` + 1 on the bible repo. xcodebuild verified green at every phase.
+
+---
+
+## 24 · WAVE 2 — AUDIT REMEDIATION (2026-05-20)
+
+A post-implementation conformance audit (`docs/superpowers/audits/2026-05-20-leads-rebuild-audit.md`) reviewed Phases 0–6 + Wave 1 against design intent, the design system, and the shipped code. Verdict: **7 CRITICAL, 18 WARNING, 13 INFO** — ship-ready bar the CRITICALs, which clustered in two themes (a dead pipeline footer; sub-44pt touch targets). Wave 2 remediated all findings across three spawned passes.
+
+### PM decisions
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | 44pt touch floor vs MOBILE.md §4.3's 36pt filter-chip allowance | Keep filter + form-picker chips at 36pt; MOBILE.md §1 and §4.3 reconciled so the design system is internally consistent. The three genuine sub-44pt violations — `QuickGlyph`, `WonConvertCard` buttons, Convert-sheet project chips, none of them filter chips — were lifted to a 44pt hit area. |
+| 2 | Convert exit — deep-link to the new project, or stay on LEADS | Stay on the LEADS triage queue; the success toast carries an opt-in `VIEW →` tap-through. The explicit "OPEN PROJECT" affordances (duplicate-state button, other-project chips) keep their deep-links. |
+| 3 | §23 #5 won/lost footer drill — implement, or formally defer | Implemented — see correction below. |
+| 4 | Sheet titles — `//` JetBrains Mono vs MOBILE.md §6.2/§6.3 Cake Mono | Conform to spec: Cake Mono Light, 22pt full-sheet / 18pt half-sheet, `//` prefix dropped, close button moved top-right on full sheets. |
+
+### §23 #5 correction
+
+The 2026-05-19 closeout (§23) recorded the pipeline footer's won/lost drill as resolved. The audit found it was never wired — `LeadsTabView` passed empty TODO closures to `PipelineFooter`. P3-1 genuinely implemented it: a new `PipelineStageListView` renders any stage's leads, the footer rows and "OPEN STAGE BOARD →" push it, and Won/Lost render below a divider at 60% opacity. §23 #5 is now accurate.
+
+### Wave 2 spawns
+
+| Spawn | Scope | Merge |
+|---|---|---|
+| P3-1 | Pipeline footer drill-down — `PipelineStageListView`, footer wiring, Won/Lost surfacing (CRITICAL #6, #7) | `3046369e` |
+| P3-2 | 44pt touch targets ×3; real 1:2 sheet-footer button ratio; convert-exit stay-on-LEADS + `ToastAction` tap-through; Cake Mono sheet headers | `78bf7da` |
+| P3-3 | Tokenize colour/radius literals; Toast → JetBrains Mono token; sub-floor type → 9.5pt; stale doc comments; MOBILE.md §6.2/§6.3 sheet conformance | `90a6cd8a` |
+
+The audit doc merged via `97cf26e`. MOBILE.md §1/§4.3 were reconciled directly in `ops-design-system` (not git-tracked). `xcodebuild` verified green after every merge.
+
+### Deferred to backlog
+
+- **Bible refresh** — `ops-software-bible` still documents the LEADS tab as the pre-rebuild "PipelineView (Pipeline Segment)"; the whole rebuild's UX needs a dedicated bible-sync pass.
+- `Typography.Mobile` token sub-namespace (audit A2) — a design-system extension, not cleanup.
+- `GlassSurfaceModifier` internal opacity literals — shared app-wide component; needs a design-system call.
+- `PipelineStage.color` possible dead code — needs a usage check.
+- Wave 2 feature backlog — per-task selection in Convert, multi-filter triage, per-lead push notifications.

@@ -635,7 +635,7 @@ struct SheetCloseButton: View {
             action()
         } label: {
             Image(systemName: "xmark")
-                .font(.system(size: 16, weight: .regular))
+                .font(.system(size: 20, weight: .regular))
                 .foregroundColor(OPSStyle.Colors.text2)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())

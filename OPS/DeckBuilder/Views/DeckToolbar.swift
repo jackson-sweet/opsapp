@@ -157,40 +157,36 @@ struct DeckToolbar: View {
             && (viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3)
         _ = vertexCount  // silence unused-warning while we keep the readable line above
 
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                contextLabel("Selection")
+        return contextToolBar {
+            contextLabel("Selection")
 
-                toolDivider
+            toolDivider
 
-                selectOnlyMenuIfUseful(includeKindSection: true)
+            selectOnlyMenuIfUseful(includeKindSection: true)
 
-                if canAssignMaterial {
-                    actionButton(icon: "square.grid.3x3", label: "Material") {
-                        viewModel.showingMaterialPicker = true
-                    }
+            if canAssignMaterial {
+                actionButton(icon: "square.grid.3x3", label: "Material") {
+                    viewModel.showingMaterialPicker = true
                 }
-
-                if surfaceSelected {
-                    actionButton(icon: "shippingbox", label: "Order Vinyl") {
-                        viewModel.showingVinylOrderSheet = true
-                    }
-                }
-
-                if canMoveToLevel {
-                    moveToLevelMenu
-                }
-
-                Spacer()
-
-                actionButton(icon: OPSStyle.Icons.trash, label: "Delete", tint: OPSStyle.Colors.errorStatus) {
-                    viewModel.deleteSelection()
-                }
-
-                clearSelectionButton
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
+
+            if surfaceSelected {
+                actionButton(icon: "shippingbox", label: "Order Vinyl") {
+                    viewModel.showingVinylOrderSheet = true
+                }
+            }
+
+            if canMoveToLevel {
+                moveToLevelMenu
+            }
+
+            Spacer()
+
+            actionButton(icon: OPSStyle.Icons.trash, label: "Delete", tint: OPSStyle.Colors.errorStatus) {
+                viewModel.deleteSelection()
+            }
+
+            clearSelectionButton
         }
     }
 
@@ -387,7 +383,7 @@ struct DeckToolbar: View {
     // MARK: - Vertex Tools (vertex selected)
 
     private var vertexTools: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
+        contextToolBar {
             contextLabel("Vertex")
 
             toolDivider
@@ -404,70 +400,64 @@ struct DeckToolbar: View {
 
             clearSelectionButton
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
     // MARK: - Edge Tools (edge selected)
 
     private var edgeTools: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                contextLabel("Edge")
+        contextToolBar {
+            contextLabel("Edge")
 
-                toolDivider
+            toolDivider
 
-                selectOnlyMenuIfUseful(includeKindSection: false)
+            selectOnlyMenuIfUseful(includeKindSection: false)
 
-                actionButton(icon: "ruler", label: "Dimension") {
-                    viewModel.showingDimensionInput = true
-                }
-
-                actionButton(icon: "stairs", label: "Stairs") {
-                    viewModel.showingStairConfig = true
-                }
-
-                // Material entry removed from edge toolbar — the floating
-                // assignment wheel (center-right of the canvas) is the
-                // canonical material-pick path for edge selections. Bug
-                // 6d1c0a2a — reporter saw two material buttons (toolbar +
-                // wheel) and didn't know which to use. Surface selections
-                // keep the toolbar Material button below because the wheel
-                // is hidden in surface-only mode.
-
-                // Move-to-level — edges + bounding vertices migrate; any
-                // source-level surface whose perimeter the move breaks gets
-                // dropped from level.surfaces (the operator's reshaped graph
-                // is what now defines closure). Capped at 3 levels.
-                if viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3 {
-                    moveToLevelMenu
-                }
-
-                // Properties — opens PropertySheetView for edge type, house
-                // cladding, railing config, stair metadata, labels. Previously
-                // orphaned with no entry point so cladding/labels were
-                // unreachable. Bug ee787f29.
-                actionButton(icon: "slider.horizontal.3", label: "Properties") {
-                    viewModel.showingPropertySheet = true
-                }
-
-                Spacer()
-
-                actionButton(icon: "trash", label: "Delete", tint: OPSStyle.Colors.errorStatus) {
-                    viewModel.deleteSelectedEdges()
-                }
-
-                clearSelectionButton
+            actionButton(icon: "ruler", label: "Dimension") {
+                viewModel.showingDimensionInput = true
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
+
+            actionButton(icon: "stairs", label: "Stairs") {
+                viewModel.showingStairConfig = true
+            }
+
+            // Material entry removed from edge toolbar — the floating
+            // assignment wheel (center-right of the canvas) is the
+            // canonical material-pick path for edge selections. Bug
+            // 6d1c0a2a — reporter saw two material buttons (toolbar +
+            // wheel) and didn't know which to use. Surface selections
+            // keep the toolbar Material button below because the wheel
+            // is hidden in surface-only mode.
+
+            // Move-to-level — edges + bounding vertices migrate; any
+            // source-level surface whose perimeter the move breaks gets
+            // dropped from level.surfaces (the operator's reshaped graph
+            // is what now defines closure). Capped at 3 levels.
+            if viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3 {
+                moveToLevelMenu
+            }
+
+            // Properties — opens PropertySheetView for edge type, house
+            // cladding, railing config, stair metadata, labels. Previously
+            // orphaned with no entry point so cladding/labels were
+            // unreachable. Bug ee787f29.
+            actionButton(icon: "slider.horizontal.3", label: "Properties") {
+                viewModel.showingPropertySheet = true
+            }
+
+            Spacer()
+
+            actionButton(icon: "trash", label: "Delete", tint: OPSStyle.Colors.errorStatus) {
+                viewModel.deleteSelectedEdges()
+            }
+
+            clearSelectionButton
         }
     }
 
     // MARK: - Footprint Tools (area selected)
 
     private var footprintTools: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
+        contextToolBar {
             contextLabel("Surface")
 
             toolDivider
@@ -492,8 +482,18 @@ struct DeckToolbar: View {
 
             clearSelectionButton
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing2)
+    }
+
+    private func contextToolBar<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                content()
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+        }
     }
 
     // MARK: - Context Label

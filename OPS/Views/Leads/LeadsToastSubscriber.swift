@@ -66,7 +66,9 @@ struct LeadsToastSubscriber: ViewModifier {
                 // offers an opt-in tap-through to the new project. userInfo
                 // carries `projectId` (String) — see ConvertToProjectSheet.
                 let action = (notification.userInfo?["projectId"] as? String).map { id in
-                    ToastAction(label: "VIEW") { appState.viewProjectDetailsById(id) }
+                    ToastAction(label: "VIEW", accessibilityLabel: "View project") {
+                        appState.viewProjectDetailsById(id)
+                    }
                 }
                 ToastCenter.shared.present(
                     Toast(

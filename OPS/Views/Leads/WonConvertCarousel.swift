@@ -55,12 +55,28 @@ struct WonConvertCarousel: View {
             .onChange(of: selected) { _, _ in
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
+            .onAppear(perform: clampSelection)
+            .onChange(of: leadIDs) { _, _ in
+                clampSelection()
+            }
         }
     }
 
     /// Cards size themselves; the carousel needs a frame for paging to work.
     /// 152pt accommodates the largest variant (eyebrow + name + title + 2 buttons).
     private var cardHeight: CGFloat { 152 }
+
+    private var leadIDs: [String] {
+        leads.map(\.id)
+    }
+
+    private func clampSelection() {
+        if leads.isEmpty {
+            selected = 0
+        } else if selected >= leads.count {
+            selected = leads.count - 1
+        }
+    }
 
     private var dots: some View {
         HStack(spacing: 8) {

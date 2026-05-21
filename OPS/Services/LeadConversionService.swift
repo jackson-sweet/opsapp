@@ -196,7 +196,7 @@ final class LeadConversionService {
         return dto.toModel()
     }
 
-    // MARK: - Mark-won-no-project escape hatch
+    // MARK: - Mark-won escape hatches
 
     /// Called when the operator dismisses `ConvertToProjectSheet` without
     /// creating a project (e.g. quoted-then-won deals where the project already
@@ -212,6 +212,24 @@ final class LeadConversionService {
             opportunityId: lead.id,
             actualValue: actualValue,
             projectId: nil,
+            userId: userId
+        )
+    }
+
+    /// Called when the duplicate-project state opens an already-existing
+    /// project that back-links to this lead. The lead still needs the canonical
+    /// WON transition, but must keep/forward the existing project_id so it
+    /// leaves the unconverted-won queue.
+    func markWonWithExistingProject(
+        lead: Opportunity,
+        projectId: String,
+        actualValue: Double?,
+        userId: String?
+    ) async throws {
+        _ = try await opportunityRepo.markWon(
+            opportunityId: lead.id,
+            actualValue: actualValue,
+            projectId: projectId,
             userId: userId
         )
     }

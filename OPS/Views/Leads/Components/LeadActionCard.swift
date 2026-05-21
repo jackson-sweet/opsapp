@@ -11,7 +11,7 @@
 //
 //  - Verb is mono 9.5pt, weight 600, semantic tone (rose / tan / steel /
 //    neutral). Tone maps to the row's urgency bucket.
-//  - Quick glyphs are 34×34pt tappable squares. ADVANCE gets emphasis
+//  - Quick glyphs are 34×34pt visual squares with 44×44pt hit areas. ADVANCE gets emphasis
 //    (0.06 bg + 0.10 hairline); LOG and MORE are flat.
 //  - Tap on card body → open LeadDetailView.
 //  - Light haptic on body tap; medium on advance; success on won (driven
@@ -25,6 +25,9 @@ struct LeadActionCard: View {
     let verb: String
     let tone: PipelineViewModel.UrgencyTone
 
+    var showsLog: Bool = true
+    var showsMore: Bool = true
+    var showsAdvance: Bool = true
     var onTap:     () -> Void = {}
     var onLog:     () -> Void = {}
     var onMore:    () -> Void = {}
@@ -164,10 +167,18 @@ struct LeadActionCard: View {
 
             Spacer(minLength: 0)
 
-            HStack(spacing: 4) {
-                QuickGlyph(icon: "note.text",   label: "LOG",     emphasis: false, action: onLog)
-                QuickGlyph(icon: "ellipsis",    label: "MORE",    emphasis: false, action: onMore)
-                QuickGlyph(icon: "arrow.right", label: "ADVANCE", emphasis: true,  action: onAdvance)
+            if showsLog || showsMore || showsAdvance {
+                HStack(spacing: 4) {
+                    if showsLog {
+                        QuickGlyph(icon: "note.text", label: "LOG", emphasis: false, action: onLog)
+                    }
+                    if showsMore {
+                        QuickGlyph(icon: "ellipsis", label: "MORE", emphasis: false, action: onMore)
+                    }
+                    if showsAdvance {
+                        QuickGlyph(icon: "arrow.right", label: "ADVANCE", emphasis: true, action: onAdvance)
+                    }
+                }
             }
         }
         .padding(.top, 2)

@@ -20,10 +20,11 @@
 //      │  …                                             │
 //      └────────────────────────────────────────────────┘
 //
-//  A row tap pushes LeadDetailView. LeadDetailView's mark-lost / edit /
-//  convert closures present sheets owned by LeadsTabView's `activeSheet`,
-//  so they are routed up through `onRequestSheet`. The LOG / MORE /
-//  ADVANCE quick-glyphs mirror the LeadsTabView triage-queue wiring.
+//  A row tap routes up to LeadsTabView's single LeadDetail destination.
+//  LeadDetailView's mark-lost / edit / convert closures present sheets owned
+//  by LeadsTabView's `activeSheet`, so they are routed up through
+//  `onRequestSheet`. The LOG / MORE / ADVANCE quick-glyphs mirror the
+//  LeadsTabView triage-queue wiring, gated by permissions and terminal stage.
 //
 //  Won/Lost caveat: PipelineViewModel.bucketOf / verbFor / toneFor classify
 //  OPEN leads only — a closed lead would fall through to "CHECK IN" /
@@ -40,6 +41,9 @@ struct PipelineStageListView: View {
     let stage: PipelineStage
     @ObservedObject var viewModel: PipelineViewModel
 
+    /// Routes a row tap up to LeadsTabView's root `detailLead` destination.
+    /// Keeping one LeadDetail destination avoids nested SwiftUI shadowing.
+    var onLeadTap: (Opportunity) -> Void = { _ in }
     /// Routes a sheet request up to LeadsTabView, which owns `activeSheet`.
     /// Backs the LOG glyph and LeadDetailView's mark-lost / edit / convert
     /// closures — all of those present a `LeadsSheet`.
@@ -49,8 +53,6 @@ struct PipelineStageListView: View {
     @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
 
-    /// Drives the push into LeadDetailView from a row tap.
-    @State private var detailLead: Opportunity?
     /// Drives the MORE confirmation dialog.
     @State private var moreForLead: Opportunity?
 
@@ -85,16 +87,6 @@ struct PipelineStageListView: View {
             }
         }
         .navigationBarHidden(true)
-        .navigationDestination(item: $detailLead) { lead in
-            LeadDetailView(
-                opportunity: lead,
-                onMarkLost: { onRequestSheet(.lost(lead)) },
-                onEdit:     { onRequestSheet(.edit(lead)) },
-                onMarkWon:  { onRequestSheet(.convert(lead)) }
-            )
-            .environmentObject(dataController)
-            .environmentObject(permissionStore)
-        }
         .confirmationDialog(
             "Actions",
             isPresented: moreSheetPresented,
@@ -147,7 +139,10 @@ struct PipelineStageListView: View {
                         opportunity: lead,
                         verb: verb(for: lead),
                         tone: tone(for: lead),
-                        onTap:     { detailLead = lead },
+                        showsLog: canManage,
+                        showsMore: canManage,
+                        showsAdvance: canManage && !stage.isTerminal,
+                        onTap:     { onLeadTap(lead) },
                         onLog:     { onRequestSheet(.log(lead)) },
                         onMore:    { moreForLead = lead },
                         onAdvance: { advance(lead) }

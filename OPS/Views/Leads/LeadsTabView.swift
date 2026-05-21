@@ -58,6 +58,7 @@ struct LeadsTabView: View {
     @State private var detailLead: Opportunity?
     @State private var activeSheet: LeadsSheet?
     @State private var moreForLead: Opportunity?
+    @State private var footerStage: PipelineStage?
 
     init(viewModel: PipelineViewModel? = nil) {
         _viewModel = StateObject(wrappedValue: viewModel ?? PipelineViewModel())
@@ -122,8 +123,8 @@ struct LeadsTabView: View {
 
                         PipelineFooter(
                             counts: stageCounts,
-                            onStageTap: { _ in /* Phase 6 may wire this — defer for now */ },
-                            onBoardTap: { /* same */ }
+                            onStageTap: { footerStage = $0 },
+                            onBoardTap: { openBoard() }
                         )
                         .padding(.horizontal, 20)
                         .padding(.top, 28)
@@ -139,6 +140,15 @@ struct LeadsTabView: View {
                     onMarkLost: { activeSheet = .lost(lead) },
                     onEdit:     { activeSheet = .edit(lead) },
                     onMarkWon:  { activeSheet = .convert(lead) }
+                )
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
+            }
+            .navigationDestination(item: $footerStage) { stage in
+                PipelineStageListView(
+                    stage: stage,
+                    viewModel: viewModel,
+                    onRequestSheet: { activeSheet = $0 }
                 )
                 .environmentObject(dataController)
                 .environmentObject(permissionStore)
@@ -381,6 +391,16 @@ struct LeadsTabView: View {
                 userId: dataController.currentUser?.id
             )
         }
+    }
+
+    /// "OPEN STAGE BOARD →" — routes to the first open stage that has leads,
+    /// falling back to NEW LEAD (per PipelineFooter's onBoardTap contract).
+    private func openBoard() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let openOrder: [PipelineStage] = [
+            .newLead, .qualifying, .quoting, .quoted, .followUp, .negotiation
+        ]
+        footerStage = openOrder.first { (stageCounts[$0] ?? 0) > 0 } ?? .newLead
     }
 }
 

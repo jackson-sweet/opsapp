@@ -975,7 +975,7 @@ struct NotificationListView: View {
         }
         switch tab.lowercased() {
         case "suggested": return "SUGGESTED"
-        case "draft":     return "DRAFT"
+        case "draft", "drafts": return "DRAFT"
         case "sent":      return "SENT"
         default:          return nil
         }

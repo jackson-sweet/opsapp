@@ -69,7 +69,7 @@ struct VinylOrderSheet: View {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             validationBanner
                             VinylCutPreview(plan: plan)
-                                .frame(height: 190)
+                                .frame(height: VinylOrderLayout.previewHeight)
                                 .background(OPSStyle.Colors.cardBackgroundDark)
                                 .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                                 .overlay(
@@ -84,7 +84,7 @@ struct VinylOrderSheet: View {
                             catalogSection
                             statusSection
 
-                            Color.clear.frame(height: 112)
+                            Color.clear.frame(height: VinylOrderLayout.actionBarReserveHeight)
                         }
                         .padding(OPSStyle.Layout.spacing3)
                     }
@@ -95,12 +95,13 @@ struct VinylOrderSheet: View {
                     actionBar
                 }
             }
-            .navigationTitle("Vinyl Order")
+            .navigationTitle("// VINYL ORDER")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    Button("CLOSE") { dismiss() }
+                        .font(OPSStyle.Typography.buttonLabel)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
                 }
             }
             .sheet(isPresented: $showingMessageComposer) {
@@ -119,7 +120,7 @@ struct VinylOrderSheet: View {
         HStack(alignment: .center, spacing: OPSStyle.Layout.spacing3) {
             Image(systemName: "shippingbox.fill")
                 .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("// VINYL ORDER")
@@ -178,13 +179,13 @@ struct VinylOrderSheet: View {
                     Text("COLOR")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .frame(width: 76, alignment: .leading)
+                        .frame(width: VinylOrderLayout.labelWidth, alignment: .leading)
                     TextField("FIELD CONFIRM", text: $settings.color)
                         .font(OPSStyle.Typography.body)
                         .textInputAutocapitalization(.words)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
-                        .frame(height: 40)
+                        .frame(height: OPSStyle.Layout.touchTargetMin)
                         .background(OPSStyle.Colors.subtleBackground)
                         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                 }
@@ -218,7 +219,7 @@ struct VinylOrderSheet: View {
             Text("RUN")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .frame(width: 76, alignment: .leading)
+                .frame(width: VinylOrderLayout.labelWidth, alignment: .leading)
 
             HStack(spacing: 0) {
                 ForEach(VinylLayoutDirection.allCases) { direction in
@@ -228,10 +229,10 @@ struct VinylOrderSheet: View {
                     } label: {
                         Text(direction.label)
                             .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(settings.direction == direction ? OPSStyle.Colors.background : OPSStyle.Colors.secondaryText)
+                            .foregroundColor(settings.direction == direction ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 36)
-                            .background(settings.direction == direction ? OPSStyle.Colors.primaryAccent : Color.clear)
+                            .frame(height: OPSStyle.Layout.touchTargetMin)
+                            .background(settings.direction == direction ? OPSStyle.Colors.surfaceActive : Color.clear)
                     }
                     .buttonStyle(.plain)
                 }
@@ -256,14 +257,14 @@ struct VinylOrderSheet: View {
                 Text(label)
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .frame(width: 76, alignment: .leading)
+                    .frame(width: VinylOrderLayout.labelWidth, alignment: .leading)
                 Text(formatInchesForSheet(value.wrappedValue))
                     .font(OPSStyle.Typography.dataValue)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 Spacer(minLength: 0)
             }
         }
-        .tint(OPSStyle.Colors.primaryAccent)
+        .tint(OPSStyle.Colors.secondaryText)
     }
 
     private var summarySection: some View {
@@ -271,6 +272,9 @@ struct VinylOrderSheet: View {
             VStack(spacing: OPSStyle.Layout.spacing2) {
                 metricRow("ORDER AREA", "\(plan.totalOrderedSqFt) SQ FT")
                 metricRow("SURFACE AREA", "\(formatSqFtForSheet(plan.totalSurfaceAreaSqFt)) SQ FT")
+                if plan.totalReusedCutAreaSqFt > 0 {
+                    metricRow("REUSED AREA", "\(formatSqFtForSheet(plan.totalReusedCutAreaSqFt)) SQ FT")
+                }
                 metricRow("CUT WASTE", "\(formatSqFtForSheet(plan.totalWasteSqFt)) SQ FT")
                 metricRow("CUTS", "\(plan.totalStripCount)")
             }
@@ -293,7 +297,7 @@ struct VinylOrderSheet: View {
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                             Text("\(formatSqFtForSheet(surface.cutAreaSqFt)) SQ FT")
                                 .font(OPSStyle.Typography.dataValue)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(OPSStyle.Layout.spacing2)
@@ -317,7 +321,7 @@ struct VinylOrderSheet: View {
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(OPSStyle.Layout.spacing2)
-                            .background(OPSStyle.Colors.primaryAccent.opacity(0.10))
+                            .background(OPSStyle.Colors.tanSoft)
                             .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                     }
                 }
@@ -361,10 +365,10 @@ struct VinylOrderSheet: View {
                 handleTextAction()
             } label: {
                 Label(MFMessageComposeViewController.canSendText() ? "TEXT CUT LIST" : "COPY TEXT", systemImage: "message.fill")
-                    .font(OPSStyle.Typography.bodyBold)
+                    .font(OPSStyle.Typography.buttonLabel)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                     .overlay(
@@ -376,7 +380,7 @@ struct VinylOrderSheet: View {
             .disabled(plan.surfaces.isEmpty)
 
             Button {
-                Task { await createOrderAndNote() }
+                beginCreateOrderAndNote()
             } label: {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     if isCreating {
@@ -387,10 +391,10 @@ struct VinylOrderSheet: View {
                     }
                     Text("CREATE ORDER + NOTE")
                 }
-                .font(OPSStyle.Typography.bodyBold)
+                .font(OPSStyle.Typography.buttonLabel)
                 .foregroundColor(OPSStyle.Colors.background)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .background(canCreateOrder ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                 .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
             }
@@ -450,34 +454,38 @@ struct VinylOrderSheet: View {
     }
 
     private var vinylCatalogSelection: (item: CatalogItem, variant: CatalogVariant)? {
-        for variant in catalogVariants
-            where variant.companyId == companyId && variant.isActive && variant.deletedAt == nil {
-            guard let item = catalogItems.first(where: {
-                $0.id == variant.catalogItemId &&
-                $0.companyId == companyId &&
-                $0.isActive &&
-                $0.deletedAt == nil
-            }) else { continue }
-
-            let searchable = [
-                item.name,
-                item.itemDescription,
-                item.notes,
-                variant.sku
-            ]
-            .compactMap { $0 }
-            .joined(separator: " ")
-            .lowercased()
-
-            guard searchable.contains("vinyl"),
-                  searchable.contains("membrane") ||
-                  searchable.contains("deck") ||
-                  searchable.contains("roll") ||
-                  searchable.contains("sheet"),
-                  !searchable.contains("diverter") else { continue }
+        let pairs = catalogVariants.compactMap { variant -> (item: CatalogItem, variant: CatalogVariant)? in
+            guard variant.companyId == companyId,
+                  let item = catalogItems.first(where: { $0.id == variant.catalogItemId && $0.companyId == companyId }) else {
+                return nil
+            }
             return (item, variant)
         }
-        return nil
+        let candidates = pairs.map { pair in
+            VinylCatalogCandidate(
+                itemId: pair.item.id,
+                variantId: pair.variant.id,
+                itemName: pair.item.name,
+                itemDescription: pair.item.itemDescription,
+                itemNotes: pair.item.notes,
+                variantSku: pair.variant.sku,
+                itemUnitId: pair.item.defaultUnitId,
+                variantUnitId: pair.variant.unitId,
+                isItemActive: pair.item.isActive,
+                itemDeleted: pair.item.deletedAt != nil,
+                isVariantActive: pair.variant.isActive,
+                variantDeleted: pair.variant.deletedAt != nil
+            )
+        }
+
+        guard let match = VinylCatalogMatcher.bestMatch(
+            from: candidates,
+            preferredRollWidthInches: settings.normalized.rollWidthInches
+        ) else {
+            return nil
+        }
+
+        return pairs.first { $0.item.id == match.itemId && $0.variant.id == match.variantId }
     }
 
     private func handleTextAction() {
@@ -491,8 +499,16 @@ struct VinylOrderSheet: View {
         }
     }
 
+    private func beginCreateOrderAndNote() {
+        guard canCreateOrder else { return }
+        isCreating = true
+        Task { await createOrderAndNote() }
+    }
+
     @MainActor
     private func createOrderAndNote() async {
+        defer { isCreating = false }
+
         guard let projectId else {
             errorMessage = "PROJECT LINK MISSING"
             return
@@ -501,88 +517,118 @@ struct VinylOrderSheet: View {
             errorMessage = "USER MISSING"
             return
         }
-        guard !plan.surfaces.isEmpty else {
+
+        let draftPlan = plan
+        let draftSettings = settings.normalized
+        let draftNoteText = draftPlan.orderNotes(projectTitle: projectTitle, deckTitle: deckTitle)
+        let draftProjectTitle = projectTitle
+        let draftCatalogSelection = vinylCatalogSelection
+
+        guard !draftPlan.surfaces.isEmpty else {
             errorMessage = "NO CUT LIST"
             return
         }
 
-        isCreating = true
         statusMessage = nil
         errorMessage = nil
 
+        let orderRepo = CatalogOrderRepository(companyId: companyId)
+        var createdOrderDTO: CatalogOrderDTO?
+        var createdItemDTO: CatalogOrderItemDTO?
+        let createdNoteDTO: ProjectNoteDTO
+
         do {
-            let orderRepo = CatalogOrderRepository(companyId: companyId)
             let orderDTO = try await orderRepo.createOrder(CreateCatalogOrderDTO(
                 companyId: companyId,
                 status: CatalogOrderStatus.draft.rawValue,
-                title: "VINYL ORDER - \(projectTitle)",
+                title: "VINYL ORDER - \(draftProjectTitle)",
                 supplierName: nil,
                 supplierContact: nil,
                 expectedDeliveryDate: nil,
-                notes: noteText,
+                notes: draftNoteText,
                 createdById: userId
             ))
+            createdOrderDTO = orderDTO
 
-            var itemDTO: CatalogOrderItemDTO?
-            if let match = vinylCatalogSelection {
-                let quantity = Double(plan.totalOrderedSqFt)
-                itemDTO = try await orderRepo.addItem(
+            if let match = draftCatalogSelection {
+                let quantity = Double(draftPlan.totalOrderedSqFt)
+                createdItemDTO = try await orderRepo.addItem(
                     orderId: orderDTO.id,
                     dto: CreateCatalogOrderItemDTO(
                         orderId: orderDTO.id,
                         catalogVariantId: match.variant.id,
                         quantityRequested: quantity,
                         costPerUnit: match.variant.unitCostOverride ?? match.item.defaultUnitCost,
-                        notes: "VINYL CUT LIST - \(settings.normalized.color.isEmpty ? "FIELD CONFIRM" : settings.normalized.color)"
+                        notes: "VINYL CUT LIST - \(draftSettings.color.isEmpty ? "FIELD CONFIRM" : draftSettings.color)"
                     )
                 )
             }
 
-            let noteDTO = try await ProjectNoteRepository(companyId: companyId).create(CreateProjectNoteDTO(
+            createdNoteDTO = try await ProjectNoteRepository(companyId: companyId).create(CreateProjectNoteDTO(
                 projectId: projectId,
                 companyId: companyId,
                 authorId: userId,
-                content: "\(noteText)\n\nORDER DRAFT: \(orderDTO.id)",
+                content: "\(draftNoteText)\n\nORDER DRAFT: \(orderDTO.id)",
                 mentionedUserIds: []
             ))
-
-            modelContext.insert(orderDTO.toModel())
-            if let itemDTO {
-                modelContext.insert(itemDTO.toModel())
-            }
-            modelContext.insert(noteDTO.toModel())
-            try modelContext.save()
-
-            var railFailed = false
-            do {
-                try await NotificationRepository.shared.createNotification(
-                    NotificationRepository.CreateNotificationDTO(
-                        userId: userId,
-                        companyId: companyId,
-                        type: "catalog_order_drafted",
-                        title: "// VINYL ORDER DRAFTED",
-                        body: "\(projectTitle.uppercased()) · \(plan.totalOrderedSqFt) SQ FT READY",
-                        projectId: projectId,
-                        noteId: noteDTO.id,
-                        deepLinkType: "catalogOrders",
-                        persistent: false,
-                        actionUrl: "ops://catalog/orders?tab=drafts",
-                        actionLabel: "REVIEW"
-                    )
-                )
-            } catch {
-                railFailed = true
-                print("[VinylOrderSheet] Notification insert failed: \(error)")
-            }
-
-            statusMessage = railFailed ? "ORDER DRAFTED / RAIL FAILED" : "ORDER DRAFTED"
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch {
-            errorMessage = "ORDER FAILED - \(error.localizedDescription)"
+            if let itemId = createdItemDTO?.id {
+                try? await orderRepo.removeItem(itemId)
+            }
+            if let orderId = createdOrderDTO?.id {
+                try? await orderRepo.softDeleteOrder(orderId)
+            }
+            print("[VinylOrderSheet] Order create failed: \(error)")
+            errorMessage = "ORDER FAILED"
             UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
         }
 
-        isCreating = false
+        var localSaveFailed = false
+        do {
+            if let createdOrderDTO {
+                modelContext.insert(createdOrderDTO.toModel())
+            }
+            if let createdItemDTO {
+                modelContext.insert(createdItemDTO.toModel())
+            }
+            modelContext.insert(createdNoteDTO.toModel())
+            try modelContext.save()
+        } catch {
+            localSaveFailed = true
+            print("[VinylOrderSheet] Local save failed after remote order create: \(error)")
+        }
+
+        var railFailed = false
+        do {
+            try await NotificationRepository.shared.createNotification(
+                NotificationRepository.CreateNotificationDTO(
+                    userId: userId,
+                    companyId: companyId,
+                    type: "catalog_order_drafted",
+                    title: "// VINYL ORDER DRAFTED",
+                    body: "\(draftProjectTitle.uppercased()) · \(draftPlan.totalOrderedSqFt) SQ FT READY",
+                    projectId: projectId,
+                    noteId: createdNoteDTO.id,
+                    deepLinkType: "catalogOrders",
+                    persistent: false,
+                    actionUrl: "ops://catalog/orders?tab=draft",
+                    actionLabel: "REVIEW"
+                )
+            )
+        } catch {
+            railFailed = true
+            print("[VinylOrderSheet] Notification insert failed: \(error)")
+        }
+
+        if localSaveFailed {
+            statusMessage = "ORDER DRAFTED / LOCAL SYNC PENDING"
+        } else if railFailed {
+            statusMessage = "ORDER DRAFTED / RAIL FAILED"
+        } else {
+            statusMessage = "ORDER DRAFTED"
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
     private func formatInchesForSheet(_ value: Double) -> String {
@@ -609,10 +655,10 @@ private struct VinylCutPreview: View {
             }
 
             let target = CGRect(
-                x: 14,
-                y: 14,
-                width: max(1, size.width - 28),
-                height: max(1, size.height - 28)
+                x: VinylOrderLayout.previewInset,
+                y: VinylOrderLayout.previewInset,
+                width: max(1, size.width - (VinylOrderLayout.previewInset * 2)),
+                height: max(1, size.height - (VinylOrderLayout.previewInset * 2))
             )
             let scale = min(target.width / bounds.width, target.height / bounds.height)
             let fitted = CGSize(width: bounds.width * scale, height: bounds.height * scale)
@@ -660,8 +706,8 @@ private struct VinylCutPreview: View {
         }
         path.closeSubpath()
 
-        context.fill(path, with: .color(OPSStyle.Colors.primaryAccent.opacity(0.16)))
-        context.stroke(path, with: .color(OPSStyle.Colors.primaryAccent), lineWidth: 1.4)
+        context.fill(path, with: .color(OPSStyle.Colors.surfaceActive))
+        context.stroke(path, with: .color(OPSStyle.Colors.secondaryText), lineWidth: OPSStyle.Layout.Border.standard)
         drawSeams(surface, in: &context, bounds: bounds, origin: origin, scale: scale)
     }
 
@@ -686,12 +732,17 @@ private struct VinylCutPreview: View {
                 seam.move(to: map(CGPoint(x: x, y: faceBounds.minY), bounds: bounds, origin: origin, scale: scale))
                 seam.addLine(to: map(CGPoint(x: x, y: faceBounds.maxY), bounds: bounds, origin: origin, scale: scale))
             }
-            context.stroke(seam, with: .color(OPSStyle.Colors.warningStatus.opacity(0.82)), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+            context.stroke(seam, with: .color(OPSStyle.Colors.secondaryText.opacity(0.72)), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
         }
     }
 
     private func drawEmpty(in context: inout GraphicsContext, size: CGSize) {
-        let rect = CGRect(x: 14, y: 14, width: max(1, size.width - 28), height: max(1, size.height - 28))
+        let rect = CGRect(
+            x: VinylOrderLayout.previewInset,
+            y: VinylOrderLayout.previewInset,
+            width: max(1, size.width - (VinylOrderLayout.previewInset * 2)),
+            height: max(1, size.height - (VinylOrderLayout.previewInset * 2))
+        )
         let path = Path(roundedRect: rect, cornerRadius: OPSStyle.Layout.cornerRadius)
         context.stroke(path, with: .color(OPSStyle.Colors.cardBorder), lineWidth: 1)
     }
@@ -722,6 +773,13 @@ private struct VinylCutPreview: View {
             y: origin.y + ((point.y - bounds.minY) * scale)
         )
     }
+}
+
+private enum VinylOrderLayout {
+    static let previewHeight = CGFloat(OPSStyle.Layout.touchTargetLarge * 3)
+    static let actionBarReserveHeight = CGFloat(OPSStyle.Layout.touchTargetStandard * 2)
+    static let labelWidth = CGFloat(OPSStyle.Layout.touchTargetStandard + OPSStyle.Layout.spacing5)
+    static let previewInset = CGFloat(OPSStyle.Layout.spacing3)
 }
 
 private struct VinylOrderMessageComposeView: UIViewControllerRepresentable {

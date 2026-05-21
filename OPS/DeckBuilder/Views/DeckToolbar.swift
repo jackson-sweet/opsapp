@@ -171,6 +171,12 @@ struct DeckToolbar: View {
                     }
                 }
 
+                if surfaceSelected {
+                    actionButton(icon: "shippingbox", label: "Order Vinyl") {
+                        viewModel.showingVinylOrderSheet = true
+                    }
+                }
+
                 if canMoveToLevel {
                     moveToLevelMenu
                 }

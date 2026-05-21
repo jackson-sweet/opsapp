@@ -62,8 +62,22 @@ struct VinylCutPlan: Equatable {
         surfaces.reduce(0) { $0 + $1.cutAreaSqFt }
     }
 
+    var reusedSurfaceIds: Set<String> {
+        Set(reuseNotes.map(\.targetSurfaceId))
+    }
+
+    var totalReusedCutAreaSqFt: Double {
+        surfaces.reduce(0) { total, surface in
+            total + (reusedSurfaceIds.contains(surface.id) ? surface.cutAreaSqFt : 0)
+        }
+    }
+
+    var totalPurchasedCutAreaSqFt: Double {
+        max(0, totalCutAreaSqFt - totalReusedCutAreaSqFt)
+    }
+
     var totalOrderedSqFt: Int {
-        Int(ceil(totalCutAreaSqFt))
+        Int(ceil(totalPurchasedCutAreaSqFt))
     }
 
     var totalSurfaceAreaSqFt: Double {
@@ -71,7 +85,7 @@ struct VinylCutPlan: Equatable {
     }
 
     var totalWasteSqFt: Double {
-        max(0, totalCutAreaSqFt - totalSurfaceAreaSqFt)
+        max(0, totalPurchasedCutAreaSqFt - totalSurfaceAreaSqFt)
     }
 
     var totalStripCount: Int {
@@ -93,6 +107,9 @@ struct VinylCutPlan: Equatable {
         lines.append("EDGE WRAP: \(vinylFormatInches(settings.edgeWrapInches))")
         lines.append("ORDER AREA: \(totalOrderedSqFt) SQ FT")
         lines.append("SURFACE AREA: \(vinylFormatSqFt(totalSurfaceAreaSqFt)) SQ FT")
+        if totalReusedCutAreaSqFt > 0 {
+            lines.append("REUSED AREA: \(vinylFormatSqFt(totalReusedCutAreaSqFt)) SQ FT")
+        }
         lines.append("CUT WASTE: \(vinylFormatSqFt(totalWasteSqFt)) SQ FT")
         lines.append("")
         lines.append("// CUT LIST")
@@ -149,7 +166,9 @@ struct VinylSurfaceCutPlan: Identifiable, Equatable {
 }
 
 struct VinylReuseNote: Equatable {
+    let sourceSurfaceId: String
     let sourceSurfaceLabel: String
+    let targetSurfaceId: String
     let targetSurfaceLabel: String
     let offcutWidthInches: Double
     let offcutLengthInches: Double
@@ -285,12 +304,15 @@ enum VinylCutListEngine {
         var notes: [VinylReuseNote] = []
 
         for source in ordered {
+            guard !usedTargets.contains(source.id) else { continue }
             guard source.offcutWidthInches >= 6 else { continue }
             for target in ordered where target.id != source.id && !usedTargets.contains(target.id) {
                 guard source.stripLengthInches >= target.stripLengthInches,
                       source.offcutWidthInches >= target.targetCrossInches else { continue }
                 notes.append(VinylReuseNote(
+                    sourceSurfaceId: source.id,
                     sourceSurfaceLabel: source.displayLabel,
+                    targetSurfaceId: target.id,
                     targetSurfaceLabel: target.displayLabel,
                     offcutWidthInches: source.offcutWidthInches,
                     offcutLengthInches: source.stripLengthInches
@@ -319,4 +341,93 @@ private func vinylFormatInches(_ value: Double) -> String {
 
 private func vinylFormatSqFt(_ value: Double) -> String {
     String(format: "%.1f", value)
+}
+
+struct VinylCatalogCandidate: Equatable {
+    let itemId: String
+    let variantId: String
+    let itemName: String
+    let itemDescription: String?
+    let itemNotes: String?
+    let variantSku: String?
+    let itemUnitId: String?
+    let variantUnitId: String?
+    let isItemActive: Bool
+    let itemDeleted: Bool
+    let isVariantActive: Bool
+    let variantDeleted: Bool
+}
+
+enum VinylCatalogMatcher {
+    static func bestMatch(
+        from candidates: [VinylCatalogCandidate],
+        preferredRollWidthInches: Double
+    ) -> VinylCatalogCandidate? {
+        candidates
+            .compactMap { candidate -> (candidate: VinylCatalogCandidate, score: Int)? in
+                guard candidate.isItemActive,
+                      !candidate.itemDeleted,
+                      candidate.isVariantActive,
+                      !candidate.variantDeleted else { return nil }
+
+                let searchable = searchText(for: candidate)
+                guard searchable.contains("vinyl"),
+                      containsMembraneMaterialTerm(searchable),
+                      !searchable.contains("diverter") else { return nil }
+
+                return (candidate, score(for: searchable, preferredRollWidthInches: preferredRollWidthInches))
+            }
+            .sorted {
+                if $0.score != $1.score { return $0.score > $1.score }
+                let lhsName = $0.candidate.itemName.localizedStandardCompare($1.candidate.itemName)
+                if lhsName != .orderedSame { return lhsName == .orderedAscending }
+                let lhsSku = ($0.candidate.variantSku ?? "").localizedStandardCompare($1.candidate.variantSku ?? "")
+                if lhsSku != .orderedSame { return lhsSku == .orderedAscending }
+                return $0.candidate.variantId < $1.candidate.variantId
+            }
+            .first?
+            .candidate
+    }
+
+    private static func searchText(for candidate: VinylCatalogCandidate) -> String {
+        [
+            candidate.itemName,
+            candidate.itemDescription,
+            candidate.itemNotes,
+            candidate.variantSku,
+            candidate.itemUnitId,
+            candidate.variantUnitId
+        ]
+        .compactMap { $0 }
+        .joined(separator: " ")
+        .lowercased()
+    }
+
+    private static func containsMembraneMaterialTerm(_ searchable: String) -> Bool {
+        searchable.contains("membrane") ||
+        searchable.contains("deck") ||
+        searchable.contains("roll") ||
+        searchable.contains("sheet")
+    }
+
+    private static func score(for searchable: String, preferredRollWidthInches: Double) -> Int {
+        var score = 0
+        if searchable.contains("membrane") { score += 40 }
+        if searchable.contains("sheet") || searchable.contains("roll") { score += 20 }
+        if searchable.contains("deck") { score += 10 }
+        if contains(width: preferredRollWidthInches, in: searchable) { score += 8 }
+        return score
+    }
+
+    private static func contains(width: Double, in searchable: String) -> Bool {
+        let rounded = Int(width.rounded())
+        let tokens = [
+            "\(rounded)",
+            "\(rounded)\"",
+            "\(rounded) in",
+            "\(rounded)-in",
+            "\(rounded)in"
+        ]
+        return tokens.contains { searchable.contains($0) }
+    }
 }

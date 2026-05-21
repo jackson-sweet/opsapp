@@ -9,9 +9,7 @@
 import SwiftUI
 
 extension PipelineStage {
-    /// Color identity for this stage. Used for the stage-color leading rail on
-    /// lead cards, the stage strip color pip, and the mini stacked bar in the
-    /// LeadsHeaderCarousel's "ACTIVE PIPELINE" card.
+    /// Color identity for this stage.
     var color: Color {
         switch self {
         case .newLead:     return Color(red: 0.737, green: 0.737, blue: 0.737)  // #BCBCBC

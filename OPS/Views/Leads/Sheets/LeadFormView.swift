@@ -623,7 +623,7 @@ struct SheetFooterButtonRow<Cancel: View, Primary: View>: View {
 
 // MARK: - Sheet chrome helpers
 
-/// Top-left close affordance used by the four full-detent sheets. 44pt square
+/// Top-right close affordance used by the four full-detent sheets. 44pt square
 /// tap target, no border, `text2` icon. Half-detent sheets use the SwiftUI
 /// drag indicator instead (set by `LeadsTabView`).
 struct SheetCloseButton: View {

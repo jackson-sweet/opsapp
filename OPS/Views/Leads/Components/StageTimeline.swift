@@ -44,7 +44,7 @@ struct StageTimeline: View {
                     StageRow(transition: t, isLatest: idx == transitions.count - 1)
                     if idx < transitions.count - 1 {
                         Rectangle()
-                            .fill(Color.white.opacity(0.03))
+                            .fill(Color.white.opacity(0.03))  // no exact token
                             .frame(height: 1)
                             .padding(.horizontal, 14)
                     }

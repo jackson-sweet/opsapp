@@ -66,7 +66,7 @@ struct WonConvertCarousel: View {
         HStack(spacing: 8) {
             ForEach(0..<leads.count, id: \.self) { i in
                 Circle()
-                    .fill(i == selected ? OPSStyle.Colors.text3 : Color.white.opacity(0.18))
+                    .fill(i == selected ? OPSStyle.Colors.text3 : Color.white.opacity(0.18))  // no exact token
                     .frame(width: i == selected ? 6 : 4, height: i == selected ? 6 : 4)
             }
         }
@@ -148,11 +148,11 @@ struct WonConvertCard: View {
             .foregroundColor(OPSStyle.Colors.oliveTextM)
             .frame(width: 36, height: 36)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius, style: .continuous)
                     .fill(OPSStyle.Colors.oliveFillM)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius, style: .continuous)
                     .strokeBorder(OPSStyle.Colors.oliveLineM, lineWidth: 1)
             )
     }

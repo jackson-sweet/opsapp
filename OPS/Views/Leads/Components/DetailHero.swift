@@ -304,7 +304,7 @@ private struct KvCell: View {
 private struct KpiDivider: View {
     var body: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.06))
+            .fill(OPSStyle.Colors.fillNeutralDim)
             .frame(width: 1)
             .frame(maxHeight: .infinity)
     }

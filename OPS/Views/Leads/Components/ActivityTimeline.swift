@@ -50,7 +50,7 @@ struct ActivityTimeline: View {
                     ActivityRow(activity: activity)
                     if idx < shown.count - 1 {
                         Rectangle()
-                            .fill(Color.white.opacity(0.04))
+                            .fill(OPSStyle.Colors.surfaceInput)
                             .frame(height: 1)
                             .padding(.horizontal, 14)
                     }
@@ -117,11 +117,11 @@ private struct ActivityRow: View {
             .frame(width: 26, height: 26)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
-                    .fill(Color.white.opacity(0.04))
+                    .fill(OPSStyle.Colors.surfaceInput)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+                    .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
             )
     }
 

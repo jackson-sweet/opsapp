@@ -120,7 +120,7 @@ struct StickyActionBar: View {
                 Image(systemName: "arrow.right")
                     .font(.system(size: 14, weight: .regular))
             }
-            .foregroundColor(.black)
+            .foregroundColor(OPSStyle.Colors.invertedText)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)

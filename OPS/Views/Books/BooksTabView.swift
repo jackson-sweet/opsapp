@@ -315,7 +315,7 @@ struct BooksTabView: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .strokeBorder(OPSStyle.Colors.lineSoft, lineWidth: 1)
         )
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     @ViewBuilder

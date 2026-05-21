@@ -64,7 +64,7 @@ struct DeckSceneBuilder {
             let sharedBounds = DeckMeshGenerator.boundingRect(for: globalUnion)
             let sharedCenter = CGPoint(x: sharedBounds.midX, y: sharedBounds.midY)
 
-            for level in drawingData.levels {
+            for (levelIndex, level) in drawingData.levels.enumerated() {
                 // DECK-NEW-1 — render every detected closed face on this level
                 // (multiple surfaces, even sharing edges). Per-surface material
                 // resolved against the level's persisted DeckSurface store.
@@ -93,7 +93,7 @@ struct DeckSceneBuilder {
                 )
                 allPositions.append(contentsOf: detected.flatMap { $0.positions })
                 if detected.isEmpty { allPositions.append(contentsOf: level.orderedPositions) }
-                let elevationFeet = level.elevation ?? 2.5
+                let elevationFeet = drawingData.renderElevationFeet(for: level, levelIndex: levelIndex)
                 let elevationM = Float(elevationFeet) * feetToMeters
                 let vertexPositions = vertexPositionMap(
                     vertices: level.vertices,
@@ -154,7 +154,7 @@ struct DeckSceneBuilder {
                 center: sharedCenter
             )
             allPositions = detected.isEmpty ? drawingData.orderedPositions : detected.flatMap { $0.positions }
-            let elevationFeet = drawingData.overallElevation ?? 2.5
+            let elevationFeet = drawingData.renderElevationFeetSingleLevel
             let elevationM = Float(elevationFeet) * feetToMeters
             let vertexPositions = vertexPositionMap(
                 vertices: drawingData.vertices,
@@ -203,13 +203,13 @@ struct DeckSceneBuilder {
             let sharedBounds = DeckMeshGenerator.boundingRect(for: globalUnion)
             let sharedCenter = CGPoint(x: sharedBounds.midX, y: sharedBounds.midY)
 
-            for level in drawingData.levels where level.isClosed {
+            for (levelIndex, level) in drawingData.levels.enumerated() where level.isClosed {
                 let metersVerts = convertToMeters(
                     vertices: level.orderedPositions,
                     scaleFactor: scaleFactor,
                     center: sharedCenter
                 )
-                let elevationFeet = level.elevation ?? 2.5
+                let elevationFeet = drawingData.renderElevationFeet(for: level, levelIndex: levelIndex)
                 let elevationM = Float(elevationFeet) * feetToMeters
                 let vertexPositions = vertexPositionMap(
                     vertices: level.vertices,
@@ -232,7 +232,7 @@ struct DeckSceneBuilder {
             }
         } else if drawingData.isClosed {
             let metersVerts = convertToMeters(vertices: drawingData.orderedPositions, scaleFactor: scaleFactor)
-            let elevationFeet = drawingData.overallElevation ?? 2.5
+            let elevationFeet = drawingData.renderElevationFeetSingleLevel
             let elevationM = Float(elevationFeet) * feetToMeters
             let bounds = DeckMeshGenerator.boundingRect(for: drawingData.orderedPositions)
             let center = CGPoint(x: bounds.midX, y: bounds.midY)
@@ -1085,11 +1085,13 @@ struct DeckSceneBuilder {
         let centerZ = Float(bounds.midY)
         let avgElevation: Float = {
             if drawingData.isMultiLevel {
-                let elevations = drawingData.levels.compactMap { $0.elevation }
-                guard !elevations.isEmpty else { return 0.76 } // ~2.5' default
+                let elevations = drawingData.levels.enumerated().map { index, level in
+                    drawingData.renderElevationFeet(for: level, levelIndex: index)
+                }
+                guard !elevations.isEmpty else { return Float(2.5) * feetToMeters }
                 return Float(elevations.reduce(0, +) / Double(elevations.count)) * feetToMeters
             }
-            return Float(drawingData.overallElevation ?? 2.5) * feetToMeters
+            return Float(drawingData.renderElevationFeetSingleLevel) * feetToMeters
         }()
 
         // Distance to frame entire deck with 20% margin

@@ -985,6 +985,54 @@ struct DeckDrawingData: Codable {
         return (upper - lower) * 12.0  // feet to inches
     }
 
+    // MARK: - Render Elevation Resolution
+
+    /// Uniform render elevation (in feet) for one level of a multi-level
+    /// design. The 3D scene draws each level's surface as a single flat
+    /// polygon, so it needs ONE representative height per level — and the
+    /// deck builder stores that height in more than one place depending on
+    /// how the user entered it. Reading `level.elevation` alone is the bug:
+    /// it is only ever written by `migrateToMultiLevel` (level 0) and
+    /// `LevelConnectionSheet` (stair wiring), so any level the user never
+    /// connected stays nil and the renderer collapses it onto a flat 2.5'.
+    /// Live data confirms this — every saved multi-level design has
+    /// `elevation: null` on every level.
+    ///
+    /// Resolution order:
+    /// 1. `level.elevation` — the explicit uniform per-level height.
+    /// 2. The average of the level's per-vertex `elevation` values — the
+    ///    "sloped" elevation mode and single-vertex height edits write here.
+    /// 3. A staggered height — `base + levelIndex × 2.5'` — so levels never
+    ///    collapse onto one another when no per-level height was recorded.
+    ///    `base` is `overallElevation` when set: in multi-level mode the
+    ///    elevation editor only exposes a single overall-height field, so
+    ///    the user's typed height lands there rather than on any level.
+    ///    Staggering off that base — instead of using it flat for every
+    ///    level — is what both honors the user's input AND keeps the levels
+    ///    visually separated.
+    func renderElevationFeet(for level: DeckLevel, levelIndex: Int) -> Double {
+        if let elevation = level.elevation { return elevation }
+        let vertexElevations = level.vertices.compactMap { $0.elevation }
+        if !vertexElevations.isEmpty {
+            return vertexElevations.reduce(0, +) / Double(vertexElevations.count)
+        }
+        let baseFeet = overallElevation ?? 2.5
+        return baseFeet + Double(levelIndex) * 2.5
+    }
+
+    /// Uniform render elevation (in feet) for a single-level design.
+    /// Priority: `overallElevation` → average of per-vertex elevations →
+    /// the 2.5' default — so single-level designs resolve height with the
+    /// same per-vertex fallback as `renderElevationFeet(for:levelIndex:)`.
+    var renderElevationFeetSingleLevel: Double {
+        if let overall = overallElevation { return overall }
+        let vertexElevations = vertices.compactMap { $0.elevation }
+        if !vertexElevations.isEmpty {
+            return vertexElevations.reduce(0, +) / Double(vertexElevations.count)
+        }
+        return 2.5
+    }
+
     /// Migrate single-level data to multi-level (called when adding a second level)
     mutating func migrateToMultiLevel() {
         guard !isMultiLevel, vertices.count >= 3 else { return }

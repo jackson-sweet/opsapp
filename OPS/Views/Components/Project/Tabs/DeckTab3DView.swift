@@ -116,11 +116,11 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         let levelsToRender: [(positions: [CGPoint], edges: [DeckEdge], vertices: [DeckVertex], isClosed: Bool, deckHeight: Float)]
         if drawingData.isMultiLevel {
             levelsToRender = drawingData.levels.enumerated().map { idx, level in
-                let deckHeight = Float(level.elevation ?? Double(idx + 1) * 2.5) * feetToMeters
+                let deckHeight = Float(drawingData.renderElevationFeet(for: level, levelIndex: idx)) * feetToMeters
                 return (level.orderedPositions, level.edges, level.vertices, level.isClosed, deckHeight)
             }
         } else {
-            let deckHeight = Float(drawingData.overallElevation ?? 2.5) * feetToMeters
+            let deckHeight = Float(drawingData.renderElevationFeetSingleLevel) * feetToMeters
             levelsToRender = [(drawingData.orderedPositions, drawingData.edges, drawingData.vertices, drawingData.isClosed, deckHeight)]
         }
 

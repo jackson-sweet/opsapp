@@ -114,15 +114,14 @@ struct EditLeadSheet: View {
                     .padding(.horizontal, 20)
             }
 
-            HStack(spacing: 8) {
+            SheetFooterButtonRow {
                 SheetCTAButton(
                     label: "CANCEL",
                     variant: .secondary,
                     action: { dismiss() }
                 )
-                .frame(maxWidth: .infinity)
                 .disabled(isSaving || isArchiving)
-
+            } primary: {
                 SheetCTAButton(
                     label: "SAVE",
                     icon: "checkmark",
@@ -130,7 +129,6 @@ struct EditLeadSheet: View {
                     isLoading: isSaving,
                     action: save
                 )
-                .frame(maxWidth: .infinity * 2)
                 .disabled(!canSave)
                 .opacity(canSave ? 1 : 0.5)
             }

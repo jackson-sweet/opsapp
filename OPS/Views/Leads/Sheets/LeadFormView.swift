@@ -595,6 +595,32 @@ struct SheetCTAButton: View {
     }
 }
 
+// MARK: - Sheet footer button row
+
+/// Footer CTA pair for lead sheets — `CANCEL` at one-third width, the primary
+/// action at two-thirds, separated by an 8pt gap. The 1:2 ratio is computed
+/// explicitly via GeometryReader: `.frame(maxWidth: .infinity * 2)` collapses
+/// to plain `.infinity` in CGFloat math, so both buttons would otherwise
+/// render equal width. Mirrors the split in `StickyActionBar.actionPair`.
+struct SheetFooterButtonRow<Cancel: View, Primary: View>: View {
+    @ViewBuilder var cancel: () -> Cancel
+    @ViewBuilder var primary: () -> Primary
+
+    var body: some View {
+        GeometryReader { geo in
+            // 1 : 2 split — total width = unit + 8pt gap + 2·unit.
+            let unit = (geo.size.width - 8) / 3
+            HStack(spacing: 8) {
+                cancel()
+                    .frame(width: unit, height: 48)
+                primary()
+                    .frame(width: unit * 2, height: 48)
+            }
+        }
+        .frame(height: 48)
+    }
+}
+
 // MARK: - Sheet chrome helpers
 
 /// Top-left close affordance used by the four full-detent sheets. 44pt square

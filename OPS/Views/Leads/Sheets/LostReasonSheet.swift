@@ -154,15 +154,14 @@ struct LostReasonSheet: View {
                     .padding(.horizontal, 20)
             }
 
-            HStack(spacing: 8) {
+            SheetFooterButtonRow {
                 SheetCTAButton(
                     label: "CANCEL",
                     variant: .secondary,
                     action: { dismiss() }
                 )
-                .frame(maxWidth: .infinity)
                 .disabled(isSaving)
-
+            } primary: {
                 SheetCTAButton(
                     label: "CONFIRM LOST",
                     icon: "xmark",
@@ -170,7 +169,6 @@ struct LostReasonSheet: View {
                     isLoading: isSaving,
                     action: confirm
                 )
-                .frame(maxWidth: .infinity * 2)
                 .disabled(!canSave)
                 .opacity(canSave ? 1 : 0.5)
             }

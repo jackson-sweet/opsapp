@@ -257,15 +257,14 @@ struct LeadLogActivitySheet: View {
                     .padding(.horizontal, 20)
             }
 
-            HStack(spacing: 8) {
+            SheetFooterButtonRow {
                 SheetCTAButton(
                     label: "CANCEL",
                     variant: .secondary,
                     action: { dismiss() }
                 )
-                .frame(maxWidth: .infinity)
                 .disabled(isSaving)
-
+            } primary: {
                 SheetCTAButton(
                     label: "LOG",
                     icon: "checkmark",
@@ -273,7 +272,6 @@ struct LeadLogActivitySheet: View {
                     isLoading: isSaving,
                     action: save
                 )
-                .frame(maxWidth: .infinity * 2)
                 .disabled(!canSave)
                 .opacity(canSave ? 1 : 0.5)
             }

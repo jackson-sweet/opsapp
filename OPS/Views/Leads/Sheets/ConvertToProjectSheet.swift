@@ -539,15 +539,14 @@ struct ConvertToProjectSheet: View {
                     .padding(.horizontal, 20)
             }
 
-            HStack(spacing: 8) {
+            SheetFooterButtonRow {
                 SheetCTAButton(
                     label: "CANCEL",
                     variant: .secondary,
                     action: { Task { await commitNoProjectAndDismiss() } }
                 )
-                .frame(maxWidth: .infinity)
                 .disabled(isSaving)
-
+            } primary: {
                 if renderState == .duplicate {
                     SheetCTAButton(
                         label: "OPEN PROJECT",
@@ -556,7 +555,6 @@ struct ConvertToProjectSheet: View {
                         isLoading: isSaving,
                         action: { openExistingProjectAction() }
                     )
-                    .frame(maxWidth: .infinity * 2)
                     .disabled(isSaving)
                 } else {
                     SheetCTAButton(
@@ -566,7 +564,6 @@ struct ConvertToProjectSheet: View {
                         isLoading: isSaving,
                         action: createProject
                     )
-                    .frame(maxWidth: .infinity * 2)
                     .disabled(!canCreate)
                     .opacity(canCreate ? 1 : 0.5)
                 }

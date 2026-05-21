@@ -147,7 +147,7 @@ struct LeadActionCard: View {
                     Image(systemName: "clock")
                         .font(.system(size: 11, weight: .regular))
                     Text(dueText)
-                        .font(.custom("JetBrainsMono-Regular", size: 9))
+                        .font(.custom("JetBrainsMono-Regular", size: 9.5))
                         .fontWeight(.semibold)
                         .kerning(1.4)
                         .textCase(.uppercase)
@@ -155,7 +155,7 @@ struct LeadActionCard: View {
                 .foregroundColor(toneColor)
             } else if opportunity.source == "referral" {
                 Text("REFERRAL")
-                    .font(.custom("JetBrainsMono-Regular", size: 9))
+                    .font(.custom("JetBrainsMono-Regular", size: 9.5))
                     .fontWeight(.semibold)
                     .kerning(1.4)
                     .foregroundColor(OPSStyle.Colors.textMute)

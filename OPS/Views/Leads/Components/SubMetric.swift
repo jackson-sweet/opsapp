@@ -53,7 +53,7 @@ struct SubMetric: View {
 
             if let hint {
                 Text(hint)
-                    .font(.custom("JetBrainsMono-Regular", size: 8.5))
+                    .font(.custom("JetBrainsMono-Regular", size: 9.5))
                     .fontWeight(.medium)
                     .kerning(1.0)
                     .foregroundColor(OPSStyle.Colors.textMute)

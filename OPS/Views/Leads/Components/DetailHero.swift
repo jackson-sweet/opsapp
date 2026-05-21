@@ -286,7 +286,7 @@ private struct KvCell: View {
             }
 
             Text(sub)
-                .font(.custom("JetBrainsMono-Regular", size: 8.5))
+                .font(.custom("JetBrainsMono-Regular", size: 9.5))
                 .fontWeight(.semibold)
                 .kerning(1.02)
                 .foregroundColor(OPSStyle.Colors.textMute)

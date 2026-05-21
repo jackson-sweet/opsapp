@@ -5,9 +5,9 @@
 //  Sub-metric cell used inside the LEADS hero widget. Renders as three columns
 //  on a hairline meta-row beneath the forecast hero number:
 //
-//      LABEL              ← JetBrains Mono 9pt, 0.14em, semantic tone color
+//      LABEL              ← JetBrains Mono 9.5pt, 0.14em, semantic tone color
 //      VALUE              ← Mohave Light 22pt, tabular-lining (always neutral)
-//      HINT               ← JetBrains Mono 8.5pt, 0.10em, text-mute
+//      HINT               ← JetBrains Mono 9.5pt, 0.10em, text-mute
 //
 //  Per ops-design-system "D · HERO + SUB" pattern. The semantic tone tints the
 //  LABEL only — never the value — per OPS rule "color is meaning, never
@@ -40,7 +40,7 @@ struct SubMetric: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(label)
-                .font(.custom("JetBrainsMono-Regular", size: 9))
+                .font(.custom("JetBrainsMono-Regular", size: 9.5))
                 .fontWeight(.semibold)
                 .kerning(1.4)
                 .foregroundColor(tone.labelColor)
@@ -53,7 +53,7 @@ struct SubMetric: View {
 
             if let hint {
                 Text(hint)
-                    .font(.custom("JetBrainsMono-Regular", size: 8.5))
+                    .font(.custom("JetBrainsMono-Regular", size: 9.5))
                     .fontWeight(.medium)
                     .kerning(1.0)
                     .foregroundColor(OPSStyle.Colors.textMute)

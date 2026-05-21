@@ -39,7 +39,7 @@ struct HeroWidget: View {
     /// — nil when fewer than 5 qualifying wins).
     var avgVelocityDays: Int? = nil
 
-    /// Tap target — opens a future ForecastBreakdownSheet. nil disables the tap.
+    /// Tap target — opens a future breakdown drill-in (deferred). nil disables the tap.
     var onForecastTap: (() -> Void)? = nil
 
     var body: some View {

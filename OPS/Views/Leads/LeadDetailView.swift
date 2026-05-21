@@ -244,7 +244,7 @@ private struct WonNotConvertedCard: View {
                     .font(.custom("CakeMono-Light", size: 13.5))
                     .kerning(0.27)
                     .textCase(.uppercase)
-                    .foregroundColor(.black)
+                    .foregroundColor(OPSStyle.Colors.invertedText)
                     .frame(maxWidth: .infinity)
                     .frame(height: 48)
                     .background(

@@ -44,7 +44,7 @@ struct StageTimeline: View {
                     StageRow(transition: t, isLatest: idx == transitions.count - 1)
                     if idx < transitions.count - 1 {
                         Rectangle()
-                            .fill(Color.white.opacity(0.03))
+                            .fill(Color.white.opacity(0.03))  // no exact token
                             .frame(height: 1)
                             .padding(.horizontal, 14)
                     }
@@ -74,7 +74,7 @@ private struct StageRow: View {
             HStack(spacing: 6) {
                 if let from = transition.fromStage {
                     Text(from.shortLabel)
-                        .font(.custom("JetBrainsMono-Regular", size: 9))
+                        .font(.custom("JetBrainsMono-Regular", size: 9.5))
                         .fontWeight(.semibold)
                         .kerning(1.26)
                         .foregroundColor(OPSStyle.Colors.textMute)

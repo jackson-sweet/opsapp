@@ -332,7 +332,7 @@ struct LeadTextInput: View {
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
                 .strokeBorder(
-                    isFocused ? Color.white.opacity(0.20) : OPSStyle.Colors.line,
+                    isFocused ? Color.white.opacity(0.20) : OPSStyle.Colors.line,  // no exact token
                     lineWidth: 1
                 )
         )
@@ -384,7 +384,7 @@ struct LeadTextArea: View {
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
                 .strokeBorder(
-                    isFocused ? Color.white.opacity(0.20) : OPSStyle.Colors.line,
+                    isFocused ? Color.white.opacity(0.20) : OPSStyle.Colors.line,  // no exact token
                     lineWidth: 1
                 )
         )
@@ -425,12 +425,12 @@ struct LeadChipPicker: View {
                         .frame(minHeight: 36)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
-                                .fill(isActive ? Color.white.opacity(0.10) : Color.white.opacity(0.04))
+                                .fill(isActive ? OPSStyle.Colors.line : OPSStyle.Colors.surfaceInput)
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
                                 .strokeBorder(
-                                    isActive ? Color.white.opacity(0.20) : OPSStyle.Colors.line,
+                                    isActive ? Color.white.opacity(0.20) : OPSStyle.Colors.line,  // no exact token
                                     lineWidth: 1
                                 )
                         )
@@ -565,7 +565,7 @@ struct SheetCTAButton: View {
 
     private var foreground: Color {
         switch variant {
-        case .primary:     return .black
+        case .primary:     return OPSStyle.Colors.invertedText
         case .secondary:   return OPSStyle.Colors.text
         case .destructive: return OPSStyle.Colors.roseTextM
         case .outline:     return OPSStyle.Colors.text2
@@ -623,7 +623,7 @@ struct SheetFooterButtonRow<Cancel: View, Primary: View>: View {
 
 // MARK: - Sheet chrome helpers
 
-/// Top-left close affordance used by the four full-detent sheets. 44pt square
+/// Top-right close affordance used by the four full-detent sheets. 44pt square
 /// tap target, no border, `text2` icon. Half-detent sheets use the SwiftUI
 /// drag indicator instead (set by `LeadsTabView`).
 struct SheetCloseButton: View {
@@ -635,7 +635,7 @@ struct SheetCloseButton: View {
             action()
         } label: {
             Image(systemName: "xmark")
-                .font(.system(size: 16, weight: .regular))
+                .font(.system(size: 20, weight: .regular))
                 .foregroundColor(OPSStyle.Colors.text2)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())

@@ -79,12 +79,12 @@ struct FilterChipRow: View {
             .frame(minHeight: 36)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
-                    .fill(isActive ? Color.white.opacity(0.10) : Color.white.opacity(0.04))
+                    .fill(isActive ? OPSStyle.Colors.line : OPSStyle.Colors.surfaceInput)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
                     .strokeBorder(
-                        isActive ? Color.white.opacity(0.20) : OPSStyle.Colors.line,
+                        isActive ? Color.white.opacity(0.20) : OPSStyle.Colors.line,  // no exact token
                         lineWidth: 1
                     )
             )

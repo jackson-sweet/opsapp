@@ -190,8 +190,8 @@ private struct InitialsAvatar: View {
             .font(.custom("JetBrainsMono-Medium", size: size * 0.34))
             .foregroundColor(OPSStyle.Colors.text2)
             .frame(width: size, height: size)
-            .background(Circle().fill(Color.white.opacity(0.06)))
-            .overlay(Circle().strokeBorder(Color.white.opacity(0.10), lineWidth: 1))
+            .background(Circle().fill(OPSStyle.Colors.fillNeutralDim))
+            .overlay(Circle().strokeBorder(OPSStyle.Colors.line, lineWidth: 1))
     }
 }
 

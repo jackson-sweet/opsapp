@@ -80,7 +80,7 @@ struct LeadLogActivitySheet: View {
         // Drag handle is provided by the parent's `.presentationDragIndicator(.visible)`
         SheetTitleLabel(title: "LOG ACTIVITY", size: .half)
             .padding(.horizontal, 20)
-            .padding(.top, 6)
+            .padding(.top, 20)
             .padding(.bottom, 12)
     }
 

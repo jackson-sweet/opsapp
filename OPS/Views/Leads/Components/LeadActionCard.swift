@@ -147,7 +147,7 @@ struct LeadActionCard: View {
                     Image(systemName: "clock")
                         .font(.system(size: 11, weight: .regular))
                     Text(dueText)
-                        .font(.custom("JetBrainsMono-Regular", size: 9))
+                        .font(.custom("JetBrainsMono-Regular", size: 9.5))
                         .fontWeight(.semibold)
                         .kerning(1.4)
                         .textCase(.uppercase)
@@ -155,7 +155,7 @@ struct LeadActionCard: View {
                 .foregroundColor(toneColor)
             } else if opportunity.source == "referral" {
                 Text("REFERRAL")
-                    .font(.custom("JetBrainsMono-Regular", size: 9))
+                    .font(.custom("JetBrainsMono-Regular", size: 9.5))
                     .fontWeight(.semibold)
                     .kerning(1.4)
                     .foregroundColor(OPSStyle.Colors.textMute)
@@ -201,12 +201,12 @@ struct QuickGlyph: View {
                 .foregroundColor(emphasis ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
                 .frame(width: 34, height: 34)
                 .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(emphasis ? Color.white.opacity(0.06) : .clear)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                        .fill(emphasis ? OPSStyle.Colors.fillNeutralDim : .clear)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .strokeBorder(emphasis ? Color.white.opacity(0.10) : .clear, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                        .strokeBorder(emphasis ? OPSStyle.Colors.line : .clear, lineWidth: 1)
                 )
                 // 34pt visible chip · 44pt hit area — MOBILE.md §1 / audit F1.
                 .frame(width: 44, height: 44)

@@ -25,10 +25,10 @@ struct Atmosphere: View {
 
         var color: Color {
             switch self {
-            case .steel: return Color(red: 111/255, green: 148/255, blue: 176/255)  // ops-accent
-            case .olive: return Color(red: 157/255, green: 181/255, blue: 130/255)
-            case .tan:   return Color(red: 196/255, green: 168/255, blue: 104/255)
-            case .rose:  return Color(red: 181/255, green: 130/255, blue: 137/255)
+            case .steel: return OPSStyle.Colors.opsAccent
+            case .olive: return OPSStyle.Colors.olive
+            case .tan:   return OPSStyle.Colors.tan
+            case .rose:  return OPSStyle.Colors.rose
             }
         }
 

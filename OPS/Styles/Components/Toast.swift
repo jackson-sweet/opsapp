@@ -263,7 +263,8 @@ private struct ToastBanner: View {
         } label: {
             HStack(spacing: 5) {
                 Text(action.label)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(OPSStyle.Typography.metadata)
+                    .fontWeight(.semibold)
                     .kerning(1.4)
                     .textCase(.uppercase)
                 Image(systemName: "arrow.right")
@@ -287,13 +288,15 @@ private struct ToastBanner: View {
         HStack(spacing: 4) {
             if !parts.prefix.isEmpty {
                 Text(parts.prefix)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(OPSStyle.Typography.metadata)
+                    .fontWeight(.semibold)
                     .kerning(1.6)
                     .foregroundColor(OPSStyle.Colors.textMute)
                     .textCase(.uppercase)
             }
             Text(parts.body)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(OPSStyle.Typography.metadata)
+                .fontWeight(.semibold)
                 .kerning(1.6)
                 .foregroundColor(toast.tone.textColor)
                 .textCase(.uppercase)

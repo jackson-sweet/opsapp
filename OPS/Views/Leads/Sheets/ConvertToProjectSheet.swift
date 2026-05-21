@@ -667,13 +667,9 @@ struct ConvertToProjectSheet: View {
                         "projectId": project.id,
                     ]
                 )
-                let projectId = project.id
+                // Operator stays on the LEADS queue — the success toast
+                // carries the tap-through to the new project (P3-2 / PM).
                 dismiss()
-                // Defer navigation so the sheet's dismiss animation completes
-                // before AppState presents the project-details sheet.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    appState.viewProjectDetailsById(projectId)
-                }
             } catch {
                 isSaving = false
                 errorMessage = simplifyError(error)

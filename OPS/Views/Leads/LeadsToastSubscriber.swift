@@ -18,6 +18,8 @@
 import SwiftUI
 
 struct LeadsToastSubscriber: ViewModifier {
+    @EnvironmentObject private var appState: AppState
+
     func body(content: Content) -> some View {
         content
             .onReceive(NotificationCenter.default.publisher(
@@ -59,13 +61,20 @@ struct LeadsToastSubscriber: ViewModifier {
             }
             .onReceive(NotificationCenter.default.publisher(
                 for: Notification.Name("LeadConvertedSuccess"))
-            ) { _ in
-                // userInfo carries `projectId` (UUID), but the Project model
-                // has no short / job-number identifier suitable for the label.
-                // The wider form is `// LEAD WON · PROJECT P-XXXX CREATED`;
-                // we use the schema-truthful version until a job-number lands.
+            ) { notification in
+                // The convert flow keeps the operator on LEADS; the toast
+                // offers an opt-in tap-through to the new project. userInfo
+                // carries `projectId` (String) — see ConvertToProjectSheet.
+                let action = (notification.userInfo?["projectId"] as? String).map { id in
+                    ToastAction(label: "VIEW") { appState.viewProjectDetailsById(id) }
+                }
                 ToastCenter.shared.present(
-                    Toast(label: "// LEAD WON · PROJECT CREATED", tone: .success)
+                    Toast(
+                        label: "// LEAD WON · PROJECT CREATED",
+                        tone: .success,
+                        autoDismissAfter: 6.0,
+                        action: action
+                    )
                 )
             }
             .onReceive(NotificationCenter.default.publisher(

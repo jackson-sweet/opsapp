@@ -58,7 +58,7 @@ struct CustomTabBar: View {
                         .frame(width: iconWidth, height: 3)
                         .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                         .offset(x: selectedIndicatorOffset)
-                        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: selectedIndicatorOffset)
+                        .animation(OPSStyle.Animation.panel, value: selectedIndicatorOffset)
 
                     Spacer()
                 }
@@ -71,7 +71,7 @@ struct CustomTabBar: View {
                             tab: tab,
                             isSelected: selectedTab == index,
                             action: {
-                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                withAnimation(OPSStyle.Animation.panel) {
                                     selectedTab = index
                                     updateIndicatorPosition(for: index)
                                 }

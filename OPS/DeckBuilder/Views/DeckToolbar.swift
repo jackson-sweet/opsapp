@@ -28,22 +28,52 @@ struct DeckToolbar: View {
                 multiSelectHeader
             }
 
-            // Context-sensitive action bar — changes based on what's selected.
-            // In multi-select the bulk action bar takes priority over single-kind bars so
-            // mixed selections (edges + vertices + surface) can be acted on in one place.
-            if canEdit, viewModel.activeTool == .tapSelect, !viewModel.selection.isEmpty {
-                multiSelectBulkTools
-            } else if canEdit, viewModel.selection.hasVertices {
-                vertexTools
-            } else if canEdit, viewModel.selection.hasEdges {
-                edgeTools
-            } else if canEdit, viewModel.selection.selectedFootprint {
-                footprintTools
+            // Context-sensitive action bar — one shell, action set varies by
+            // selected data type. Mixed selections keep the bulk bar.
+            if canEdit, !viewModel.selection.isEmpty {
+                selectedContextTools
             } else {
                 defaultTools
             }
         }
         .background(OPSStyle.Colors.cardBackground)
+    }
+
+    private enum SelectionContext {
+        case vertex
+        case edge
+        case stair
+        case surface
+        case mixed
+    }
+
+    @ViewBuilder
+    private var selectedContextTools: some View {
+        switch selectionContext {
+        case .vertex:
+            vertexTools
+        case .edge:
+            edgeTools
+        case .stair:
+            stairTools
+        case .surface:
+            surfaceTools
+        case .mixed:
+            multiSelectBulkTools
+        }
+    }
+
+    private var selectionContext: SelectionContext {
+        let hasVertices = viewModel.selection.hasVertices
+        let hasEdges = viewModel.selection.hasEdges
+        let hasSurfaces = viewModel.selection.hasSurfaces
+        let kindCount = (hasVertices ? 1 : 0) + (hasEdges ? 1 : 0) + (hasSurfaces ? 1 : 0)
+
+        guard kindCount == 1 else { return .mixed }
+        if hasVertices { return .vertex }
+        if hasSurfaces { return .surface }
+        if selectedEdgesAreOnlyStairs { return .stair }
+        return .edge
     }
 
     // MARK: - Multi-Select Header
@@ -454,9 +484,49 @@ struct DeckToolbar: View {
         }
     }
 
-    // MARK: - Footprint Tools (area selected)
+    // MARK: - Stair Tools (stair selected)
 
-    private var footprintTools: some View {
+    private var stairTools: some View {
+        contextToolBar {
+            contextLabel("Stair")
+
+            toolDivider
+
+            selectOnlyMenuIfUseful(includeKindSection: false)
+
+            actionButton(icon: "stairs", label: "Edit") {
+                viewModel.showingStairConfig = true
+            }
+
+            actionButton(icon: "shippingbox", label: "Material") {
+                viewModel.showingMaterialPicker = true
+            }
+
+            actionButton(icon: "ruler", label: "Dimension") {
+                viewModel.showingDimensionInput = true
+            }
+
+            if viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3 {
+                moveToLevelMenu
+            }
+
+            actionButton(icon: "slider.horizontal.3", label: "Properties") {
+                viewModel.showingPropertySheet = true
+            }
+
+            Spacer()
+
+            actionButton(icon: "trash", label: "Delete", tint: OPSStyle.Colors.errorStatus) {
+                viewModel.deleteSelectedEdges()
+            }
+
+            clearSelectionButton
+        }
+    }
+
+    // MARK: - Surface Tools (surface selected)
+
+    private var surfaceTools: some View {
         contextToolBar {
             contextLabel("Surface")
 
@@ -468,6 +538,10 @@ struct DeckToolbar: View {
 
             actionButton(icon: "shippingbox", label: "Order Vinyl") {
                 viewModel.showingVinylOrderSheet = true
+            }
+
+            if viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3 {
+                moveToLevelMenu
             }
 
             actionButton(icon: "arrow.up.and.down.circle", label: "Elevation") {
@@ -482,6 +556,14 @@ struct DeckToolbar: View {
 
             clearSelectionButton
         }
+    }
+
+    private var selectedEdgesAreOnlyStairs: Bool {
+        let selectedIds = viewModel.selection.selectedEdgeIds
+        guard !selectedIds.isEmpty else { return false }
+        let selectedEdges = viewModel.drawingData.allEdges.filter { selectedIds.contains($0.id) }
+        return selectedEdges.count == selectedIds.count
+            && selectedEdges.allSatisfy { $0.stairConfig != nil }
     }
 
     private func contextToolBar<Content: View>(

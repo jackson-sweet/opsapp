@@ -13,8 +13,8 @@ import SwiftUI
 
 struct ForecastCard: View {
     @ObservedObject var viewModel: MoneyDashboardViewModel
-    var onTapCloseRate: () -> Void
-    var onTapStale: () -> Void
+    var onTapCloseRate: (() -> Void)? = nil
+    var onTapStale: (() -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -42,6 +42,8 @@ struct ForecastCard: View {
     var body: some View {
         if isSkeleton {
             skeletonView.padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Forecast loading")
         } else if viewModel.cardError(.forecast) {
             BooksCardError(onRetry: { Task { await viewModel.retry(.forecast) } })
         } else if isEmpty {
@@ -71,7 +73,6 @@ struct ForecastCard: View {
                     sub: "LAST 90D",
                     valueColor: OPSStyle.Colors.olive,
                     onTap: onTapCloseRate,
-                    accessibilityHint: "Double-tap for pipeline detail",
                     accessibilityLabelOverride: "Close rate, \(Int(viewModel.closeRate.rounded()))%, last 90 days"
                 )
                 BooksDrillTile(
@@ -80,7 +81,6 @@ struct ForecastCard: View {
                     sub: "> 14D IDLE",
                     valueColor: OPSStyle.Colors.warningStatus,
                     onTap: onTapStale,
-                    accessibilityHint: "Double-tap to view stale opps",
                     accessibilityLabelOverride: "Stale opportunities, \(viewModel.staleLeadsCount), over 14 days idle"
                 )
             }
@@ -103,7 +103,7 @@ struct ForecastCard: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .dynamicTypeSize(...DynamicTypeSize.accessibility3)  // § 8.4 — hero number clamp
-                .contentTransition(.numericText())
+                .booksNumericContentTransition(reduceMotion: reduceMotion)
 
             Text("\(viewModel.activeLeadCount) ACTIVE OPPORTUNITIES")
                 .font(.custom("JetBrainsMono-Medium", size: 11))
@@ -183,6 +183,8 @@ struct ForecastCard: View {
             }
             .padding(.top, 22)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Forecast. No active opportunities.")
     }
 
     // MARK: - Skeleton
@@ -219,14 +221,14 @@ struct ForecastCard: View {
 
 #if DEBUG
 #Preview("ForecastCard — seeded") {
-    ForecastCard(viewModel: .previewStub(), onTapCloseRate: {}, onTapStale: {})
+    ForecastCard(viewModel: .previewStub())
         .padding(.vertical, 24)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
 }
 
 #Preview("ForecastCard — empty") {
-    ForecastCard(viewModel: .previewEmpty(), onTapCloseRate: {}, onTapStale: {})
+    ForecastCard(viewModel: .previewEmpty())
         .padding(.vertical, 24)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)

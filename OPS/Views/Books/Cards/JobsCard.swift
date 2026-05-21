@@ -13,8 +13,8 @@ import SwiftUI
 
 struct JobsCard: View {
     @ObservedObject var viewModel: MoneyDashboardViewModel
-    var onTapProfitable: () -> Void
-    var onTapLosers: () -> Void
+    var onTapProfitable: (() -> Void)? = nil
+    var onTapLosers: (() -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -45,6 +45,8 @@ struct JobsCard: View {
     var body: some View {
         if isSkeleton {
             skeletonView.padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Jobs loading")
         } else if viewModel.cardError(.jobs) {
             BooksCardError(onRetry: { Task { await viewModel.retry(.jobs) } })
         } else if isEmpty {
@@ -83,7 +85,6 @@ struct JobsCard: View {
                     sub: "JOBS",
                     valueColor: OPSStyle.Colors.olive,
                     onTap: onTapProfitable,
-                    accessibilityHint: "Double-tap for profitability report",
                     accessibilityLabelOverride: "Profitable jobs, \(viewModel.profitableProjectCount)"
                 )
                 BooksDrillTile(
@@ -98,7 +99,6 @@ struct JobsCard: View {
                     sub: "JOBS",
                     valueColor: OPSStyle.Colors.rose,
                     onTap: onTapLosers,
-                    accessibilityHint: "Double-tap to view losers",
                     accessibilityLabelOverride: "Loss-making jobs, \(viewModel.losersProjectCount)"
                 )
             }
@@ -187,6 +187,8 @@ struct JobsCard: View {
             }
             .padding(.top, 22)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Jobs. No complete jobs this period.")
     }
 
     // MARK: - Skeleton
@@ -238,14 +240,14 @@ struct JobsCard: View {
 
 #if DEBUG
 #Preview("JobsCard — seeded") {
-    JobsCard(viewModel: .previewStub(), onTapProfitable: {}, onTapLosers: {})
+    JobsCard(viewModel: .previewStub())
         .padding(.vertical, 24)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
 }
 
 #Preview("JobsCard — empty") {
-    JobsCard(viewModel: .previewEmpty(), onTapProfitable: {}, onTapLosers: {})
+    JobsCard(viewModel: .previewEmpty())
         .padding(.vertical, 24)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)

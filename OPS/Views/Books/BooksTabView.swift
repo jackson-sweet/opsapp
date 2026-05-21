@@ -43,6 +43,7 @@ struct BooksTabView: View {
     @EnvironmentObject private var permissionStore: PermissionStore
     @EnvironmentObject var appState: AppState
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Active segment persisted across sessions and visible to FloatingActionMenu.
     @AppStorage("books.selectedSegment") private var selectedSegmentRaw: String = BooksSection.invoices.rawValue
@@ -100,7 +101,7 @@ struct BooksTabView: View {
     private var activeFilterChip: some View {
         if selectedSegment == .invoices, invoiceVM.selectedFilter == .overdue {
             BooksDrillFilterChip(label: "OVERDUE", onClear: {
-                withAnimation(OPSStyle.Animation.panel) {
+                withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
                     invoiceVM.selectedFilter = .all
                 }
             })
@@ -110,7 +111,7 @@ struct BooksTabView: View {
             .transition(.opacity)
         } else if selectedSegment == .estimates, estimateVM.selectedFilter == .sent {
             BooksDrillFilterChip(label: "SENT", onClear: {
-                withAnimation(OPSStyle.Animation.panel) {
+                withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
                     estimateVM.selectedFilter = .all
                 }
             })
@@ -152,7 +153,7 @@ struct BooksTabView: View {
                     .transition(.opacity)
                 }
 
-                if headerCollapsed {
+                if headerCollapsed && !visibleSegments.isEmpty {
                     VStack(spacing: 0) {
                         insetPillSegmentedControl
                         activeFilterChip
@@ -177,12 +178,7 @@ struct BooksTabView: View {
                                     selectedSegmentRaw = BooksSection.estimates.rawValue
                                     estimateVM.selectedFilter = .sent
                                 },
-                                onDrillCashFlowDays: { /* Cash-flow report — deferred per spec §10 */ },
                                 onDrillTopChase: { showARDetail = true },
-                                onDrillCloseRate: { /* Pipeline tab drill — see PIPELINE TAB - P1-1 */ },
-                                onDrillStale: { /* Pipeline tab drill — see PIPELINE TAB - P1-1 */ },
-                                onDrillProfitable: { /* Jobs report — deferred per spec §10 */ },
-                                onDrillLosers: { /* Jobs report — deferred per spec §10 */ }
                             )
                             .environmentObject(permissionStore)
                             .padding(.bottom, OPSStyle.Layout.spacing2)
@@ -205,7 +201,7 @@ struct BooksTabView: View {
                                 .padding(.top, OPSStyle.Layout.spacing2)
                         }
 
-                        if !headerCollapsed {
+                        if !headerCollapsed && !visibleSegments.isEmpty {
                             insetPillSegmentedControl
                             activeFilterChip
                         }
@@ -217,7 +213,7 @@ struct BooksTabView: View {
                 .onPreferenceChange(HeaderBottomKey.self) { bottomY in
                     let shouldCollapse = bottomY < 0
                     if shouldCollapse != headerCollapsed {
-                        withAnimation(OPSStyle.Animation.fast) {
+                        withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
                             headerCollapsed = shouldCollapse
                         }
                     }
@@ -235,9 +231,9 @@ struct BooksTabView: View {
             }
             // Fade the sync banner / drill filter chip in and out on the
             // canonical OPS easing curve when the underlying state flips.
-            .animation(OPSStyle.Animation.panel, value: dashboardVM.syncState)
-            .animation(OPSStyle.Animation.panel, value: invoiceVM.selectedFilter)
-            .animation(OPSStyle.Animation.panel, value: estimateVM.selectedFilter)
+            .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: dashboardVM.syncState)
+            .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: invoiceVM.selectedFilter)
+            .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: estimateVM.selectedFilter)
             .background(OPSStyle.Colors.background.ignoresSafeArea())
             .sheet(isPresented: $showARDetail) {
                 ARAgingDetailView()
@@ -263,8 +259,20 @@ struct BooksTabView: View {
             guard let raw = notification.userInfo?["segment"] as? String,
                   let segment = BooksSection(rawValue: raw),
                   visibleSegments.contains(segment) else { return }
-            withAnimation(OPSStyle.Animation.fast) {
+            withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
                 selectedSegmentRaw = segment.rawValue
+            }
+        }
+        .onChange(of: carouselVisible) { _, isVisible in
+            guard !isVisible, headerCollapsed else { return }
+            withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
+                headerCollapsed = false
+            }
+        }
+        .onChange(of: visibleSegments.map(\.rawValue).joined(separator: "|")) { _, _ in
+            guard !visibleSegments.contains(selectedSegment), let first = visibleSegments.first else { return }
+            withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
+                selectedSegmentRaw = first.rawValue
             }
         }
         // Cashflow forecast deep-link from notification rail. Presents the
@@ -286,7 +294,7 @@ struct BooksTabView: View {
                 let isActive = selectedSegment == segment
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(OPSStyle.Animation.fast) {
+                    withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
                         selectedSegmentRaw = segment.rawValue
                     }
                 } label: {
@@ -349,19 +357,25 @@ struct BooksTabView: View {
         Group {
             switch selectedSegment {
             case .invoices:
-                InvoicesListView(embedded: true)
+                if visibleSegments.contains(.invoices) {
+                    InvoicesListView(embedded: true, viewModel: invoiceVM)
+                }
             case .estimates:
-                EstimatesListView(embedded: true)
+                if visibleSegments.contains(.estimates) {
+                    EstimatesListView(embedded: true, viewModel: estimateVM)
+                }
             case .expenses:
-                if expensesScopeIsOwn {
-                    MyExpensesView()
-                } else {
-                    ExpensesListView(embedded: true)
+                if visibleSegments.contains(.expenses) {
+                    if expensesScopeIsOwn {
+                        MyExpensesView()
+                    } else {
+                        ExpensesListView(embedded: true)
+                    }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(OPSStyle.Animation.fast, value: selectedSegment)
+        .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: selectedSegment)
     }
 
     // MARK: - Setup

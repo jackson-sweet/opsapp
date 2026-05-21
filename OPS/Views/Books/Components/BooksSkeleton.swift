@@ -36,6 +36,17 @@ private struct SkeletonBlock: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = false
 
+    private var pulseAnimation: Animation {
+        .timingCurve(
+            OPSStyle.Animation.easeSmoothP1x,
+            OPSStyle.Animation.easeSmoothP1y,
+            OPSStyle.Animation.easeSmoothP2x,
+            OPSStyle.Animation.easeSmoothP2y,
+            duration: 1.5
+        )
+        .repeatForever(autoreverses: true)
+    }
+
     var body: some View {
         RoundedRectangle(cornerRadius: radius)
             .fill(reduceMotion
@@ -45,7 +56,7 @@ private struct SkeletonBlock: View {
             .frame(maxWidth: width == nil ? .infinity : nil)
             .onAppear {
                 guard !reduceMotion else { return }
-                withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                withAnimation(pulseAnimation) {
                     pulse = true
                 }
             }

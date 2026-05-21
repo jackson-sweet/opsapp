@@ -52,10 +52,12 @@ struct BooksDrillTile: View {
                     .lineLimit(1)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility2)  // § 8.4 — tile label clamped
                 Spacer(minLength: 4)
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 9, weight: .regular))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .accessibilityHidden(true)
+                if onTap != nil {
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 9, weight: .regular))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .accessibilityHidden(true)
+                }
             }
 
             Text(value)
@@ -79,6 +81,26 @@ struct BooksDrillTile: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func booksNumericContentTransition(reduceMotion: Bool) -> some View {
+        if reduceMotion {
+            self
+        } else {
+            self.contentTransition(.numericText())
+        }
+    }
+
+    @ViewBuilder
+    func booksOpacityContentTransition(reduceMotion: Bool) -> some View {
+        if reduceMotion {
+            self
+        } else {
+            self.contentTransition(.opacity)
+        }
     }
 }
 

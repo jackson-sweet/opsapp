@@ -70,6 +70,8 @@ struct PLCard: View {
     var body: some View {
         if isSkeleton {
             skeletonView.padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("P and L loading")
         } else if viewModel.cardError(.pl) {
             BooksCardError(onRetry: { Task { await viewModel.retry(.pl) } })
         } else if isEmpty {
@@ -133,14 +135,14 @@ struct PLCard: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .dynamicTypeSize(...DynamicTypeSize.accessibility3)  // § 8.4 — hero number clamp
-                .contentTransition(.numericText())
+                .booksNumericContentTransition(reduceMotion: reduceMotion)
 
             Text("\(marginPctSigned)% MARGIN")
                 .font(.custom("JetBrainsMono-Medium", size: 11))
                 .tracking(0.44)  // 0.04em at 11pt
                 .foregroundColor(marginColor)
                 .monospacedDigit()
-                .contentTransition(.numericText())
+                .booksNumericContentTransition(reduceMotion: reduceMotion)
         }
     }
 
@@ -170,7 +172,7 @@ struct PLCard: View {
                     .font(.custom("JetBrainsMono-Medium", size: 14))
                     .foregroundColor(OPSStyle.Colors.oliveMobile)
                     .monospacedDigit()
-                    .contentTransition(.numericText())
+                    .booksNumericContentTransition(reduceMotion: reduceMotion)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 4) {
@@ -182,7 +184,7 @@ struct PLCard: View {
                     .font(.custom("JetBrainsMono-Medium", size: 14))
                     .foregroundColor(OPSStyle.Colors.tanMobile)
                     .monospacedDigit()
-                    .contentTransition(.numericText())
+                    .booksNumericContentTransition(reduceMotion: reduceMotion)
             }
         }
     }
@@ -223,6 +225,8 @@ struct PLCard: View {
             }
             .padding(.top, OPSStyle.Layout.spacing4)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("P and L. No activity this period.")
     }
 
     // MARK: - Skeleton

@@ -92,6 +92,8 @@ struct ARCard: View {
     var body: some View {
         if isSkeleton {
             skeletonView.padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Accounts receivable loading")
         } else if viewModel.cardError(.ar) {
             BooksCardError(onRetry: { Task { await viewModel.retry(.ar) } })
         } else if isEmpty {
@@ -136,7 +138,7 @@ struct ARCard: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .dynamicTypeSize(...DynamicTypeSize.accessibility3)  // § 8.4 — hero number clamp
-                .contentTransition(.numericText())
+                .booksNumericContentTransition(reduceMotion: reduceMotion)
 
             subline
         }
@@ -268,6 +270,8 @@ struct ARCard: View {
                 .tracking(1.76)
                 .foregroundColor(OPSStyle.Colors.inactiveText)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Accounts receivable. No open invoices.")
     }
 
     // MARK: - Skeleton

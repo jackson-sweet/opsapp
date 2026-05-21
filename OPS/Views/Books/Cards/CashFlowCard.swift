@@ -13,7 +13,7 @@ import SwiftUI
 
 struct CashFlowCard: View {
     @ObservedObject var viewModel: MoneyDashboardViewModel
-    var onTapDays: () -> Void
+    var onTapDays: (() -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -63,6 +63,8 @@ struct CashFlowCard: View {
     var body: some View {
         if isSkeleton {
             skeletonView.padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Cash flow loading")
         } else if viewModel.cardError(.cashFlow) {
             BooksCardError(onRetry: { Task { await viewModel.retry(.cashFlow) } })
         } else if isEmpty {
@@ -102,7 +104,6 @@ struct CashFlowCard: View {
                     value: String(format: "%.1f", viewModel.avgDaysToPayment),
                     sub: "TO PAY",
                     onTap: onTapDays,
-                    accessibilityHint: "Double-tap for cash flow detail",
                     accessibilityLabelOverride: "Days to pay, \(String(format: "%.1f", viewModel.avgDaysToPayment)) days mean"
                 )
             }
@@ -125,7 +126,7 @@ struct CashFlowCard: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .dynamicTypeSize(...DynamicTypeSize.accessibility3)  // § 8.4 — hero number clamp
-                .contentTransition(.numericText())
+                .booksNumericContentTransition(reduceMotion: reduceMotion)
         }
     }
 
@@ -262,6 +263,8 @@ struct CashFlowCard: View {
             }
             .padding(.top, OPSStyle.Layout.spacing4)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Cash flow. No payments this period.")
     }
 
     // MARK: - Skeleton
@@ -299,14 +302,14 @@ struct CashFlowCard: View {
 
 #if DEBUG
 #Preview("CashFlowCard — seeded") {
-    CashFlowCard(viewModel: .previewStub(), onTapDays: {})
+    CashFlowCard(viewModel: .previewStub())
         .padding(.vertical, 24)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
 }
 
 #Preview("CashFlowCard — empty") {
-    CashFlowCard(viewModel: .previewEmpty(), onTapDays: {})
+    CashFlowCard(viewModel: .previewEmpty())
         .padding(.vertical, 24)
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)

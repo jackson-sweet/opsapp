@@ -251,9 +251,9 @@ class MoneyDashboardViewModel: ObservableObject {
     ///  * `syncState` reflects the worst error encountered: any URLError with
     ///    `.notConnectedToInternet` / `.networkConnectionLost` / `.timedOut`
     ///    downgrades to `.offline`; any other error downgrades to `.error`.
-    ///  * `hasEverLoaded` flips true only on a fully-clean load — partial failure
-    ///    keeps the skeleton path live so the next attempt still has somewhere
-    ///    to land.
+    ///  * `hasEverLoaded` flips true once the first load attempt completes,
+    ///    including a load with per-card failures, so failed cards render retry
+    ///    states instead of staying trapped in skeletons.
     func loadData() async {
         guard estimateRepository != nil,
               invoiceRepository != nil,

@@ -37,7 +37,7 @@ struct JobsCard: View {
 
     /// Composed VoiceOver summary for the whole card (spec § 8.1, Card 5).
     private var accessibilityCardLabel: String {
-        "Jobs. \(viewModel.profitableProjectCount) profitable, \(viewModel.losersProjectCount) losing money this \(viewModel.selectedPeriod.label). Average margin \(Int((viewModel.avgProjectMargin * 100).rounded()))%."
+        "Jobs. \(viewModel.profitableProjectCount) profitable, \(viewModel.losersProjectCount) losing money, \(viewModel.selectedPeriod.pillLabel). Average margin \(Int((viewModel.avgProjectMargin * 100).rounded()))%."
     }
 
     // MARK: - Body

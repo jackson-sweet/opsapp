@@ -86,7 +86,7 @@ struct HeroCarousel: View {
             // navigable inside the container. Count is permission-filtered, never
             // hardcoded to 5.
             .accessibilityElement(children: .contain)
-            .accessibilityLabel("Books dashboard, \(visibleCards.count) cards, swipe with two fingers to navigate")
+            .accessibilityLabel("Books dashboard, \(visibleCards.count) cards")
             .accessibilityAddTraits(.isHeader)
         }
     }

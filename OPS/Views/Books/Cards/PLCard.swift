@@ -50,7 +50,19 @@ struct PLCard: View {
 
     /// Composed VoiceOver summary for the whole card (spec § 8.1, Card 1).
     private var accessibilityCardLabel: String {
-        "P and L. Net cash \(currencyString(viewModel.netCash)) this \(viewModel.selectedPeriod.label). \(marginPctSigned)% margin."
+        "P and L. Net cash \(currencyString(viewModel.netCash)), \(viewModel.selectedPeriod.pillLabel). \(marginPctSigned)% margin."
+    }
+
+    /// VoiceOver label for the OUTSTANDING drill tile (spec § 8.2).
+    private var outstandingAccessibilityLabel: String {
+        let n = viewModel.overdueInvoicesCount
+        return "Outstanding receivables, \(currencyString(viewModel.overdueInvoicesValue)), \(n) item\(n == 1 ? "" : "s")"
+    }
+
+    /// VoiceOver label for the FORECAST drill tile (spec § 8.2).
+    private var forecastAccessibilityLabel: String {
+        let n = viewModel.pendingEstimatesCount
+        return "Forecast revenue, \(currencyString(viewModel.pendingEstimatesValue)), \(n) estimate\(n == 1 ? "" : "s") sent"
     }
 
     // MARK: - Body
@@ -90,7 +102,7 @@ struct PLCard: View {
                     valueColor: OPSStyle.Colors.rose,
                     onTap: onTapOutstanding,
                     accessibilityHint: "Double-tap to view overdue invoices",
-                    accessibilityLabelOverride: "Outstanding receivables, \(currencyString(viewModel.overdueInvoicesValue)), \(viewModel.overdueInvoicesCount) items"
+                    accessibilityLabelOverride: outstandingAccessibilityLabel
                 )
                 BooksDrillTile(
                     label: "FORECAST",
@@ -99,7 +111,7 @@ struct PLCard: View {
                     valueColor: OPSStyle.Colors.primaryAccent,
                     onTap: onTapForecast,
                     accessibilityHint: "Double-tap to view sent estimates",
-                    accessibilityLabelOverride: "Forecast revenue, \(currencyString(viewModel.pendingEstimatesValue)), \(viewModel.pendingEstimatesCount) estimates sent"
+                    accessibilityLabelOverride: forecastAccessibilityLabel
                 )
             }
             .padding(.top, OPSStyle.Layout.spacing4)

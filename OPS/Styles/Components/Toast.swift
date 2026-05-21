@@ -77,7 +77,18 @@ enum ToastTone {
 /// as a trailing button; tapping it runs `handler`, then dismisses the toast.
 struct ToastAction {
     let label: String
+    let accessibilityLabel: String?
     let handler: () -> Void
+
+    init(
+        label: String,
+        accessibilityLabel: String? = nil,
+        handler: @escaping () -> Void
+    ) {
+        self.label = label
+        self.accessibilityLabel = accessibilityLabel
+        self.handler = handler
+    }
 }
 
 // MARK: - Toast value
@@ -277,7 +288,7 @@ private struct ToastBanner: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
-        .accessibilityLabel(action.label)
+        .accessibilityLabel(action.accessibilityLabel ?? action.label)
     }
 
     /// Two-segment label: `//` slashes in textMute, body in tone colour. Both

@@ -148,12 +148,14 @@ struct MainTabView: View {
     private let keyboardWillHide = NotificationCenter.default
         .publisher(for: UIResponder.keyboardWillHideNotification)
     
-    // BOOKS tab is visible to anyone with a money-document permission or the
-    // pipeline forecast permission. The hub filters segments per-permission;
-    // users with a single visible segment auto-skip via `booksAutoSkipDestination`.
+    // BOOKS tab is visible to anyone with at least one of the three financial-area
+    // permissions. The hub itself filters segments per-permission; users with a
+    // single visible segment auto-skip the hub via `booksAutoSkipDestination`.
+    //
+    // Books Phase 2 (2026-05-11): `pipeline.view` no longer gates BOOKS — Pipeline
+    // is its own top-level tab (see `PIPELINE TAB - P1-1`).
     private var hasBooksAccess: Bool {
         permissionStore.can("finances.view")
-            || permissionStore.can("pipeline.view")
             || permissionStore.can("estimates.view")
             || permissionStore.can("expenses.view")
     }

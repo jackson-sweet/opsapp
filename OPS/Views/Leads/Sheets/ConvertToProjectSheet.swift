@@ -324,6 +324,9 @@ struct ConvertToProjectSheet: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
                 .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
         )
+        // 32pt visible chip · 44pt hit area — MOBILE.md §1 / audit F1.
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
     }
 
     private func truncatedTitle(_ raw: String) -> String {

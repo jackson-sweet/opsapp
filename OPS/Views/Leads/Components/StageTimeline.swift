@@ -74,7 +74,7 @@ private struct StageRow: View {
             HStack(spacing: 6) {
                 if let from = transition.fromStage {
                     Text(from.shortLabel)
-                        .font(.custom("JetBrainsMono-Regular", size: 9))
+                        .font(.custom("JetBrainsMono-Regular", size: 9.5))
                         .fontWeight(.semibold)
                         .kerning(1.26)
                         .foregroundColor(OPSStyle.Colors.textMute)

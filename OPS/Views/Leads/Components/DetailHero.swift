@@ -248,9 +248,9 @@ private struct StageTag: View {
 // MARK: - KvCell (private)
 
 /// One column in the hero's KPI strip. Three lines:
-///   - LABEL  : JBM Mono 9pt 600, kerning 1.26, text3, uppercase
+///   - LABEL  : JBM Mono 9.5pt 600, kerning 1.26, text3, uppercase
 ///   - VALUE  : Mohave Light 18pt (non-mono) OR JBM Mono Medium 13pt (mono mode)
-///   - SUB    : JBM Mono 8.5pt 600, kerning 1.02, textMute, uppercase
+///   - SUB    : JBM Mono 9.5pt 600, kerning 1.02, textMute, uppercase
 ///
 /// `useMono` switches the value to monospaced 13pt — used for SOURCE which
 /// reads as an enum-y label rather than a numeric value.
@@ -263,7 +263,7 @@ private struct KvCell: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
-                .font(.custom("JetBrainsMono-Regular", size: 9))
+                .font(.custom("JetBrainsMono-Regular", size: 9.5))
                 .fontWeight(.semibold)
                 .kerning(1.26)
                 .foregroundColor(OPSStyle.Colors.text3)

@@ -138,17 +138,14 @@ struct ConvertToProjectSheet: View {
     // MARK: - Header
 
     private var header: some View {
-        ZStack {
-            HStack {
-                SheetCloseButton {
-                    Task { await commitNoProjectAndDismiss() }
-                }
-                Spacer()
-                Color.clear.frame(width: 44, height: 44)
+        HStack(spacing: 8) {
+            SheetTitleLabel(title: "CONVERT → PROJECT", size: .full)
+            SheetCloseButton {
+                Task { await commitNoProjectAndDismiss() }
             }
-            SheetTitleLabel(title: "CONVERT → PROJECT")
         }
-        .padding(.horizontal, 6)
+        .padding(.leading, 20)
+        .padding(.trailing, 6)
         .padding(.top, 8)
         .padding(.bottom, 4)
     }

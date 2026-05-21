@@ -61,15 +61,12 @@ struct AddLeadSheet: View {
     // MARK: - Header
 
     private var header: some View {
-        ZStack {
-            HStack {
-                SheetCloseButton { dismiss() }
-                Spacer()
-                Color.clear.frame(width: 44, height: 44)
-            }
-            SheetTitleLabel(title: "NEW LEAD")
+        HStack(spacing: 8) {
+            SheetTitleLabel(title: "NEW LEAD", size: .full)
+            SheetCloseButton { dismiss() }
         }
-        .padding(.horizontal, 6)
+        .padding(.leading, 20)
+        .padding(.trailing, 6)
         .padding(.top, 8)
         .padding(.bottom, 4)
     }

@@ -77,12 +77,11 @@ struct LeadLogActivitySheet: View {
     // MARK: - Header
 
     private var header: some View {
-        VStack(spacing: 0) {
-            SheetTitleLabel(title: "LOG ACTIVITY")
-                .padding(.top, 6)
-                .padding(.bottom, 12)
-        }
-        .frame(maxWidth: .infinity)
+        // Drag handle is provided by the parent's `.presentationDragIndicator(.visible)`
+        SheetTitleLabel(title: "LOG ACTIVITY", size: .half)
+            .padding(.horizontal, 20)
+            .padding(.top, 6)
+            .padding(.bottom, 12)
     }
 
     // MARK: - Type

@@ -645,21 +645,32 @@ struct SheetCloseButton: View {
     }
 }
 
-/// Centered `// TITLE` mono header used in every lead sheet's chrome row.
-/// Title rendered uppercase regardless of input. Per mobile/MOBILE.md §6.
+/// Display title for a lead sheet's header — Cake Mono Light, uppercase,
+/// left-aligned. Sized per mobile/MOBILE.md §6.2 (half sheet) and §6.3
+/// (full sheet).
 struct SheetTitleLabel: View {
+    /// Sheet-detent variant — sets the type size per MOBILE.md §6.2 / §6.3.
+    enum Size {
+        case full   // full-detent sheet — 22pt
+        case half   // half-detent sheet — 18pt
+
+        var pointSize: CGFloat {
+            switch self {
+            case .full: return 22
+            case .half: return 18
+            }
+        }
+    }
+
     let title: String
+    var size: Size = .full
 
     var body: some View {
-        HStack(spacing: 0) {
-            Text("// ")
-                .foregroundColor(OPSStyle.Colors.textMute)
-            Text(title)
-                .foregroundColor(OPSStyle.Colors.text3)
-        }
-        .font(.custom("JetBrainsMono-Medium", size: 11))
-        .kerning(1.8)
-        .textCase(.uppercase)
+        Text(title)
+            .font(.custom("CakeMono-Light", size: size.pointSize))
+            .foregroundColor(OPSStyle.Colors.text)
+            .textCase(.uppercase)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

@@ -88,15 +88,12 @@ struct EditLeadSheet: View {
     // MARK: - Header
 
     private var header: some View {
-        ZStack {
-            HStack {
-                SheetCloseButton { dismiss() }
-                Spacer()
-                Color.clear.frame(width: 44, height: 44)
-            }
-            SheetTitleLabel(title: titleText)
+        HStack(spacing: 8) {
+            SheetTitleLabel(title: titleText, size: .full)
+            SheetCloseButton { dismiss() }
         }
-        .padding(.horizontal, 6)
+        .padding(.leading, 20)
+        .padding(.trailing, 6)
         .padding(.top, 8)
         .padding(.bottom, 4)
     }

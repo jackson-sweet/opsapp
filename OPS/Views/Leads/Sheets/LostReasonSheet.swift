@@ -60,12 +60,10 @@ struct LostReasonSheet: View {
 
     private var header: some View {
         // Drag handle is provided by the parent's `.presentationDragIndicator(.visible)`
-        VStack(spacing: 0) {
-            SheetTitleLabel(title: "MARK AS LOST")
-                .padding(.top, 6)
-                .padding(.bottom, 14)
-        }
-        .frame(maxWidth: .infinity)
+        SheetTitleLabel(title: "MARK AS LOST", size: .half)
+            .padding(.horizontal, 20)
+            .padding(.top, 6)
+            .padding(.bottom, 14)
     }
 
     // MARK: - Summary

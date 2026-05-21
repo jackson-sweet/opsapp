@@ -138,17 +138,14 @@ struct ConvertToProjectSheet: View {
     // MARK: - Header
 
     private var header: some View {
-        ZStack {
-            HStack {
-                SheetCloseButton {
-                    Task { await commitNoProjectAndDismiss() }
-                }
-                Spacer()
-                Color.clear.frame(width: 44, height: 44)
+        HStack(spacing: 8) {
+            SheetTitleLabel(title: "CONVERT → PROJECT", size: .full)
+            SheetCloseButton {
+                Task { await commitNoProjectAndDismiss() }
             }
-            SheetTitleLabel(title: "CONVERT → PROJECT")
         }
-        .padding(.horizontal, 6)
+        .padding(.leading, 20)
+        .padding(.trailing, 6)
         .padding(.top, 8)
         .padding(.bottom, 4)
     }
@@ -324,6 +321,9 @@ struct ConvertToProjectSheet: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
                 .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
         )
+        // 32pt visible chip · 44pt hit area — MOBILE.md §1 / audit F1.
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
     }
 
     private func truncatedTitle(_ raw: String) -> String {
@@ -536,15 +536,14 @@ struct ConvertToProjectSheet: View {
                     .padding(.horizontal, 20)
             }
 
-            HStack(spacing: 8) {
+            SheetFooterButtonRow {
                 SheetCTAButton(
                     label: "CANCEL",
                     variant: .secondary,
                     action: { Task { await commitNoProjectAndDismiss() } }
                 )
-                .frame(maxWidth: .infinity)
                 .disabled(isSaving)
-
+            } primary: {
                 if renderState == .duplicate {
                     SheetCTAButton(
                         label: "OPEN PROJECT",
@@ -553,7 +552,6 @@ struct ConvertToProjectSheet: View {
                         isLoading: isSaving,
                         action: { openExistingProjectAction() }
                     )
-                    .frame(maxWidth: .infinity * 2)
                     .disabled(isSaving)
                 } else {
                     SheetCTAButton(
@@ -563,7 +561,6 @@ struct ConvertToProjectSheet: View {
                         isLoading: isSaving,
                         action: createProject
                     )
-                    .frame(maxWidth: .infinity * 2)
                     .disabled(!canCreate)
                     .opacity(canCreate ? 1 : 0.5)
                 }
@@ -667,13 +664,9 @@ struct ConvertToProjectSheet: View {
                         "projectId": project.id,
                     ]
                 )
-                let projectId = project.id
+                // Operator stays on the LEADS queue — the success toast
+                // carries the tap-through to the new project (P3-2 / PM).
                 dismiss()
-                // Defer navigation so the sheet's dismiss animation completes
-                // before AppState presents the project-details sheet.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    appState.viewProjectDetailsById(projectId)
-                }
             } catch {
                 isSaving = false
                 errorMessage = simplifyError(error)

@@ -88,15 +88,12 @@ struct EditLeadSheet: View {
     // MARK: - Header
 
     private var header: some View {
-        ZStack {
-            HStack {
-                SheetCloseButton { dismiss() }
-                Spacer()
-                Color.clear.frame(width: 44, height: 44)
-            }
-            SheetTitleLabel(title: titleText)
+        HStack(spacing: 8) {
+            SheetTitleLabel(title: titleText, size: .full)
+            SheetCloseButton { dismiss() }
         }
-        .padding(.horizontal, 6)
+        .padding(.leading, 20)
+        .padding(.trailing, 6)
         .padding(.top, 8)
         .padding(.bottom, 4)
     }
@@ -114,15 +111,14 @@ struct EditLeadSheet: View {
                     .padding(.horizontal, 20)
             }
 
-            HStack(spacing: 8) {
+            SheetFooterButtonRow {
                 SheetCTAButton(
                     label: "CANCEL",
                     variant: .secondary,
                     action: { dismiss() }
                 )
-                .frame(maxWidth: .infinity)
                 .disabled(isSaving || isArchiving)
-
+            } primary: {
                 SheetCTAButton(
                     label: "SAVE",
                     icon: "checkmark",
@@ -130,7 +126,6 @@ struct EditLeadSheet: View {
                     isLoading: isSaving,
                     action: save
                 )
-                .frame(maxWidth: .infinity * 2)
                 .disabled(!canSave)
                 .opacity(canSave ? 1 : 0.5)
             }

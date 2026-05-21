@@ -110,7 +110,7 @@ struct WonConvertCard: View {
                         .font(OPSStyle.Typography.buttonLabel)
                         .kerning(0.6)
                         .foregroundColor(OPSStyle.Colors.opsAccent)
-                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
                                 .strokeBorder(OPSStyle.Colors.opsAccent, lineWidth: 1)
@@ -126,7 +126,7 @@ struct WonConvertCard: View {
                         .font(OPSStyle.Typography.buttonLabel)
                         .kerning(0.6)
                         .foregroundColor(OPSStyle.Colors.text2)
-                        .frame(minWidth: 84, minHeight: 40)
+                        .frame(minWidth: 84, minHeight: 44)
                         .padding(.horizontal, 14)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)

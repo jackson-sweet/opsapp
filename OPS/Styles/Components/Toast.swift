@@ -17,6 +17,8 @@
 //    • Haptic on present: notificationOccurred matching the tone
 //    • Tap to dismiss → light impact haptic
 //    • Auto-dismiss default: 3.0s
+//    • Optional action: a trailing tap-through affordance (label + handler).
+//      Action-bearing toasts pass a longer autoDismissAfter (~6s).
 //
 //  Mount the host with `.toastHost()` on a root container (MainTabView).
 //  Anywhere in the app: `ToastCenter.shared.present(.init(label: "// SAVED", tone: .success))`.
@@ -69,6 +71,15 @@ enum ToastTone {
     }
 }
 
+// MARK: - Toast action
+
+/// Optional tap-through affordance on a toast. The banner renders `label`
+/// as a trailing button; tapping it runs `handler`, then dismisses the toast.
+struct ToastAction {
+    let label: String
+    let handler: () -> Void
+}
+
 // MARK: - Toast value
 
 struct Toast: Identifiable, Equatable {
@@ -76,17 +87,21 @@ struct Toast: Identifiable, Equatable {
     let label: String
     let tone: ToastTone
     let autoDismissAfter: TimeInterval
+    /// Optional trailing tap-through. `nil` → plain dismiss-on-tap toast.
+    let action: ToastAction?
 
     init(
         id: UUID = UUID(),
         label: String,
         tone: ToastTone,
-        autoDismissAfter: TimeInterval = 3.0
+        autoDismissAfter: TimeInterval = 3.0,
+        action: ToastAction? = nil
     ) {
         self.id = id
         self.label = label
         self.tone = tone
         self.autoDismissAfter = autoDismissAfter
+        self.action = action
     }
 
     static func == (lhs: Toast, rhs: Toast) -> Bool { lhs.id == rhs.id }
@@ -185,18 +200,13 @@ private struct ToastBanner: View {
     let onTap: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: toast.tone.iconName)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(toast.tone.textColor)
-                .frame(width: 16, height: 16)
-
-            labelText
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityLabel(accessibilityLabel)
+        HStack(spacing: 0) {
+            messageRow
+            if let action = toast.action {
+                actionDivider
+                actionButton(action)
+            }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .glassDense()
         .overlay(
@@ -212,9 +222,61 @@ private struct ToastBanner: View {
         .onAppear {
             UINotificationFeedbackGenerator().notificationOccurred(toast.tone.hapticType)
         }
+    }
+
+    /// Icon + `//` label — the confirmation message. The banner-wide tap
+    /// gesture dismisses; this stays one combined VoiceOver element.
+    private var messageRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: toast.tone.iconName)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(toast.tone.textColor)
+                .frame(width: 16, height: 16)
+
+            labelText
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(accessibilityLabel)
+        }
+        .padding(.leading, 20)
+        .padding(.trailing, toast.action == nil ? 20 : 12)
+        .padding(.vertical, 12)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Tap to dismiss")
+    }
+
+    /// 1pt tone hairline separating the message from the tap-through action.
+    private var actionDivider: some View {
+        Rectangle()
+            .fill(toast.tone.lineColor)
+            .frame(width: 1)
+            .padding(.vertical, 8)
+            .accessibilityHidden(true)
+    }
+
+    /// Trailing tap-through. Fires the action handler, then dismisses the
+    /// toast through the same path as a body tap.
+    private func actionButton(_ action: ToastAction) -> some View {
+        Button {
+            action.handler()
+            onTap()
+        } label: {
+            HStack(spacing: 5) {
+                Text(action.label)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .kerning(1.4)
+                    .textCase(.uppercase)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            .foregroundColor(OPSStyle.Colors.text)
+            .padding(.leading, 16)
+            .padding(.trailing, 20)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(action.label)
     }
 
     /// Two-segment label: `//` slashes in textMute, body in tone colour. Both

@@ -208,6 +208,9 @@ struct QuickGlyph: View {
                     RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .strokeBorder(emphasis ? Color.white.opacity(0.10) : .clear, lineWidth: 1)
                 )
+                // 34pt visible chip · 44pt hit area — MOBILE.md §1 / audit F1.
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityLabel(label)

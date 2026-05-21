@@ -470,6 +470,10 @@ struct DeckToolbar: View {
                 viewModel.showingMaterialPicker = true
             }
 
+            actionButton(icon: "shippingbox", label: "Order Vinyl") {
+                viewModel.showingVinylOrderSheet = true
+            }
+
             actionButton(icon: "arrow.up.and.down.circle", label: "Elevation") {
                 viewModel.showingElevationInput = true
             }

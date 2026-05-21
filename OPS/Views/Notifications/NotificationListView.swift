@@ -682,6 +682,8 @@ struct NotificationListView: View {
                 return ("shippingbox.fill", OPSStyle.Colors.errorStatus)
             case "threshold_alert":
                 return ("exclamationmark.triangle.fill", OPSStyle.Colors.warningStatus)
+            case "catalog_order_drafted":
+                return ("shippingbox.fill", OPSStyle.Colors.successStatus)
             case "time_off_requested":
                 return ("calendar.badge.clock", OPSStyle.Colors.warningStatus)
             case "time_off_approved":

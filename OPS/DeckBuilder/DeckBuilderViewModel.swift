@@ -44,6 +44,7 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var showingStairConfig: Bool = false
     @Published var showingAssignmentWheel: Bool = false
     @Published var showingMaterialPicker: Bool = false
+    @Published var showingVinylOrderSheet: Bool = false
     /// Properties sheet (PropertySheetView). Opens full edit controls for
     /// the current selection — edge type, house cladding, railing config,
     /// stair config, surface metadata, vertex elevation, etc. Previously
@@ -1587,6 +1588,79 @@ class DeckBuilderViewModel: ObservableObject {
             return nil
         }
         return drawingData.surfaces.first(where: { $0.id == id })
+    }
+
+    /// Converts the current face selection into measured vinyl inputs.
+    /// The order sheet should not re-detect or infer geometry on its own:
+    /// it gets the same reconciled persisted surfaces the canvas and
+    /// material tools use, matched back to current detected face polygons.
+    func selectedVinylOrderSurfaceInputs() -> [VinylOrderSurfaceInput] {
+        reconcileSurfaces()
+        guard let scale = drawingData.scaleFactor, scale > 0 else { return [] }
+        let selectedIds = selection.selectedSurfaceIds
+        guard !selectedIds.isEmpty else { return [] }
+
+        if isMultiLevel {
+            return drawingData.levels.flatMap { level in
+                vinylOrderInputs(
+                    persisted: level.surfaces,
+                    detected: level.detectedSurfaces,
+                    selectedIds: selectedIds,
+                    scale: scale,
+                    levelName: level.name
+                )
+            }
+        }
+
+        return vinylOrderInputs(
+            persisted: drawingData.surfaces,
+            detected: drawingData.detectedSurfaces,
+            selectedIds: selectedIds,
+            scale: scale,
+            levelName: nil
+        )
+    }
+
+    private func vinylOrderInputs(
+        persisted: [DeckSurface],
+        detected: [DetectedSurface],
+        selectedIds: Set<String>,
+        scale: Double,
+        levelName: String?
+    ) -> [VinylOrderSurfaceInput] {
+        persisted.enumerated().compactMap { index, surface in
+            guard selectedIds.contains(surface.id),
+                  let face = detectedSurface(for: surface, in: detected) else { return nil }
+            let trimmedLabel = surface.label?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let label = trimmedLabel.flatMap { $0.isEmpty ? nil : $0 } ?? "Surface \(index + 1)"
+            return VinylOrderSurfaceInput(
+                id: surface.id,
+                label: label,
+                levelName: levelName,
+                positions: face.positions,
+                scaleFactor: scale
+            )
+        }
+    }
+
+    private func detectedSurface(for persisted: DeckSurface, in detected: [DetectedSurface]) -> DetectedSurface? {
+        if let exact = detected.first(where: { Set($0.vertexIds) == persisted.vertexIds }) {
+            return exact
+        }
+
+        var best: (surface: DetectedSurface, jaccard: Double)?
+        for face in detected {
+            let faceIds = Set(face.vertexIds)
+            let intersection = faceIds.intersection(persisted.vertexIds).count
+            let union = faceIds.union(persisted.vertexIds).count
+            guard union > 0 else { continue }
+            let score = Double(intersection) / Double(union)
+            if score > (best?.jaccard ?? -1) {
+                best = (face, score)
+            }
+        }
+        guard let best, best.jaccard >= SurfaceReconciler.rebindThreshold else { return nil }
+        return best.surface
     }
 
     /// Public, multi-level-aware accessor for a vertex by id. Mirrors

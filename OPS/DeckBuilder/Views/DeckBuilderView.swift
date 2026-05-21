@@ -298,6 +298,13 @@ struct DeckBuilderView: View {
         .sheet(isPresented: $viewModel.showingMaterialPicker) {
             MaterialPickerSheet(viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.showingVinylOrderSheet) {
+            VinylOrderSheet(
+                viewModel: viewModel,
+                projectId: projectId,
+                companyId: companyId
+            )
+        }
         .sheet(isPresented: $viewModel.showingPropertySheet) {
             PropertySheetView(viewModel: viewModel)
         }
@@ -963,4 +970,3 @@ struct DeckBuilderView: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 }
-

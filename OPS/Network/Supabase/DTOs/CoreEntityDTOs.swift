@@ -229,6 +229,12 @@ struct SupabaseProjectDTO: Codable, Identifiable {
     let deletedAt: String?
     let createdAt: String?
     let createdBy: String?
+    /// Project-level marker used by Deck Builder vinyl ordering. The server
+    /// defaults to `not_ordered`; nullable here so older schemas still decode
+    /// during phased rollout.
+    var vinylOrderStatus: String? = nil
+    var vinylOrderedAt: String? = nil
+    var vinylOrderedBy: String? = nil
     /// Server-maintained `projects.updated_at` (bug 70a4d9fd). Read-only
     /// from iOS — Supabase auto-bumps it on every write, so outbound
     /// callers don't pass it. Declared as `var` with a default so the
@@ -250,6 +256,9 @@ struct SupabaseProjectDTO: Codable, Identifiable {
         case deletedAt      = "deleted_at"
         case createdAt      = "created_at"
         case createdBy      = "created_by"
+        case vinylOrderStatus = "vinyl_order_status"
+        case vinylOrderedAt = "vinyl_ordered_at"
+        case vinylOrderedBy = "vinyl_ordered_by"
         case updatedAt      = "updated_at"
     }
 }

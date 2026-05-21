@@ -311,7 +311,7 @@ struct MaterialPickerSheet: View {
                 taskTypeColor: nil,
                 isGate: standard.id.contains("gate")
             )
-            applyMaterial(item)
+            applyBuiltInMaterial(item, standard: standard)
             dismiss()
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2_5) {
@@ -342,6 +342,62 @@ struct MaterialPickerSheet: View {
     }
 
     // MARK: - Apply
+
+    private func applyBuiltInMaterial(_ item: AssignedItem, standard: BuiltInMaterial) {
+        guard isLinearMode, viewModel.selection.hasEdges else {
+            applyMaterial(item)
+            return
+        }
+
+        let selectedEdgeIds = Array(viewModel.selection.selectedEdgeIds)
+        let material = houseEdgeMaterial(for: standard)
+        var shouldAssignDeckItem = false
+
+        for edgeId in selectedEdgeIds {
+            guard let edge = viewModel.findEdge(byId: edgeId) else { continue }
+
+            if edge.edgeType == .houseEdge {
+                if let material {
+                    viewModel.setHouseEdgeMaterial(edgeId, material: material)
+                }
+                continue
+            }
+
+            if standard.id == "std.wall.parapet" {
+                viewModel.setRailing(
+                    edgeId,
+                    config: RailingConfig(
+                        railingType: .parapetWall,
+                        maxPostSpacing: RailingType.parapetWall.defaultMaxPostSpacing,
+                        wallMaterial: .parapet
+                    )
+                )
+                shouldAssignDeckItem = true
+            } else if let material, edge.railingConfig?.railingType == .parapetWall {
+                viewModel.setRailingWallMaterial(edgeId, material: material)
+                shouldAssignDeckItem = true
+            } else if standard.id.contains("gate") {
+                shouldAssignDeckItem = true
+            }
+        }
+
+        if shouldAssignDeckItem {
+            viewModel.assignItemToSelectedEdges(item)
+        }
+    }
+
+    private func houseEdgeMaterial(for standard: BuiltInMaterial) -> HouseEdgeMaterial? {
+        switch standard.id {
+        case "std.wall.parapet": return .parapet
+        case "std.cladding.stucco": return .stucco
+        case "std.cladding.hardie": return .hardie
+        case "std.cladding.woodVertical": return .woodVertical
+        case "std.cladding.brick": return .brick
+        case "std.cladding.stone": return .stone
+        case "std.cladding.vinyl": return .vinyl
+        default: return nil
+        }
+    }
 
     /// Bug 5e681032 — when multiple edges are selected, the material must apply
     /// to ALL of them (not just the first). The previous if/else-if split also

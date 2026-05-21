@@ -1,10 +1,13 @@
 // OPS/OPS/DeckBuilder/Views/DeckSettingsSheet.swift
 
+import SwiftData
 import SwiftUI
 
 struct DeckSettingsSheet: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
     @Environment(\.dismiss) private var dismiss
+    @Query private var catalogItems: [CatalogItem]
+    @Query private var catalogVariants: [CatalogVariant]
 
     private let lengthSnapOptions: [(String, Double)] = [
         ("1\"", 1.0), ("2\"", 2.0), ("3\"", 3.0), ("6\"", 6.0), ("12\"", 12.0)
@@ -16,6 +19,31 @@ struct DeckSettingsSheet: View {
 
     /// Haptic on apply so user feels the settings commit
     private let mediumImpact = UIImpactFeedbackGenerator(style: .medium)
+
+    private var vinylProductChoices: [VinylSettingsProductChoice] {
+        let activeVariantsByItem = Dictionary(grouping: catalogVariants.filter { variant in
+            variant.companyId == viewModel.deckDesign.companyId
+                && variant.isActive
+                && variant.deletedAt == nil
+        }, by: \.catalogItemId)
+
+        return catalogItems
+            .filter { item in
+                item.companyId == viewModel.deckDesign.companyId
+                    && item.isActive
+                    && item.deletedAt == nil
+                    && !(activeVariantsByItem[item.id] ?? []).isEmpty
+            }
+            .sorted { lhs, rhs in
+                lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
+            .map { item in
+                VinylSettingsProductChoice(
+                    item: item,
+                    variantCount: activeVariantsByItem[item.id]?.count ?? 0
+                )
+            }
+    }
 
     var body: some View {
         NavigationView {
@@ -117,6 +145,36 @@ struct DeckSettingsSheet: View {
                 }
 
                 Section {
+                    Picker("Vinyl product", selection: Binding(
+                        get: { viewModel.drawingData.config.vinylCatalogItemId ?? "" },
+                        set: { viewModel.setVinylCatalogItemId($0) }
+                    )) {
+                        Text("None").tag("")
+                        ForEach(vinylProductChoices) { choice in
+                            Text(choice.displayName).tag(choice.id)
+                        }
+                    }
+
+                    Button {
+                        viewModel.vinylOrderSurfaceScope = .allSurfaces
+                        dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            viewModel.showingVinylOrderSheet = true
+                        }
+                    } label: {
+                        Label("ORDER ALL VINYL", systemImage: "shippingbox")
+                            .font(OPSStyle.Typography.buttonLabel)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                } header: {
+                    Text("VINYL")
+                } footer: {
+                    Text("PRODUCT SETS THE COLOR LIST. NONE KEEPS FIELD TEXT.")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+
+                Section {
                     Toggle("Autosave every 2 minutes", isOn: Binding(
                         get: { viewModel.autosaveEnabled },
                         set: { viewModel.setAutosavePreference($0) }
@@ -176,5 +234,16 @@ struct DeckSettingsSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+}
+
+private struct VinylSettingsProductChoice: Identifiable {
+    let item: CatalogItem
+    let variantCount: Int
+
+    var id: String { item.id }
+
+    var displayName: String {
+        "\(item.name) / \(variantCount) VARIANTS"
     }
 }

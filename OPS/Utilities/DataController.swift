@@ -5338,6 +5338,7 @@ class DataController: ObservableObject {
             project.needsSync = true
             try? context.save()
         }
+        applyProjectVinylOrderFieldsLocally(projectId: projectId, fields: fields, context: context)
 
         // Convert AnyJSON to [String: Any]
         let changedFields = anyJSONToDict(fields)
@@ -5370,6 +5371,68 @@ class DataController: ObservableObject {
                 break
             }
         }
+    }
+
+    /// Keep the local Deck Builder vinyl marker in sync with generic project
+    /// field writes. The server columns live on `projects`; the local model is
+    /// a projection so we don't mutate the historical `Project` SwiftData shape.
+    private func applyProjectVinylOrderFieldsLocally(
+        projectId: String,
+        fields: [String: AnyJSON],
+        context: ModelContext
+    ) {
+        let hasVinylField = fields.keys.contains(ProjectVinylOrderFields.status)
+            || fields.keys.contains(ProjectVinylOrderFields.orderedAt)
+            || fields.keys.contains(ProjectVinylOrderFields.orderedBy)
+        guard hasVinylField else { return }
+
+        let marker = localVinylOrderMarker(projectId: projectId, context: context)
+
+        if let rawStatus = fields[ProjectVinylOrderFields.status],
+           case .string(let value) = rawStatus {
+            marker.status = ProjectVinylOrderStatus(rawValue: value) ?? .notOrdered
+        }
+
+        if let rawOrderedAt = fields[ProjectVinylOrderFields.orderedAt] {
+            switch rawOrderedAt {
+            case .string(let value):
+                marker.orderedAt = SupabaseDate.parse(value)
+            case .null:
+                marker.orderedAt = nil
+            default:
+                break
+            }
+        }
+
+        if let rawOrderedBy = fields[ProjectVinylOrderFields.orderedBy] {
+            switch rawOrderedBy {
+            case .string(let value):
+                marker.orderedBy = value
+            case .null:
+                marker.orderedBy = nil
+            default:
+                break
+            }
+        }
+
+        marker.lastSyncedAt = nil
+        try? context.save()
+    }
+
+    private func localVinylOrderMarker(
+        projectId: String,
+        context: ModelContext
+    ) -> ProjectVinylOrderMarker {
+        let descriptor = FetchDescriptor<ProjectVinylOrderMarker>(
+            predicate: #Predicate { $0.id == projectId }
+        )
+        if let marker = try? context.fetch(descriptor).first {
+            return marker
+        }
+
+        let marker = ProjectVinylOrderMarker(projectId: projectId)
+        context.insert(marker)
+        return marker
     }
 
     // MARK: - Generic Task Field Updates (SyncEngine Migration)

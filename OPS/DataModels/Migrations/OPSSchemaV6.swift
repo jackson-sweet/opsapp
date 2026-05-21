@@ -47,3 +47,22 @@ enum OPSSchemaV6: VersionedSchema {
             + [WizardState.self, CalendarMirrorMap.self]
     }
 }
+
+/// Schema version 7.0.0 — Project-level Vinyl Order marker.
+///
+/// V7 adds `ProjectVinylOrderMarker`, a local projection of the
+/// `projects.vinyl_order_*` server fields. It is intentionally separate from
+/// `Project` so this additive feature has a real schema differentiator without
+/// mutating the historical Project model used by older versioned schemas.
+enum OPSSchemaV7: VersionedSchema {
+    static var versionIdentifier: Schema.Version { Schema.Version(7, 0, 0) }
+
+    static var models: [any PersistentModel.Type] {
+        OPSSchemaCommon.unchangedModels
+            + OPSSchemaCommon.v3CatalogModels
+            + OPSSchemaCommon.v4ReminderModels
+            + OPSSchemaCommon.v6ForecastModels
+            + OPSSchemaCommon.v7VinylOrderModels
+            + [WizardState.self, CalendarMirrorMap.self]
+    }
+}

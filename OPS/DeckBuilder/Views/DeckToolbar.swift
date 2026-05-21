@@ -202,8 +202,13 @@ struct DeckToolbar: View {
 
             if surfaceSelected {
                 actionButton(icon: "shippingbox", label: "Order Vinyl") {
+                    viewModel.vinylOrderSurfaceScope = .selectedSurfaces
                     viewModel.showingVinylOrderSheet = true
                 }
+            }
+
+            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY") {
+                viewModel.armSelectionMove()
             }
 
             if canMoveToLevel {
@@ -422,6 +427,10 @@ struct DeckToolbar: View {
                 viewModel.showingElevationInput = true
             }
 
+            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY") {
+                viewModel.armSelectionMove()
+            }
+
             Spacer()
 
             actionButton(icon: "trash", label: "Delete", tint: OPSStyle.Colors.errorStatus) {
@@ -448,6 +457,10 @@ struct DeckToolbar: View {
 
             actionButton(icon: "stairs", label: "Stairs") {
                 viewModel.showingStairConfig = true
+            }
+
+            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY") {
+                viewModel.armSelectionMove()
             }
 
             // Material entry removed from edge toolbar — the floating
@@ -506,6 +519,10 @@ struct DeckToolbar: View {
                 viewModel.showingDimensionInput = true
             }
 
+            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY") {
+                viewModel.armSelectionMove()
+            }
+
             if viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3 {
                 moveToLevelMenu
             }
@@ -537,11 +554,16 @@ struct DeckToolbar: View {
             }
 
             actionButton(icon: "shippingbox", label: "Order Vinyl") {
+                viewModel.vinylOrderSurfaceScope = .selectedSurfaces
                 viewModel.showingVinylOrderSheet = true
             }
 
             if viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3 {
                 moveToLevelMenu
+            }
+
+            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY") {
+                viewModel.armSelectionMove()
             }
 
             actionButton(icon: "arrow.up.and.down.circle", label: "Elevation") {
@@ -863,6 +885,7 @@ struct DeckToolbar: View {
     /// doesn't ship deck-specific icons.
     private func railingIcon(for type: RailingType) -> String {
         switch type {
+        case .parapetWall: return "rectangle.bottomhalf.filled"
         case .glass:      return "rectangle.split.3x1"
         case .picket:     return "line.3.horizontal"
         case .cable:      return "cable.connector.horizontal"

@@ -25,7 +25,7 @@ final class VinylCutListEngineTests: XCTestCase {
         XCTAssertEqual(plan.totalWasteSqFt, 66, accuracy: 0.01)
     }
 
-    func testSettingsChangeStripCountAndOrderLineRollWidth() {
+    func testSettingsChangeStripCountAndOrderLineLength() {
         let surface = rectangle(id: "main", width: 240, height: 120)
         let settings = VinylOrderSettings(
             color: "Weathered grey",
@@ -44,8 +44,242 @@ final class VinylCutListEngineTests: XCTestCase {
         XCTAssertEqual(cut.resolvedDirection, .widthwise)
         XCTAssertEqual(cut.stripCount, 5)
         XCTAssertEqual(cut.stripLengthInches, 128, accuracy: 0.01)
-        XCTAssertTrue(cut.orderLine.contains("128\" X 60\""))
+        XCTAssertTrue(cut.orderLine.contains("10' 8\""))
+        XCTAssertFalse(cut.orderLine.contains("X 60\""))
         XCTAssertEqual(plan.totalOrderedSqFt, 267)
+    }
+
+    func testLShapedSurfaceCutsUseVariableLengthsToReduceWaste() {
+        let surface = lShape(
+            id: "main",
+            width: 240,
+            height: 192,
+            notchWidth: 144,
+            notchHeight: 96
+        )
+        let settings = VinylOrderSettings(
+            color: "",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .lengthwise
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: settings
+        )
+
+        let cut = try! XCTUnwrap(plan.surfaces.first)
+        XCTAssertEqual(cut.stripCount, 3)
+        XCTAssertEqual(cut.cutAreaSqFt, 288, accuracy: 0.01)
+        XCTAssertTrue(cut.orderLine.contains("2 CUTS @ 20'"), cut.orderLine)
+        XCTAssertTrue(cut.orderLine.contains("1 CUT @ 8'"), cut.orderLine)
+        XCTAssertFalse(cut.orderLine.contains("3 CUTS @ 20'"), cut.orderLine)
+        XCTAssertFalse(cut.orderLine.contains("SQ FT"), cut.orderLine)
+    }
+
+    func testLShapedSurfaceCutPiecesCarryPreviewGeometry() {
+        let surface = lShape(
+            id: "main",
+            width: 240,
+            height: 192,
+            notchWidth: 144,
+            notchHeight: 96
+        )
+        let settings = VinylOrderSettings(
+            color: "",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .lengthwise
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: settings
+        )
+
+        let surfacePlan = try! XCTUnwrap(plan.surfaces.first)
+        let shortCut = try! XCTUnwrap(surfacePlan.cuts.first { abs($0.lengthInches - 96) < 0.01 })
+        let longCut = try! XCTUnwrap(surfacePlan.cuts.first { abs($0.lengthInches - 240) < 0.01 })
+
+        XCTAssertEqual(shortCut.runStartInches, 0, accuracy: 0.01)
+        XCTAssertEqual(shortCut.runEndInches, 96, accuracy: 0.01)
+        XCTAssertEqual(longCut.runStartInches, 0, accuracy: 0.01)
+        XCTAssertEqual(longCut.runEndInches, 240, accuracy: 0.01)
+        XCTAssertNotEqual(shortCut.bandStartInches, longCut.bandStartInches)
+    }
+
+    func testTextMessageBodyOnlyIncludesColorAndCuts() {
+        let surface = lShape(
+            id: "main",
+            label: "Main deck",
+            width: 240,
+            height: 192,
+            notchWidth: 144,
+            notchHeight: 96
+        )
+        let settings = VinylOrderSettings(
+            color: "Weathered grey",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .lengthwise
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: settings
+        )
+
+        let body = plan.textMessageBody()
+
+        XCTAssertEqual(body, """
+        Color: Weathered grey
+        -2 @ 20'
+        -1 @ 8'
+        """)
+        XCTAssertFalse(body.contains("PROJECT"))
+        XCTAssertFalse(body.contains("ORDER AREA"))
+        XCTAssertFalse(body.contains("OFFCUT"))
+        XCTAssertFalse(body.contains("SQ FT"))
+        XCTAssertFalse(body.contains(" X 72\""))
+        XCTAssertFalse(body.contains("240\""))
+    }
+
+    func testTextMessageBodyUsesCustomTemplate() {
+        let surface = rectangle(id: "main", label: "Main deck", width: 96, height: 36)
+        let settings = VinylOrderSettings(
+            color: "Slate",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .lengthwise
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: settings
+        )
+
+        let body = plan.textMessageBody(
+            messageTemplate: "VINYL [color]\nCOUNT [cut_count]\n[cuts]",
+            cutTemplate: "[surface]: [quantity] @ [length]",
+            cutSeparator: .lines
+        )
+
+        XCTAssertEqual(body, """
+        VINYL Slate
+        COUNT 1
+        MAIN DECK: 1 @ 8'
+        """)
+    }
+
+    func testTextMessageBodyCanUseInlineCutTemplate() {
+        let surface = lShape(
+            id: "main",
+            label: "Main deck",
+            width: 240,
+            height: 192,
+            notchWidth: 144,
+            notchHeight: 96
+        )
+        let settings = VinylOrderSettings(
+            color: "Weathered grey",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .lengthwise
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: settings
+        )
+
+        let body = plan.textMessageBody(
+            messageTemplate: "Hi there, please order in [Color] for [Cuts].",
+            cutTemplate: "[length] x [quantity]",
+            cutSeparator: .comma
+        )
+
+        XCTAssertEqual(body, "Hi there, please order in Weathered grey for 20' x 2, 8' x 1.")
+    }
+
+    func testPlanCarriesHouseEdgesForPreviewLabels() {
+        var surface = rectangle(id: "main", label: "Main deck", width: 240, height: 120)
+        surface.edges = [
+            VinylOrderSurfaceEdge(
+                id: "house",
+                start: CGPoint(x: 0, y: 0),
+                end: CGPoint(x: 240, y: 0),
+                edgeType: .houseEdge,
+                label: nil
+            ),
+            VinylOrderSurfaceEdge(
+                id: "outer",
+                start: CGPoint(x: 240, y: 120),
+                end: CGPoint(x: 0, y: 120),
+                edgeType: .deckEdge,
+                label: nil
+            )
+        ]
+        let settings = VinylOrderSettings(
+            color: "Weathered grey",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 6,
+            direction: .lengthwise
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: settings
+        )
+
+        let surfacePlan = try! XCTUnwrap(plan.surfaces.first)
+        XCTAssertEqual(surfacePlan.edges.filter { $0.edgeType == .houseEdge }.count, 1)
+        XCTAssertEqual(surfacePlan.edges.filter { $0.edgeType == .deckEdge }.count, 1)
+    }
+
+    func testAutomaticCanAllowTurnedCutsWhenTheyReduceWaste() {
+        let surface = lShape(
+            id: "main",
+            width: 300,
+            height: 300,
+            notchWidth: 230,
+            notchHeight: 230
+        )
+
+        let sameRunPlan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 0,
+                direction: .automatic,
+                allowsDirectionalChanges: false
+            )
+        )
+        let turnedPlan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 0,
+                direction: .automatic,
+                allowsDirectionalChanges: true
+            )
+        )
+
+        let sameRunCut = try! XCTUnwrap(sameRunPlan.surfaces.first)
+        let turnedCut = try! XCTUnwrap(turnedPlan.surfaces.first)
+        XCTAssertFalse(sameRunCut.hasMixedRunAxes)
+        XCTAssertTrue(turnedCut.hasMixedRunAxes)
+        XCTAssertLessThan(turnedCut.cutAreaSqFt, sameRunCut.cutAreaSqFt)
     }
 
     func testReuseNotesIdentifyWhenOneSurfaceFitsFromAnotherOffcut() {
@@ -71,6 +305,29 @@ final class VinylCutListEngineTests: XCTestCase {
         XCTAssertTrue(note.line.contains("LANDING CAN FIT FROM MAIN DECK OFFCUT"))
         XCTAssertEqual(plan.totalReusedCutAreaSqFt, 48, accuracy: 0.01)
         XCTAssertEqual(plan.totalOrderedSqFt, 288)
+    }
+
+    func testOffcutReuseDoesNotCombineShorterPiecesIntoButtJoint() {
+        let shortA = rectangle(id: "short-a", label: "Short A", width: 96, height: 36)
+        let shortB = rectangle(id: "short-b", label: "Short B", width: 96, height: 36)
+        let longPatch = rectangle(id: "long-patch", label: "Long patch", width: 120, height: 36)
+        let settings = VinylOrderSettings(
+            color: "",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .lengthwise
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [shortA, shortB, longPatch],
+            settings: settings
+        )
+
+        XCTAssertFalse(plan.reuseNotes.contains { $0.targetSurfaceLabel == "Long patch" })
+        let longPlan = try! XCTUnwrap(plan.surfaces.first { $0.label == "Long patch" })
+        XCTAssertEqual(longPlan.purchasedCuts.count, 1)
+        XCTAssertTrue(longPlan.reusedCuts.isEmpty)
     }
 
     func testOrderNotesIncludeFieldColorCutListAndReuseBlock() {
@@ -169,6 +426,30 @@ final class VinylCutListEngineTests: XCTestCase {
                 CGPoint(x: 0, y: 0),
                 CGPoint(x: width, y: 0),
                 CGPoint(x: width, y: height),
+                CGPoint(x: 0, y: height)
+            ],
+            scaleFactor: 1
+        )
+    }
+
+    private func lShape(
+        id: String,
+        label: String = "Surface",
+        width: Double,
+        height: Double,
+        notchWidth: Double,
+        notchHeight: Double
+    ) -> VinylOrderSurfaceInput {
+        VinylOrderSurfaceInput(
+            id: id,
+            label: label,
+            levelName: nil,
+            positions: [
+                CGPoint(x: 0, y: 0),
+                CGPoint(x: width, y: 0),
+                CGPoint(x: width, y: height - notchHeight),
+                CGPoint(x: width - notchWidth, y: height - notchHeight),
+                CGPoint(x: width - notchWidth, y: height),
                 CGPoint(x: 0, y: height)
             ],
             scaleFactor: 1

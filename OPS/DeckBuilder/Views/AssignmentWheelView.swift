@@ -129,22 +129,16 @@ struct AssignmentWheelView: View {
         return items
     }
 
-    /// Built-in standard slots used to backfill the first three wheel
-    /// positions when the company catalog has fewer than three linear
-    /// products. Pulled from `BuiltInMaterial.linearStandards` (same source
-    /// the MaterialPickerSheet shows) so the operator picks an industry
-    /// standard with a real `AssignedItem` rather than a structural-only
-    /// railing toggle. Each tap creates an item with `productId = nil` —
-    /// estimate flow + cut list already handle that case.
+    /// Built-in standard slot used when the company catalog has fewer than
+    /// three linear products. Parapet wall is the only built-in railing
+    /// default; generic glass/picket/cable rail choices must come from the
+    /// company's catalog if they are actually part of the job.
     private func wheelStandardSlots() -> [WheelSlot] {
         let chosen: [BuiltInMaterial] = [
-            BuiltInMaterial.linearStandards.first(where: { $0.id == "std.railing.glass" }),
-            BuiltInMaterial.linearStandards.first(where: { $0.id == "std.railing.picket" }),
-            BuiltInMaterial.linearStandards.first(where: { $0.id == "std.railing.cable" })
+            BuiltInMaterial.linearStandards.first(where: { $0.id == "std.wall.parapet" })
         ].compactMap { $0 }
 
         return chosen.map { standard in
-            let railingType = derivedRailingType(name: standard.name)
             let assigned = AssignedItem(
                 productId: nil,
                 name: standard.name,
@@ -156,10 +150,10 @@ struct AssignmentWheelView: View {
             )
             return WheelSlot(
                 name: standard.name,
-                icon: railingIcon(for: railingType),
+                icon: railingIcon(for: .parapetWall),
                 initials: nil,
                 isDefault: false,
-                action: .assignRailingProduct(item: assigned, railingType: railingType)
+                action: .assignRailingProduct(item: assigned, railingType: .parapetWall)
             )
         }
     }
@@ -167,30 +161,30 @@ struct AssignmentWheelView: View {
     /// Name-only derivation (no category context) for built-in standards.
     private func derivedRailingType(name: String) -> RailingType {
         let haystack = name.lowercased()
+        if haystack.contains("parapet") { return .parapetWall }
         if haystack.contains("glass") { return .glass }
         if haystack.contains("cable") { return .cable }
         if haystack.contains("horizontal") { return .horizontal }
         if haystack.contains("wood") || haystack.contains("cedar") { return .wood }
-        return .picket
+        return .parapetWall
     }
 
     /// Best-guess railing type from a product's name/category. Drives the 3D
     /// preview style when the user picks a catalog product directly from the
-    /// wheel — we want the picket SKU to render as a picket railing, not as
-    /// whatever the previous railing config was. Defaults to `.picket` because
-    /// it's the most common style; the operator can override via the property
-    /// sheet if the inference is wrong.
+    /// wheel. Defaults to parapet wall so uncategorized catalog products do
+    /// not recreate the removed generic picket/cable defaults.
     private func derivedRailingType(from product: Product) -> RailingType {
         let haystack = ((product.name) + " " + (product.category ?? "")).lowercased()
         if haystack.contains("glass") { return .glass }
         if haystack.contains("cable") { return .cable }
         if haystack.contains("horizontal") { return .horizontal }
         if haystack.contains("wood") || haystack.contains("cedar") { return .wood }
-        return .picket
+        return .parapetWall
     }
 
     private func railingIcon(for type: RailingType) -> String {
         switch type {
+        case .parapetWall: return "rectangle.bottomhalf.filled"
         case .glass:      return "rectangle.split.3x1"
         case .picket:     return "line.3.horizontal"
         case .cable:      return "cable.connector.horizontal"

@@ -230,7 +230,8 @@ struct EstimateGeneratorService {
 
         // 3. Railing (from edge railing configs)
         for edge in edges {
-            guard let railing = edge.railingConfig,
+            guard edge.edgeType == .deckEdge,
+                  let railing = edge.railingConfig,
                   let dimension = edge.dimension else { continue }
 
             let linearFt = round(dimension / 12.0 * 100) / 100

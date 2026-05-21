@@ -91,9 +91,8 @@ struct DeckTabView: View {
             .frame(maxWidth: .infinity)
             .aspectRatio(1, contentMode: .fit)
             // Floating overlay — title pinned top-left of the rendering
-            // viewport with material/geometry counts as compact badges in a
-            // line below it. Replaces the previous bottom infoBar so the
-            // viewport itself owns its identifying chrome.
+            // viewport with surface metadata below it. Replaces the previous
+            // bottom infoBar so the viewport owns its identifying chrome.
             .overlay(alignment: .topLeading) {
                 floatingDesignInfo(design: design)
                     .padding(.leading, 12)
@@ -107,10 +106,8 @@ struct DeckTabView: View {
 
     // MARK: - Floating Design Info (overlay top-left of viewport)
 
-    /// Title chip + horizontal row of count badges. Anchored to the
-    /// top-leading corner of the rendering viewport so the user sees
-    /// "what is this and what's in it" at a glance without losing canvas
-    /// real estate to a bottom info bar.
+    /// Title and surface metadata anchored to the top-leading corner of the
+    /// rendering viewport.
     private func floatingDesignInfo(design: DeckDesign) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             // Title pill — single line, ellipsis on overflow so very long
@@ -132,80 +129,31 @@ struct DeckTabView: View {
                         )
                 )
 
-            // Count badges — area, edges, posts, elevation. Each is a
-            // self-contained mini-pill so the row reads as discrete chips
-            // rather than a sentence.
-            HStack(spacing: 4) {
+            // Surface stats only, rendered as plain metadata rather than
+            // chips. Edges/posts are construction metadata and were removed
+            // from this project-detail viewer per bug 38c8c58c.
+            HStack(spacing: 8) {
                 if let area = computeArea(design: design) {
-                    countBadge(icon: "square.dashed", value: area)
+                    metadataText(area)
                 }
 
-                // DECK-NEW-8 — aggregate across ALL levels so the badges
-                // reflect the entire design, not just level 0.
-                let edgeCount = design.drawingData.isMultiLevel
-                    ? design.drawingData.levels.reduce(0) { $0 + $1.edges.count }
-                    : design.drawingData.edges.count
-                if edgeCount > 0 {
-                    countBadge(icon: "lineweight", value: "\(edgeCount) edges")
-                }
-
-                let postCount = design.drawingData.isMultiLevel
-                    ? design.drawingData.levels.reduce(0) { $0 + $1.vertices.count }
-                    : design.drawingData.vertices.count
-                if postCount > 0 {
-                    countBadge(icon: "circle.fill", value: "\(postCount) posts")
-                }
-
-                // Level count badge — only when there's more than one. Helps
+                // Level count — only when there's more than one. Helps
                 // the user spot multi-level designs at a glance.
                 if design.drawingData.isMultiLevel, design.drawingData.levels.count > 1 {
-                    countBadge(icon: "square.stack.3d.up", value: "\(design.drawingData.levels.count) levels")
+                    metadataText("\(design.drawingData.levels.count) levels")
                 }
 
                 if let elevation = design.drawingData.overallElevation {
-                    countBadge(icon: "arrow.up.and.down", value: String(format: "%.1f ft", elevation))
-                }
-
-                // Bug 8dbecc70 — surface linear feet (perimeter) and total
-                // materials count alongside SQFT. The user-reported gap was
-                // "no quantity badges for linear foot or materials" — area
-                // was already covered by the ft² badge above. Both new
-                // badges aggregate across every level for multi-level
-                // designs so the row reflects the whole drawing, not just
-                // level 0 (matches the area calc's multi-level behaviour).
-                if let linFt = computeLinearFeet(design: design) {
-                    countBadge(icon: "ruler", value: linFt)
-                }
-
-                let materialCount = totalMaterialsCount(design: design)
-                if materialCount > 0 {
-                    countBadge(
-                        icon: "shippingbox",
-                        value: "\(materialCount) \(materialCount == 1 ? "material" : "materials")"
-                    )
+                    metadataText(String(format: "%.1f ft", elevation))
                 }
             }
         }
     }
 
-    private func countBadge(icon: String, value: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 9, weight: .semibold))
-            Text(value)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-        }
-        .foregroundColor(OPSStyle.Colors.secondaryText)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .background(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(OPSStyle.Colors.cardBackground.opacity(0.85))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: 0.5)
-                )
-        )
+    private func metadataText(_ value: String) -> some View {
+        Text(value.uppercased())
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .foregroundColor(OPSStyle.Colors.secondaryText)
     }
 
     // MARK: - Control Bar
@@ -327,94 +275,9 @@ struct DeckTabView: View {
 
     private func computeArea(design: DeckDesign) -> String? {
         guard let scale = design.drawingData.scaleFactor, scale > 0 else { return nil }
-
-        // DECK-NEW-8 — sum every level's polygon area so the badge totals the
-        // whole design, not just level 0. Single-level designs are unchanged
-        // since the levels array is empty in that mode.
-        let polygons: [[CGPoint]]
-        if design.drawingData.isMultiLevel {
-            polygons = design.drawingData.levels
-                .filter { $0.isClosed }
-                .map { $0.orderedPositions }
-        } else {
-            polygons = [design.drawingData.orderedPositions]
-        }
-
-        let inchesPerPoint = 1.0 / scale
-        var totalAreaFt: CGFloat = 0
-        for positions in polygons {
-            guard positions.count >= 3 else { continue }
-            var sum: CGFloat = 0
-            for i in 0..<positions.count {
-                let j = (i + 1) % positions.count
-                sum += positions[i].x * positions[j].y
-                sum -= positions[j].x * positions[i].y
-            }
-            let areaPoints = abs(sum) / 2
-            let areaInches = areaPoints * inchesPerPoint * inchesPerPoint
-            totalAreaFt += areaInches / 144.0
-        }
+        let totalAreaFt = design.drawingData.totalRealWorldArea(scaleFactor: scale) / 144.0
         guard totalAreaFt > 0 else { return nil }
         return String(format: "%.0f ft²", totalAreaFt)
-    }
-
-    /// Bug 8dbecc70 — sum of edge lengths in real-world feet across every
-    /// level. Returns nil when the drawing has no scale factor (cannot
-    /// convert canvas points to feet) or when there are no edges yet.
-    /// Edges live on `DeckDrawingData.edges` for single-level drawings and
-    /// on each `DeckLevel.edges` for multi-level — mirrored from
-    /// `computeArea`'s aggregation.
-    private func computeLinearFeet(design: DeckDesign) -> String? {
-        guard let scale = design.drawingData.scaleFactor, scale > 0 else { return nil }
-
-        let inchesPerPoint = 1.0 / scale
-
-        // Pair edges with their level's vertices so the length math sees
-        // the right coordinate space.
-        let edgeLevels: [(edges: [DeckEdge], vertices: [DeckVertex])]
-        if design.drawingData.isMultiLevel {
-            edgeLevels = design.drawingData.levels.map { ($0.edges, $0.vertices) }
-        } else {
-            edgeLevels = [(design.drawingData.edges, design.drawingData.vertices)]
-        }
-
-        var totalFeet: Double = 0
-        for (edges, vertices) in edgeLevels {
-            let vertexById = Dictionary(uniqueKeysWithValues: vertices.map { ($0.id, $0) })
-            for edge in edges {
-                guard
-                    let start = vertexById[edge.startVertexId],
-                    let end = vertexById[edge.endVertexId]
-                else { continue }
-                let dx = Double(end.position.x - start.position.x)
-                let dy = Double(end.position.y - start.position.y)
-                let lengthPoints = (dx * dx + dy * dy).squareRoot()
-                let lengthInches = lengthPoints * inchesPerPoint
-                totalFeet += lengthInches / 12.0
-            }
-        }
-
-        guard totalFeet > 0 else { return nil }
-        return String(format: "%.0f lin ft", totalFeet)
-    }
-
-    /// Bug 8dbecc70 — total `AssignedItem` count across every surface on
-    /// every level. Reflects "how many materials does this design carry"
-    /// for the project list / detail summary.
-    private func totalMaterialsCount(design: DeckDesign) -> Int {
-        var total = 0
-        if design.drawingData.isMultiLevel {
-            for level in design.drawingData.levels {
-                for surface in level.surfaces {
-                    total += surface.assignedItems.count
-                }
-            }
-        } else {
-            for surface in design.drawingData.surfaces {
-                total += surface.assignedItems.count
-            }
-        }
-        return total
     }
 
     @MainActor

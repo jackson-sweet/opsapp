@@ -804,7 +804,10 @@ actor DataActor {
                     "address", "latitude", "longitude",
                     "start_date", "end_date", "duration",
                     "notes", "description", "all_day",
-                    "team_member_ids", "project_images", "deleted_at"
+                    "team_member_ids", "project_images", "deleted_at",
+                    ProjectVinylOrderFields.status,
+                    ProjectVinylOrderFields.orderedAt,
+                    ProjectVinylOrderFields.orderedBy
                 ]
             )
 
@@ -829,6 +832,7 @@ actor DataActor {
                 existing.projectImagesString = (dto.projectImages ?? []).joined(separator: ",")
             }
             if accept.contains("deleted_at") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+            try upsertProjectVinylOrderMarker(dto: dto, acceptedFields: accept)
 
             existing.lastSyncedAt = Date()
             // Only clear needsSync if no pending SyncOperations remain for this entity.
@@ -860,12 +864,41 @@ actor DataActor {
             model.lastSyncedAt = Date()
             model.needsSync = false
             modelContext.insert(model)
+            modelContext.insert(dto.toVinylOrderMarkerModel())
 
             if model.deletedAt != nil {
                 markSpotlightDeleted(domain: SpotlightDomain.project, id: model.id)
             } else {
                 markSpotlightDirty(domain: SpotlightDomain.project, id: model.id)
             }
+        }
+    }
+
+    private func upsertProjectVinylOrderMarker(
+        dto: SupabaseProjectDTO,
+        acceptedFields: Set<String>
+    ) throws {
+        let projectId = dto.id
+        let descriptor = FetchDescriptor<ProjectVinylOrderMarker>(
+            predicate: #Predicate { $0.id == projectId }
+        )
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            if acceptedFields.contains(ProjectVinylOrderFields.status) {
+                existing.status = dto.resolvedVinylOrderStatus
+            }
+            if acceptedFields.contains(ProjectVinylOrderFields.orderedAt) {
+                existing.orderedAt = dto.vinylOrderedAt.flatMap { SupabaseDate.parse($0) }
+            }
+            if acceptedFields.contains(ProjectVinylOrderFields.orderedBy) {
+                existing.orderedBy = dto.vinylOrderedBy
+            }
+            existing.sourceProjectUpdatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) }
+            existing.lastSyncedAt = Date()
+        } else {
+            let marker = dto.toVinylOrderMarkerModel()
+            marker.lastSyncedAt = Date()
+            modelContext.insert(marker)
         }
     }
 

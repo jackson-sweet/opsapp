@@ -133,7 +133,7 @@ struct ARCoordinateConverter {
             edge.dimensionSource = .ar
             edge.accuracyPercent = arE.accuracyPercent
             edge.edgeType = arE.edgeType
-            edge.railingConfig = arE.railingConfig
+            edge.railingConfig = arE.edgeType == .deckEdge ? arE.railingConfig : nil
             edge.assignedItems = arE.assignedItems
             deckEdges.append(edge)
         }

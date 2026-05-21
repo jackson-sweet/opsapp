@@ -7,6 +7,11 @@ import Supabase
 import UIKit
 import Combine
 
+enum VinylOrderSurfaceScope: Equatable {
+    case selectedSurfaces
+    case allSurfaces
+}
+
 @MainActor
 class DeckBuilderViewModel: ObservableObject {
 
@@ -36,6 +41,11 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var tapSelectFilter: Set<SelectableElementType> = Set(SelectableElementType.allCases)
     /// Drag-shape sub-mode while `activeTool == .tapSelect`. DECK-NEW-4.
     @Published var marqueeShape: MarqueeShape = .rect
+    /// Arms the next selection drag as an XY move instead of marquee/lasso.
+    /// The flag is reset when the move commits or is cancelled.
+    @Published var isSelectionMoveArmed: Bool = false
+    private var selectionMoveStart: CGPoint?
+    private var selectionMoveOriginalVertices: [String: CGPoint] = [:]
 
     // MARK: - UI State
 
@@ -45,6 +55,7 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var showingAssignmentWheel: Bool = false
     @Published var showingMaterialPicker: Bool = false
     @Published var showingVinylOrderSheet: Bool = false
+    @Published var vinylOrderSurfaceScope: VinylOrderSurfaceScope = .selectedSurfaces
     /// Properties sheet (PropertySheetView). Opens full edit controls for
     /// the current selection — edge type, house cladding, railing config,
     /// stair config, surface metadata, vertex elevation, etc. Previously
@@ -650,6 +661,12 @@ class DeckBuilderViewModel: ObservableObject {
         } else {
             stopAutosaveTimer()
         }
+    }
+
+    func setVinylCatalogItemId(_ itemId: String?) {
+        let trimmed = itemId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        drawingData.config.vinylCatalogItemId = trimmed.isEmpty ? nil : trimmed
+        save()
     }
 
     // MARK: - Undo/Redo
@@ -1375,6 +1392,225 @@ class DeckBuilderViewModel: ObservableObject {
         save()
     }
 
+    // MARK: - Selection XY Move
+
+    func armSelectionMove() {
+        guard !selection.isEmpty else { return }
+        activeTool = .tapSelect
+        drawingMode = .idle
+        alignmentGuides = []
+        isSelectionMoveArmed = true
+        hapticLight()
+    }
+
+    func beginSelectionMove(at point: CGPoint) {
+        let vertexIds = selectedMoveVertexIds()
+        guard !vertexIds.isEmpty else {
+            isSelectionMoveArmed = false
+            return
+        }
+
+        pushUndo("move selection on XY")
+        selectionMoveStart = point
+        selectionMoveOriginalVertices = Dictionary(
+            activeVertices
+                .filter { vertexIds.contains($0.id) }
+                .map { ($0.id, $0.position) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        drawingMode = .movingSelection
+        alignmentGuides = []
+    }
+
+    func updateSelectionMove(to point: CGPoint) {
+        guard case .movingSelection = drawingMode,
+              let start = selectionMoveStart,
+              !selectionMoveOriginalVertices.isEmpty else { return }
+
+        let rawDelta = CGSize(width: point.x - start.x, height: point.y - start.y)
+        let resolved = resolveSelectionMoveDelta(rawDelta)
+        applySelectionMove(delta: resolved.delta)
+        alignmentGuides = resolved.guides
+    }
+
+    func endSelectionMove() {
+        guard case .movingSelection = drawingMode else { return }
+        let movedIds = Set(selectionMoveOriginalVertices.keys)
+        for vertexId in movedIds {
+            recalculateEdgeDimensions(connectedTo: vertexId)
+        }
+        drawingMode = .idle
+        isSelectionMoveArmed = false
+        selectionMoveStart = nil
+        selectionMoveOriginalVertices.removeAll()
+        alignmentGuides = []
+        hapticMedium()
+        save()
+    }
+
+    private func selectedMoveVertexIds() -> Set<String> {
+        var ids = selection.selectedVertexIds
+        for edge in activeEdges where selection.selectedEdgeIds.contains(edge.id) {
+            ids.insert(edge.startVertexId)
+            ids.insert(edge.endVertexId)
+        }
+        for surface in activePersistedSurfaces where selection.selectedSurfaceIds.contains(surface.id) {
+            ids.formUnion(surface.vertexIds)
+        }
+        return ids
+    }
+
+    private func applySelectionMove(delta: CGSize) {
+        for (vertexId, original) in selectionMoveOriginalVertices {
+            guard var vertex = activeVertex(byId: vertexId) else { continue }
+            vertex.position = CGPoint(
+                x: original.x + delta.width,
+                y: original.y + delta.height
+            )
+            activeUpdateVertex(vertex)
+        }
+        for vertexId in selectionMoveOriginalVertices.keys {
+            recalculateEdgeDimensions(connectedTo: vertexId)
+        }
+    }
+
+    private func resolveSelectionMoveDelta(_ rawDelta: CGSize) -> (delta: CGSize, guides: [AlignmentGuide]) {
+        guard drawingData.config.snappingEnabled else {
+            return (rawDelta, [])
+        }
+
+        var guides: [AlignmentGuide] = []
+        var delta = gridSnappedSelectionDelta(rawDelta)
+
+        if let parallel = parallelSnappedSelectionDelta(rawDelta) {
+            delta = parallel.delta
+            guides.append(parallel.guide)
+        }
+
+        if let pointSnap = vertexSnappedSelectionDelta(delta) {
+            delta = CGSize(
+                width: delta.width + pointSnap.correction.width,
+                height: delta.height + pointSnap.correction.height
+            )
+            guides.append(pointSnap.guide)
+        } else if let edgeSnap = edgeSnappedSelectionDelta(delta) {
+            delta = CGSize(
+                width: delta.width + edgeSnap.correction.width,
+                height: delta.height + edgeSnap.correction.height
+            )
+            guides.append(edgeSnap.guide)
+        }
+
+        return (delta, guides)
+    }
+
+    private func gridSnappedSelectionDelta(_ rawDelta: CGSize) -> CGSize {
+        guard let anchor = selectionMoveOriginalVertices
+            .sorted(by: { $0.key < $1.key })
+            .first?.value else { return rawDelta }
+        let movedAnchor = CGPoint(x: anchor.x + rawDelta.width, y: anchor.y + rawDelta.height)
+        let snapped = SnapEngine.snapToGrid(movedAnchor, gridSpacing: lengthSnapInCanvasPoints())
+        return CGSize(width: snapped.x - anchor.x, height: snapped.y - anchor.y)
+    }
+
+    private func parallelSnappedSelectionDelta(_ rawDelta: CGSize) -> (delta: CGSize, guide: AlignmentGuide)? {
+        let length = hypot(rawDelta.width, rawDelta.height)
+        guard length > 0 else { return nil }
+
+        let threshold = CGFloat(max(8.0, drawingData.config.endpointSnapRadius * 0.35))
+        var best: (residual: CGFloat, delta: CGSize, edge: DeckEdge, start: CGPoint, end: CGPoint)?
+
+        for edge in activeEdges {
+            guard let start = activeVertex(byId: edge.startVertexId),
+                  let end = activeVertex(byId: edge.endVertexId) else { continue }
+            let dx = end.position.x - start.position.x
+            let dy = end.position.y - start.position.y
+            let edgeLength = hypot(dx, dy)
+            guard edgeLength > 0 else { continue }
+            let ux = dx / edgeLength
+            let uy = dy / edgeLength
+            let projection = rawDelta.width * ux + rawDelta.height * uy
+            let projectedDelta = CGSize(width: projection * ux, height: projection * uy)
+            let residual = hypot(rawDelta.width - projectedDelta.width, rawDelta.height - projectedDelta.height)
+            guard residual <= threshold else { continue }
+            if best == nil || residual < best!.residual {
+                best = (residual, projectedDelta, edge, start.position, end.position)
+            }
+        }
+
+        guard let best else { return nil }
+        return (
+            best.delta,
+            AlignmentGuide(from: best.start, to: best.end, type: .parallel, referenceLabel: "∥")
+        )
+    }
+
+    private func vertexSnappedSelectionDelta(_ delta: CGSize) -> (correction: CGSize, guide: AlignmentGuide)? {
+        let movingIds = Set(selectionMoveOriginalVertices.keys)
+        let staticVertices = activeVertices.filter { !movingIds.contains($0.id) }
+        guard !staticVertices.isEmpty else { return nil }
+
+        var best: (distance: Double, correction: CGSize, moved: CGPoint, target: CGPoint)?
+        for original in selectionMoveOriginalVertices.values {
+            let moved = CGPoint(x: original.x + delta.width, y: original.y + delta.height)
+            for targetVertex in staticVertices {
+                let distance = SnapEngine.distance(moved, targetVertex.position)
+                guard distance <= drawingData.config.endpointSnapRadius else { continue }
+                let correction = CGSize(
+                    width: targetVertex.position.x - moved.x,
+                    height: targetVertex.position.y - moved.y
+                )
+                if best == nil || distance < best!.distance {
+                    best = (distance, correction, moved, targetVertex.position)
+                }
+            }
+        }
+
+        guard let best else { return nil }
+        return (
+            best.correction,
+            AlignmentGuide(from: best.target, to: best.moved, type: .vertical, referenceLabel: nil)
+        )
+    }
+
+    private func edgeSnappedSelectionDelta(_ delta: CGSize) -> (correction: CGSize, guide: AlignmentGuide)? {
+        let movingIds = Set(selectionMoveOriginalVertices.keys)
+        var best: (distance: Double, correction: CGSize, edgeStart: CGPoint, edgeEnd: CGPoint)?
+
+        for original in selectionMoveOriginalVertices.values {
+            let moved = CGPoint(x: original.x + delta.width, y: original.y + delta.height)
+            for edge in activeEdges {
+                guard !movingIds.contains(edge.startVertexId),
+                      !movingIds.contains(edge.endVertexId),
+                      let start = activeVertex(byId: edge.startVertexId),
+                      let end = activeVertex(byId: edge.endVertexId) else { continue }
+                let projection = Self.closestPoint(onSegmentFrom: start.position, to: end.position, point: moved)
+                let distance = SnapEngine.distance(moved, projection)
+                guard distance <= drawingData.config.endpointSnapRadius else { continue }
+                let correction = CGSize(width: projection.x - moved.x, height: projection.y - moved.y)
+                if best == nil || distance < best!.distance {
+                    best = (distance, correction, start.position, end.position)
+                }
+            }
+        }
+
+        guard let best else { return nil }
+        return (
+            best.correction,
+            AlignmentGuide(from: best.edgeStart, to: best.edgeEnd, type: .parallel, referenceLabel: nil)
+        )
+    }
+
+    private static func closestPoint(onSegmentFrom start: CGPoint, to end: CGPoint, point: CGPoint) -> CGPoint {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let lengthSquared = dx * dx + dy * dy
+        guard lengthSquared > 0 else { return start }
+        let rawT = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared
+        let t = min(max(rawT, 0), 1)
+        return CGPoint(x: start.x + dx * t, y: start.y + dy * t)
+    }
+
     /// Recalculate dimension values for edges connected to a vertex (after drag/move).
     /// `.scale` edges are recomputed automatically. Manual / laser / AR edges
     /// preserve their user-typed value but are flagged `dimensionStale = true`
@@ -1460,10 +1696,15 @@ class DeckBuilderViewModel: ObservableObject {
         guard var edge = activeEdge(byId: edgeId) else { return }
         pushUndo("set edge type")
         edge.edgeType = type
-        // Clearing the house cladding when an edge is demoted back to a
-        // regular deck edge keeps the stored material from leaking back into
-        // the renderer if the user flips the toggle a second time. Bug 3d72ce0b.
-        if type != .houseEdge { edge.houseEdgeMaterial = nil }
+        // House edge and deck-edge railing are mutually exclusive. House
+        // edges carry house cladding only; deck edges may carry railing/
+        // parapet configuration. Clearing the invalid side here keeps old
+        // saved payloads from leaking into renderers and estimates.
+        if type == .houseEdge {
+            edge.railingConfig = nil
+        } else {
+            edge.houseEdgeMaterial = nil
+        }
         activeUpdateEdge(edge)
         save()
     }
@@ -1481,8 +1722,21 @@ class DeckBuilderViewModel: ObservableObject {
 
     func setRailing(_ edgeId: String, config: RailingConfig?) {
         guard var edge = activeEdge(byId: edgeId) else { return }
+        guard config == nil || edge.edgeType == .deckEdge else { return }
         pushUndo("set railing")
         edge.railingConfig = config
+        activeUpdateEdge(edge)
+        save()
+    }
+
+    func setRailingWallMaterial(_ edgeId: String, material: HouseEdgeMaterial) {
+        guard var edge = activeEdge(byId: edgeId),
+              edge.edgeType == .deckEdge,
+              var railing = edge.railingConfig,
+              railing.railingType == .parapetWall else { return }
+        pushUndo("set parapet finish")
+        railing.wallMaterial = material
+        edge.railingConfig = railing
         activeUpdateEdge(edge)
         save()
     }
@@ -1595,17 +1849,26 @@ class DeckBuilderViewModel: ObservableObject {
     /// it gets the same reconciled persisted surfaces the canvas and
     /// material tools use, matched back to current detected face polygons.
     func selectedVinylOrderSurfaceInputs() -> [VinylOrderSurfaceInput] {
+        vinylOrderSurfaceInputs(scope: .selectedSurfaces)
+    }
+
+    func allVinylOrderSurfaceInputs() -> [VinylOrderSurfaceInput] {
+        vinylOrderSurfaceInputs(scope: .allSurfaces)
+    }
+
+    func vinylOrderSurfaceInputs(scope: VinylOrderSurfaceScope) -> [VinylOrderSurfaceInput] {
         reconcileSurfaces()
-        guard let scale = drawingData.scaleFactor, scale > 0 else { return [] }
+        guard let scale = vinylOrderEffectiveScale else { return [] }
         let selectedIds = selection.selectedSurfaceIds
-        guard !selectedIds.isEmpty else { return [] }
+        if scope == .selectedSurfaces, selectedIds.isEmpty { return [] }
 
         if isMultiLevel {
             return drawingData.levels.flatMap { level in
                 vinylOrderInputs(
                     persisted: level.surfaces,
                     detected: level.detectedSurfaces,
-                    selectedIds: selectedIds,
+                    edges: level.edges,
+                    selectedIds: scope == .selectedSurfaces ? selectedIds : nil,
                     scale: scale,
                     levelName: level.name
                 )
@@ -1615,7 +1878,8 @@ class DeckBuilderViewModel: ObservableObject {
         return vinylOrderInputs(
             persisted: drawingData.surfaces,
             detected: drawingData.detectedSurfaces,
-            selectedIds: selectedIds,
+            edges: drawingData.edges,
+            selectedIds: scope == .selectedSurfaces ? selectedIds : nil,
             scale: scale,
             levelName: nil
         )
@@ -1624,13 +1888,14 @@ class DeckBuilderViewModel: ObservableObject {
     private func vinylOrderInputs(
         persisted: [DeckSurface],
         detected: [DetectedSurface],
-        selectedIds: Set<String>,
+        edges: [DeckEdge],
+        selectedIds: Set<String>?,
         scale: Double,
         levelName: String?
     ) -> [VinylOrderSurfaceInput] {
         persisted.enumerated().compactMap { index, surface in
-            guard selectedIds.contains(surface.id),
-                  let face = detectedSurface(for: surface, in: detected) else { return nil }
+            if let selectedIds, !selectedIds.contains(surface.id) { return nil }
+            guard let face = detectedSurface(for: surface, in: detected) else { return nil }
             let trimmedLabel = surface.label?.trimmingCharacters(in: .whitespacesAndNewlines)
             let label = trimmedLabel.flatMap { $0.isEmpty ? nil : $0 } ?? "Surface \(index + 1)"
             return VinylOrderSurfaceInput(
@@ -1638,7 +1903,33 @@ class DeckBuilderViewModel: ObservableObject {
                 label: label,
                 levelName: levelName,
                 positions: face.positions,
-                scaleFactor: scale
+                scaleFactor: scale,
+                edges: vinylOrderSurfaceEdges(for: face, edges: edges)
+            )
+        }
+    }
+
+    private func vinylOrderSurfaceEdges(
+        for face: DetectedSurface,
+        edges: [DeckEdge]
+    ) -> [VinylOrderSurfaceEdge] {
+        guard face.vertexIds.count == face.positions.count, face.vertexIds.count >= 2 else { return [] }
+
+        return face.vertexIds.indices.map { index in
+            let nextIndex = (index + 1) % face.vertexIds.count
+            let startId = face.vertexIds[index]
+            let endId = face.vertexIds[nextIndex]
+            let matchingEdge = edges.first {
+                ($0.startVertexId == startId && $0.endVertexId == endId) ||
+                    ($0.startVertexId == endId && $0.endVertexId == startId)
+            }
+
+            return VinylOrderSurfaceEdge(
+                id: matchingEdge?.id ?? "\(startId)-\(endId)",
+                start: face.positions[index],
+                end: face.positions[nextIndex],
+                edgeType: matchingEdge?.edgeType ?? .deckEdge,
+                label: matchingEdge?.label
             )
         }
     }
@@ -1661,6 +1952,31 @@ class DeckBuilderViewModel: ObservableObject {
         }
         guard let best, best.jaccard >= SurfaceReconciler.rebindThreshold else { return nil }
         return best.surface
+    }
+
+    /// Scale used for vinyl ordering. Canvas-created drawings are measured
+    /// before formal calibration: until the first confirmed edge length sets
+    /// `drawingData.scaleFactor`, the builder uses `prescaleFallbackScale` for
+    /// snap, labels, and committed `.scale` edge lengths. That fallback is
+    /// valid only while every edge is still scale-derived and no user-confirmed
+    /// dimension has gone stale.
+    var vinylOrderEffectiveScale: Double? {
+        guard !drawingData.allEdges.contains(where: \.dimensionStale) else { return nil }
+
+        if let scale = drawingData.scaleFactor, scale > 0 {
+            return scale
+        }
+
+        guard canUsePrescaleFallbackForVinylOrder else { return nil }
+        return Self.prescaleFallbackScale
+    }
+
+    private var canUsePrescaleFallbackForVinylOrder: Bool {
+        let edges = drawingData.allEdges
+        guard !edges.isEmpty else { return false }
+        return edges.allSatisfy { edge in
+            edge.dimensionSource == .scale && !edge.dimensionStale
+        }
     }
 
     /// Public, multi-level-aware accessor for a vertex by id. Mirrors
@@ -1991,7 +2307,13 @@ class DeckBuilderViewModel: ObservableObject {
     /// callers reported only the first selected edge receiving the material;
     /// taking a deterministic snapshot here makes the batch atomic.
     func assignItemToSelectedEdges(_ item: AssignedItem) {
-        let edgeIds = Array(selection.selectedEdgeIds)
+        let edgeIds = selection.selectedEdgeIds.filter { edgeId in
+            guard let edge = activeEdge(byId: edgeId) else {
+                print("[DeckBuilder] assignItemToSelectedEdges: edge \(edgeId) not found, skipping")
+                return false
+            }
+            return edge.edgeType == .deckEdge
+        }
         let count = edgeIds.count
         guard count > 0 else { return }
         pushUndo("batch assign")

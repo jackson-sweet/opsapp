@@ -247,7 +247,7 @@ final class RealtimeProcessor: ObservableObject {
 
                 let model = dto.toModel()
                 let pendingFields = pendingFieldsForEntity(entityType: .project, entityId: dto.id, context: context)
-                try upsertProject(context: context, id: dto.id, model: model, pendingFields: pendingFields)
+                try upsertProject(context: context, id: dto.id, dto: dto, model: model, pendingFields: pendingFields)
 
             case "project_tasks":
                 let dto = try record.decodeRecord(as: SupabaseProjectTaskDTO.self, decoder: decoder)
@@ -660,7 +660,7 @@ final class RealtimeProcessor: ObservableObject {
                 let pendingFields = self.pendingFieldsForEntity(
                     entityType: .project, entityId: dto.id, context: context
                 )
-                try self.upsertProject(context: context, id: dto.id, model: model, pendingFields: pendingFields)
+                try self.upsertProject(context: context, id: dto.id, dto: dto, model: model, pendingFields: pendingFields)
                 try context.save()
                 print("[RealtimeProcessor] G9 — fetched mention-granted project \(projectId)")
             } catch {
@@ -728,7 +728,13 @@ final class RealtimeProcessor: ObservableObject {
 
     // MARK: - Per-Type Upsert Helpers (field-level merge with pending check)
 
-    private func upsertProject(context: ModelContext, id: String, model: Project, pendingFields: Set<String>) throws {
+    private func upsertProject(
+        context: ModelContext,
+        id: String,
+        dto: SupabaseProjectDTO,
+        model: Project,
+        pendingFields: Set<String>
+    ) throws {
         let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == id })
         let existingCount = (try? context.fetchCount(descriptor)) ?? 0
         print("[DUPE_TRACE] RT.upsertProject id=\(id) existing_count=\(existingCount) ctx=\(ObjectIdentifier(context))")
@@ -757,6 +763,7 @@ final class RealtimeProcessor: ObservableObject {
             if !pendingFields.contains("team_member_ids")   { existing.teamMemberIdsString = model.teamMemberIdsString }
             if !pendingFields.contains("project_images")    { existing.projectImagesString = model.projectImagesString }
             if !pendingFields.contains("deleted_at")        { existing.deletedAt = model.deletedAt }
+            try upsertProjectVinylOrderMarker(context: context, dto: dto, pendingFields: pendingFields)
             existing.lastSyncedAt = Date()
             let pendingFieldsForSync = pendingFieldsForEntity(entityType: .project, entityId: existing.id, context: context)
             if pendingFieldsForSync.isEmpty {
@@ -779,8 +786,41 @@ final class RealtimeProcessor: ObservableObject {
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)
+            let marker = dto.toVinylOrderMarkerModel()
+            marker.lastSyncedAt = Date()
+            context.insert(marker)
         }
         try context.save()
+    }
+
+    private func upsertProjectVinylOrderMarker(
+        context: ModelContext,
+        dto: SupabaseProjectDTO,
+        pendingFields: Set<String>
+    ) throws {
+        let projectId = dto.id
+        let descriptor = FetchDescriptor<ProjectVinylOrderMarker>(
+            predicate: #Predicate { $0.id == projectId }
+        )
+        let marker: ProjectVinylOrderMarker
+        if let existing = try context.fetch(descriptor).first {
+            marker = existing
+        } else {
+            marker = ProjectVinylOrderMarker(projectId: projectId)
+            context.insert(marker)
+        }
+
+        if !pendingFields.contains(ProjectVinylOrderFields.status) {
+            marker.status = dto.resolvedVinylOrderStatus
+        }
+        if !pendingFields.contains(ProjectVinylOrderFields.orderedAt) {
+            marker.orderedAt = dto.vinylOrderedAt.flatMap { SupabaseDate.parse($0) }
+        }
+        if !pendingFields.contains(ProjectVinylOrderFields.orderedBy) {
+            marker.orderedBy = dto.vinylOrderedBy
+        }
+        marker.sourceProjectUpdatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) }
+        marker.lastSyncedAt = Date()
     }
 
     private func upsertProjectTask(context: ModelContext, id: String, model: ProjectTask, pendingFields: Set<String>) throws {

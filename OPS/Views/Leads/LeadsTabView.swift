@@ -198,6 +198,9 @@ struct LeadsTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadConvertedSuccess"))) { _ in
             Task { await viewModel.loadData() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadLinkedProjectSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadArchivedSuccess"))) { _ in
             Task { await viewModel.loadData() }
         }

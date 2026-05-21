@@ -26,8 +26,8 @@
 //    double-firing.
 //
 //    × / CANCEL / drag / scrim    → markWonNoProject(actualValue)
-//    CREATE PROJECT →             → convertLeadToProject(...), open project
-//    OPEN PROJECT → (DUPLICATE)   → markWonNoProject, open existing project
+//    CREATE PROJECT →             → convertLeadToProject(...), stay on LEADS
+//    OPEN PROJECT → (DUPLICATE)   → mark won with existing project, then open it
 //
 
 import SwiftUI
@@ -646,32 +646,40 @@ struct ConvertToProjectSheet: View {
                     userId: dataController.currentUser?.id
                 )
 
-                // Mark local SwiftData immediately
-                opportunity.stage = .won
-                opportunity.actualValue = parseActualValue()
-                opportunity.actualCloseDate = Date()
-                opportunity.projectId = project.id
-                opportunity.stageEnteredAt = Date()
-                opportunity.stageManuallySet = true
-                didCommitWon = true
-
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-                NotificationCenter.default.post(
-                    name: Notification.Name("LeadConvertedSuccess"),
-                    object: nil,
-                    userInfo: [
-                        "leadId": opportunity.id,
-                        "projectId": project.id,
-                    ]
-                )
-                // Operator stays on the LEADS queue — the success toast
-                // carries the tap-through to the new project (P3-2 / PM).
-                dismiss()
+                completeConverted(projectId: project.id)
             } catch {
-                isSaving = false
-                errorMessage = simplifyError(error)
+                if let conversionError = error as? LeadConversionError,
+                   case let .projectCreatedButFetchFailed(projectId, _) = conversionError {
+                    completeConverted(projectId: projectId)
+                } else {
+                    isSaving = false
+                    errorMessage = simplifyError(error)
+                }
             }
         }
+    }
+
+    private func completeConverted(projectId: String) {
+        opportunity.stage = .won
+        opportunity.actualValue = parseActualValue()
+        opportunity.actualCloseDate = Date()
+        opportunity.projectId = projectId
+        opportunity.stageEnteredAt = Date()
+        opportunity.stageManuallySet = true
+        didCommitWon = true
+
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        NotificationCenter.default.post(
+            name: Notification.Name("LeadConvertedSuccess"),
+            object: nil,
+            userInfo: [
+                "leadId": opportunity.id,
+                "projectId": projectId,
+            ]
+        )
+        // Operator stays on the LEADS queue — the success toast carries the
+        // tap-through to the new project (P3-2 / PM).
+        dismiss()
     }
 
     private func openExistingProjectAction() {
@@ -681,8 +689,10 @@ struct ConvertToProjectSheet: View {
         let projectId = existing.id
 
         Task {
-            // Idempotent mark-won — covers projects that pre-date stage tracking.
-            await markWonNoProjectSilently()
+            // Idempotent mark-won — covers projects that pre-date stage tracking,
+            // while preserving the existing project link so the lead leaves the
+            // unconverted-won carousel.
+            await markWonWithExistingProject(projectId)
             didCommitWon = true
             dismiss()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
@@ -692,13 +702,16 @@ struct ConvertToProjectSheet: View {
     }
 
     private func openExistingProject(_ projectId: String) {
-        // Tapping a chip in CLIENT-HAS-OTHERS — does NOT mark won (operator is
-        // just browsing). Skip the commit, just navigate.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            appState.viewProjectDetailsById(projectId)
+        // Tapping a chip in CLIENT-HAS-OTHERS is an explicit browse escape,
+        // not a link for this lead. Preserve the sheet's exit contract by
+        // marking this lead won-no-project, then open the referenced project.
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Task {
+            await commitNoProjectAndDismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                appState.viewProjectDetailsById(projectId)
+            }
         }
-        // Sheet stays open so the operator can come back and create their new
-        // project after reviewing.
     }
 
     private func commitNoProjectAndDismiss() async {
@@ -742,6 +755,43 @@ struct ConvertToProjectSheet: View {
             // moving even if the server didn't accept the write. Sync engine
             // will replay.
             print("[CONVERT] markWonNoProject failed (will reconcile on sync): \(error)")
+        }
+    }
+
+    /// Duplicate-state OPEN PROJECT still commits the won transition, but it
+    /// must persist the existing project id. Otherwise the lead remains a
+    /// "won but unconverted" item and the toast reads as no-project.
+    private func markWonWithExistingProject(_ projectId: String) async {
+        let companyId = opportunity.companyId
+        let service = LeadConversionService(companyId: companyId)
+        let value = parseActualValue()
+        do {
+            try await service.markWonWithExistingProject(
+                lead: opportunity,
+                projectId: projectId,
+                actualValue: value,
+                userId: dataController.currentUser?.id
+            )
+            opportunity.stage = .won
+            opportunity.actualValue = value
+            opportunity.actualCloseDate = Date()
+            opportunity.projectId = projectId
+            opportunity.stageEnteredAt = Date()
+            opportunity.stageManuallySet = true
+
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            NotificationCenter.default.post(
+                name: Notification.Name("LeadLinkedProjectSuccess"),
+                object: nil,
+                userInfo: [
+                    "leadId": opportunity.id,
+                    "projectId": projectId,
+                ]
+            )
+        } catch {
+            // Opening the existing project is still the right user-facing path;
+            // the stage/link write will reconcile on the next successful sync.
+            print("[CONVERT] markWonWithExistingProject failed (will reconcile on sync): \(error)")
         }
     }
 

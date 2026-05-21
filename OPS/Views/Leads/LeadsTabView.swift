@@ -148,6 +148,7 @@ struct LeadsTabView: View {
                 PipelineStageListView(
                     stage: stage,
                     viewModel: viewModel,
+                    onLeadTap: { detailLead = $0 },
                     onRequestSheet: { activeSheet = $0 }
                 )
                 .environmentObject(dataController)
@@ -326,6 +327,9 @@ struct LeadsTabView: View {
                         opportunity: lead,
                         verb: viewModel.verbFor(lead, bucket: bucket),
                         tone: viewModel.toneFor(bucket, lead: lead),
+                        showsLog: canManage,
+                        showsMore: canManage,
+                        showsAdvance: canManage,
                         onTap:     { detailLead = lead },
                         onLog:     { activeSheet = .log(lead) },
                         onMore:    { moreForLead = lead },

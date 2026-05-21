@@ -113,15 +113,15 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
 
         // Render every level — surfaces + explicit edge features. Without this loop,
         // multi-level designs only ever showed level 1 in the viewer.
-        let levelsToRender: [(positions: [CGPoint], edges: [DeckEdge], vertices: [DeckVertex], isClosed: Bool, deckHeight: Float)]
+        let levelsToRender: [(positions: [CGPoint], edges: [DeckEdge], vertices: [DeckVertex], isClosed: Bool, deckHeight: Float, displayColor: LevelColor?)]
         if drawingData.isMultiLevel {
             levelsToRender = drawingData.levels.enumerated().map { idx, level in
                 let deckHeight = Float(drawingData.renderElevationFeet(for: level, levelIndex: idx)) * feetToMeters
-                return (level.orderedPositions, level.edges, level.vertices, level.isClosed, deckHeight)
+                return (level.orderedPositions, level.edges, level.vertices, level.isClosed, deckHeight, level.displayColor)
             }
         } else {
             let deckHeight = Float(drawingData.renderElevationFeetSingleLevel) * feetToMeters
-            levelsToRender = [(drawingData.orderedPositions, drawingData.edges, drawingData.vertices, drawingData.isClosed, deckHeight)]
+            levelsToRender = [(drawingData.orderedPositions, drawingData.edges, drawingData.vertices, drawingData.isClosed, deckHeight, nil)]
         }
 
         for level in levelsToRender {
@@ -131,6 +131,7 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
                 vertices: level.vertices,
                 isClosed: level.isClosed,
                 levelDeckY: level.deckHeight,
+                displayColor: level.displayColor,
                 toScene: toScene,
                 scene: scene
             )
@@ -150,6 +151,7 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         vertices: [DeckVertex],
         isClosed: Bool,
         levelDeckY: Float,
+        displayColor: LevelColor?,
         toScene: (CGPoint) -> (x: Float, z: Float),
         scene: SCNScene
     ) {
@@ -164,7 +166,14 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
             }
             if let surfaceGeo = DeckMeshGenerator.createPolygonGeometry(vertices: scenePoints, yHeight: levelDeckY) {
                 let surfaceMat = SCNMaterial()
-                surfaceMat.diffuse.contents = UIColor(red: 196/255, green: 149/255, blue: 106/255, alpha: 1)
+                // Multi-level designs color-code the surface by the level's
+                // display color so levels stay visually distinct (bug 8f9c0280).
+                if let displayColor {
+                    let c = displayColor.fillColor
+                    surfaceMat.diffuse.contents = UIColor(red: CGFloat(c.r), green: CGFloat(c.g), blue: CGFloat(c.b), alpha: 1)
+                } else {
+                    surfaceMat.diffuse.contents = UIColor(red: 196/255, green: 149/255, blue: 106/255, alpha: 1)
+                }
                 surfaceMat.isDoubleSided = true
                 surfaceGeo.materials = [surfaceMat]
                 scene.rootNode.addChildNode(SCNNode(geometry: surfaceGeo))

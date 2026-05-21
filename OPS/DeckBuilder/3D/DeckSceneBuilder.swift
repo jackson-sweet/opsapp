@@ -313,9 +313,15 @@ struct DeckSceneBuilder {
                 boardMaterial: "composite"
             )
         ]
+        // Multi-level designs tint each surface with its level's display
+        // color so the levels read as visually distinct (bug 8f9c0280).
+        let levelTint: UIColor? = level.map { lvl in
+            let c = lvl.displayColor.fillColor
+            return UIColor(red: CGFloat(c.r), green: CGFloat(c.g), blue: CGFloat(c.b), alpha: 1)
+        }
         for surf in surfaces {
             guard let surfaceGeo = DeckMeshGenerator.createPolygonGeometry(vertices: surf.positionsInMeters, yHeight: elevationM) else { continue }
-            surfaceGeo.firstMaterial = surfaceMaterial(for: surf)
+            surfaceGeo.firstMaterial = surfaceMaterial(for: surf, levelColor: levelTint)
             let surfaceNode = SCNNode(geometry: surfaceGeo)
             surfaceNode.name = "deckSurface"
             deckGroup.addChildNode(surfaceNode)
@@ -1160,7 +1166,19 @@ struct DeckSceneBuilder {
     /// Per-surface material. Board-like materials keep the deck board texture;
     /// slab/paver surfaces render flatter so the project details 3D view does
     /// not make every surface read as cedar boards.
-    private static func surfaceMaterial(for surface: SurfaceMesh3D) -> SCNMaterial {
+    private static func surfaceMaterial(for surface: SurfaceMesh3D, levelColor: UIColor?) -> SCNMaterial {
+        // Multi-level designs color-code each surface by its level's display
+        // color so levels are visually distinguishable in the 3D scene
+        // (bug 8f9c0280). Single-level designs (levelColor == nil) fall
+        // through to the board-material texture + tint treatment below.
+        if let levelColor {
+            let material = SCNMaterial()
+            material.diffuse.contents = levelColor
+            material.roughness.contents = 0.7
+            material.isDoubleSided = true
+            return material
+        }
+
         let key = surface.boardMaterial
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()

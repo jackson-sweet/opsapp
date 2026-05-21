@@ -167,6 +167,39 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertNil(data.edges.first?.railingConfig)
     }
 
+    func testSelectionMove_translatesEverySelectedVertexByDelta() {
+        var data = DeckDrawingData()
+        data.config.snappingEnabled = false
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 120, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 120, y: 80)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 80)),
+        ]
+        data.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2"),
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4"),
+            DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1"),
+        ]
+
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        viewModel.selection.selectedVertexIds = ["v1", "v2", "v3", "v4"]
+
+        viewModel.armSelectionMove()
+        viewModel.beginSelectionMove(at: CGPoint(x: 200, y: 200))
+        viewModel.updateSelectionMove(to: CGPoint(x: 250, y: 230))
+        viewModel.endSelectionMove()
+
+        // Snapping disabled — every selected vertex shifts by the raw delta.
+        XCTAssertEqual(viewModel.findVertex(byId: "v1")?.position, CGPoint(x: 50, y: 30))
+        XCTAssertEqual(viewModel.findVertex(byId: "v2")?.position, CGPoint(x: 170, y: 30))
+        XCTAssertEqual(viewModel.findVertex(byId: "v3")?.position, CGPoint(x: 170, y: 110))
+        XCTAssertEqual(viewModel.findVertex(byId: "v4")?.position, CGPoint(x: 50, y: 110))
+        XCTAssertEqual(viewModel.drawingMode, .idle)
+        XCTAssertFalse(viewModel.isSelectionMoveArmed)
+    }
+
     private func deckDesign(drawingData: DeckDrawingData) -> DeckDesign {
         DeckDesign(
             companyId: "company-1",

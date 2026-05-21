@@ -32,6 +32,11 @@ struct ForecastCard: View {
         !viewModel.hasEverLoaded && viewModel.isLoading
     }
 
+    /// Composed VoiceOver summary for the whole card (spec § 8.1, Card 4).
+    private var accessibilityCardLabel: String {
+        "Forecast. \(viewModel.weightedForecastValue.formatted(.currency(code: "USD").precision(.fractionLength(0)))) weighted across \(viewModel.activeLeadCount) active opportunities. \(Int(viewModel.closeRate.rounded()))% close rate."
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -50,22 +55,33 @@ struct ForecastCard: View {
 
     private var normalBody: some View {
         VStack(alignment: .leading, spacing: 0) {
-            heroBlock
-            stageBars.padding(.top, OPSStyle.Layout.spacing4)
+            // Non-tile content folded into one VoiceOver element (the § 8.1
+            // card summary). The drill tiles below stay individually navigable.
+            VStack(alignment: .leading, spacing: 0) {
+                heroBlock
+                stageBars.padding(.top, OPSStyle.Layout.spacing4)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityCardLabel)
+
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 BooksDrillTile(
                     label: "CLOSE RATE",
                     value: "\(Int(viewModel.closeRate.rounded()))%",
                     sub: "LAST 90D",
                     valueColor: OPSStyle.Colors.olive,
-                    onTap: onTapCloseRate
+                    onTap: onTapCloseRate,
+                    accessibilityHint: "Double-tap for pipeline detail",
+                    accessibilityLabelOverride: "Close rate, \(Int(viewModel.closeRate.rounded()))%, last 90 days"
                 )
                 BooksDrillTile(
                     label: "STALE",
                     value: "\(viewModel.staleLeadsCount)",
                     sub: "> 14D IDLE",
                     valueColor: OPSStyle.Colors.warningStatus,
-                    onTap: onTapStale
+                    onTap: onTapStale,
+                    accessibilityHint: "Double-tap to view stale opps",
+                    accessibilityLabelOverride: "Stale opportunities, \(viewModel.staleLeadsCount), over 14 days idle"
                 )
             }
             .padding(.top, 22)
@@ -86,6 +102,7 @@ struct ForecastCard: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility3)  // § 8.4 — hero number clamp
                 .contentTransition(.numericText())
 
             Text("\(viewModel.activeLeadCount) ACTIVE OPPORTUNITIES")
@@ -154,6 +171,7 @@ struct ForecastCard: View {
                     .tracking(-1.5)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .monospacedDigit()
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility3)  // § 8.4 — hero number clamp
                 Text("// NO ACTIVE OPPORTUNITIES")
                     .font(.custom("JetBrainsMono-Medium", size: 11))
                     .tracking(1.76)

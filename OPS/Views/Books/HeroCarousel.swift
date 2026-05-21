@@ -81,6 +81,13 @@ struct HeroCarousel: View {
                 let restored = CardID(rawValue: lastViewedRaw) ?? .pl
                 scrollPosition = visibleCards.contains(restored) ? restored : visibleCards.first
             }
+            // § 8.1 — carousel container: heading-rotor entry + orientation label.
+            // `.contain` keeps every card, tile, and chrome control individually
+            // navigable inside the container. Count is permission-filtered, never
+            // hardcoded to 5.
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Books dashboard, \(visibleCards.count) cards, swipe with two fingers to navigate")
+            .accessibilityAddTraits(.isHeader)
         }
     }
 
@@ -95,6 +102,8 @@ struct HeroCarousel: View {
                 .tracking(1.76)  // 0.16em at 11pt
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .textCase(.uppercase)
+                .lineLimit(2)  // § 8.4 — wrap, never clip, above the type floor
+                .dynamicTypeSize(...DynamicTypeSize.accessibility2)  // § 8.4 — card-header label clamped
                 .contentTransition(.opacity)
             if let badge = scopeBadge(for: active) {
                 badge
@@ -141,7 +150,7 @@ struct HeroCarousel: View {
 
     private var dots: some View {
         HStack(spacing: 6) {
-            ForEach(visibleCards) { card in
+            ForEach(Array(visibleCards.enumerated()), id: \.offset) { index, card in
                 let isActive = scrollPosition == card
                 Capsule()
                     .fill(isActive ? OPSStyle.Colors.primaryText
@@ -155,6 +164,8 @@ struct HeroCarousel: View {
                             scrollPosition = card
                         }
                     }
+                    .accessibilityLabel("Card \(index + 1) of \(visibleCards.count)")
+                    .accessibilityHint("Double-tap to jump to card \(index + 1)")
             }
         }
         .padding(.top, OPSStyle.Layout.spacing1)

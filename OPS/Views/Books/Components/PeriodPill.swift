@@ -47,6 +47,8 @@ struct PeriodPill: View {
             .cornerRadius(12)
             .frame(minHeight: 44)  // Mission Deck — 44pt mobile touch-target floor
         }
+        .accessibilityLabel("Period selector, currently \(selected.label)")
+        .accessibilityHint("Double-tap to change period")
     }
 }
 

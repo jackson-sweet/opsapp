@@ -304,6 +304,8 @@ struct BooksTabView: View {
                         .background(segmentBackground(isActive: isActive))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("\(segment.rawValue) segment, currently \(isActive ? "selected" : "not selected")")
+                .accessibilityHint("Double-tap to view \(segment.rawValue)")
             }
         }
         .padding(3)

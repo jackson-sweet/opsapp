@@ -82,6 +82,11 @@ struct ARCard: View {
         !viewModel.hasEverLoaded && viewModel.isLoading
     }
 
+    /// Composed VoiceOver summary for the whole card (spec § 8.1, Card 3).
+    private var accessibilityCardLabel: String {
+        "Accounts receivable. \(currencyString(totalOutstanding)) outstanding across \(viewModel.outstandingInvoiceBreakdown.count) open invoices, \(viewModel.overdueInvoicesCount) overdue. Always all-open."
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -100,9 +105,16 @@ struct ARCard: View {
 
     private var normalBody: some View {
         VStack(alignment: .leading, spacing: 0) {
-            heroBlock
-            agingRamp.padding(.top, OPSStyle.Layout.spacing4)
-            bucketGrid.padding(.top, 14)
+            // Non-tile content folded into one VoiceOver element (the § 8.1
+            // card summary). The TOP CHASE tile below stays its own element.
+            VStack(alignment: .leading, spacing: 0) {
+                heroBlock
+                agingRamp.padding(.top, OPSStyle.Layout.spacing4)
+                bucketGrid.padding(.top, 14)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityCardLabel)
+
             if let chase = topChase {
                 topChaseTile(for: chase).padding(.top, OPSStyle.Layout.spacing4)
             }
@@ -123,6 +135,7 @@ struct ARCard: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility3)  // § 8.4 — hero number clamp
                 .contentTransition(.numericText())
 
             subline
@@ -232,8 +245,7 @@ struct ARCard: View {
         }
         .buttonStyle(TopChaseButtonStyle(reduceMotion: reduceMotion))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Top chase, \(item.label)")
-        .accessibilityValue("\(currencyString(item.amount)), \(daysOverdue(item)) days overdue")
+        .accessibilityLabel("Top chase, \(item.label), \(currencyString(item.amount)), \(daysOverdue(item)) days overdue")
         .accessibilityHint("Double-tap to open chase list")
     }
 
@@ -250,6 +262,7 @@ struct ARCard: View {
                 .tracking(-1.5)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .monospacedDigit()
+                .dynamicTypeSize(...DynamicTypeSize.accessibility3)  // § 8.4 — hero number clamp
             Text("// NO OPEN INVOICES")
                 .font(.custom("JetBrainsMono-Medium", size: 11))
                 .tracking(1.76)

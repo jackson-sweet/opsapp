@@ -48,6 +48,11 @@ struct PLCard: View {
         !viewModel.hasEverLoaded && viewModel.isLoading
     }
 
+    /// Composed VoiceOver summary for the whole card (spec § 8.1, Card 1).
+    private var accessibilityCardLabel: String {
+        "P and L. Net cash \(currencyString(viewModel.netCash)) this \(viewModel.selectedPeriod.label). \(marginPctSigned)% margin."
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -66,23 +71,35 @@ struct PLCard: View {
 
     private var normalBody: some View {
         VStack(alignment: .leading, spacing: 0) {
-            heroBlock
-            marginMeter.padding(.top, OPSStyle.Layout.spacing2)
-            inOutRow.padding(.top, 10)
+            // Non-tile content folded into one VoiceOver element (the § 8.1
+            // card summary). The drill tiles below stay individually navigable.
+            VStack(alignment: .leading, spacing: 0) {
+                heroBlock
+                marginMeter.padding(.top, OPSStyle.Layout.spacing2)
+                inOutRow.padding(.top, 10)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityCardLabel)
+            .accessibilityHint("Double-tap a tile for details")
+
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 BooksDrillTile(
                     label: "OUTSTANDING",
                     value: currencyString(viewModel.overdueInvoicesValue),
                     sub: itemsLabel(viewModel.overdueInvoicesCount),
                     valueColor: OPSStyle.Colors.rose,
-                    onTap: onTapOutstanding
+                    onTap: onTapOutstanding,
+                    accessibilityHint: "Double-tap to view overdue invoices",
+                    accessibilityLabelOverride: "Outstanding receivables, \(currencyString(viewModel.overdueInvoicesValue)), \(viewModel.overdueInvoicesCount) items"
                 )
                 BooksDrillTile(
                     label: "FORECAST",
                     value: currencyString(viewModel.pendingEstimatesValue),
                     sub: itemsLabel(viewModel.pendingEstimatesCount),
                     valueColor: OPSStyle.Colors.primaryAccent,
-                    onTap: onTapForecast
+                    onTap: onTapForecast,
+                    accessibilityHint: "Double-tap to view sent estimates",
+                    accessibilityLabelOverride: "Forecast revenue, \(currencyString(viewModel.pendingEstimatesValue)), \(viewModel.pendingEstimatesCount) estimates sent"
                 )
             }
             .padding(.top, OPSStyle.Layout.spacing4)
@@ -103,6 +120,7 @@ struct PLCard: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility3)  // § 8.4 — hero number clamp
                 .contentTransition(.numericText())
 
             Text("\(marginPctSigned)% MARGIN")
@@ -171,6 +189,7 @@ struct PLCard: View {
                     .tracking(-1.5)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .monospacedDigit()
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility3)  // § 8.4 — hero number clamp
                 Text("// NO ACTIVITY THIS PERIOD")
                     .font(.custom("JetBrainsMono-Medium", size: 11))
                     .tracking(1.76)  // 0.16em at 11pt

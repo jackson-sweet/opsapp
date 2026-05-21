@@ -19,6 +19,10 @@ struct BooksDrillTile: View {
     var accent: Bool = false
     var onTap: (() -> Void)? = nil
     var accessibilityHint: String? = nil
+    /// Full § 8.2 VoiceOver label. When set, it replaces the composed
+    /// label-plus-value announcement and suppresses the separate value, so the
+    /// tile reads exactly the spec's per-tile copy.
+    var accessibilityLabelOverride: String? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -32,8 +36,8 @@ struct BooksDrillTile: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(label)
-        .accessibilityValue(value)
+        .accessibilityLabel(accessibilityLabelOverride ?? label)
+        .modifier(OptionalAccessibilityValue(value: accessibilityLabelOverride == nil ? value : nil))
         .modifier(OptionalAccessibilityHint(hint: accessibilityHint))
     }
 
@@ -46,6 +50,7 @@ struct BooksDrillTile: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .textCase(.uppercase)
                     .lineLimit(1)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility2)  // § 8.4 — tile label clamped
                 Spacer(minLength: 4)
                 Image(systemName: "arrow.right")
                     .font(.system(size: 9, weight: .regular))
@@ -70,6 +75,7 @@ struct BooksDrillTile: View {
                     .monospacedDigit()
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility2)  // § 8.4 — tile sub-label clamped
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -122,6 +128,17 @@ private struct OptionalAccessibilityHint: ViewModifier {
     func body(content: Content) -> some View {
         if let hint {
             content.accessibilityHint(hint)
+        } else {
+            content
+        }
+    }
+}
+
+private struct OptionalAccessibilityValue: ViewModifier {
+    let value: String?
+    func body(content: Content) -> some View {
+        if let value {
+            content.accessibilityValue(value)
         } else {
             content
         }

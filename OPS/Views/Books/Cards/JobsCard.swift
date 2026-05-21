@@ -35,6 +35,11 @@ struct JobsCard: View {
         !viewModel.hasEverLoaded && viewModel.isLoading
     }
 
+    /// Composed VoiceOver summary for the whole card (spec § 8.1, Card 5).
+    private var accessibilityCardLabel: String {
+        "Jobs. \(viewModel.profitableProjectCount) profitable, \(viewModel.losersProjectCount) losing money this \(viewModel.selectedPeriod.label). Average margin \(Int((viewModel.avgProjectMargin * 100).rounded()))%."
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -53,17 +58,23 @@ struct JobsCard: View {
 
     private var normalBody: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("TOP 5 JOBS BY NET")
-                .font(.custom("JetBrainsMono-Medium", size: 10))
-                .tracking(2.0)  // 0.20em at 10pt
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            // Header + diverging-bar rows folded into one VoiceOver element
+            // (the § 8.1 card summary). The drill tiles stay individually navigable.
+            VStack(alignment: .leading, spacing: 0) {
+                Text("TOP 5 JOBS BY NET")
+                    .font(.custom("JetBrainsMono-Medium", size: 10))
+                    .tracking(2.0)  // 0.20em at 10pt
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-            VStack(spacing: 14) {
-                ForEach(viewModel.topProjectsByNet) { job in
-                    jobRow(job)
+                VStack(spacing: 14) {
+                    ForEach(viewModel.topProjectsByNet) { job in
+                        jobRow(job)
+                    }
                 }
+                .padding(.top, 18)
             }
-            .padding(.top, 18)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityCardLabel)
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 BooksDrillTile(
@@ -71,7 +82,9 @@ struct JobsCard: View {
                     value: "\(viewModel.profitableProjectCount)",
                     sub: "JOBS",
                     valueColor: OPSStyle.Colors.olive,
-                    onTap: onTapProfitable
+                    onTap: onTapProfitable,
+                    accessibilityHint: "Double-tap for profitability report",
+                    accessibilityLabelOverride: "Profitable jobs, \(viewModel.profitableProjectCount)"
                 )
                 BooksDrillTile(
                     label: "AVG MARGIN",
@@ -84,7 +97,9 @@ struct JobsCard: View {
                     value: "\(viewModel.losersProjectCount)",
                     sub: "JOBS",
                     valueColor: OPSStyle.Colors.rose,
-                    onTap: onTapLosers
+                    onTap: onTapLosers,
+                    accessibilityHint: "Double-tap to view losers",
+                    accessibilityLabelOverride: "Loss-making jobs, \(viewModel.losersProjectCount)"
                 )
             }
             .padding(.top, 22)

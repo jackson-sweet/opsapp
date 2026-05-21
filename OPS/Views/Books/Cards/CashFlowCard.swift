@@ -53,6 +53,11 @@ struct CashFlowCard: View {
         !viewModel.hasEverLoaded && viewModel.isLoading
     }
 
+    /// Composed VoiceOver summary for the whole card (spec § 8.1, Card 2).
+    private var accessibilityCardLabel: String {
+        "Cash flow. Net cash \(viewModel.netCash.formatted(.currency(code: "USD").precision(.fractionLength(0)))) over \(weeks.count) weeks. \(compactCurrency(avgPerWeek)) per week average."
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -71,8 +76,15 @@ struct CashFlowCard: View {
 
     private var normalBody: some View {
         VStack(alignment: .leading, spacing: 0) {
-            heroBlock
-            sparkline.padding(.top, 22)
+            // Non-tile content folded into one VoiceOver element (the § 8.1
+            // card summary). The drill tiles below stay individually navigable.
+            VStack(alignment: .leading, spacing: 0) {
+                heroBlock
+                sparkline.padding(.top, 22)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityCardLabel)
+
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 BooksDrillTile(
                     label: "SALES",
@@ -89,7 +101,9 @@ struct CashFlowCard: View {
                     label: "DAYS",
                     value: String(format: "%.1f", viewModel.avgDaysToPayment),
                     sub: "TO PAY",
-                    onTap: onTapDays
+                    onTap: onTapDays,
+                    accessibilityHint: "Double-tap for cash flow detail",
+                    accessibilityLabelOverride: "Days to pay, \(String(format: "%.1f", viewModel.avgDaysToPayment)) days mean"
                 )
             }
             .padding(.top, OPSStyle.Layout.spacing4)
@@ -110,6 +124,7 @@ struct CashFlowCard: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility3)  // § 8.4 — hero number clamp
                 .contentTransition(.numericText())
         }
     }
@@ -234,6 +249,7 @@ struct CashFlowCard: View {
                     .tracking(-1.5)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                     .monospacedDigit()
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility3)  // § 8.4 — hero number clamp
                 Text("// NO PAYMENTS THIS PERIOD")
                     .font(.custom("JetBrainsMono-Medium", size: 11))
                     .tracking(1.76)

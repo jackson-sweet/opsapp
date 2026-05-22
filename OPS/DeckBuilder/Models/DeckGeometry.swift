@@ -938,6 +938,20 @@ struct DeckDrawingData: Codable {
         isMultiLevel ? levels.flatMap { $0.edges } : edges
     }
 
+    /// The scale every real-world measurement on this drawing should use:
+    /// the calibrated `scaleFactor` once the user has confirmed a dimension
+    /// (or AR / sketch scan / template set it), otherwise the prescale
+    /// fallback the canvas already draws, snaps and dimensions every edge at.
+    /// A freehand-drawn deck has `scaleFactor == nil` yet is still at a
+    /// sound, internally-consistent scale — every edge already carries a
+    /// real `dimension` derived from this same fallback. Gating measurement
+    /// on `scaleFactor != nil` wrongly treated every un-recalibrated deck as
+    /// unmeasurable. Always > 0.
+    var effectiveScaleFactor: Double {
+        if let scaleFactor, scaleFactor > 0 { return scaleFactor }
+        return DeckBuilderViewModel.prescaleFallbackScale
+    }
+
     /// Total area across all levels in square inches
     func totalRealWorldArea(scaleFactor: Double) -> Double {
         if isMultiLevel {

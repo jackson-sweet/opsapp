@@ -412,7 +412,7 @@ class DeckBuilderViewModel: ObservableObject {
     var isClosed: Bool { activeIsClosed }
 
     var totalArea: Double? {
-        guard let scale = drawingData.scaleFactor, scale > 0 else { return nil }
+        let scale = drawingData.effectiveScaleFactor
         if isMultiLevel {
             // DECK-NEW-1 — sum every detected face on every level, not the
             // single all-vertices polygon. Falls back to the legacy
@@ -453,7 +453,7 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     var totalPerimeter: Double? {
-        guard let scale = drawingData.scaleFactor, scale > 0 else { return nil }
+        let scale = drawingData.effectiveScaleFactor
         if isMultiLevel {
             let totalPts = drawingData.levels.reduce(0.0) { total, level in
                 total + PolygonMath.perimeter(vertices: level.orderedPositions)
@@ -1954,21 +1954,21 @@ class DeckBuilderViewModel: ObservableObject {
         return best.surface
     }
 
-    /// Scale used for vinyl ordering. Canvas-created drawings are measured
-    /// before formal calibration: until the first confirmed edge length sets
-    /// `drawingData.scaleFactor`, the builder uses `prescaleFallbackScale` for
-    /// snap, labels, and committed `.scale` edge lengths. That fallback is
-    /// valid only while every edge is still scale-derived and no user-confirmed
-    /// dimension has gone stale.
+    /// Scale used for vinyl ordering. Vinyl is a stricter consumer than the
+    /// editor's area/perimeter readout or estimate generation: a cut-to-size
+    /// order can't tolerate a drawing whose typed dimensions disagree with the
+    /// drawn geometry. So any stale edge blocks the order, and — before the
+    /// user has calibrated `scaleFactor` — the prescale fallback is trusted
+    /// only while every edge is still scale-derived (no user-typed override in
+    /// play). Once the drawing clears those bars the scale is simply
+    /// `drawingData.effectiveScaleFactor` (the calibrated factor, or the
+    /// prescale fallback the canvas already draws every edge at).
     var vinylOrderEffectiveScale: Double? {
         guard !drawingData.allEdges.contains(where: \.dimensionStale) else { return nil }
-
-        if let scale = drawingData.scaleFactor, scale > 0 {
-            return scale
+        if (drawingData.scaleFactor ?? 0) <= 0, !canUsePrescaleFallbackForVinylOrder {
+            return nil
         }
-
-        guard canUsePrescaleFallbackForVinylOrder else { return nil }
-        return Self.prescaleFallbackScale
+        return drawingData.effectiveScaleFactor
     }
 
     private var canUsePrescaleFallbackForVinylOrder: Bool {

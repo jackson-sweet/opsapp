@@ -347,7 +347,7 @@ struct DeckTabView: View {
     /// covering the top-level geometry.
     private func levelChips(for design: DeckDesign) -> [DeckLevelChipData] {
         let data = design.drawingData
-        let scale = effectiveScale(for: data)
+        let scale = data.effectiveScaleFactor
 
         if data.isMultiLevel {
             return data.levels
@@ -382,21 +382,6 @@ struct DeckTabView: View {
                 scale: scale
             )
         ]
-    }
-
-    /// The scale every real-world measurement on a drawing should use: the
-    /// calibrated `scaleFactor` once the user has confirmed a dimension,
-    /// otherwise `prescaleFallbackScale` — the 2 pt/inch scale the canvas
-    /// already draws, snaps, dimensions and renders at. A drawn deck is
-    /// always at a sound scale; gating area on `scaleFactor != nil` wrongly
-    /// treated every un-recalibrated deck as unmeasurable, even though every
-    /// edge already carries a real dimension. Matches the fallback
-    /// `DeckTab2DView` and the rest of the builder already use.
-    private func effectiveScale(for data: DeckDrawingData) -> Double {
-        if let scale = data.scaleFactor, scale > 0 {
-            return scale
-        }
-        return DeckBuilderViewModel.prescaleFallbackScale
     }
 
     /// Assemble the height + metric set for one level's geometry. Only the

@@ -451,17 +451,12 @@ struct DeckTab2DView: View {
         let perpX = config.flipDirection ? -outward.x : outward.x
         let perpY = config.flipDirection ? -outward.y : outward.y
 
-        // Width / depth canvas math — match the editor's prescale fallback so
-        // stairs render at a proportional canvas size when no scaleFactor is
-        // calibrated yet. Bug DECK-NEW-5 — using 1.0 made stairs render at
-        // the wrong (much smaller) width on uncalibrated drawings, since
-        // every other element on the canvas falls back to 2.0 pt/inch.
-        let scale: Double
-        if let s = drawingData.scaleFactor, s > 0 {
-            scale = s
-        } else {
-            scale = DeckBuilderViewModel.prescaleFallbackScale
-        }
+        // Width / depth canvas math uses the drawing's effective scale so
+        // stairs render at a proportional canvas size even before the user
+        // calibrates a scaleFactor. Bug DECK-NEW-5 — using 1.0 made stairs
+        // render at the wrong (much smaller) width on uncalibrated drawings,
+        // since every other element on the canvas falls back to 2.0 pt/inch.
+        let scale = drawingData.effectiveScaleFactor
         let stairWidthCanvas = min(CGFloat(config.width) * CGFloat(scale), edgeLen)
         let totalRunInches = Double(treadCount) * config.runPerTread
         let stairDepthCanvas = CGFloat(totalRunInches) * CGFloat(scale)

@@ -347,6 +347,7 @@ struct DeckTabView: View {
     /// covering the top-level geometry.
     private func levelChips(for design: DeckDesign) -> [DeckLevelChipData] {
         let data = design.drawingData
+        let scale = effectiveScale(for: data)
 
         if data.isMultiLevel {
             return data.levels
@@ -362,7 +363,7 @@ struct DeckTabView: View {
                         detectedSurfaces: level.detectedSurfaces,
                         orderedPositions: level.orderedPositions,
                         isClosed: level.isClosed,
-                        scaleFactor: data.scaleFactor
+                        scale: scale
                     )
                 }
         }
@@ -378,9 +379,24 @@ struct DeckTabView: View {
                 detectedSurfaces: data.detectedSurfaces,
                 orderedPositions: data.orderedPositions,
                 isClosed: data.isClosed,
-                scaleFactor: data.scaleFactor
+                scale: scale
             )
         ]
+    }
+
+    /// The scale every real-world measurement on a drawing should use: the
+    /// calibrated `scaleFactor` once the user has confirmed a dimension,
+    /// otherwise `prescaleFallbackScale` — the 2 pt/inch scale the canvas
+    /// already draws, snaps, dimensions and renders at. A drawn deck is
+    /// always at a sound scale; gating area on `scaleFactor != nil` wrongly
+    /// treated every un-recalibrated deck as unmeasurable, even though every
+    /// edge already carries a real dimension. Matches the fallback
+    /// `DeckTab2DView` and the rest of the builder already use.
+    private func effectiveScale(for data: DeckDrawingData) -> Double {
+        if let scale = data.scaleFactor, scale > 0 {
+            return scale
+        }
+        return DeckBuilderViewModel.prescaleFallbackScale
     }
 
     /// Assemble the height + metric set for one level's geometry. Only the
@@ -396,18 +412,18 @@ struct DeckTabView: View {
         detectedSurfaces: [DetectedSurface],
         orderedPositions: [CGPoint],
         isClosed: Bool,
-        scaleFactor: Double?
+        scale: Double
     ) -> DeckLevelChipData {
         var metrics: [ChipMetric] = []
 
         // Square footage — the same per-surface logic as
         // `DeckDrawingData.totalRealWorldArea`, scoped to this level.
-        // Absent when the deck is uncalibrated (no scale factor).
+        // Absent only when the level encloses no measurable surface.
         if let area = levelAreaSquareFeet(
             detectedSurfaces: detectedSurfaces,
             orderedPositions: orderedPositions,
             isClosed: isClosed,
-            scaleFactor: scaleFactor
+            scale: scale
         ) {
             metrics.append(
                 ChipMetric(label: "AREA", value: "\(Int(area.rounded()).formatted()) FT²")
@@ -421,7 +437,7 @@ struct DeckTabView: View {
             metrics.append(
                 ChipMetric(
                     label: "RAILING",
-                    value: railingValue(railingEdges, vertices: vertices, scaleFactor: scaleFactor)
+                    value: railingValue(railingEdges, vertices: vertices, scale: scale)
                 )
             )
         }
@@ -450,16 +466,15 @@ struct DeckTabView: View {
     }
 
     /// Real-world floor area for one level in square feet — mirrors the
-    /// per-surface branch of `DeckDrawingData.totalRealWorldArea`. Returns
-    /// nil when uncalibrated, or when nothing encloses a measurable area.
+    /// per-surface branch of `DeckDrawingData.totalRealWorldArea`, using the
+    /// drawing's effective scale. Returns nil only when the level encloses
+    /// nothing measurable (open shape, or every surface self-intersecting).
     private func levelAreaSquareFeet(
         detectedSurfaces: [DetectedSurface],
         orderedPositions: [CGPoint],
         isClosed: Bool,
-        scaleFactor: Double?
+        scale: Double
     ) -> Double? {
-        guard let scale = scaleFactor, scale > 0 else { return nil }
-
         let areaSquareInches: Double
         if detectedSurfaces.isEmpty {
             guard isClosed,
@@ -482,13 +497,13 @@ struct DeckTabView: View {
         return squareFeet >= 0.5 ? squareFeet : nil
     }
 
-    /// Railing linear feet (when measurable) plus the railing type — e.g.
-    /// `64 FT GLASS`. Falls back to the type alone when no edge length
-    /// resolves, and to `MIXED` when a level carries more than one type.
+    /// Railing linear feet plus the railing type — e.g. `64 FT GLASS`.
+    /// Falls back to the type alone when no edge length resolves, and to
+    /// `MIXED` when a level carries more than one type.
     private func railingValue(
         _ edges: [DeckEdge],
         vertices: [DeckVertex],
-        scaleFactor: Double?
+        scale: Double
     ) -> String {
         let types = edges.compactMap { $0.railingConfig?.railingType }
         let distinct = RailingType.allCases.filter { types.contains($0) }
@@ -497,7 +512,7 @@ struct DeckTabView: View {
             : "MIXED"
 
         let totalInches = edges
-            .compactMap { edgeLengthInches($0, vertices: vertices, scaleFactor: scaleFactor) }
+            .compactMap { edgeLengthInches($0, vertices: vertices, scale: scale) }
             .reduce(0, +)
         let linearFeet = totalInches / 12.0
 
@@ -513,17 +528,17 @@ struct DeckTabView: View {
     }
 
     /// Real-world length of an edge in inches — the stored dimension when
-    /// the user has measured it, otherwise derived from canvas length and
-    /// the scale factor. Nil when neither source is available.
+    /// the edge carries one, otherwise derived from canvas length and the
+    /// drawing's effective scale. Nil only when the edge references a
+    /// missing vertex.
     private func edgeLengthInches(
         _ edge: DeckEdge,
         vertices: [DeckVertex],
-        scaleFactor: Double?
+        scale: Double
     ) -> Double? {
         if let dimension = edge.dimension, dimension > 0 { return dimension }
 
-        guard let scale = scaleFactor, scale > 0,
-              let start = vertices.first(where: { $0.id == edge.startVertexId })?.position,
+        guard let start = vertices.first(where: { $0.id == edge.startVertexId })?.position,
               let end = vertices.first(where: { $0.id == edge.endVertexId })?.position
         else { return nil }
 

@@ -54,7 +54,7 @@ enum ComponentEmitter {
                 isClosed: data.isClosed,
                 orderedPositions: data.orderedPositions,
                 detectedSurfaces: data.detectedSurfaces,
-                scaleFactor: data.scaleFactor,
+                scaleFactor: data.effectiveScaleFactor,
                 levelId: nil
             ))
         }
@@ -79,7 +79,7 @@ enum ComponentEmitter {
             isClosed: level.isClosed,
             orderedPositions: level.orderedPositions,
             detectedSurfaces: level.detectedSurfaces,
-            scaleFactor: data.scaleFactor,
+            scaleFactor: data.effectiveScaleFactor,
             levelId: level.id
         ))
         return rows
@@ -213,11 +213,10 @@ enum ComponentEmitter {
         isClosed: Bool,
         orderedPositions: [CGPoint],
         detectedSurfaces: [DetectedSurface],
-        scaleFactor: Double?,
+        scaleFactor: Double,
         levelId: String?
     ) -> [DesignComponentRow] {
         var rows: [DesignComponentRow] = []
-        guard let scale = scaleFactor, scale > 0 else { return rows }
 
         if !surfaces.isEmpty {
             for surface in surfaces {
@@ -235,7 +234,7 @@ enum ComponentEmitter {
                       face.positions.count >= 3,
                       !PolygonMath.isSelfIntersecting(vertices: face.positions) else { continue }
 
-                let areaSqFt = PolygonMath.realWorldArea(vertices: face.positions, scaleFactor: scale) / 144.0
+                let areaSqFt = PolygonMath.realWorldArea(vertices: face.positions, scaleFactor: scaleFactor) / 144.0
                 guard areaSqFt > 0 else { continue }
 
                 var meta: [String: AnyCodable] = [
@@ -259,7 +258,7 @@ enum ComponentEmitter {
               !PolygonMath.isSelfIntersecting(vertices: orderedPositions) else {
             return rows
         }
-        let areaSqFt = PolygonMath.realWorldArea(vertices: orderedPositions, scaleFactor: scale) / 144.0
+        let areaSqFt = PolygonMath.realWorldArea(vertices: orderedPositions, scaleFactor: scaleFactor) / 144.0
         guard areaSqFt > 0 else { return rows }
 
         // Default vocabulary when the footprint carries no items — the

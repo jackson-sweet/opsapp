@@ -106,54 +106,118 @@ struct DeckTabView: View {
 
     // MARK: - Floating Design Info (overlay top-left of viewport)
 
-    /// Title and surface metadata anchored to the top-leading corner of the
-    /// rendering viewport.
+    /// Design title plus a per-level chip set, anchored to the top-leading
+    /// corner of the rendering viewport. Each level reports its own height,
+    /// area, railing, siding and stair detail — bug 258378ac. Supersedes the
+    /// whole-design aggregate line (bug 38c8c58c) and the original loose
+    /// sqft / linear-foot / material badges (bug 8dbecc70).
     private func floatingDesignInfo(design: DeckDesign) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // Title pill — single line, ellipsis on overflow so very long
-            // names don't push the badges off the viewport.
-            Text(design.title)
-                .font(OPSStyle.Typography.cardBody)
-                .fontWeight(.semibold)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(OPSStyle.Colors.cardBackground.opacity(0.9))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: 0.5)
-                        )
-                )
+        let chips = levelChips(for: design)
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            titlePill(design.title)
 
-            // Surface stats only, rendered as plain metadata rather than
-            // chips. Edges/posts are construction metadata and were removed
-            // from this project-detail viewer per bug 38c8c58c.
-            HStack(spacing: 8) {
-                if let area = computeArea(design: design) {
-                    metadataText(area)
-                }
-
-                // Level count — only when there's more than one. Helps
-                // the user spot multi-level designs at a glance.
-                if design.drawingData.isMultiLevel, design.drawingData.levels.count > 1 {
-                    metadataText("\(design.drawingData.levels.count) levels")
-                }
-
-                if let elevation = design.drawingData.overallElevation {
-                    metadataText(String(format: "%.1f ft", elevation))
-                }
+            ForEach(chips) { chip in
+                levelChipView(chip)
             }
         }
     }
 
-    private func metadataText(_ value: String) -> some View {
-        Text(value.uppercased())
-            .font(.system(size: 11, weight: .medium, design: .monospaced))
-            .foregroundColor(OPSStyle.Colors.secondaryText)
+    /// Single-line design-name pill — ellipsis on overflow so long names
+    /// never push the chips off the viewport.
+    private func titlePill(_ title: String) -> some View {
+        Text(title)
+            .font(OPSStyle.Typography.cardBody)
+            .fontWeight(.semibold)
+            .foregroundColor(OPSStyle.Colors.primaryText)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
+            .padding(.vertical, OPSStyle.Layout.spacing1)
+            .frame(maxWidth: Self.chipWidth, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                    .fill(OPSStyle.Colors.cardBackground.opacity(0.9))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                            .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: 0.5)
+                    )
+            )
+    }
+
+    /// One chip per deck level — or a single "DECK" chip for a single-level
+    /// design. The header carries level identity + height (the attribute
+    /// that defines a level); the flow below carries area, railing, siding
+    /// and stairs — only the metrics that resolve for that level.
+    ///
+    /// Static by design: this is ambient reference chrome, so it carries no
+    /// entry animation. Per the OPSStyle motion budget, movement is reserved
+    /// for transitions that communicate change — these chips communicate
+    /// state, so they simply render.
+    private func levelChipView(_ chip: DeckLevelChipData) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                if let accent = chip.accentColor {
+                    Circle()
+                        .fill(accent)
+                        .frame(
+                            width: OPSStyle.Layout.Indicator.dotSM,
+                            height: OPSStyle.Layout.Indicator.dotSM
+                        )
+                }
+
+                Text(chip.name)
+                    .font(OPSStyle.Typography.category)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .lineLimit(1)
+
+                Spacer(minLength: OPSStyle.Layout.spacing2)
+
+                Text(chip.heightText ?? "—")
+                    .font(OPSStyle.Typography.category)
+                    .monospacedDigit()
+                    .foregroundColor(
+                        chip.heightText == nil
+                            ? OPSStyle.Colors.tertiaryText
+                            : OPSStyle.Colors.primaryText
+                    )
+            }
+
+            if !chip.metrics.isEmpty {
+                FlowLayout(spacing: OPSStyle.Layout.spacing2) {
+                    ForEach(chip.metrics) { metric in
+                        metricToken(label: metric.label, value: metric.value)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
+        .frame(width: Self.chipWidth, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                .fill(OPSStyle.Colors.cardBackground.opacity(0.9))
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                        .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: 0.5)
+                )
+        )
+    }
+
+    /// A single metric: a dim uppercase micro-label butted against its mono
+    /// value (e.g. `RAILING 64 FT GLASS`). Concatenated into one `Text` so
+    /// `FlowLayout` treats the label + value as one atomic, non-wrapping unit.
+    private func metricToken(label: String, value: String) -> some View {
+        (
+            Text(label + " ")
+                .font(OPSStyle.Typography.miniLabel)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            + Text(value)
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+        )
+        .monospacedDigit()
+        .lineLimit(1)
+        .fixedSize()
     }
 
     // MARK: - Control Bar
@@ -273,11 +337,207 @@ struct DeckTabView: View {
 
     // MARK: - Helpers
 
-    private func computeArea(design: DeckDesign) -> String? {
-        guard let scale = design.drawingData.scaleFactor, scale > 0 else { return nil }
-        let totalAreaFt = design.drawingData.totalRealWorldArea(scaleFactor: scale) / 144.0
-        guard totalAreaFt > 0 else { return nil }
-        return String(format: "%.0f ft²", totalAreaFt)
+    /// Fixed width for the floating title pill and level chips. Bounds the
+    /// overlay so it never spans the viewport, and gives `FlowLayout` a
+    /// definite width to wrap metric tokens against.
+    private static let chipWidth: CGFloat = 200
+
+    /// Build one chip per level. Multi-level designs report each `DeckLevel`
+    /// in draw order; a single-level design collapses to one "DECK" chip
+    /// covering the top-level geometry.
+    private func levelChips(for design: DeckDesign) -> [DeckLevelChipData] {
+        let data = design.drawingData
+
+        if data.isMultiLevel {
+            return data.levels
+                .sorted { $0.sortOrder < $1.sortOrder }
+                .map { level in
+                    buildChip(
+                        id: level.id,
+                        name: level.name.uppercased(),
+                        accentColor: level.displayColor.swiftUIColor,
+                        elevation: level.elevation,
+                        vertices: level.vertices,
+                        edges: level.edges,
+                        detectedSurfaces: level.detectedSurfaces,
+                        orderedPositions: level.orderedPositions,
+                        isClosed: level.isClosed,
+                        scaleFactor: data.scaleFactor
+                    )
+                }
+        }
+
+        return [
+            buildChip(
+                id: design.id,
+                name: "DECK",
+                accentColor: nil,
+                elevation: data.overallElevation,
+                vertices: data.vertices,
+                edges: data.edges,
+                detectedSurfaces: data.detectedSurfaces,
+                orderedPositions: data.orderedPositions,
+                isClosed: data.isClosed,
+                scaleFactor: data.scaleFactor
+            )
+        ]
+    }
+
+    /// Assemble the height + metric set for one level's geometry. Only the
+    /// metrics that resolve for the level are emitted, so an uncalibrated or
+    /// feature-light level still produces a clean, sparse chip.
+    private func buildChip(
+        id: String,
+        name: String,
+        accentColor: Color?,
+        elevation: Double?,
+        vertices: [DeckVertex],
+        edges: [DeckEdge],
+        detectedSurfaces: [DetectedSurface],
+        orderedPositions: [CGPoint],
+        isClosed: Bool,
+        scaleFactor: Double?
+    ) -> DeckLevelChipData {
+        var metrics: [ChipMetric] = []
+
+        // Square footage — the same per-surface logic as
+        // `DeckDrawingData.totalRealWorldArea`, scoped to this level.
+        // Absent when the deck is uncalibrated (no scale factor).
+        if let area = levelAreaSquareFeet(
+            detectedSurfaces: detectedSurfaces,
+            orderedPositions: orderedPositions,
+            isClosed: isClosed,
+            scaleFactor: scaleFactor
+        ) {
+            metrics.append(
+                ChipMetric(label: "AREA", value: "\(Int(area.rounded()).formatted()) FT²")
+            )
+        }
+
+        // Railing — linear feet across every edge carrying a railing
+        // config, plus the railing type(s).
+        let railingEdges = edges.filter { $0.railingConfig != nil }
+        if !railingEdges.isEmpty {
+            metrics.append(
+                ChipMetric(
+                    label: "RAILING",
+                    value: railingValue(railingEdges, vertices: vertices, scaleFactor: scaleFactor)
+                )
+            )
+        }
+
+        // House siding — cladding material on house edges, when set.
+        let sidings = edges
+            .filter { $0.edgeType == .houseEdge }
+            .compactMap { $0.houseEdgeMaterial }
+        if !sidings.isEmpty {
+            metrics.append(ChipMetric(label: "SIDING", value: materialValue(sidings)))
+        }
+
+        // Stairs — count of edges on this level carrying a stair config.
+        let stairCount = edges.filter { $0.stairConfig != nil }.count
+        if stairCount > 0 {
+            metrics.append(ChipMetric(label: "STAIRS", value: "\(stairCount)"))
+        }
+
+        return DeckLevelChipData(
+            id: id,
+            name: name,
+            accentColor: accentColor,
+            heightText: elevation.map(feetText),
+            metrics: metrics
+        )
+    }
+
+    /// Real-world floor area for one level in square feet — mirrors the
+    /// per-surface branch of `DeckDrawingData.totalRealWorldArea`. Returns
+    /// nil when uncalibrated, or when nothing encloses a measurable area.
+    private func levelAreaSquareFeet(
+        detectedSurfaces: [DetectedSurface],
+        orderedPositions: [CGPoint],
+        isClosed: Bool,
+        scaleFactor: Double?
+    ) -> Double? {
+        guard let scale = scaleFactor, scale > 0 else { return nil }
+
+        let areaSquareInches: Double
+        if detectedSurfaces.isEmpty {
+            guard isClosed,
+                  !PolygonMath.isSelfIntersecting(vertices: orderedPositions) else { return nil }
+            areaSquareInches = PolygonMath.realWorldArea(
+                vertices: orderedPositions,
+                scaleFactor: scale
+            )
+        } else {
+            areaSquareInches = detectedSurfaces.reduce(0) { partial, surface in
+                guard !PolygonMath.isSelfIntersecting(vertices: surface.positions) else { return partial }
+                return partial + PolygonMath.realWorldArea(
+                    vertices: surface.positions,
+                    scaleFactor: scale
+                )
+            }
+        }
+
+        let squareFeet = areaSquareInches / 144.0
+        return squareFeet >= 0.5 ? squareFeet : nil
+    }
+
+    /// Railing linear feet (when measurable) plus the railing type — e.g.
+    /// `64 FT GLASS`. Falls back to the type alone when no edge length
+    /// resolves, and to `MIXED` when a level carries more than one type.
+    private func railingValue(
+        _ edges: [DeckEdge],
+        vertices: [DeckVertex],
+        scaleFactor: Double?
+    ) -> String {
+        let types = edges.compactMap { $0.railingConfig?.railingType }
+        let distinct = RailingType.allCases.filter { types.contains($0) }
+        let typeText = distinct.count == 1
+            ? distinct[0].displayName.uppercased()
+            : "MIXED"
+
+        let totalInches = edges
+            .compactMap { edgeLengthInches($0, vertices: vertices, scaleFactor: scaleFactor) }
+            .reduce(0, +)
+        let linearFeet = totalInches / 12.0
+
+        guard linearFeet >= 0.5 else { return typeText }
+        return "\(Int(linearFeet.rounded()).formatted()) FT \(typeText)"
+    }
+
+    /// House-edge cladding — a single material name, or `MIXED` when a
+    /// level's house edges carry more than one.
+    private func materialValue(_ materials: [HouseEdgeMaterial]) -> String {
+        let distinct = HouseEdgeMaterial.allCases.filter { materials.contains($0) }
+        return distinct.count == 1 ? distinct[0].displayName.uppercased() : "MIXED"
+    }
+
+    /// Real-world length of an edge in inches — the stored dimension when
+    /// the user has measured it, otherwise derived from canvas length and
+    /// the scale factor. Nil when neither source is available.
+    private func edgeLengthInches(
+        _ edge: DeckEdge,
+        vertices: [DeckVertex],
+        scaleFactor: Double?
+    ) -> Double? {
+        if let dimension = edge.dimension, dimension > 0 { return dimension }
+
+        guard let scale = scaleFactor, scale > 0,
+              let start = vertices.first(where: { $0.id == edge.startVertexId })?.position,
+              let end = vertices.first(where: { $0.id == edge.endVertexId })?.position
+        else { return nil }
+
+        return SnapEngine.distance(start, end) / scale
+    }
+
+    /// Format a height in feet — whole numbers drop the decimal (`9 FT`),
+    /// fractional heights keep one place (`8.5 FT`).
+    private func feetText(_ value: Double) -> String {
+        let rounded = (value * 10).rounded() / 10
+        if rounded == rounded.rounded() {
+            return "\(Int(rounded)) FT"
+        }
+        return String(format: "%.1f FT", rounded)
     }
 
     @MainActor
@@ -378,4 +638,31 @@ struct DeckTabView: View {
         }
         return fields
     }
+}
+
+// MARK: - Level Chip Model
+
+/// View-model for one floating level chip in `DeckTabView`, built by
+/// `levelChips(for:)` from a `DeckDesign`'s geometry.
+private struct DeckLevelChipData: Identifiable {
+    /// `DeckLevel.id` for a multi-level design, or `DeckDesign.id` for the
+    /// single-level fallback chip.
+    let id: String
+    /// Uppercased level name (`LEVEL 1`), or `DECK` for a single-level design.
+    let name: String
+    /// Level render colour, surfaced as a key dot so the chip ties back to
+    /// the 2D/3D scene. Nil for single-level designs — nothing to key.
+    let accentColor: Color?
+    /// Formatted level height (`9 FT`), or nil when no elevation is set.
+    let heightText: String?
+    /// Resolved per-level metrics — area, railing, siding, stairs. Only the
+    /// metrics that apply to the level are present.
+    let metrics: [ChipMetric]
+}
+
+/// A single labelled metric inside a level chip.
+private struct ChipMetric: Identifiable {
+    let label: String
+    let value: String
+    var id: String { label }
 }

@@ -271,8 +271,6 @@ struct VinylOrderSheet: View {
     private var controlsSection: some View {
         section(title: "SETTINGS") {
             VStack(spacing: OPSStyle.Layout.spacing2) {
-                catalogProductPicker
-
                 if selectedProductChoice != nil {
                     catalogVariantPicker
                 } else {
@@ -314,34 +312,6 @@ struct VinylOrderSheet: View {
                     step: 0.5
                 )
             }
-        }
-    }
-
-    private var catalogProductPicker: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
-            Text("PRODUCT")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .frame(width: VinylOrderLayout.labelWidth, alignment: .leading)
-
-            Picker("PRODUCT", selection: Binding(
-                get: { settings.catalogItemId ?? "" },
-                set: { selectCatalogItem($0) }
-            )) {
-                Text("NONE")
-                    .tag("")
-                ForEach(catalogProductChoices) { choice in
-                    Text(choice.item.name.uppercased())
-                        .tag(choice.id)
-                }
-            }
-            .pickerStyle(.menu)
-            .font(OPSStyle.Typography.body)
-            .foregroundColor(OPSStyle.Colors.primaryText)
-            .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin, alignment: .leading)
-            .padding(.horizontal, OPSStyle.Layout.spacing2)
-            .background(OPSStyle.Colors.subtleBackground)
-            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
         }
     }
 
@@ -791,14 +761,6 @@ struct VinylOrderSheet: View {
             .font(OPSStyle.Typography.caption)
             .foregroundColor(OPSStyle.Colors.secondaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func selectCatalogItem(_ rawItemId: String) {
-        let itemId = rawItemId.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.catalogItemId = itemId.isEmpty ? nil : itemId
-        settings.catalogVariantId = nil
-        settings.color = ""
-        viewModel.setVinylCatalogItemId(settings.catalogItemId)
     }
 
     private func selectCatalogVariant(_ rawVariantId: String) {

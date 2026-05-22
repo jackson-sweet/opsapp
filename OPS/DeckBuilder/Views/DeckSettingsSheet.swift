@@ -49,6 +49,18 @@ struct DeckSettingsSheet: View {
         NavigationView {
             List {
                 Section {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                        Text("MEASUREMENT SYSTEM")
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                        Picker("", selection: $viewModel.drawingData.config.measurementSystem) {
+                            Text("Imperial").tag(MeasurementSystem.imperial)
+                            Text("Metric").tag(MeasurementSystem.metric)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
                     Toggle("Snapping", isOn: $viewModel.drawingData.config.snappingEnabled)
                         .tint(OPSStyle.Colors.primaryAccent)
 
@@ -121,25 +133,31 @@ struct DeckSettingsSheet: View {
                             }
                         }
                     }
+
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                        HStack {
+                            Text("Endpoint Snap Radius")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                            Spacer()
+                            Text("\(Int(viewModel.drawingData.config.endpointSnapRadius))pt")
+                                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                        Slider(
+                            value: $viewModel.drawingData.config.endpointSnapRadius,
+                            in: 10...40,
+                            step: 5
+                        )
+                        .tint(OPSStyle.Colors.primaryAccent)
+                    }
                 } header: {
-                    Text("SNAPPING")
+                    Text("MEASUREMENT & SNAPPING")
                 }
 
                 Section {
                     Toggle("Grid", isOn: $viewModel.drawingData.config.gridVisible)
                         .tint(OPSStyle.Colors.primaryAccent)
-
-                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                        Text("MEASUREMENT SYSTEM")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                        Picker("", selection: $viewModel.drawingData.config.measurementSystem) {
-                            Text("Imperial").tag(MeasurementSystem.imperial)
-                            Text("Metric").tag(MeasurementSystem.metric)
-                        }
-                        .pickerStyle(.segmented)
-                    }
                 } header: {
                     Text("DISPLAY")
                 }
@@ -186,28 +204,6 @@ struct DeckSettingsSheet: View {
                     Text("Saves your changes silently so a crash or quit doesn't lose work.")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-
-                Section {
-                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                        HStack {
-                            Text("Endpoint Snap Radius")
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                            Spacer()
-                            Text("\(Int(viewModel.drawingData.config.endpointSnapRadius))pt")
-                                .font(.system(size: 14, weight: .medium, design: .monospaced))
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                        Slider(
-                            value: $viewModel.drawingData.config.endpointSnapRadius,
-                            in: 10...40,
-                            step: 5
-                        )
-                        .tint(OPSStyle.Colors.primaryAccent)
-                    }
-                } header: {
-                    Text("ADVANCED")
                 }
             }
             .listStyle(.insetGrouped)

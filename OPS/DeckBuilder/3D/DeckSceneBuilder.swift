@@ -30,7 +30,7 @@ struct DeckSceneBuilder {
     private static let bottomRailOffsetM: Float = 4.0 * inchesToMeters // 4" above deck
     private static let topRailThicknessM: Float = 2.0 * inchesToMeters
     private static let treadThicknessM: Float = 1.5 * inchesToMeters  // 1.5" thick tread
-    private static let houseWallHeightM: Float = 9.0 * feetToMeters   // 9' wall above deck
+    private static let houseWallHeightM: Float = 8.0 * feetToMeters   // 8' wall above deck
 
     // MARK: - Main Build
 
@@ -100,6 +100,11 @@ struct DeckSceneBuilder {
                     scaleFactor: scaleFactor,
                     center: sharedCenter
                 )
+                // Cap the house wall at the bottom of the next level up so a
+                // wall on a lower level never punches through the deck above
+                // it (bug fb007839). nil when no level sits higher.
+                let houseWallCapM = drawingData.heightToNextLevelFeet(aboveLevelAt: levelIndex)
+                    .map { Float($0) * feetToMeters }
                 buildDeckLevel(
                     parent: scene.rootNode,
                     vertices2D: primaryFallback,
@@ -108,6 +113,7 @@ struct DeckSceneBuilder {
                     elevationM: elevationM,
                     scaleFactor: scaleFactor,
                     level: level,
+                    houseWallCapM: houseWallCapM,
                     surfacesIn3D: surfacesIn3D
                 )
             }
@@ -295,6 +301,7 @@ struct DeckSceneBuilder {
         scaleFactor: Double,
         level: DeckLevel?,
         skipHouseWall: Bool = false,
+        houseWallCapM: Float? = nil,  // bug fb007839 — wall cap on multi-level designs
         surfacesIn3D: [SurfaceMesh3D]? = nil  // DECK-NEW-1 — per-surface meshes + materials
     ) {
         let deckGroup = SCNNode()
@@ -333,6 +340,11 @@ struct DeckSceneBuilder {
                   let endPt = vertexPositionsInMetersById[edge.endVertexId] else { continue }
             let startPos3D = SCNVector3(Float(startPt.x), elevationM, Float(startPt.y))
             let endPos3D = SCNVector3(Float(endPt.x), elevationM, Float(endPt.y))
+
+            // Rim joist beneath the deck surface along every perimeter edge
+            // (bug 313aad41) — the calibrated path previously drew no edge
+            // framing, leaving the surface reading as a floating slab.
+            buildRimJoist(parent: deckGroup, start: startPos3D, end: endPos3D, deckElevationM: elevationM)
 
             // Edge length in inches for post count
             let edgeLengthInches = edge.dimension ?? {
@@ -377,6 +389,7 @@ struct DeckSceneBuilder {
                     start: startPos3D,
                     end: endPos3D,
                     deckElevationM: elevationM,
+                    maxHeightM: houseWallCapM,
                     material: edge.houseEdgeMaterial
                 )
             }
@@ -995,16 +1008,21 @@ struct DeckSceneBuilder {
         start: SCNVector3,
         end: SCNVector3,
         deckElevationM: Float,
+        maxHeightM: Float? = nil,
         material: HouseEdgeMaterial? = nil
     ) {
-        // The wall rises from the deck surface upward (not from the ground).
-        // This makes house edges visually "rise above the deck plane" as a
-        // wall section the deck attaches to. Bug 8 — the previous formula
-        // (wallHeight = deckElevationM + houseWallHeightM, yCenter = wallHeight/2)
-        // centered the box between ground and the wall top, which buried the
-        // lower half of the wall under the deck surface.
+        // The wall rises from the deck surface upward (not from the ground)
+        // so house edges read as a wall section the deck attaches to.
+        //
+        // Bug fb007839 — the wall is 8' tall by default, but on a
+        // multi-level design `maxHeightM` carries the gap up to the next
+        // level: the wall is capped there so it stops at the underside of
+        // the deck above instead of spearing through it. This supersedes
+        // bug a40556a7, which had fixed the wall height at 9'.
+        let wallHeight = maxHeightM.map { min(houseWallHeightM, $0) } ?? houseWallHeightM
+        guard wallHeight > 0 else { return }
         let wallBottom = deckElevationM
-        let wallTop = deckElevationM + houseWallHeightM
+        let wallTop = deckElevationM + wallHeight
 
         // Bug 3d72ce0b — cladding material drives wall color. Stucco / hardie
         // / wood-vertical map to their `fillHex` tone (defined on the enum);
@@ -1019,11 +1037,37 @@ struct DeckSceneBuilder {
             from: start, to: end,
             yCenter: (wallBottom + wallTop) / 2,
             width: 0.05, // 2" thick wall representation
-            height: houseWallHeightM,
+            height: wallHeight,
             material: makeMaterial(color: wallColor)
         )
         wallNode.name = "houseWall"
         parent.addChildNode(wallNode)
+    }
+
+    // MARK: - Rim Joist
+
+    /// A rim joist runs the deck perimeter directly under the deck boards.
+    /// The calibrated path previously drew no edge framing at all, so the
+    /// deck surface read as a floating slab; this adds a proper joist beneath
+    /// the surface for realism and to match the DeckTab3DView fallback, which
+    /// now also seats its edge beam below the surface (bug 313aad41).
+    private static func buildRimJoist(
+        parent: SCNNode,
+        start: SCNVector3,
+        end: SCNVector3,
+        deckElevationM: Float
+    ) {
+        let depthM: Float = 7.25 * inchesToMeters   // 2x8 rim joist
+        let thicknessM: Float = 1.5 * inchesToMeters
+        let joist = buildSpanningBox(
+            from: start, to: end,
+            yCenter: deckElevationM - depthM / 2,  // top of joist flush with the deck surface
+            width: thicknessM,
+            height: depthM,
+            material: makeMaterial(color: stringerColor)
+        )
+        joist.name = "rimJoist"
+        parent.addChildNode(joist)
     }
 
     // MARK: - Ground Plane

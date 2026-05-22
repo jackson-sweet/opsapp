@@ -1033,6 +1033,21 @@ struct DeckDrawingData: Codable {
         return 2.5
     }
 
+    /// Vertical gap (in feet) from a level's surface up to the bottom of the
+    /// next level above it, or nil when no level sits higher. A house wall on
+    /// a level must stop at the deck above rather than spear through it, so
+    /// the 3D renderers cap the wall at this gap (bug fb007839). Uses the
+    /// same resolved heights as `renderElevationFeet(for:levelIndex:)`.
+    func heightToNextLevelFeet(aboveLevelAt levelIndex: Int) -> Double? {
+        guard levelIndex >= 0, levelIndex < levels.count else { return nil }
+        let thisElevation = renderElevationFeet(for: levels[levelIndex], levelIndex: levelIndex)
+        let higherElevations = levels.enumerated()
+            .map { renderElevationFeet(for: $0.element, levelIndex: $0.offset) }
+            .filter { $0 > thisElevation }
+        guard let nextElevation = higherElevations.min() else { return nil }
+        return nextElevation - thisElevation
+    }
+
     /// Migrate single-level data to multi-level (called when adding a second level)
     mutating func migrateToMultiLevel() {
         guard !isMultiLevel, vertices.count >= 3 else { return }

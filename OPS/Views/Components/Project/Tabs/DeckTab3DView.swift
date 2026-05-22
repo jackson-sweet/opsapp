@@ -113,15 +113,16 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
 
         // Render every level — surfaces + explicit edge features. Without this loop,
         // multi-level designs only ever showed level 1 in the viewer.
-        let levelsToRender: [(positions: [CGPoint], edges: [DeckEdge], vertices: [DeckVertex], isClosed: Bool, deckHeight: Float, displayColor: LevelColor?)]
+        let levelsToRender: [(positions: [CGPoint], edges: [DeckEdge], vertices: [DeckVertex], isClosed: Bool, deckHeight: Float, displayColor: LevelColor?, houseWallCapM: Float?)]
         if drawingData.isMultiLevel {
             levelsToRender = drawingData.levels.enumerated().map { idx, level in
                 let deckHeight = Float(drawingData.renderElevationFeet(for: level, levelIndex: idx)) * feetToMeters
-                return (level.orderedPositions, level.edges, level.vertices, level.isClosed, deckHeight, level.displayColor)
+                let capM = drawingData.heightToNextLevelFeet(aboveLevelAt: idx).map { Float($0) * feetToMeters }
+                return (level.orderedPositions, level.edges, level.vertices, level.isClosed, deckHeight, level.displayColor, capM)
             }
         } else {
             let deckHeight = Float(drawingData.renderElevationFeetSingleLevel) * feetToMeters
-            levelsToRender = [(drawingData.orderedPositions, drawingData.edges, drawingData.vertices, drawingData.isClosed, deckHeight, nil)]
+            levelsToRender = [(drawingData.orderedPositions, drawingData.edges, drawingData.vertices, drawingData.isClosed, deckHeight, nil, nil)]
         }
 
         for level in levelsToRender {
@@ -132,6 +133,7 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
                 isClosed: level.isClosed,
                 levelDeckY: level.deckHeight,
                 displayColor: level.displayColor,
+                houseWallCapM: level.houseWallCapM,
                 toScene: toScene,
                 scene: scene
             )
@@ -152,6 +154,7 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         isClosed: Bool,
         levelDeckY: Float,
         displayColor: LevelColor?,
+        houseWallCapM: Float?,
         toScene: (CGPoint) -> (x: Float, z: Float),
         scene: SCNScene
     ) {
@@ -210,7 +213,11 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
                 : UIColor(red: 170/255, green: 130/255, blue: 90/255, alpha: 1)
             beamGeo.materials = [beamMat]
             let beamNode = SCNNode(geometry: beamGeo)
-            beamNode.position = SCNVector3(midX, levelDeckY + beamHeight / 2, midZ)
+            // Seat the edge beam BENEATH the deck surface — top of the beam
+            // flush with the surface — so it reads as a rim joist under the
+            // deck boards rather than a curb standing proud of them (bug
+            // 313aad41).
+            beamNode.position = SCNVector3(midX, levelDeckY - beamHeight / 2, midZ)
             // SCNBox length runs along local +Z. Rotating eulerAngles.y by
             // atan2(dx, dz) aims +Z down the edge; negating it mirrors the box
             // across Z. That mirror is invisible on axis-aligned edges (a box
@@ -221,6 +228,11 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
             scene.rootNode.addChildNode(beamNode)
 
             if edge.edgeType == .houseEdge {
+                // 8' house wall, capped at the bottom of the next level up on
+                // multi-level designs so it doesn't pierce the deck above
+                // (bug fb007839 — supersedes a40556a7, which set it to 9').
+                let houseWallHeight = houseWallCapM.map { min(8.0 * feetToMeters, $0) }
+                    ?? (8.0 * feetToMeters)
                 addWall(
                     scene: scene,
                     midX: midX,
@@ -228,7 +240,7 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
                     angle: angle,
                     length: length,
                     bottomY: levelDeckY,
-                    height: 9.0 * feetToMeters,
+                    height: houseWallHeight,
                     thickness: 0.05,
                     color: edge.houseEdgeMaterial.map { UIColor(hex: $0.fillHex) }
                         ?? UIColor(red: 136/255, green: 136/255, blue: 136/255, alpha: 0.8)

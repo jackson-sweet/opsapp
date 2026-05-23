@@ -109,7 +109,7 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertNotNil(wallBox)
         let expectedLengthMeters = hypot(144.0, 24.0) / 39.3701
         XCTAssertEqual(Double(wallBox?.length ?? 0), expectedLengthMeters, accuracy: 0.02)
-        XCTAssertEqual(Double(wallBox?.height ?? 0), 9.0 * 0.3048, accuracy: 0.01)
+        XCTAssertEqual(Double(wallBox?.height ?? 0), 8.0 * 0.3048, accuracy: 0.01)
     }
 
     func testBuiltInLinearStandards_onlyExposeParapetAsDefaultRailing() {

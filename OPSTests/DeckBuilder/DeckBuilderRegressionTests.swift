@@ -197,7 +197,113 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertEqual(viewModel.findVertex(byId: "v3")?.position, CGPoint(x: 170, y: 110))
         XCTAssertEqual(viewModel.findVertex(byId: "v4")?.position, CGPoint(x: 50, y: 110))
         XCTAssertEqual(viewModel.drawingMode, .idle)
+        // Sticky toggle — endSelectionMove no longer auto-disarms, so the
+        // user can perform back-to-back moves without re-tapping Move-XY.
+        XCTAssertTrue(viewModel.isSelectionMoveArmed)
+    }
+
+    func testSelectionMove_toggleStaysArmedAcrossMultipleMovesAndDisarmsOnRequest() {
+        var data = DeckDrawingData()
+        data.config.snappingEnabled = false
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 120, y: 0)),
+        ]
+        data.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2"),
+        ]
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        viewModel.selection.selectedVertexIds = ["v1", "v2"]
+
+        viewModel.toggleSelectionMove()
+        XCTAssertTrue(viewModel.isSelectionMoveArmed)
+
+        // Move #1
+        viewModel.beginSelectionMove(at: CGPoint(x: 200, y: 200))
+        viewModel.updateSelectionMove(to: CGPoint(x: 250, y: 230))
+        viewModel.endSelectionMove()
+        XCTAssertEqual(viewModel.findVertex(byId: "v1")?.position, CGPoint(x: 50, y: 30))
+        XCTAssertTrue(viewModel.isSelectionMoveArmed)
+
+        // Move #2 without re-arming — sticky.
+        viewModel.beginSelectionMove(at: CGPoint(x: 300, y: 300))
+        viewModel.updateSelectionMove(to: CGPoint(x: 280, y: 290))
+        viewModel.endSelectionMove()
+        XCTAssertEqual(viewModel.findVertex(byId: "v1")?.position, CGPoint(x: 30, y: 20))
+        XCTAssertEqual(viewModel.findVertex(byId: "v2")?.position, CGPoint(x: 150, y: 20))
+        XCTAssertTrue(viewModel.isSelectionMoveArmed)
+
+        viewModel.toggleSelectionMove()
         XCTAssertFalse(viewModel.isSelectionMoveArmed)
+    }
+
+    func testSelectionMove_autoDisarmsWhenSelectionEmpties() {
+        var data = DeckDrawingData()
+        data.config.snappingEnabled = false
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 120, y: 0)),
+        ]
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        viewModel.selection.selectedVertexIds = ["v1", "v2"]
+        viewModel.toggleSelectionMove()
+        XCTAssertTrue(viewModel.isSelectionMoveArmed)
+
+        // Clearing the selection drops the armed flag — the Move-XY button
+        // would otherwise reappear pre-activated the next time something
+        // gets selected.
+        viewModel.selection.clear()
+        XCTAssertFalse(viewModel.isSelectionMoveArmed)
+    }
+
+    func testSelectionMove_compoundsTwoEdgeColinearitiesSimultaneously() {
+        // Two crossing static edges that do NOT share a vertex — se1
+        // vertical on x=300, se2 horizontal on y=300. Square B sits offset
+        // from the crossing; a single Move-XY drag should snap B so its
+        // left edge becomes colinear with se1 AND its top edge becomes
+        // colinear with se2 — corner snap. The single-best-snap behavior
+        // (else-if between vertex and edge in the old resolver) locks at
+        // most one axis; the new accumulator locks both.
+        var data = DeckDrawingData()
+        data.config.snappingEnabled = true
+        data.vertices = [
+            // Static — not selected.
+            DeckVertex(id: "s_v1", position: CGPoint(x: 300, y: 144)),
+            DeckVertex(id: "s_v2", position: CGPoint(x: 300, y: 468)),
+            DeckVertex(id: "s_h1", position: CGPoint(x: 144, y: 300)),
+            DeckVertex(id: "s_h2", position: CGPoint(x: 468, y: 300)),
+            // Moving square B (84×84 offset from the crossing).
+            DeckVertex(id: "b1", position: CGPoint(x: 414, y: 407)),
+            DeckVertex(id: "b2", position: CGPoint(x: 498, y: 407)),
+            DeckVertex(id: "b3", position: CGPoint(x: 498, y: 491)),
+            DeckVertex(id: "b4", position: CGPoint(x: 414, y: 491)),
+        ]
+        data.edges = [
+            DeckEdge(id: "se1", startVertexId: "s_v1", endVertexId: "s_v2"),
+            DeckEdge(id: "se2", startVertexId: "s_h1", endVertexId: "s_h2"),
+            DeckEdge(id: "bt", startVertexId: "b1", endVertexId: "b2"),
+            DeckEdge(id: "br", startVertexId: "b2", endVertexId: "b3"),
+            DeckEdge(id: "bb", startVertexId: "b3", endVertexId: "b4"),
+            DeckEdge(id: "bl", startVertexId: "b4", endVertexId: "b1"),
+        ]
+
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        viewModel.selection.selectedVertexIds = ["b1", "b2", "b3", "b4"]
+
+        viewModel.toggleSelectionMove()
+        viewModel.beginSelectionMove(at: CGPoint(x: 1000, y: 1000))
+        // Raw delta = (-109, -101): B's top-left lands ~5pt past the
+        // x=300 / y=300 crossing on both axes — well inside the 20pt
+        // endpoint snap radius for BOTH static edges. Compounding pins
+        // both axes; single-snap would lock only one and leave the other
+        // at the grid baseline (≠ 300).
+        viewModel.updateSelectionMove(to: CGPoint(x: 891, y: 899))
+        viewModel.endSelectionMove()
+
+        XCTAssertEqual(viewModel.findVertex(byId: "b1")?.position, CGPoint(x: 300, y: 300))
+        XCTAssertEqual(viewModel.findVertex(byId: "b2")?.position, CGPoint(x: 384, y: 300))
+        XCTAssertEqual(viewModel.findVertex(byId: "b3")?.position, CGPoint(x: 384, y: 384))
+        XCTAssertEqual(viewModel.findVertex(byId: "b4")?.position, CGPoint(x: 300, y: 384))
     }
 
     private func deckDesign(drawingData: DeckDrawingData) -> DeckDesign {

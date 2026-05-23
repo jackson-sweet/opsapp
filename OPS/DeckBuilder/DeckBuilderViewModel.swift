@@ -36,7 +36,17 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var drawingData: DeckDrawingData
     @Published var drawingMode: DrawingMode = .idle
     @Published var activeTool: DrawingTool = .draw
-    @Published var selection: SelectionState = SelectionState()
+    @Published var selection: SelectionState = SelectionState() {
+        didSet {
+            // Move-XY is a sticky toggle (see toggleSelectionMove); it has no
+            // meaning without a selection. Drop the armed flag when the
+            // selection empties so the toolbar button doesn't reappear
+            // pre-activated next time something is selected.
+            if isSelectionMoveArmed && selection.isEmpty {
+                isSelectionMoveArmed = false
+            }
+        }
+    }
     @Published var alignmentGuides: [AlignmentGuide] = []
     @Published var tapSelectFilter: Set<SelectableElementType> = Set(SelectableElementType.allCases)
     /// Drag-shape sub-mode while `activeTool == .tapSelect`. DECK-NEW-4.
@@ -1394,12 +1404,39 @@ class DeckBuilderViewModel: ObservableObject {
 
     // MARK: - Selection XY Move
 
+    /// Sticky toggle for the Move-XY mode. The Move-XY toolbar buttons
+    /// route through this so a tap flips the mode on; while on, every
+    /// canvas selection drag translates the selection (begin/update/
+    /// endSelectionMove). Sticky across moves — was previously one-shot
+    /// (endSelectionMove auto-disarmed) so the user had to re-tap the
+    /// toolbar before every move.
+    func toggleSelectionMove() {
+        if isSelectionMoveArmed {
+            disarmSelectionMove()
+        } else {
+            armSelectionMove()
+        }
+    }
+
     func armSelectionMove() {
         guard !selection.isEmpty else { return }
         activeTool = .tapSelect
         drawingMode = .idle
         alignmentGuides = []
         isSelectionMoveArmed = true
+        hapticLight()
+    }
+
+    /// Turn the sticky Move-XY mode off. Cancels any in-flight move and
+    /// clears the move scratch state. Safe to call when not armed.
+    func disarmSelectionMove() {
+        if case .movingSelection = drawingMode {
+            drawingMode = .idle
+        }
+        selectionMoveStart = nil
+        selectionMoveOriginalVertices.removeAll()
+        alignmentGuides = []
+        isSelectionMoveArmed = false
         hapticLight()
     }
 
@@ -1440,7 +1477,9 @@ class DeckBuilderViewModel: ObservableObject {
             recalculateEdgeDimensions(connectedTo: vertexId)
         }
         drawingMode = .idle
-        isSelectionMoveArmed = false
+        // isSelectionMoveArmed intentionally NOT cleared — Move-XY is a sticky
+        // toggle, so a follow-up drag in the canvas can start another move
+        // without the user re-tapping the toolbar.
         selectionMoveStart = nil
         selectionMoveOriginalVertices.removeAll()
         alignmentGuides = []
@@ -1474,31 +1513,57 @@ class DeckBuilderViewModel: ObservableObject {
         }
     }
 
+    /// A single snap proposal evaluated during a selection move — a 1-DOF
+    /// linear constraint pinning `delta · normal == offset`. Snaps used to be
+    /// picked one-at-a-time (the resolver applied grid → parallel → ONE-OF
+    /// vertex-OR-edge); this struct lets the resolver collect candidates
+    /// from every snap path and apply each compatible one in turn so a
+    /// moved selection can lock two independent alignment constraints at
+    /// once — e.g. left edge colinear with one wall AND top edge colinear
+    /// with another → corner snap.
+    private struct SelectionMoveConstraint {
+        /// Unit vector. `delta · normal == offset` is the constraint.
+        let normal: CGVector
+        /// Target value along `normal` for the constrained `delta`.
+        let offset: CGFloat
+        /// Proximity metric — closest candidates apply first in the resolver.
+        let sortDistance: CGFloat
+        /// Rendered guide line for the constraint.
+        let guide: AlignmentGuide
+    }
+
     private func resolveSelectionMoveDelta(_ rawDelta: CGSize) -> (delta: CGSize, guides: [AlignmentGuide]) {
         guard drawingData.config.snappingEnabled else {
             return (rawDelta, [])
         }
 
-        var guides: [AlignmentGuide] = []
+        // Baseline — snap the anchor vertex to grid. Constraints below
+        // refine the axes they lock; any axis left free keeps this value.
         var delta = gridSnappedSelectionDelta(rawDelta)
 
-        if let parallel = parallelSnappedSelectionDelta(rawDelta) {
-            delta = parallel.delta
-            guides.append(parallel.guide)
-        }
+        var candidates: [SelectionMoveConstraint] = []
+        candidates.append(contentsOf: vertexSnappedSelectionDelta(baseline: delta))
+        candidates.append(contentsOf: edgeSnappedSelectionDelta(baseline: delta))
+        candidates.append(contentsOf: parallelSnappedSelectionDelta(rawDelta: rawDelta))
+        candidates.sort { $0.sortDistance < $1.sortDistance }
 
-        if let pointSnap = vertexSnappedSelectionDelta(delta) {
-            delta = CGSize(
-                width: delta.width + pointSnap.correction.width,
-                height: delta.height + pointSnap.correction.height
+        // Two independent 1-DOF locks fully pin the 2D delta (solved via a
+        // 2x2 system below). Further candidates whose normal is parallel to
+        // an existing lock are redundant if consistent or conflicting if
+        // not — either way the closer one already applied, so skip them.
+        var locks: [(normal: CGVector, offset: CGFloat)] = []
+        var guides: [AlignmentGuide] = []
+        for candidate in candidates {
+            if locks.count >= 2 { break }
+            if Self.isParallelToAnyLock(candidate.normal, locks: locks) { continue }
+            delta = Self.applySelectionMoveConstraint(
+                currentDelta: delta,
+                locks: locks,
+                newNormal: candidate.normal,
+                newOffset: candidate.offset
             )
-            guides.append(pointSnap.guide)
-        } else if let edgeSnap = edgeSnappedSelectionDelta(delta) {
-            delta = CGSize(
-                width: delta.width + edgeSnap.correction.width,
-                height: delta.height + edgeSnap.correction.height
-            )
-            guides.append(edgeSnap.guide)
+            locks.append((candidate.normal, candidate.offset))
+            guides.append(candidate.guide)
         }
 
         return (delta, guides)
@@ -1513,92 +1578,201 @@ class DeckBuilderViewModel: ObservableObject {
         return CGSize(width: snapped.x - anchor.x, height: snapped.y - anchor.y)
     }
 
-    private func parallelSnappedSelectionDelta(_ rawDelta: CGSize) -> (delta: CGSize, guide: AlignmentGuide)? {
+    /// Constraints proposing that the move is parallel to one of the
+    /// drawing's edges — `delta` perpendicular component to the edge
+    /// direction must be zero. One candidate per qualifying edge so the
+    /// accumulator can pick the closest and (if independent normals)
+    /// compound a second on a different free axis.
+    private func parallelSnappedSelectionDelta(rawDelta: CGSize) -> [SelectionMoveConstraint] {
         let length = hypot(rawDelta.width, rawDelta.height)
-        guard length > 0 else { return nil }
-
+        guard length > 0 else { return [] }
         let threshold = CGFloat(max(8.0, drawingData.config.endpointSnapRadius * 0.35))
-        var best: (residual: CGFloat, delta: CGSize, edge: DeckEdge, start: CGPoint, end: CGPoint)?
 
+        var results: [SelectionMoveConstraint] = []
         for edge in activeEdges {
             guard let start = activeVertex(byId: edge.startVertexId),
                   let end = activeVertex(byId: edge.endVertexId) else { continue }
             let dx = end.position.x - start.position.x
             let dy = end.position.y - start.position.y
-            let edgeLength = hypot(dx, dy)
-            guard edgeLength > 0 else { continue }
-            let ux = dx / edgeLength
-            let uy = dy / edgeLength
-            let projection = rawDelta.width * ux + rawDelta.height * uy
-            let projectedDelta = CGSize(width: projection * ux, height: projection * uy)
-            let residual = hypot(rawDelta.width - projectedDelta.width, rawDelta.height - projectedDelta.height)
+            let edgeLen = hypot(dx, dy)
+            guard edgeLen > 0 else { continue }
+            // Unit perpendicular to the edge — the move's component along
+            // this normal is what we want to zero out.
+            let nx = -dy / edgeLen
+            let ny =  dx / edgeLen
+            let residual = abs(rawDelta.width * nx + rawDelta.height * ny)
             guard residual <= threshold else { continue }
-            if best == nil || residual < best!.residual {
-                best = (residual, projectedDelta, edge, start.position, end.position)
-            }
+            results.append(SelectionMoveConstraint(
+                normal: CGVector(dx: nx, dy: ny),
+                offset: 0,
+                sortDistance: residual,
+                guide: AlignmentGuide(
+                    from: start.position,
+                    to: end.position,
+                    type: .parallel,
+                    referenceLabel: "\u{2225}"
+                )
+            ))
         }
-
-        guard let best else { return nil }
-        return (
-            best.delta,
-            AlignmentGuide(from: best.start, to: best.end, type: .parallel, referenceLabel: "∥")
-        )
+        return results
     }
 
-    private func vertexSnappedSelectionDelta(_ delta: CGSize) -> (correction: CGSize, guide: AlignmentGuide)? {
+    /// Constraints from the closest moved-vertex ↔ static-vertex pair in
+    /// snap range. Returned as TWO axis-decomposed 1-DOF constraints (one
+    /// for X-align, one for Y-align) — the resolver applies both when
+    /// nothing else has locked the axes (= exact landing on the static
+    /// vertex), or just the free axis when an edge snap has already locked
+    /// the other (= the moved vertex aligns to the static one on one axis,
+    /// to whatever the edge snap dictates on the other).
+    private func vertexSnappedSelectionDelta(baseline: CGSize) -> [SelectionMoveConstraint] {
         let movingIds = Set(selectionMoveOriginalVertices.keys)
         let staticVertices = activeVertices.filter { !movingIds.contains($0.id) }
-        guard !staticVertices.isEmpty else { return nil }
+        guard !staticVertices.isEmpty else { return [] }
 
-        var best: (distance: Double, correction: CGSize, moved: CGPoint, target: CGPoint)?
+        var best: (distance: Double, original: CGPoint, moved: CGPoint, target: CGPoint)?
         for original in selectionMoveOriginalVertices.values {
-            let moved = CGPoint(x: original.x + delta.width, y: original.y + delta.height)
-            for targetVertex in staticVertices {
-                let distance = SnapEngine.distance(moved, targetVertex.position)
+            let moved = CGPoint(x: original.x + baseline.width, y: original.y + baseline.height)
+            for target in staticVertices {
+                let distance = SnapEngine.distance(moved, target.position)
                 guard distance <= drawingData.config.endpointSnapRadius else { continue }
-                let correction = CGSize(
-                    width: targetVertex.position.x - moved.x,
-                    height: targetVertex.position.y - moved.y
-                )
                 if best == nil || distance < best!.distance {
-                    best = (distance, correction, moved, targetVertex.position)
+                    best = (distance, original, moved, target.position)
                 }
             }
         }
+        guard let best else { return [] }
 
-        guard let best else { return nil }
-        return (
-            best.correction,
-            AlignmentGuide(from: best.target, to: best.moved, type: .vertical, referenceLabel: nil)
+        let dist = CGFloat(best.distance)
+        let xGuide = AlignmentGuide(
+            from: CGPoint(x: best.target.x, y: min(best.target.y, best.moved.y) - 20),
+            to:   CGPoint(x: best.target.x, y: max(best.target.y, best.moved.y) + 20),
+            type: .vertical,
+            referenceLabel: nil
         )
+        let yGuide = AlignmentGuide(
+            from: CGPoint(x: min(best.target.x, best.moved.x) - 20, y: best.target.y),
+            to:   CGPoint(x: max(best.target.x, best.moved.x) + 20, y: best.target.y),
+            type: .horizontal,
+            referenceLabel: nil
+        )
+        return [
+            SelectionMoveConstraint(
+                normal: CGVector(dx: 1, dy: 0),
+                offset: best.target.x - best.original.x,
+                sortDistance: dist,
+                guide: xGuide
+            ),
+            SelectionMoveConstraint(
+                normal: CGVector(dx: 0, dy: 1),
+                offset: best.target.y - best.original.y,
+                sortDistance: dist,
+                guide: yGuide
+            ),
+        ]
     }
 
-    private func edgeSnappedSelectionDelta(_ delta: CGSize) -> (correction: CGSize, guide: AlignmentGuide)? {
+    /// Constraints proposing that a moved vertex lands on the infinite
+    /// line of a static edge. Gated by proximity to the rendered SEGMENT
+    /// (so we don't snap to a static edge's invisible extension way off
+    /// canvas), but the constraint itself snaps to the line so a moved
+    /// edge can be exactly colinear with the static edge even past its
+    /// endpoints. One candidate per (moving vertex, static edge) pair in
+    /// range — the resolver compounds two independent-normal candidates
+    /// for the bug's stated "two edges colinear simultaneously" case.
+    private func edgeSnappedSelectionDelta(baseline: CGSize) -> [SelectionMoveConstraint] {
         let movingIds = Set(selectionMoveOriginalVertices.keys)
-        var best: (distance: Double, correction: CGSize, edgeStart: CGPoint, edgeEnd: CGPoint)?
-
-        for original in selectionMoveOriginalVertices.values {
-            let moved = CGPoint(x: original.x + delta.width, y: original.y + delta.height)
+        var results: [SelectionMoveConstraint] = []
+        for (_, original) in selectionMoveOriginalVertices {
+            let moved = CGPoint(
+                x: original.x + baseline.width,
+                y: original.y + baseline.height
+            )
             for edge in activeEdges {
                 guard !movingIds.contains(edge.startVertexId),
                       !movingIds.contains(edge.endVertexId),
                       let start = activeVertex(byId: edge.startVertexId),
                       let end = activeVertex(byId: edge.endVertexId) else { continue }
-                let projection = Self.closestPoint(onSegmentFrom: start.position, to: end.position, point: moved)
-                let distance = SnapEngine.distance(moved, projection)
-                guard distance <= drawingData.config.endpointSnapRadius else { continue }
-                let correction = CGSize(width: projection.x - moved.x, height: projection.y - moved.y)
-                if best == nil || distance < best!.distance {
-                    best = (distance, correction, start.position, end.position)
-                }
+                let dx = end.position.x - start.position.x
+                let dy = end.position.y - start.position.y
+                let edgeLen = hypot(dx, dy)
+                guard edgeLen > 0 else { continue }
+                let projection = Self.closestPoint(
+                    onSegmentFrom: start.position,
+                    to: end.position,
+                    point: moved
+                )
+                let segmentDistance = SnapEngine.distance(moved, projection)
+                guard segmentDistance <= drawingData.config.endpointSnapRadius else { continue }
+                let nx = -dy / edgeLen
+                let ny =  dx / edgeLen
+                let offset = (start.position.x - original.x) * nx
+                           + (start.position.y - original.y) * ny
+                results.append(SelectionMoveConstraint(
+                    normal: CGVector(dx: nx, dy: ny),
+                    offset: offset,
+                    sortDistance: CGFloat(segmentDistance),
+                    guide: AlignmentGuide(
+                        from: start.position,
+                        to: end.position,
+                        type: .parallel,
+                        referenceLabel: nil
+                    )
+                ))
             }
         }
+        return results
+    }
 
-        guard let best else { return nil }
-        return (
-            best.correction,
-            AlignmentGuide(from: best.edgeStart, to: best.edgeEnd, type: .parallel, referenceLabel: nil)
-        )
+    /// Apply one 1-DOF constraint `(newNormal, newOffset)` to `currentDelta`
+    /// given the already-applied `locks`. With zero locks, shift along
+    /// `newNormal` to satisfy the new constraint. With one lock, solve the
+    /// 2x2 system so BOTH the prior and the new constraint hold — this is
+    /// the compounding step that pins the corner. Two locks already pin
+    /// `delta` fully; further refinement is a no-op.
+    private static func applySelectionMoveConstraint(
+        currentDelta: CGSize,
+        locks: [(normal: CGVector, offset: CGFloat)],
+        newNormal: CGVector,
+        newOffset: CGFloat
+    ) -> CGSize {
+        let n = newNormal
+        let c = newOffset
+        switch locks.count {
+        case 0:
+            let current = currentDelta.width * n.dx + currentDelta.height * n.dy
+            let shift = c - current
+            return CGSize(
+                width: currentDelta.width + shift * n.dx,
+                height: currentDelta.height + shift * n.dy
+            )
+        case 1:
+            let n0 = locks[0].normal
+            let c0 = locks[0].offset
+            let det = n0.dx * n.dy - n.dx * n0.dy
+            // Caller filters parallel constraints upstream so this is a
+            // numeric safety net for floating-point-degenerate cases.
+            guard abs(det) > 1e-6 else { return currentDelta }
+            let dx = (c0 * n.dy - c * n0.dy) / det
+            let dy = (n0.dx * c - n.dx * c0) / det
+            return CGSize(width: dx, height: dy)
+        default:
+            return currentDelta
+        }
+    }
+
+    /// True when `normal` is parallel to any already-applied lock. Two
+    /// unit normals are parallel when their cross product magnitude is
+    /// near zero — the 1e-3 threshold catches numerical degeneracies
+    /// without rejecting genuinely independent directions.
+    private static func isParallelToAnyLock(
+        _ normal: CGVector,
+        locks: [(normal: CGVector, offset: CGFloat)]
+    ) -> Bool {
+        for lock in locks {
+            let cross = normal.dx * lock.normal.dy - normal.dy * lock.normal.dx
+            if abs(cross) < 1e-3 { return true }
+        }
+        return false
     }
 
     private static func closestPoint(onSegmentFrom start: CGPoint, to end: CGPoint, point: CGPoint) -> CGPoint {

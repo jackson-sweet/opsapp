@@ -207,8 +207,9 @@ struct DeckToolbar: View {
                 }
             }
 
-            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY") {
-                viewModel.armSelectionMove()
+            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY",
+                         isActive: viewModel.isSelectionMoveArmed) {
+                viewModel.toggleSelectionMove()
             }
 
             if canMoveToLevel {
@@ -427,8 +428,9 @@ struct DeckToolbar: View {
                 viewModel.showingElevationInput = true
             }
 
-            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY") {
-                viewModel.armSelectionMove()
+            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY",
+                         isActive: viewModel.isSelectionMoveArmed) {
+                viewModel.toggleSelectionMove()
             }
 
             Spacer()
@@ -459,8 +461,9 @@ struct DeckToolbar: View {
                 viewModel.showingStairConfig = true
             }
 
-            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY") {
-                viewModel.armSelectionMove()
+            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY",
+                         isActive: viewModel.isSelectionMoveArmed) {
+                viewModel.toggleSelectionMove()
             }
 
             // Material entry removed from edge toolbar — the floating
@@ -519,8 +522,9 @@ struct DeckToolbar: View {
                 viewModel.showingDimensionInput = true
             }
 
-            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY") {
-                viewModel.armSelectionMove()
+            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY",
+                         isActive: viewModel.isSelectionMoveArmed) {
+                viewModel.toggleSelectionMove()
             }
 
             if viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3 {
@@ -562,8 +566,9 @@ struct DeckToolbar: View {
                 moveToLevelMenu
             }
 
-            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY") {
-                viewModel.armSelectionMove()
+            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY",
+                         isActive: viewModel.isSelectionMoveArmed) {
+                viewModel.toggleSelectionMove()
             }
 
             actionButton(icon: "arrow.up.and.down.circle", label: "Elevation") {
@@ -655,9 +660,16 @@ struct DeckToolbar: View {
 
     // MARK: - Context Action Button
 
+    /// `isActive` mirrors `toolButton`'s active treatment for sticky-toggle
+    /// modes (currently only Move-XY) — color + weight + accent background
+    /// signal the toggled-on state so the user knows further canvas drags
+    /// will operate in that mode without re-tapping. Color is paired with
+    /// weight + background so the state is legible without relying on
+    /// color alone.
     private func actionButton(
         icon: String, label: String,
         tint: Color = Color.white,
+        isActive: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: {
@@ -666,16 +678,18 @@ struct DeckToolbar: View {
         }) {
             VStack(spacing: 3) {
                 Image(systemName: icon)
-                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
-                    .foregroundColor(tint)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: isActive ? .bold : .medium))
+                    .foregroundColor(isActive ? OPSStyle.Colors.primaryAccent : tint)
                 Text(label)
                     .font(OPSStyle.Typography.miniLabel)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .foregroundColor(isActive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing1)
             .frame(minWidth: OPSStyle.Layout.touchTargetStandard, minHeight: OPSStyle.Layout.touchTargetStandard)
+            .background(isActive ? OPSStyle.Colors.primaryAccent.opacity(0.12) : Color.clear)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
     }
 

@@ -691,11 +691,6 @@ struct SinglePhotoView: View {
 
 // MARK: - Project Photo Management
 extension ProjectPhotosGrid {
-    private struct PhotoAnnotationDeletionCandidate: Equatable {
-        let id: String
-        let companyId: String
-    }
-
     fileprivate func displayedPhotoItems(from sourceURLs: [String]) -> [ProjectPhotoDisplayItem] {
         ProjectPhotoDisplayMapper.items(
             sourceURLs: sourceURLs,
@@ -789,10 +784,10 @@ extension ProjectPhotosGrid {
         let renderedURL = await MainActor.run {
             renderedURLsBySource[sourceURL]
         }
-        let candidates = await MainActor.run {
-            let candidates = renderedURL.map {
+        let deletePlan = await MainActor.run {
+            let deletePlan = renderedURL.map {
                 markMatchingAnnotationsDeleted(sourceURL: sourceURL, renderedURL: $0)
-            } ?? []
+            } ?? ProjectPhotoAnnotationDeletePlan(remoteSoftDeleteCandidates: [], localOnlyCandidateIDs: [])
 
             project.setProjectImageURLs(currentImages)
             project.needsSync = true
@@ -801,29 +796,29 @@ extension ProjectPhotosGrid {
             removeDeletedRenderedState(sourceURL: sourceURL, renderedURL: renderedURL)
             saveModelChanges()
             photoDeleteTarget = nil
-            return candidates
+            return deletePlan
         }
 
-        await softDeleteAnnotationsRemotely(candidates)
+        await softDeleteAnnotationsRemotely(deletePlan.remoteSoftDeleteCandidates)
     }
 
     private func deleteAnnotationBackedPhoto(sourceURL: String, renderedURL: String) async {
-        let candidates = await MainActor.run {
-            let candidates = markMatchingAnnotationsDeleted(sourceURL: sourceURL, renderedURL: renderedURL)
+        let deletePlan = await MainActor.run {
+            let deletePlan = markMatchingAnnotationsDeleted(sourceURL: sourceURL, renderedURL: renderedURL)
             removeDeletedRenderedState(sourceURL: sourceURL, renderedURL: renderedURL)
             saveModelChanges()
             photoDeleteTarget = nil
-            return candidates
+            return deletePlan
         }
 
-        await softDeleteAnnotationsRemotely(candidates)
+        await softDeleteAnnotationsRemotely(deletePlan.remoteSoftDeleteCandidates)
     }
 
     @MainActor
     private func markMatchingAnnotationsDeleted(
         sourceURL: String,
         renderedURL: String?
-    ) -> [PhotoAnnotationDeletionCandidate] {
+    ) -> ProjectPhotoAnnotationDeletePlan {
         let projectId = project.id
         let descriptor = FetchDescriptor<PhotoAnnotation>(
             predicate: #Predicate {
@@ -832,7 +827,7 @@ extension ProjectPhotosGrid {
             }
         )
         guard let annotations = try? modelContext.fetch(descriptor) else {
-            return []
+            return ProjectPhotoAnnotationDeletePlan(remoteSoftDeleteCandidates: [], localOnlyCandidateIDs: [])
         }
 
         let now = Date()
@@ -843,12 +838,15 @@ extension ProjectPhotosGrid {
         for annotation in matches {
             annotation.deletedAt = now
             annotation.updatedAt = now
-            annotation.needsSync = true
+            annotation.needsSync = ProjectPhotoAnnotationDeletePlanner.shouldMarkNeedsSyncAfterLocalDelete(
+                annotationID: annotation.id
+            )
         }
 
-        return matches.map {
-            PhotoAnnotationDeletionCandidate(id: $0.id, companyId: $0.companyId)
+        let candidates = matches.map {
+            ProjectPhotoAnnotationDeleteCandidate(id: $0.id, companyId: $0.companyId)
         }
+        return ProjectPhotoAnnotationDeletePlanner.plan(candidates: candidates)
     }
 
     @MainActor
@@ -867,12 +865,18 @@ extension ProjectPhotosGrid {
 
     @MainActor
     private func removeDeletedRenderedState(sourceURL: String, renderedURL: String?) {
-        dimensionedURLs.remove(sourceURL)
-        renderedURLsBySource.removeValue(forKey: sourceURL)
-
-        guard let renderedURL else { return }
-        dimensionedURLs.remove(renderedURL)
-        renderedDeliverableURLs.removeAll { $0 == renderedURL }
+        let updated = ProjectPhotoAnnotationDeletePlanner.removingRenderedState(
+            sourceURL: sourceURL,
+            renderedURL: renderedURL,
+            from: ProjectPhotoRenderedDeleteState(
+                dimensionedURLs: dimensionedURLs,
+                renderedURLsBySource: renderedURLsBySource,
+                renderedDeliverableURLs: renderedDeliverableURLs
+            )
+        )
+        dimensionedURLs = updated.dimensionedURLs
+        renderedURLsBySource = updated.renderedURLsBySource
+        renderedDeliverableURLs = updated.renderedDeliverableURLs
     }
 
     @MainActor
@@ -883,7 +887,7 @@ extension ProjectPhotosGrid {
         }
     }
 
-    private func softDeleteAnnotationsRemotely(_ candidates: [PhotoAnnotationDeletionCandidate]) async {
+    private func softDeleteAnnotationsRemotely(_ candidates: [ProjectPhotoAnnotationDeleteCandidate]) async {
         for candidate in candidates {
             do {
                 let repository = await MainActor.run {

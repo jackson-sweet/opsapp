@@ -27,6 +27,69 @@ enum ProjectPhotoDeleteTarget: Equatable {
     }
 }
 
+struct ProjectPhotoAnnotationDeleteCandidate: Equatable {
+    let id: String
+    let companyId: String
+}
+
+struct ProjectPhotoAnnotationDeletePlan: Equatable {
+    let remoteSoftDeleteCandidates: [ProjectPhotoAnnotationDeleteCandidate]
+    let localOnlyCandidateIDs: [String]
+}
+
+struct ProjectPhotoRenderedDeleteState: Equatable {
+    var dimensionedURLs: Set<String>
+    var renderedURLsBySource: [String: String]
+    var renderedDeliverableURLs: [String]
+}
+
+enum ProjectPhotoAnnotationDeletePlanner {
+    static func isLocalOnlyAnnotationID(_ id: String) -> Bool {
+        id.hasPrefix("local-")
+    }
+
+    static func shouldMarkNeedsSyncAfterLocalDelete(annotationID: String) -> Bool {
+        !isLocalOnlyAnnotationID(annotationID)
+    }
+
+    static func plan(
+        candidates: [ProjectPhotoAnnotationDeleteCandidate]
+    ) -> ProjectPhotoAnnotationDeletePlan {
+        var remoteSoftDeleteCandidates: [ProjectPhotoAnnotationDeleteCandidate] = []
+        var localOnlyCandidateIDs: [String] = []
+
+        for candidate in candidates {
+            if isLocalOnlyAnnotationID(candidate.id) {
+                localOnlyCandidateIDs.append(candidate.id)
+            } else {
+                remoteSoftDeleteCandidates.append(candidate)
+            }
+        }
+
+        return ProjectPhotoAnnotationDeletePlan(
+            remoteSoftDeleteCandidates: remoteSoftDeleteCandidates,
+            localOnlyCandidateIDs: localOnlyCandidateIDs
+        )
+    }
+
+    static func removingRenderedState(
+        sourceURL: String,
+        renderedURL: String?,
+        from state: ProjectPhotoRenderedDeleteState
+    ) -> ProjectPhotoRenderedDeleteState {
+        var updated = state
+        updated.dimensionedURLs.remove(sourceURL)
+        updated.renderedURLsBySource.removeValue(forKey: sourceURL)
+
+        if let renderedURL {
+            updated.dimensionedURLs.remove(renderedURL)
+            updated.renderedDeliverableURLs.removeAll { $0 == renderedURL }
+        }
+
+        return updated
+    }
+}
+
 struct ProjectPhotoDisplayItem: Equatable, Identifiable {
     let displayURL: String
     let sourceURL: String

@@ -376,7 +376,7 @@ final class OutboundProcessor {
 
     private func handleProject(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
         let repo = ProjectRepository(companyId: companyId)
-        let sanitizedPayload = payload.filter { Self.validProjectColumns.contains($0.key) }
+        let sanitizedPayload = Self.sanitizedProjectPayloadForSync(payload)
 
         switch operationType {
         case "create":
@@ -403,7 +403,7 @@ final class OutboundProcessor {
         "id", "bubble_id", "company_id", "client_id", "opportunity_id",
         "title", "status", "address", "latitude", "longitude",
         "start_date", "end_date", "duration", "notes", "description",
-        "all_day", "team_member_ids", "project_images", "completed_at",
+        "all_day", "project_images", "completed_at",
         "deleted_at", "created_at", "updated_at"
     ]
 
@@ -470,7 +470,7 @@ final class OutboundProcessor {
 
         // Filter payload to only include valid Supabase columns, stripping
         // local-only SwiftData properties like task_index or needs_sync
-        let sanitizedPayload = payload.filter { Self.validProjectTaskColumns.contains($0.key) }
+        let sanitizedPayload = Self.sanitizedProjectTaskPayloadForSync(payload)
 
         switch operationType {
         case "create":
@@ -488,6 +488,14 @@ final class OutboundProcessor {
         default:
             print("[OutboundProcessor] Unknown operation type '\(operationType)' for projectTask")
         }
+    }
+
+    static func sanitizedProjectPayloadForSync(_ payload: [String: Any]) -> [String: Any] {
+        payload.filter { Self.validProjectColumns.contains($0.key) }
+    }
+
+    static func sanitizedProjectTaskPayloadForSync(_ payload: [String: Any]) -> [String: Any] {
+        payload.filter { Self.validProjectTaskColumns.contains($0.key) }
     }
 
     private func handleUser(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {

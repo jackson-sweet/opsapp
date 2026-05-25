@@ -4025,7 +4025,7 @@ actor DataActor {
         "id", "bubble_id", "company_id", "client_id", "opportunity_id",
         "title", "status", "address", "latitude", "longitude",
         "start_date", "end_date", "duration", "notes", "description",
-        "all_day", "team_member_ids", "project_images", "completed_at",
+        "all_day", "project_images", "completed_at",
         "deleted_at", "created_at", "updated_at"
     ]
 

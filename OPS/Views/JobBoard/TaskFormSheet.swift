@@ -476,7 +476,8 @@ struct TaskFormSheet: View {
             TeamMemberPickerSheet(
                 selectedTeamMemberIds: $selectedTeamMemberIds,
                 allTeamMembers: recencyOrderedTeamMembers,
-                recentMemberIds: recentTeamMemberIdSet
+                recentMemberIds: recentTeamMemberIdSet,
+                onConfirm: {}
             )
         }
         .onChange(of: selectedTeamMemberIds) { oldValue, newValue in
@@ -1838,6 +1839,32 @@ struct TaskFormSheet: View {
 }
 
 // MARK: - Team Member Picker Sheet
+struct TeamMemberSelectionDraft: Equatable {
+    private let committedIds: Set<String>
+    private(set) var draftIds: Set<String>
+
+    init(committedIds: Set<String>) {
+        self.committedIds = committedIds
+        self.draftIds = committedIds
+    }
+
+    mutating func toggle(_ memberId: String) {
+        if draftIds.contains(memberId) {
+            draftIds.remove(memberId)
+        } else {
+            draftIds.insert(memberId)
+        }
+    }
+
+    func cancelledIds() -> Set<String> {
+        committedIds
+    }
+
+    func confirmedIds() -> Set<String> {
+        draftIds
+    }
+}
+
 struct TeamMemberPickerSheet: View {
     @Binding var selectedTeamMemberIds: Set<String>
     /// Full `User` objects so each row renders a real avatar (profile photo
@@ -1859,6 +1886,15 @@ struct TeamMemberPickerSheet: View {
     var onConfirm: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.tutorialMode) private var isTutorialMode
+    @State private var selectionDraft = TeamMemberSelectionDraft(committedIds: [])
+
+    private var usesExplicitConfirmation: Bool {
+        onConfirm != nil
+    }
+
+    private var activeSelectionIds: Set<String> {
+        usesExplicitConfirmation ? selectionDraft.draftIds : selectedTeamMemberIds
+    }
 
     var body: some View {
         NavigationView {
@@ -1876,23 +1912,30 @@ struct TeamMemberPickerSheet: View {
                             let isLastRecentRow = isRecent && !nextIsRecent && !recentMemberIds.isEmpty
 
                             Button(action: {
-                                if selectedTeamMemberIds.contains(member.id) {
-                                    selectedTeamMemberIds.remove(member.id)
+                                let wasEmpty = activeSelectionIds.isEmpty
+
+                                if usesExplicitConfirmation {
+                                    selectionDraft.toggle(member.id)
                                 } else {
-                                    selectedTeamMemberIds.insert(member.id)
-                                    // Tutorial mode: notify crew assigned
-                                    if isTutorialMode {
-                                        NotificationCenter.default.post(
-                                            name: Notification.Name("TutorialCrewAssigned"),
-                                            object: nil
-                                        )
+                                    if selectedTeamMemberIds.contains(member.id) {
+                                        selectedTeamMemberIds.remove(member.id)
+                                    } else {
+                                        selectedTeamMemberIds.insert(member.id)
                                     }
+                                }
+
+                                // Tutorial mode: notify crew assigned
+                                if wasEmpty && !activeSelectionIds.isEmpty && isTutorialMode {
+                                    NotificationCenter.default.post(
+                                        name: Notification.Name("TutorialCrewAssigned"),
+                                        object: nil
+                                    )
                                 }
                             }) {
                                 HStack(spacing: 12) {
                                     // Checkbox
-                                    Image(systemName: selectedTeamMemberIds.contains(member.id) ? "checkmark.circle.fill" : "circle")
-                                        .foregroundColor(selectedTeamMemberIds.contains(member.id) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                                    Image(systemName: activeSelectionIds.contains(member.id) ? "checkmark.circle.fill" : "circle")
+                                        .foregroundColor(activeSelectionIds.contains(member.id) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                                         .font(.system(size: OPSStyle.Layout.IconSize.md))
 
                                     // Avatar
@@ -1952,6 +1995,9 @@ struct TeamMemberPickerSheet: View {
 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("DONE") {
+                        if usesExplicitConfirmation {
+                            selectedTeamMemberIds = selectionDraft.confirmedIds()
+                        }
                         onConfirm?()
                         dismiss()
                     }
@@ -1959,6 +2005,9 @@ struct TeamMemberPickerSheet: View {
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
             }
+        }
+        .onAppear {
+            selectionDraft = TeamMemberSelectionDraft(committedIds: selectedTeamMemberIds)
         }
     }
 }
@@ -1975,4 +2024,3 @@ private struct TemporarySchedulableTask: SchedulableTask {
     let schedulingTeamMemberIds: Set<String>
     let schedulingProjectId: String
 }
-

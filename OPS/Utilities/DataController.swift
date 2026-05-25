@@ -16,6 +16,20 @@ import Supabase
 import FirebaseAuth
 import FirebaseCrashlytics
 
+private enum ProjectTeamAssignmentSyncError: LocalizedError {
+    case missingServerUpdatedAt
+    case missingAssignmentTaskId
+
+    var errorDescription: String? {
+        switch self {
+        case .missingServerUpdatedAt:
+            return "Project team update needs a server timestamp before it can sync."
+        case .missingAssignmentTaskId:
+            return "Project team update could not create an assignment task."
+        }
+    }
+}
+
 /// Main controller for managing data, authentication, and app state
 class DataController: ObservableObject {
     // MARK: - Preview Detection
@@ -4278,21 +4292,139 @@ class DataController: ObservableObject {
         }
     }
 
-    /// Update project team members - SINGLE SOURCE OF TRUTH
+    /// Update the local project-team cache. The server owns
+    /// `projects.team_member_ids` and derives it from `project_tasks`.
     @MainActor
     func updateProjectTeamMembers(project: Project, memberIds: [String]) async throws {
-        // Apply locally
-        project.setTeamMemberIds(memberIds)
-        project.needsSync = true
-        try? modelContext?.save()
+        applyProjectTeamMembersCache(project: project, memberIds: memberIds)
+        try modelContext?.save()
+    }
 
-        // Record for async sync
-        syncEngine.recordOperation(
-            entityType: .project,
-            entityId: project.id,
-            operationType: "update",
-            changedFields: ["team_member_ids": memberIds]
+    /// Persist a project-level crew selection through the server task-team
+    /// assignment contract. This is for project-level team editing surfaces;
+    /// task-level editors should continue to call updateTaskTeamMembers.
+    @MainActor
+    func replaceProjectTeamMembersViaServerAssignments(project: Project, memberIds: [String]) async throws {
+        let targetMemberIds = normalizedTeamMemberIds(memberIds)
+        let targetSet = Set(targetMemberIds)
+        let currentSet = Set(normalizedTeamMemberIds(project.getTeamMemberIds()))
+
+        guard targetSet != currentSet else {
+            applyProjectTeamMembersCache(project: project, memberIds: targetMemberIds)
+            try modelContext?.save()
+            return
+        }
+
+        let repo = ProjectRepository(companyId: project.companyId)
+        var expectedUpdatedAt = try await serverUpdatedAtForProject(project, repo: repo)
+        var taskIds = activeTaskIds(for: project)
+
+        let removedMemberIds = currentSet.subtracting(targetSet).sorted()
+        for memberId in removedMemberIds {
+            let result = try await repo.removeProjectTeamMember(
+                projectId: project.id,
+                userId: memberId,
+                expectedUpdatedAt: expectedUpdatedAt
+            )
+            expectedUpdatedAt = result.updatedAt ?? expectedUpdatedAt
+        }
+
+        let addedMemberIds = targetSet.subtracting(currentSet).sorted()
+        if taskIds.isEmpty && !addedMemberIds.isEmpty {
+            let result = try await repo.createProjectTableAssignmentTask(
+                projectId: project.id,
+                title: "Team assignment",
+                expectedUpdatedAt: expectedUpdatedAt
+            )
+            guard let taskId = result.taskId else {
+                throw ProjectTeamAssignmentSyncError.missingAssignmentTaskId
+            }
+            expectedUpdatedAt = result.updatedAt ?? expectedUpdatedAt
+            taskIds = [taskId]
+            insertLocalAssignmentTaskIfNeeded(
+                taskId: taskId,
+                project: project,
+                memberIds: targetMemberIds
+            )
+        }
+
+        for memberId in addedMemberIds {
+            let result = try await repo.assignProjectTeamMember(
+                projectId: project.id,
+                userId: memberId,
+                taskIds: taskIds,
+                expectedUpdatedAt: expectedUpdatedAt
+            )
+            expectedUpdatedAt = result.updatedAt ?? expectedUpdatedAt
+        }
+
+        applyProjectTeamMembersCache(project: project, memberIds: targetMemberIds)
+        for task in project.tasks where task.deletedAt == nil {
+            task.setTeamMemberIds(targetMemberIds)
+            task.teamMembers = fetchUsersById(targetMemberIds)
+            task.needsSync = false
+            task.lastSyncedAt = Date()
+        }
+        project.updatedAt = SupabaseDate.parse(expectedUpdatedAt) ?? project.updatedAt
+        project.needsSync = false
+        project.lastSyncedAt = Date()
+        try modelContext?.save()
+    }
+
+    @MainActor
+    private func applyProjectTeamMembersCache(project: Project, memberIds: [String]) {
+        let normalizedIds = normalizedTeamMemberIds(memberIds)
+        project.setTeamMemberIds(normalizedIds)
+        project.teamMembers = fetchUsersById(normalizedIds)
+    }
+
+    private func normalizedTeamMemberIds(_ memberIds: [String]) -> [String] {
+        Array(Set(memberIds.map { $0.lowercased() })).sorted()
+    }
+
+    @MainActor
+    private func activeTaskIds(for project: Project) -> [String] {
+        project.tasks
+            .filter { $0.deletedAt == nil }
+            .map(\.id)
+            .sorted()
+    }
+
+    @MainActor
+    private func serverUpdatedAtForProject(_ project: Project, repo: ProjectRepository) async throws -> String {
+        if let updatedAt = project.updatedAt {
+            return SupabaseDate.format(updatedAt)
+        }
+
+        let dto = try await repo.fetchOne(project.id)
+        guard let updatedAt = dto.updatedAt else {
+            throw ProjectTeamAssignmentSyncError.missingServerUpdatedAt
+        }
+        project.updatedAt = SupabaseDate.parse(updatedAt)
+        return updatedAt
+    }
+
+    @MainActor
+    private func insertLocalAssignmentTaskIfNeeded(taskId: String, project: Project, memberIds: [String]) {
+        guard !project.tasks.contains(where: { $0.id == taskId }) else { return }
+
+        let task = ProjectTask(
+            id: taskId,
+            projectId: project.id,
+            taskTypeId: "",
+            companyId: project.companyId
         )
+        task.customTitle = "Team assignment"
+        task.project = project
+        task.displayOrder = project.tasks.count
+        task.createdAt = Date()
+        task.lastSyncedAt = Date()
+        task.needsSync = false
+        task.setTeamMemberIds(memberIds)
+        task.teamMembers = fetchUsersById(memberIds)
+
+        modelContext?.insert(task)
+        project.tasks.append(task)
     }
 
     // MARK: - Client Operations
@@ -5523,7 +5655,6 @@ class DataController: ObservableObject {
         if let v = dto.endDate { changedFields["end_date"] = v }
         if let v = dto.duration { changedFields["duration"] = v }
         if let v = dto.allDay { changedFields["all_day"] = v }
-        if let v = dto.teamMemberIds { changedFields["team_member_ids"] = v }
         if let v = dto.projectImages { changedFields["project_images"] = v }
 
         syncEngine.recordOperation(

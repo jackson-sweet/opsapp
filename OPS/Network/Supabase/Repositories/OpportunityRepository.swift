@@ -73,6 +73,21 @@ class OpportunityRepository {
             .value
     }
 
+    /// Bulk-fetch every stage_transitions row for the company. Used by the
+    /// LEADS hero widget to reconstruct the weighted-forecast baseline 30 days
+    /// ago (Option A — "what it would have been" — per LEADS rebuild polish P1-3).
+    /// Ascending order so consumers can scan chronologically and find the
+    /// latest-on-or-before(date) per opportunity in a single pass.
+    func fetchAllStageTransitions() async throws -> [StageTransitionDTO] {
+        try await client
+            .from("stage_transitions")
+            .select()
+            .eq("company_id", value: companyId)
+            .order("transitioned_at", ascending: true)
+            .execute()
+            .value
+    }
+
     // MARK: - Create
 
     func create(_ dto: CreateOpportunityDTO) async throws -> OpportunityDTO {

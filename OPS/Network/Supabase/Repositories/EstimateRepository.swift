@@ -62,6 +62,34 @@ class EstimateRepository {
             .value
     }
 
+    /// Fetch every line item belonging to ANY estimate of `opportunityId`.
+    /// Two-step query: collect estimate ids for the lead, then pull all
+    /// line items in one `IN (...)` call. Used by `LeadConversionService` to
+    /// preview the tasks that materialization will create before the operator
+    /// commits the conversion.
+    func fetchLineItems(forOpportunityId opportunityId: String) async throws -> [EstimateLineItemDTO] {
+        struct EstimateIdRow: Codable { let id: String }
+        let estimateRows: [EstimateIdRow] = try await client
+            .from("estimates")
+            .select("id")
+            .eq("company_id", value: companyId)
+            .eq("opportunity_id", value: opportunityId)
+            .is("deleted_at", value: nil)
+            .execute()
+            .value
+        let estimateIds = estimateRows.map(\.id)
+        guard !estimateIds.isEmpty else { return [] }
+
+        return try await client
+            .from("line_items")
+            .select()
+            .eq("company_id", value: companyId)
+            .in("estimate_id", values: estimateIds)
+            .order("sort_order", ascending: true)
+            .execute()
+            .value
+    }
+
     func updateTitle(_ estimateId: String, title: String) async throws {
         try await client
             .from("estimates")

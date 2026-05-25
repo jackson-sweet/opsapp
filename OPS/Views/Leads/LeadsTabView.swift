@@ -2,170 +2,175 @@
 //  LeadsTabView.swift
 //  OPS
 //
-//  Root view for the LEADS top-level tab. Composes:
-//    AppHeader(.leads)
-//    LeadsHeaderCarousel  (collapses on scroll)
-//    BallInCourtBar       (hidden when count == 0)
-//    LeadStageStrip       (sticky; temporary name, renamed to StageStripView
-//                          in P1-3 after Books Reconstruction lands)
-//    TabView(selection:)  (paged per-stage lists)
+//  Root of the LEADS tab — triage queue surface. Replaces the Phase 1 hero
+//  carousel + ball-in-court + stage strip + paged TabView design with a
+//  single forecast hero + WonConvert carousel + chip-filtered lead queue +
+//  pipeline-by-stage footer.
+//
+//  Implementation phase: P2 of the 2026-05-19 rebuild.
+//  Plan:  docs/superpowers/plans/2026-05-19-leads-tab-rebuild.md §6
+//  Intent: docs/superpowers/specs/2026-05-19-leads-tab-design-intent.md
+//
+//  Top-to-bottom layout:
+//
+//      [meta row]                 // TUE · MAY 19              [+]
+//      [title row]                LEADS              OPERATOR :: JACKSON
+//      [hero widget]              forecast hero + 3 sub-metric
+//      [won·convert carousel]     conditional — only when unconverted wins
+//      [section header]           // QUEUE              SORTED — STALE FIRST
+//      [filter chip row]          ALL · OVERDUE · DUE TODAY · ...
+//      [queue]                    LeadActionCard rows, 8pt gaps
+//      [pipeline footer]          // BY STAGE — 6-stage drill panel
 //
 
 import SwiftUI
 
-private struct HeaderBottomKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+// MARK: - Active-sheet enum
+
+/// Identifies which sheet is currently presented over the LEADS surface.
+/// Backs `.sheet(item: $activeSheet)` so only one sheet shows at a time.
+enum LeadsSheet: Identifiable {
+    case add
+    case edit(Opportunity)
+    case lost(Opportunity)
+    case convert(Opportunity)
+    case log(Opportunity)
+
+    var id: String {
+        switch self {
+        case .add:                return "add"
+        case .edit(let opp):      return "edit-\(opp.id)"
+        case .lost(let opp):      return "lost-\(opp.id)"
+        case .convert(let opp):   return "convert-\(opp.id)"
+        case .log(let opp):       return "log-\(opp.id)"
+        }
     }
 }
+
+// MARK: - Root
 
 struct LeadsTabView: View {
     @StateObject private var viewModel: PipelineViewModel
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
 
+    @State private var selectedBucket: PipelineViewModel.TriageBucket?
+    @State private var detailLead: Opportunity?
+    @State private var activeSheet: LeadsSheet?
+    @State private var moreForLead: Opportunity?
+    @State private var footerStage: PipelineStage?
+
     init(viewModel: PipelineViewModel? = nil) {
         _viewModel = StateObject(wrappedValue: viewModel ?? PipelineViewModel())
     }
 
-    @State private var headerCollapsed = false
-    @State private var inCourtFilterActive = false
-    @State private var showClosedStages = false
-    @State private var detailDestination: Opportunity?
-    @State private var actionSheetOpportunity: Opportunity?
-    @State private var lostReasonOpportunity: Opportunity?
-    @State private var showForecastBreakdown = false
-
+    private var buckets: PipelineViewModel.TriageBuckets { viewModel.triageBuckets }
     private var canManage: Bool { permissionStore.can("pipeline.manage") }
-    private var isOffline: Bool { !dataController.isConnected }
-
-    private var activePerStage: [(stage: PipelineStage, count: Int)] {
-        let active: [PipelineStage] = [.newLead, .qualifying, .quoting, .quoted, .followUp, .negotiation]
-        return active.map { ($0, viewModel.count(in: $0)) }
+    private var bucket: PipelineViewModel.TriageBucket {
+        selectedBucket ?? viewModel.defaultBucket
+    }
+    private var stageCounts: [PipelineStage: Int] {
+        Dictionary(uniqueKeysWithValues: PipelineStage.allCases.map {
+            ($0, viewModel.count(in: $0))
+        })
     }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                AppHeader(headerType: .leads)
-                    .padding(.bottom, 8)
-
-                if headerCollapsed {
-                    LeadStageStrip(
-                        selectedStage: $viewModel.selectedStage,
-                        showClosed: $showClosedStages,
-                        countProvider: { viewModel.count(in: $0) }
-                    )
-                    .background(OPSStyle.Colors.background)
-                    .transition(.opacity)
-                }
+            ZStack(alignment: .top) {
+                OPSStyle.Colors.background.ignoresSafeArea()
+                Atmosphere(tone: atmosphereTone)
 
                 ScrollView {
-                    VStack(spacing: 0) {
-                        LeadsHeaderCarousel(
-                            weightedForecast: viewModel.weightedForecastValue,
-                            weightedForecastDelta: nil,
-                            activeLeadCount: viewModel.activeLeadCount,
-                            activePerStage: activePerStage,
-                            closeRate: viewModel.closeRate(periodDays: 90),
-                            closeRateWonCount: viewModel.count(in: .won),
-                            closeRateLostCount: viewModel.count(in: .lost),
-                            avgVelocityDays: nil,
-                            avgVelocityDelta: nil,
-                            staleLeadsCount: viewModel.staleLeadsCount,
-                            staleLeadsTotalValue: viewModel.staleLeadsTotalValue,
-                            oldestStaleDescription: viewModel.oldestStaleDescription,
-                            onForecastTap: { showForecastBreakdown = true },
-                            onActivePipelineTap: {
-                                if let largest = activePerStage.max(by: { $0.count < $1.count })?.stage {
-                                    withAnimation(OPSStyle.Animation.standard) {
-                                        viewModel.selectedStage = largest
-                                    }
-                                }
-                            },
-                            onStaleRiskTap: {
-                                withAnimation(OPSStyle.Animation.standard) {
-                                    inCourtFilterActive = true
-                                }
-                            }
-                        )
-                        .padding(.bottom, OPSStyle.Layout.spacing3)
-                        .background(
-                            GeometryReader { geo in
-                                Color.clear.preference(
-                                    key: HeaderBottomKey.self,
-                                    value: geo.frame(in: .named("scroll")).maxY
-                                )
-                            }
-                        )
+                    VStack(alignment: .leading, spacing: 0) {
+                        metaRow
+                        titleRow
 
-                        BallInCourtBar(
-                            count: viewModel.inCourtCount,
-                            buckets: viewModel.inCourtBuckets,
-                            totalValue: viewModel.inCourtTotalValue,
-                            filterActive: inCourtFilterActive,
-                            isOffline: isOffline,
-                            onToggleFilter: {
-                                withAnimation(OPSStyle.Animation.standard) {
-                                    inCourtFilterActive.toggle()
-                                }
-                            }
+                        HeroWidget(
+                            forecastValue: viewModel.weightedForecastValue,
+                            forecastDeltaPct: viewModel.forecastDeltaPct,
+                            overdueCount: buckets.overdue.count,
+                            dueTodayCount: buckets.dueToday.count,
+                            openLeadCount: viewModel.openLeadCount,
+                            waitingCount: viewModel.waitingCount,
+                            avgVelocityDays: viewModel.avgVelocityDays()
                         )
-                        .padding(.bottom, OPSStyle.Layout.spacing2)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 4)
 
-                        if !headerCollapsed {
-                            LeadStageStrip(
-                                selectedStage: $viewModel.selectedStage,
-                                showClosed: $showClosedStages,
-                                countProvider: { viewModel.count(in: $0) }
+                        if !buckets.unconvertedWon.isEmpty {
+                            WonConvertCarousel(
+                                leads: buckets.unconvertedWon,
+                                onConvert: { activeSheet = .convert($0) },
+                                onLater:   { detailLead = $0 }
                             )
+                            .padding(.top, 18)
                         }
 
-                        carouselContent
-                            .frame(minHeight: 400)
+                        queueHeader
+                            .padding(.top, 22)
+                            .padding(.horizontal, 20)
+
+                        FilterChipRow(
+                            selectedId: filterBinding,
+                            chips: bucketChips
+                        )
+                        .padding(.top, 8)
+
+                        queueList
+                            .padding(.top, 4)
+                            .padding(.horizontal, 20)
+
+                        PipelineFooter(
+                            counts: stageCounts,
+                            onStageTap: { footerStage = $0 },
+                            onBoardTap: { openBoard() }
+                        )
+                        .padding(.horizontal, 20)
+                        .padding(.top, 28)
+                        .padding(.bottom, 100)
                     }
                 }
-                .coordinateSpace(name: "scroll")
-                .onPreferenceChange(HeaderBottomKey.self) { bottomY in
-                    let shouldCollapse = bottomY < 0
-                    if shouldCollapse != headerCollapsed {
-                        withAnimation(OPSStyle.Animation.fast) {
-                            headerCollapsed = shouldCollapse
-                        }
-                    }
-                }
+                .scrollIndicators(.hidden)
             }
-            .background(OPSStyle.Colors.background.ignoresSafeArea())
-            .navigationDestination(item: $detailDestination) { lead in
-                LeadDetailView(opportunity: lead, pipelineVM: viewModel)
-                    .environmentObject(dataController)
-                    .environmentObject(permissionStore)
-            }
-            .sheet(item: $actionSheetOpportunity) { lead in
-                LeadActionSheet(
+            .navigationBarHidden(true)
+            .navigationDestination(item: $detailLead) { lead in
+                LeadDetailView(
                     opportunity: lead,
-                    canManage: canManage,
-                    onMoveToStage: { stage in
-                        Task { try? await viewModel.moveToStage(opportunityId: lead.id, to: stage, userId: dataController.currentUser?.id) }
-                    },
-                    onEdit:        { detailDestination = lead },
-                    onLogActivity: { detailDestination = lead },
-                    onAddFollowUp: { detailDestination = lead },
-                    onOpenDetail:  { detailDestination = lead },
-                    onArchive:     { Task { try? await viewModel.archive(opportunityId: lead.id) } },
-                    onDelete:      { Task { try? await viewModel.softDelete(opportunityId: lead.id) } }
+                    onMarkLost: { activeSheet = .lost(lead) },
+                    onEdit:     { activeSheet = .edit(lead) },
+                    onMarkWon:  { activeSheet = .convert(lead) }
                 )
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
             }
-            .sheet(item: $lostReasonOpportunity) { lead in
-                LostReasonSheet(opportunityTitle: lead.title ?? lead.contactName) { reason, notes in
-                    Task { try? await viewModel.markLost(opportunityId: lead.id, reason: reason, notes: notes, userId: dataController.currentUser?.id) }
-                }
+            .navigationDestination(item: $footerStage) { stage in
+                PipelineStageListView(
+                    stage: stage,
+                    viewModel: viewModel,
+                    onLeadTap: { detailLead = $0 },
+                    onRequestSheet: { activeSheet = $0 }
+                )
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
             }
-            .sheet(isPresented: $showForecastBreakdown) {
-                ForecastBreakdownSheet(opportunities: viewModel.allOpportunities) { opp in
-                    detailDestination = opp
+            .sheet(item: $activeSheet) { sheet in
+                sheetView(for: sheet)
+            }
+            .confirmationDialog(
+                "Actions",
+                isPresented: moreSheetPresented,
+                presenting: moreForLead
+            ) { lead in
+                if canManage {
+                    Button("MARK WON →") { activeSheet = .convert(lead) }
+                    Button("MARK LOST", role: .destructive) { activeSheet = .lost(lead) }
+                    Button("EDIT") { activeSheet = .edit(lead) }
+                    Button("ARCHIVE") {
+                        Task { try? await viewModel.archive(opportunityId: lead.id) }
+                    }
                 }
+                Button("CANCEL", role: .cancel) {}
             }
         }
         .trackScreen("Leads")
@@ -175,50 +180,272 @@ struct LeadsTabView: View {
                 await viewModel.loadData()
             }
         }
-        .onAppear {
-            inCourtFilterActive = false
-        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadCreatedSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadUpdatedSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadActivityLoggedSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadMarkedLostSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadMarkedWonSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadConvertedSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadLinkedProjectSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadArchivedSuccess"))) { _ in
+            Task { await viewModel.loadData() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadDeletedSuccess"))) { _ in
             Task { await viewModel.loadData() }
         }
     }
 
-    @ViewBuilder
-    private var carouselContent: some View {
-        let pages = pagesToRender
-        TabView(selection: $viewModel.selectedStage) {
-            ForEach(pages, id: \.self) { stage in
-                LeadListPage(
-                    viewModel: viewModel,
-                    stage: stage,
-                    inCourtFilterActive: inCourtFilterActive,
-                    canManage: canManage,
-                    onCardTap: { detailDestination = $0 },
-                    onAdvance: { lead in
-                        guard let next = lead.stage.next else { return }
-                        Task { try? await viewModel.moveToStage(opportunityId: lead.id, to: next, userId: dataController.currentUser?.id) }
-                    },
-                    onWon:  { lead in
-                        Task { try? await viewModel.markWon(opportunityId: lead.id, actualValue: lead.estimatedValue, projectId: nil, userId: dataController.currentUser?.id) }
-                    },
-                    onLost: { lead in lostReasonOpportunity = lead },
-                    onLongPress: { lead in actionSheetOpportunity = lead }
-                )
-                .tag(stage)
+    // MARK: - Top rows
+
+    private var metaRow: some View {
+        HStack(alignment: .firstTextBaseline) {
+            HStack(spacing: 0) {
+                Text("// ")
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                Text(dateText)
+                    .foregroundColor(OPSStyle.Colors.text3)
             }
+            .font(OPSStyle.Typography.metadata)
+            .kerning(0.8)
+            .textCase(.uppercase)
+
+            Spacer()
+
+            // No filter icon (plan §2.1 Q4 = delete entirely). Search is
+            // provided by the persistent overlay button in MainTabView
+            // (Bug 706a4d32), so we don't render one here either.
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                activeSheet = .add
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundColor(OPSStyle.Colors.text2)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("New lead")
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .animation(OPSStyle.Animation.standard, value: viewModel.selectedStage)
+        .padding(.horizontal, 20)
+        .padding(.top, 4)
     }
 
-    private var pagesToRender: [PipelineStage] {
-        let active: [PipelineStage] = [.newLead, .qualifying, .quoting, .quoted, .followUp, .negotiation]
-        if showClosedStages {
-            return active + [.won, .lost]
+    private var titleRow: some View {
+        HStack(alignment: .lastTextBaseline) {
+            Text("LEADS")
+                .font(OPSStyle.Typography.display)
+                .foregroundColor(OPSStyle.Colors.text)
+                .textCase(.uppercase)
+            Spacer()
+            if let user = dataController.currentUser {
+                Text("OPERATOR :: \(user.firstName.uppercased())")
+                    .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                    .foregroundColor(OPSStyle.Colors.text3)
+                    .kerning(0.8)
+                    .textCase(.uppercase)
+            }
         }
-        return active
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 14)
+    }
+
+    // MARK: - Queue
+
+    private var queueHeader: some View {
+        HStack {
+            PanelSectionHeader(label: "QUEUE")
+            Spacer()
+            Text("SORTED — STALE FIRST")
+                .font(OPSStyle.Typography.metadata)
+                .kerning(1.4)
+                .foregroundColor(OPSStyle.Colors.textMute)
+                .textCase(.uppercase)
+        }
+    }
+
+    private var bucketChips: [FilterChipModel] {
+        let order: [PipelineViewModel.TriageBucket] = [
+            .all, .overdue, .dueToday, .waitingOnYou, .fresh, .waitingOnThem
+        ]
+        return order.map { b in
+            let count: Int = (b == .all) ? buckets.all.count : buckets.leads(for: b).count
+            return FilterChipModel(
+                id: b.rawValue,
+                label: b.label,
+                count: count,
+                dotColor: dotColor(for: b)
+            )
+        }
+    }
+
+    private var filterBinding: Binding<String> {
+        Binding(
+            get: { bucket.rawValue },
+            set: { newValue in
+                if let b = PipelineViewModel.TriageBucket(rawValue: newValue) {
+                    selectedBucket = b
+                }
+            }
+        )
+    }
+
+    private func dotColor(for b: PipelineViewModel.TriageBucket) -> Color {
+        switch b {
+        case .all:           return OPSStyle.Colors.text
+        case .overdue:       return OPSStyle.Colors.rose
+        case .dueToday:      return OPSStyle.Colors.tan
+        case .waitingOnYou:  return OPSStyle.Colors.opsAccent
+        case .fresh:         return OPSStyle.Colors.text2
+        case .waitingOnThem: return OPSStyle.Colors.textMute
+        }
+    }
+
+    @ViewBuilder
+    private var queueList: some View {
+        let leads = buckets.leads(for: bucket)
+        if leads.isEmpty {
+            BucketEmpty(bucket: bucket)
+                .padding(.vertical, 28)
+                .frame(maxWidth: .infinity)
+        } else {
+            LazyVStack(spacing: 8) {
+                ForEach(leads) { lead in
+                    LeadActionCard(
+                        opportunity: lead,
+                        verb: viewModel.verbFor(lead, bucket: bucket),
+                        tone: viewModel.toneFor(bucket, lead: lead),
+                        showsLog: canManage,
+                        showsMore: canManage,
+                        showsAdvance: canManage,
+                        onTap:     { detailLead = lead },
+                        onLog:     { activeSheet = .log(lead) },
+                        onMore:    { moreForLead = lead },
+                        onAdvance: { advance(lead) }
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - Sheet routing
+
+    @ViewBuilder
+    private func sheetView(for sheet: LeadsSheet) -> some View {
+        switch sheet {
+        case .add:
+            AddLeadSheet(onSaved: { _ in })
+        case .edit(let opp):
+            EditLeadSheet(opportunity: opp)
+        case .lost(let opp):
+            LostReasonSheet(opportunity: opp)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        case .convert(let opp):
+            ConvertToProjectSheet(opportunity: opp)
+        case .log(let opp):
+            LeadLogActivitySheet(opportunity: opp)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private var atmosphereTone: Atmosphere.Tone {
+        // Adapts subtly to current urgency profile. Defaults to steel when
+        // the queue is calm.
+        if buckets.overdue.count > 0 { return .rose }
+        if buckets.dueToday.count > 0 { return .tan }
+        if !buckets.unconvertedWon.isEmpty { return .olive }
+        return .steel
+    }
+
+    private var dateText: String {
+        let f = DateFormatter()
+        f.dateFormat = "EEE · MMM d"
+        return f.string(from: Date()).uppercased()
+    }
+
+    private var moreSheetPresented: Binding<Bool> {
+        Binding(
+            get: { moreForLead != nil },
+            set: { if !$0 { moreForLead = nil } }
+        )
+    }
+
+    private func advance(_ lead: Opportunity) {
+        guard canManage, !lead.stage.isTerminal, let next = lead.stage.next else { return }
+        Task {
+            try? await viewModel.moveToStage(
+                opportunityId: lead.id,
+                to: next,
+                userId: dataController.currentUser?.id
+            )
+        }
+    }
+
+    /// "OPEN STAGE BOARD →" — routes to the first open stage that has leads,
+    /// falling back to NEW LEAD (per PipelineFooter's onBoardTap contract).
+    private func openBoard() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let openOrder: [PipelineStage] = [
+            .newLead, .qualifying, .quoting, .quoted, .followUp, .negotiation
+        ]
+        footerStage = openOrder.first { (stageCounts[$0] ?? 0) > 0 } ?? .newLead
     }
 }
+
+// MARK: - Bucket empty state
+
+private struct BucketEmpty: View {
+    let bucket: PipelineViewModel.TriageBucket
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("00")
+                .font(.custom("Mohave-Light", size: 32))
+                .foregroundColor(OPSStyle.Colors.text3)
+            HStack(spacing: 0) {
+                Text("// ")
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                Text(message)
+                    .foregroundColor(OPSStyle.Colors.textMute)
+            }
+            .font(OPSStyle.Typography.metadata)
+            .kerning(1.8)
+            .textCase(.uppercase)
+        }
+    }
+
+    private var message: String {
+        switch bucket {
+        case .all:           return "— NO OPEN LEADS"
+        case .overdue:       return "— NO OVERDUE FOLLOW-UPS"
+        case .dueToday:      return "— NOTHING DUE TODAY"
+        case .waitingOnYou:  return "— NO REPLIES OUTSTANDING"
+        case .fresh:         return "— NO NEW LEADS"
+        case .waitingOnThem: return "— NOT WAITING ON ANYONE"
+        }
+    }
+}
+
+// MARK: - Previews
 
 #if DEBUG
 #Preview("LeadsTabView / loaded") {

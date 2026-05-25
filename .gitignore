@@ -1,5 +1,7 @@
 **/.claude/settings.local.json
 build/
+.derived-data/
+**/.derived-data/
 
 # Secrets - never commit
 Secrets.xcconfig

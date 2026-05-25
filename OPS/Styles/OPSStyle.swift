@@ -174,6 +174,23 @@ enum OPSStyle {
         static let roseLine  = Color("Rose").opacity(0.30)
         static let brickLine = Color("StatusError").opacity(0.50)
 
+        // Mobile outdoor-glare uplift per `ops-design-system/project/mobile/MOBILE.md` §1.
+        // Earth-tones at higher fill / border / text contrast than their desktop variants.
+        // Use these in any mobile UI; the legacy soft / line variants remain for non-mobile
+        // surfaces (desktop OPS-Web parity).
+        //   • fillM   — 20% alpha (vs 12% desktop)
+        //   • lineM   — 55% alpha (vs 30% desktop)
+        //   • textM   — tone hex shifted ~25% brighter than the base
+        static let oliveFillM = Color("StatusSuccess").opacity(0.20)
+        static let oliveLineM = Color("StatusSuccess").opacity(0.55)
+        static let oliveTextM = Color(red: 0.710, green: 0.788, blue: 0.627)   // #B5C9A0
+        static let tanFillM   = Color("AccentSecondary").opacity(0.20)
+        static let tanLineM   = Color("AccentSecondary").opacity(0.55)
+        static let tanTextM   = Color(red: 0.839, green: 0.737, blue: 0.510)   // #D6BC82
+        static let roseFillM  = Color("Rose").opacity(0.20)
+        static let roseLineM  = Color("Rose").opacity(0.55)
+        static let roseTextM  = Color(red: 0.788, green: 0.612, blue: 0.639)   // #C99CA3
+
         // Financial
         static let finRevenue     = Color("AccentSecondary")   // #C4A868 revenue / income
         static let finProfit      = Color("StatusSuccess")     // #9DB582 profit
@@ -389,8 +406,9 @@ enum OPSStyle {
         // Legacy names are kept as aliases so existing call sites still compile.
 
         // New semantic names
-        static let panelRadius = 10.0         // Cards, widgets, panels
+        static let panelRadius = 10.0         // Cards, widgets, panels (L1 glass surfaces)
         static let modalRadius = 12.0         // Modals, popovers, dropdowns, toasts
+        static let cardRadius = 6.0           // L2 nested cards — KPI tiles, peer-grouped chips
         static let chipRadius = 4.0           // Tags, badges, chips
         static let progressBarRadius = 2.0    // Funnel bars, progress tracks
         static let sidebarHoverRadius = 6.0   // Sidebar hover background

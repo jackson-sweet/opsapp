@@ -257,8 +257,18 @@ enum SurfaceDetector {
 
         guard !rawFaces.isEmpty else { return [] }
 
-        // 5. The unbounded outer face has the largest absolute signed area
-        //    (it bounds everything else). Exclude it.
+        // 5. Each connected component of the planar graph contributes its
+        //    own unbounded outer face (the CCW walk around the entire
+        //    component). The previous implementation only dropped the
+        //    SINGLE largest face, which left the outer face of every
+        //    smaller component in the result — those rendered in 3D as
+        //    stray inverted polygons that visually "connected" two
+        //    distinct surfaces. Bug 6d1c0a2a.
+        //
+        //    Fix: partition faces by connected component (via vertex-set
+        //    union-find on adjacency), then drop the largest face from
+        //    each component. The remaining faces are the true interior
+        //    surfaces.
         struct FaceWithArea {
             let ids: [String]
             let positions: [CGPoint]
@@ -271,19 +281,41 @@ enum SurfaceDetector {
             return FaceWithArea(ids: ids, positions: positions, absArea: area)
         }
 
-        let outerIdx: Int
-        if let i = faces.indices.max(by: { faces[$0].absArea < faces[$1].absArea }) {
-            outerIdx = i
-        } else {
-            return []
+        // Build connected components via BFS over the core adjacency.
+        var componentOf: [String: Int] = [:]
+        var nextComponent = 0
+        for seed in coreIds where componentOf[seed] == nil {
+            var queue: [String] = [seed]
+            componentOf[seed] = nextComponent
+            while let v = queue.popLast() {
+                for n in adjacency[v] ?? [] where componentOf[n] == nil {
+                    componentOf[n] = nextComponent
+                    queue.append(n)
+                }
+            }
+            nextComponent += 1
         }
+
+        // Find the largest face per component — that's its outer face.
+        var outerIndicesByComponent: [Int: Int] = [:]
+        for (i, face) in faces.enumerated() {
+            guard let component = face.ids.first.flatMap({ componentOf[$0] }) else { continue }
+            if let prev = outerIndicesByComponent[component] {
+                if face.absArea > faces[prev].absArea {
+                    outerIndicesByComponent[component] = i
+                }
+            } else {
+                outerIndicesByComponent[component] = i
+            }
+        }
+        let outerIndices = Set(outerIndicesByComponent.values)
 
         // 6. Dedupe inner faces by sorted vertex set. The walk should already
         //    enumerate each face once, but this is cheap insurance against
         //    pathological topologies.
         var seen: Set<String> = []
         var result: [DetectedSurface] = []
-        for (i, f) in faces.enumerated() where i != outerIdx {
+        for (i, f) in faces.enumerated() where !outerIndices.contains(i) {
             // A degenerate face with zero area (collinear vertices) isn't a
             // real surface — skip it.
             guard f.absArea > 0.5 else { continue }

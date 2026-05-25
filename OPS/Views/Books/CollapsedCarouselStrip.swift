@@ -14,6 +14,7 @@ struct CollapsedCarouselStrip: View {
     @ObservedObject var viewModel: MoneyDashboardViewModel
     var activeCard: HeroCarousel.CardID
     var visibleCards: [HeroCarousel.CardID]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var primaryLabel: String {
         switch activeCard {
@@ -45,7 +46,7 @@ struct CollapsedCarouselStrip: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .monospacedDigit()
-                    .contentTransition(.numericText())
+                    .booksNumericContentTransition(reduceMotion: reduceMotion)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 1) {

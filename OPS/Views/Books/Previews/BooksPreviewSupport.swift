@@ -67,11 +67,11 @@ extension MoneyDashboardViewModel {
         vm.weightedForecastValue = 84_500
         vm.staleLeadsCount = 3
         vm.weightedForecastByStage = [
-            (.qualifying,  18_200),
-            (.quoting,     12_400),
-            (.quoted,      26_800),
-            (.followUp,     9_500),
-            (.negotiation, 17_600),
+            .init(id: .qualifying,  value: 18_200, avgProbability: 30, count: 4),
+            .init(id: .quoting,     value: 12_400, avgProbability: 45, count: 3),
+            .init(id: .quoted,      value: 26_800, avgProbability: 62, count: 2),
+            .init(id: .followUp,    value:  9_500, avgProbability: 55, count: 2),
+            .init(id: .negotiation, value: 17_600, avgProbability: 78, count: 1),
         ]
 
         // Card 5 — top jobs by net

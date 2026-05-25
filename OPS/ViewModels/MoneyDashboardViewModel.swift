@@ -144,7 +144,19 @@ class MoneyDashboardViewModel: ObservableObject {
 
     // Books Phase 2 — Card 4 (Forecast) per-stage breakdown
     /// Weighted pipeline value broken out per active stage. Card 4 consumer.
-    @Published var weightedForecastByStage: [(stage: PipelineStage, value: Double)] = []
+    /// `value` is sum(estimatedValue × winProbability) for opportunities in this stage.
+    /// `avgProbability` is the unweighted arithmetic mean of `win_probability` across
+    /// the same set (Mission Deck Card 4 renders this as the "×62%" stage indicator —
+    /// per-opportunity probability, NOT value-weighted).
+    struct StageForecast: Identifiable {
+        let id: PipelineStage
+        /// Backwards-compatible alias for legacy `.stage` consumers.
+        var stage: PipelineStage { id }
+        let value: Double
+        let avgProbability: Double
+        let count: Int
+    }
+    @Published var weightedForecastByStage: [StageForecast] = []
 
     // Books Phase 2 — Card 5 (Jobs) per-project profitability
     struct JobNet: Identifiable {
@@ -158,6 +170,46 @@ class MoneyDashboardViewModel: ObservableObject {
     @Published var profitableProjectCount: Int = 0
     @Published var avgProjectMargin: Double = 0
     @Published var losersProjectCount: Int = 0
+
+    // MARK: - Books Phase 3 (Mission Deck) — per-card error tracking
+
+    /// Identifies a card on the Books carousel for fail-soft error + retry routing.
+    /// One repository fetch failure populates the affected cards here so siblings
+    /// can keep rendering live data.
+    enum BooksCard: Hashable {
+        case pl, cashFlow, ar, forecast, jobs
+    }
+
+    @Published private(set) var failedCards: Set<BooksCard> = []
+
+    func cardError(_ card: BooksCard) -> Bool { failedCards.contains(card) }
+
+    /// Clear the failure flag for `card` and re-run the load. Today `loadData()`
+    /// is all-or-nothing (cheap), so we just rerun the whole pull; a future pass
+    /// can refetch only the slice this card depends on.
+    func retry(_ card: BooksCard) async {
+        failedCards.remove(card)
+        await loadData()
+    }
+
+    // MARK: - Books Phase 3 (Mission Deck) — sync + skeleton coordination
+
+    /// VM-local sync state — drives the `BooksSyncBanner` and skeleton fade-out.
+    ///
+    /// Note: `BooksSyncBanner.SyncState` is a separate enum (no `.synced` case)
+    /// because the banner only renders during non-synced states. Phase F maps
+    /// `.synced` to "hide the banner".
+    enum SyncState: Equatable {
+        case syncing, synced, offline, error
+    }
+
+    @Published private(set) var syncState: SyncState = .synced
+    @Published private(set) var lastSyncedAt: Date?
+
+    /// `false` until the first fully-successful `loadData()` completes.
+    /// Cards render the skeleton path when `!hasEverLoaded && isLoading`.
+    /// Once true, subsequent loads happen in-place behind the sync banner.
+    @Published private(set) var hasEverLoaded: Bool = false
 
     // MARK: - Private State
 
@@ -191,31 +243,120 @@ class MoneyDashboardViewModel: ObservableObject {
 
     /// Fetch all financial + pipeline data from Supabase, then compute metrics.
     /// Pipeline opportunities are loaded only when `pipeline.view` is granted.
+    ///
+    /// Mission Deck Phase 3 behavior:
+    ///  * Fail-soft per fetch. A single repo failure routes the affected cards into
+    ///    `failedCards` so siblings keep rendering. Successful fetches overwrite
+    ///    their caches; failed fetches leave the prior cache intact.
+    ///  * `syncState` reflects the worst error encountered: any URLError with
+    ///    `.notConnectedToInternet` / `.networkConnectionLost` / `.timedOut`
+    ///    downgrades to `.offline`; any other error downgrades to `.error`.
+    ///  * `hasEverLoaded` flips true once the first load attempt completes,
+    ///    including a load with per-card failures, so failed cards render retry
+    ///    states instead of staying trapped in skeletons.
     func loadData() async {
         guard estimateRepository != nil,
               invoiceRepository != nil,
               expenseRepository != nil else { return }
 
         isLoading = true
+        syncState = .syncing
         defer { isLoading = false }
 
         let canSeePipeline = PermissionStore.shared.can("pipeline.view")
 
-        async let estimatesTask = fetchEstimates()
-        async let invoicesTask = fetchInvoices()
-        async let expensesTask = fetchExpenses()
-        async let oppsTask: [OpportunityDTO] = canSeePipeline ? fetchOpportunities() : []
-        async let allocationsTask = fetchAllocations()
+        async let estimatesTask = fetchEstimatesResult()
+        async let invoicesTask = fetchInvoicesResult()
+        async let expensesTask = fetchExpensesResult()
+        async let oppsTask: Result<[OpportunityDTO], Error> =
+            canSeePipeline ? fetchOpportunitiesResult() : .success([])
+        async let allocationsTask = fetchAllocationsResult()
 
-        let (estimates, invoices, expenses, opps, allocations) = await (estimatesTask, invoicesTask, expensesTask, oppsTask, allocationsTask)
+        let (estimatesResult, invoicesResult, expensesResult, oppsResult, allocationsResult) =
+            await (estimatesTask, invoicesTask, expensesTask, oppsTask, allocationsTask)
 
-        allEstimates = estimates
-        allInvoices = invoices
-        allExpenses = expenses
-        allOpportunities = opps
-        allAllocations = allocations
+        var newFailedCards: Set<BooksCard> = []
+        var sawOffline = false
+        var sawHardError = false
 
+        func classify(_ error: Error) {
+            if let urlError = error as? URLError,
+               [.notConnectedToInternet, .networkConnectionLost, .timedOut].contains(urlError.code) {
+                sawOffline = true
+            } else {
+                sawHardError = true
+            }
+        }
+
+        // Estimates — feed P&L FORECAST tile + Card 4 indirectly. Per spec § 6.3,
+        // estimates failure does not map to any card directly (opportunities is the
+        // direct feed for the forecast card).
+        switch estimatesResult {
+        case .success(let v):
+            allEstimates = v
+        case .failure(let e):
+            classify(e)
+            print("[MoneyDashboard] Failed to fetch estimates: \(e.localizedDescription)")
+        }
+
+        // Invoices — feeds P&L, Cash Flow, A/R, Jobs.
+        switch invoicesResult {
+        case .success(let v):
+            allInvoices = v
+        case .failure(let e):
+            classify(e)
+            print("[MoneyDashboard] Failed to fetch invoices: \(e.localizedDescription)")
+            newFailedCards.formUnion([.pl, .cashFlow, .ar, .jobs])
+        }
+
+        // Expenses — feeds P&L, Cash Flow, Jobs.
+        switch expensesResult {
+        case .success(let v):
+            allExpenses = v
+        case .failure(let e):
+            classify(e)
+            print("[MoneyDashboard] Failed to fetch expenses: \(e.localizedDescription)")
+            newFailedCards.formUnion([.pl, .cashFlow, .jobs])
+        }
+
+        // Opportunities — feeds Forecast only.
+        switch oppsResult {
+        case .success(let v):
+            allOpportunities = v
+        case .failure(let e):
+            classify(e)
+            print("[MoneyDashboard] Failed to fetch opportunities: \(e.localizedDescription)")
+            newFailedCards.insert(.forecast)
+        }
+
+        // Allocations — feeds Jobs (per-project cost split).
+        switch allocationsResult {
+        case .success(let v):
+            allAllocations = v
+        case .failure(let e):
+            classify(e)
+            print("[MoneyDashboard] Failed to fetch allocations: \(e.localizedDescription)")
+            newFailedCards.insert(.jobs)
+        }
+
+        failedCards = newFailedCards
         recalculate()
+
+        if sawHardError {
+            syncState = .error
+        } else if sawOffline {
+            syncState = .offline
+        } else {
+            syncState = .synced
+            lastSyncedAt = Date()
+        }
+
+        // Flip `hasEverLoaded` on ANY load that ran to completion — even one
+        // with per-card failures. Successful cards should exit skeleton on the
+        // first attempt; per-card failures render `BooksCardError` instead.
+        // Keeping the skeleton locked until a fully-clean load means a single
+        // transient error on first launch traps the user in skeleton forever.
+        if !hasEverLoaded { hasEverLoaded = true }
     }
 
     /// Recompute all metrics from cached data for the selected period.
@@ -329,21 +470,36 @@ class MoneyDashboardViewModel: ObservableObject {
             .filter { $0 >= now }
             .min()
 
-        // ── Books Phase 2 — per-stage weighted forecast ──
-        var perStage: [PipelineStage: Double] = [:]
+        // ── Books Phase 3 (Mission Deck) — per-stage forecast with probability ──
+        // Card 4 renders `value` as the stage-level $ bar and `avgProbability` as
+        // the "×62%" indicator. avgProbability is the UNWEIGHTED arithmetic mean
+        // of win_probability across opportunities in this stage (NOT value-weighted).
+        // Sort by PipelineStage.allCases order so bars render in funnel sequence,
+        // not by dollar amount (matches the handoff direction-b layout).
+        var weightedSumByStage: [PipelineStage: Double] = [:]
+        var probabilitySumByStage: [PipelineStage: Double] = [:]
+        var countByStage: [PipelineStage: Int] = [:]
         for dto in activeOpps {
             guard let stage = PipelineStage(rawValue: dto.stage) else { continue }
             let pct = dto.winProbability ?? stage.winProbability
             let est = dto.estimatedValue ?? 0
-            perStage[stage, default: 0] += est * Double(pct) / 100.0
+            weightedSumByStage[stage, default: 0] += est * Double(pct) / 100.0
+            probabilitySumByStage[stage, default: 0] += Double(pct)
+            countByStage[stage, default: 0] += 1
         }
         weightedForecastByStage = PipelineStage.allCases
             .filter { !$0.isTerminal }
             .compactMap { stage in
-                guard let value = perStage[stage], value > 0 else { return nil }
-                return (stage: stage, value: value)
+                guard let count = countByStage[stage], count > 0 else { return nil }
+                let value = weightedSumByStage[stage] ?? 0
+                let probSum = probabilitySumByStage[stage] ?? 0
+                return StageForecast(
+                    id: stage,
+                    value: value,
+                    avgProbability: probSum / Double(count),
+                    count: count
+                )
             }
-            .sorted { $0.value > $1.value }
 
         // ── Books Phase 2 — weekly bucketing for Card 2 (Cash Flow) ──
         paymentsByWeek = bucketByWeek(
@@ -363,44 +519,33 @@ class MoneyDashboardViewModel: ObservableObject {
 
     // MARK: - Private Helpers
 
-    private func fetchEstimates() async -> [EstimateDTO] {
-        guard let repo = estimateRepository else { return [] }
-        do {
-            return try await repo.fetchAll()
-        } catch {
-            print("[MoneyDashboard] Failed to fetch estimates: \(error.localizedDescription)")
-            return []
-        }
+    // Mission Deck Phase 3 — Result-returning fetches.
+    // The caller (`loadData()`) classifies errors into offline-vs-hard and
+    // routes per-card failure flags. Helpers stay quiet here; the call site
+    // owns logging so the failure message is co-located with the card mapping.
+
+    private func fetchEstimatesResult() async -> Result<[EstimateDTO], Error> {
+        guard let repo = estimateRepository else { return .success([]) }
+        do { return .success(try await repo.fetchAll()) }
+        catch { return .failure(error) }
     }
 
-    private func fetchInvoices() async -> [InvoiceDTO] {
-        guard let repo = invoiceRepository else { return [] }
-        do {
-            return try await repo.fetchAll()
-        } catch {
-            print("[MoneyDashboard] Failed to fetch invoices: \(error.localizedDescription)")
-            return []
-        }
+    private func fetchInvoicesResult() async -> Result<[InvoiceDTO], Error> {
+        guard let repo = invoiceRepository else { return .success([]) }
+        do { return .success(try await repo.fetchAll()) }
+        catch { return .failure(error) }
     }
 
-    private func fetchExpenses() async -> [ExpenseDTO] {
-        guard let repo = expenseRepository else { return [] }
-        do {
-            return try await repo.fetchAll()
-        } catch {
-            print("[MoneyDashboard] Failed to fetch expenses: \(error.localizedDescription)")
-            return []
-        }
+    private func fetchExpensesResult() async -> Result<[ExpenseDTO], Error> {
+        guard let repo = expenseRepository else { return .success([]) }
+        do { return .success(try await repo.fetchAll()) }
+        catch { return .failure(error) }
     }
 
-    private func fetchOpportunities() async -> [OpportunityDTO] {
-        guard let repo = opportunityRepository else { return [] }
-        do {
-            return try await repo.fetchAll()
-        } catch {
-            print("[MoneyDashboard] Failed to fetch opportunities: \(error.localizedDescription)")
-            return []
-        }
+    private func fetchOpportunitiesResult() async -> Result<[OpportunityDTO], Error> {
+        guard let repo = opportunityRepository else { return .success([]) }
+        do { return .success(try await repo.fetchAll()) }
+        catch { return .failure(error) }
     }
 
     // MARK: - Avg Days to Payment
@@ -549,13 +694,10 @@ class MoneyDashboardViewModel: ObservableObject {
 
     // MARK: - Books Phase 2 — Helpers (weekly buckets, job nets, allocations)
 
-    private func fetchAllocations() async -> [ExpenseAllocationDTO] {
-        guard let repo = expenseRepository else { return [] }
-        do { return try await repo.fetchAllAllocations() }
-        catch {
-            print("[MoneyDashboard] Failed to fetch allocations: \(error.localizedDescription)")
-            return []
-        }
+    private func fetchAllocationsResult() async -> Result<[ExpenseAllocationDTO], Error> {
+        guard let repo = expenseRepository else { return .success([]) }
+        do { return .success(try await repo.fetchAllAllocations()) }
+        catch { return .failure(error) }
     }
 
     private func weekStart(for date: Date) -> Date {
@@ -574,6 +716,11 @@ class MoneyDashboardViewModel: ObservableObject {
         }
         return buckets.sorted { $0.key < $1.key }.map { (weekStart: $0.key, amount: $0.value) }
     }
+
+    /// Suppress refund / rounding noise from the worst-loser displacement rule.
+    /// A project losing less than $500 isn't worth bumping a winner off the
+    /// top-5 display slice; aggregates below count every loss regardless.
+    private let worstLossFloor: Double = -500.0
 
     private func computeJobNets(periodStart: Date, periodEnd: Date) {
         // Revenue per project: sum of voided-excluded payments tied to invoices with a projectId, paid in-period.
@@ -606,7 +753,7 @@ class MoneyDashboardViewModel: ObservableObject {
         let projectIds = Array(Set(revenuePerProject.keys).union(costPerProject.keys))
         let projectTitles = projectTitleLookup(for: projectIds)
 
-        var rows: [JobNet] = projectIds.map { pid in
+        let allNets: [JobNet] = projectIds.map { pid in
             JobNet(
                 id: pid,
                 title: projectTitles[pid] ?? "Untitled",
@@ -614,20 +761,28 @@ class MoneyDashboardViewModel: ObservableObject {
                 cost: costPerProject[pid] ?? 0
             )
         }
-        rows.sort { $0.net > $1.net }
 
-        // Top 5 = top 4 by net + worst loser if not already present
-        var top = Array(rows.prefix(4))
-        if let worst = rows.last, worst.net < 0, !top.contains(where: { $0.id == worst.id }) {
-            top.append(worst)
-        } else if rows.count >= 5 {
-            top.append(rows[4])
+        // Display slice: top 5 by net descending, then displace the bottom with
+        // the period's worst loser (if it isn't already in the top 5 AND its
+        // loss exceeds the noise floor). Card 5 shows "which jobs made me
+        // money" — surfacing the worst loser even on a strong month preserves
+        // the early-warning channel for losses (decision Q2).
+        var result = Array(allNets.sorted { $0.net > $1.net }.prefix(5))
+
+        if let worstLoser = allNets
+            .filter({ $0.net < worstLossFloor })
+            .min(by: { $0.net < $1.net }),
+           !result.contains(where: { $0.id == worstLoser.id })
+        {
+            if !result.isEmpty { result.removeLast() }
+            result.append(worstLoser)
         }
-        topProjectsByNet = top
+        topProjectsByNet = result
 
-        profitableProjectCount = rows.filter { $0.net > 0 }.count
-        losersProjectCount = rows.filter { $0.net < 0 }.count
-        let withRevenue = rows.filter { $0.revenue > 0 }
+        // Aggregates count the FULL set, not the display slice.
+        profitableProjectCount = allNets.filter { $0.net > 0 }.count
+        losersProjectCount = allNets.filter { $0.net < 0 }.count
+        let withRevenue = allNets.filter { $0.revenue > 0 }
         avgProjectMargin = withRevenue.isEmpty
             ? 0
             : withRevenue.map { $0.net / $0.revenue }.reduce(0, +) / Double(withRevenue.count)

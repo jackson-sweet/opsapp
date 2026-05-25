@@ -16,6 +16,8 @@ struct CustomTabBar: View {
     @State private var iconWidth: CGFloat = 28 // SF Symbols 28pt size
     @State private var tabCount: Int = 0
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     // Tutorial mode support
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
@@ -58,7 +60,7 @@ struct CustomTabBar: View {
                         .frame(width: iconWidth, height: 3)
                         .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                         .offset(x: selectedIndicatorOffset)
-                        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: selectedIndicatorOffset)
+                        .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: selectedIndicatorOffset)
 
                     Spacer()
                 }
@@ -71,7 +73,7 @@ struct CustomTabBar: View {
                             tab: tab,
                             isSelected: selectedTab == index,
                             action: {
-                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
                                     selectedTab = index
                                     updateIndicatorPosition(for: index)
                                 }

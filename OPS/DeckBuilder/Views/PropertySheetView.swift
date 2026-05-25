@@ -60,7 +60,11 @@ struct PropertySheetView: View {
 
             // Edge type picker
             ForEach(Array(viewModel.selection.selectedEdgeIds), id: \.self) { edgeId in
-                if let edge = viewModel.drawingData.edge(byId: edgeId) {
+                // Multi-level-aware lookup. The plain `drawingData.edge(byId:)`
+                // only inspects the top-level edges array, which is empty in
+                // multi-level mode — so the section rendered nothing for the
+                // reporter's two-level design. Bug 6d1c0a2a / 0b55c546.
+                if let edge = viewModel.findEdge(byId: edgeId) {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         // Dimension
                         if let dim = edge.dimension {
@@ -367,7 +371,7 @@ struct PropertySheetView: View {
             sectionHeader("Vertex Properties", icon: "circle.fill")
 
             ForEach(Array(viewModel.selection.selectedVertexIds), id: \.self) { vertexId in
-                if let vertex = viewModel.drawingData.vertex(byId: vertexId) {
+                if let vertex = viewModel.findVertex(byId: vertexId) {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                         // Elevation
                         HStack {

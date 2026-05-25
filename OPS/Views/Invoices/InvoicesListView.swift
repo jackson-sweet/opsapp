@@ -10,7 +10,7 @@ import SwiftUI
 struct InvoicesListView: View {
     var embedded: Bool = false
 
-    @StateObject private var viewModel = InvoiceViewModel()
+    @StateObject private var viewModel: InvoiceViewModel
     @EnvironmentObject private var dataController: DataController
     @Environment(\.modelContext) private var modelContext
 
@@ -22,6 +22,18 @@ struct InvoicesListView: View {
     @State private var showWriteOffConfirm = false
     @State private var writeOffTarget: Invoice? = nil
     @State private var searchText = ""
+
+    @MainActor
+    init(embedded: Bool = false) {
+        self.embedded = embedded
+        _viewModel = StateObject(wrappedValue: InvoiceViewModel())
+    }
+
+    @MainActor
+    init(embedded: Bool = false, viewModel: InvoiceViewModel) {
+        self.embedded = embedded
+        _viewModel = StateObject(wrappedValue: viewModel)
+    }
 
     var body: some View {
         VStack(spacing: 0) {

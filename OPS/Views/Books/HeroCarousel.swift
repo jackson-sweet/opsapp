@@ -23,12 +23,12 @@ struct HeroCarousel: View {
 
     var onDrillOutstanding: () -> Void
     var onDrillForecast: () -> Void
-    var onDrillCashFlowDays: () -> Void
+    var onDrillCashFlowDays: (() -> Void)? = nil
     var onDrillTopChase: () -> Void
-    var onDrillCloseRate: () -> Void
-    var onDrillStale: () -> Void
-    var onDrillProfitable: () -> Void
-    var onDrillLosers: () -> Void
+    var onDrillCloseRate: (() -> Void)? = nil
+    var onDrillStale: (() -> Void)? = nil
+    var onDrillProfitable: (() -> Void)? = nil
+    var onDrillLosers: (() -> Void)? = nil
 
     enum CardID: String, CaseIterable, Identifiable {
         case pl, cashFlow, ar, forecast, jobs
@@ -81,33 +81,62 @@ struct HeroCarousel: View {
                 let restored = CardID(rawValue: lastViewedRaw) ?? .pl
                 scrollPosition = visibleCards.contains(restored) ? restored : visibleCards.first
             }
+            .onChange(of: visibleCards.map(\.rawValue).joined(separator: "|")) { _, _ in
+                let restored = scrollPosition ?? CardID(rawValue: lastViewedRaw) ?? .pl
+                let next = visibleCards.contains(restored) ? restored : visibleCards.first
+                scrollPosition = next
+                if let next {
+                    lastViewedRaw = next.rawValue
+                }
+            }
+            // § 8.1 — carousel container: heading-rotor entry + orientation label.
+            // `.contain` keeps every card, tile, and chrome control individually
+            // navigable inside the container. Count is permission-filtered, never
+            // hardcoded to 5.
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Books dashboard, \(visibleCards.count) cards")
+            .accessibilityAddTraits(.isHeader)
         }
     }
 
     /// Top line of the hero: active card's label on the left, period pill on the right.
-    /// Cards 3 (A/R) and 4 (Forecast) include a colored scope hint (ALL OPEN / ACTIVE)
-    /// so the user understands why those cards don't respond to the pill.
+    /// Cards 3 (A/R) and 4 (Forecast) render a colored scope-hint badge beside the label
+    /// (ALL OPEN / ACTIVE) so the user understands why those cards don't respond to the pill.
     private var inlineHeader: some View {
         let active = scrollPosition ?? visibleCards.first ?? .pl
-        let header = headerLabel(for: active)
         return HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
-            Text(header.text)
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(header.color)
-                .contentTransition(.opacity)
+            Text(headerLabel(for: active))
+                .font(.custom("JetBrainsMono-Medium", size: 11).weight(.semibold))
+                .tracking(1.76)  // 0.16em at 11pt
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .textCase(.uppercase)
+                .lineLimit(2)  // § 8.4 — wrap, never clip, above the type floor
+                .dynamicTypeSize(...DynamicTypeSize.accessibility2)  // § 8.4 — card-header label clamped
+                .booksOpacityContentTransition(reduceMotion: reduceMotion)
+            if let badge = scopeBadge(for: active) {
+                badge
+            }
             Spacer()
             PeriodPill(selected: $viewModel.selectedPeriod)
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
-    private func headerLabel(for card: CardID) -> (text: String, color: Color) {
+    private func headerLabel(for card: CardID) -> String {
         switch card {
-        case .pl:       return ("P&L",                  OPSStyle.Colors.secondaryText)
-        case .cashFlow: return ("CASH FLOW",            OPSStyle.Colors.secondaryText)
-        case .ar:       return ("A/R · ALL OPEN",       OPSStyle.Colors.errorStatus)
-        case .forecast: return ("FORECAST · ACTIVE",    OPSStyle.Colors.primaryAccent)
-        case .jobs:     return ("JOBS · NET BY PROJECT", OPSStyle.Colors.secondaryText)
+        case .pl:       return "P&L"
+        case .cashFlow: return "CASH FLOW"
+        case .ar:       return "A/R"
+        case .forecast: return "FORECAST"
+        case .jobs:     return "JOBS"
+        }
+    }
+
+    private func scopeBadge(for card: CardID) -> BooksScopeHintBadge? {
+        switch card {
+        case .ar:       return BooksScopeHintBadge(variant: .allOpen)
+        case .forecast: return BooksScopeHintBadge(variant: .active)
+        default:        return nil
         }
     }
 
@@ -128,18 +157,23 @@ struct HeroCarousel: View {
     }
 
     private var dots: some View {
-        HStack(spacing: 5) {
-            ForEach(visibleCards) { card in
+        HStack(spacing: 6) {
+            ForEach(Array(visibleCards.enumerated()), id: \.element) { index, card in
                 let isActive = scrollPosition == card
                 Capsule()
-                    .fill(isActive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.cardBorder)
-                    .frame(width: isActive ? 16 : 5, height: 5)
-                    .animation(reduceMotion ? .none : OPSStyle.Animation.standard, value: scrollPosition)
+                    .fill(isActive ? OPSStyle.Colors.primaryText
+                                   : OPSStyle.Colors.textMute.opacity(0.5))
+                    .frame(width: isActive ? 22 : 6, height: 6)
+                    .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: scrollPosition)
+                    .frame(minWidth: 44, minHeight: 44)  // 44pt hit target — visible dot stays centered
+                    .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(reduceMotion ? .none : OPSStyle.Animation.standard) {
+                        withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
                             scrollPosition = card
                         }
                     }
+                    .accessibilityLabel("Card \(index + 1) of \(visibleCards.count)")
+                    .accessibilityHint("Double-tap to jump to card \(index + 1)")
             }
         }
         .padding(.top, OPSStyle.Layout.spacing1)
@@ -151,9 +185,7 @@ struct HeroCarousel: View {
     HeroCarousel(
         viewModel: .previewStub(),
         onDrillOutstanding: {}, onDrillForecast: {},
-        onDrillCashFlowDays: {}, onDrillTopChase: {},
-        onDrillCloseRate: {}, onDrillStale: {},
-        onDrillProfitable: {}, onDrillLosers: {}
+        onDrillTopChase: {}
     )
     .environmentObject(PermissionStore.previewOwner())
     .padding(.vertical, 24)
@@ -165,9 +197,7 @@ struct HeroCarousel: View {
     HeroCarousel(
         viewModel: .previewEmpty(),
         onDrillOutstanding: {}, onDrillForecast: {},
-        onDrillCashFlowDays: {}, onDrillTopChase: {},
-        onDrillCloseRate: {}, onDrillStale: {},
-        onDrillProfitable: {}, onDrillLosers: {}
+        onDrillTopChase: {}
     )
     .environmentObject(PermissionStore.previewOwner())
     .padding(.vertical, 24)

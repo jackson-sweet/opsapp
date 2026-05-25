@@ -77,6 +77,15 @@ enum OPSStyle {
         static let errorStatus    = Color("StatusError")    // #93321A brick — prefer `brick` (border) or `rose` (text)
         static let inactiveStatus = Color("StatusInactive") // #8E8E93 gray
 
+        // Mobile-bright status tag variants (outdoor glare set, per MOBILE.md).
+        // Use on tags/badges that need to read in direct sunlight.
+        static let oliveMobile = Color("StatusSuccessMobile")  // #B5C998
+        static let tanMobile   = Color("StatusWarningMobile")  // #DBC07F
+        static let roseMobile  = Color("StatusErrorMobile")    // #C99AA1
+
+        // Web parity: 0.06 alpha for subtle dividers inside cards / chart gridlines.
+        static let lineSoft = Color.white.opacity(0.06)
+
         // Status text colors (for foreground, not background)
         // Reuse existing status asset colors for text as well
         static let errorText = Color("StatusError")     // Same as errorStatus - works for both bg and text
@@ -261,6 +270,10 @@ enum OPSStyle {
 
         /// Hero number — Mohave Light 80pt (dashboard hero, revenue total)
         static let hero = Font.hero
+
+        /// Hero number on carousel cards — Mohave Light 60pt.
+        /// Tracking (-0.025em) and tabular-nums applied at call site, not here.
+        static let heroNumber = Font.custom("Mohave-Light", size: 60)
 
         /// Page title — Cake Mono Light 22pt (TopBar H1, root-route page heading)
         static let pageTitle = Font.pageTitle

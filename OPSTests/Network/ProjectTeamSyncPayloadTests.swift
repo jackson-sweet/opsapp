@@ -34,4 +34,22 @@ final class ProjectTeamSyncPayloadTests: XCTestCase {
         XCTAssertEqual(sanitized["team_member_ids"] as? [String], ["crew-a", "crew-b"])
         XCTAssertEqual(sanitized["display_order"] as? Int, 3)
     }
+
+    func testProjectTeamSyncGateOnlyReportsMissingRelationshipIds() {
+        let missing = DataController.projectTeamMemberIdsNeedingRelationshipSync(
+            storedIds: ["crew-a", "crew-b", "crew-a"],
+            relationshipIds: ["crew-b"]
+        )
+
+        XCTAssertEqual(missing, ["crew-a"])
+    }
+
+    func testProjectTeamSyncGateSkipsFullyHydratedProject() {
+        let missing = DataController.projectTeamMemberIdsNeedingRelationshipSync(
+            storedIds: ["crew-a", "crew-b"],
+            relationshipIds: ["crew-b", "crew-a"]
+        )
+
+        XCTAssertTrue(missing.isEmpty)
+    }
 }

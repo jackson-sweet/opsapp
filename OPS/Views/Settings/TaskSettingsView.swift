@@ -246,9 +246,7 @@ struct TaskSettingsView: View {
     }
     
     private var sortedTaskTypes: [TaskType] {
-        let nonDefault = taskTypes.filter { !$0.isDefault }.sorted { $0.display.localizedCaseInsensitiveCompare($1.display) == .orderedAscending }
-        let defaultTypes = taskTypes.filter { $0.isDefault }.sorted { $0.display.localizedCaseInsensitiveCompare($1.display) == .orderedAscending }
-        return nonDefault + defaultTypes
+        TaskTypeSettingsLogic.sortedTaskTypes(taskTypes)
     }
 
     private func fetchTaskTypes() {
@@ -263,17 +261,8 @@ struct TaskSettingsView: View {
         print("🔍 Fetching task types for company: \(companyId)")
 
         do {
-            // Fetch ALL task types first to see what's in the database
-            let allDescriptor = FetchDescriptor<TaskType>()
-            let allTaskTypes = try modelContext.fetch(allDescriptor)
-            print("📊 Total task types in database: \(allTaskTypes.count)")
-            for taskType in allTaskTypes {
-                print("  - \(taskType.display) (companyId: \(taskType.companyId), isDefault: \(taskType.isDefault))")
-            }
-
-            // Now filter by company
             let predicate = #Predicate<TaskType> { taskType in
-                taskType.companyId == companyId
+                taskType.companyId == companyId && taskType.deletedAt == nil
             }
 
             let descriptor = FetchDescriptor<TaskType>(
@@ -283,7 +272,7 @@ struct TaskSettingsView: View {
             let filteredTypes = try modelContext.fetch(descriptor)
             print("✅ Filtered task types for company: \(filteredTypes.count)")
 
-            taskTypes = filteredTypes
+            taskTypes = TaskTypeSettingsLogic.visibleTaskTypes(filteredTypes, companyId: companyId)
             isLoading = false
         } catch {
             print("❌ Error fetching task types: \(error)")
@@ -343,21 +332,37 @@ struct TaskTypeRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 16) {
-                // Icon with color
-                ZStack {
-                    Circle()
-                        .fill(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
-                        .frame(width: 48, height: 48)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                    .fill(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
+                    .frame(width: 8, height: 52)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                            .stroke(OPSStyle.Colors.primaryText.opacity(0.16),
+                                    lineWidth: OPSStyle.Layout.Border.standard)
+                    )
 
-                    Image(systemName: taskType.icon ?? "hammer.fill")
-                        .font(.system(size: OPSStyle.Layout.IconSize.lg))
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Text(taskType.display.uppercased())
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .lineLimit(1)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(taskType.display)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        if taskType.isDefault {
+                            Text("DEFAULT")
+                                .font(OPSStyle.Typography.microLabel)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                .padding(.vertical, 2)
+                                .background(OPSStyle.Colors.cardBackgroundDark)
+                                .cornerRadius(OPSStyle.Layout.chipRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                                        .stroke(OPSStyle.Colors.cardBorder,
+                                                lineWidth: OPSStyle.Layout.Border.standard)
+                                )
+                        }
+                    }
 
                     Text("\(activeTaskCount) task\(activeTaskCount == 1 ? "" : "s")")
                         .font(OPSStyle.Typography.smallCaption)
@@ -366,19 +371,7 @@ struct TaskTypeRow: View {
 
                 Spacer()
 
-                if taskType.isDefault {
-                    Text("DEFAULT")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(OPSStyle.Colors.cardBackgroundDark)
-                        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
-                } else {
+                if !taskType.isDefault {
                     Image(systemName: OPSStyle.Icons.chevronRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)

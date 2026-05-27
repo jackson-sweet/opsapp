@@ -181,6 +181,16 @@ class CatalogRepository {
 
     // MARK: - Variant ↔ option-value writes
 
+    func createOption(_ dto: CreateCatalogOptionDTO) async throws -> CatalogOptionDTO {
+        try await client.from("catalog_options")
+            .insert(dto).select().single().execute().value
+    }
+
+    func createOptionValue(_ dto: CreateCatalogOptionValueDTO) async throws -> CatalogOptionValueDTO {
+        try await client.from("catalog_option_values")
+            .insert(dto).select().single().execute().value
+    }
+
     func createVariantOptionValue(variantId: String, optionValueId: String) async throws {
         let dto = UpsertCatalogVariantOptionValueDTO(variantId: variantId, optionValueId: optionValueId)
         try await client.from("catalog_variant_option_values")

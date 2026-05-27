@@ -83,6 +83,7 @@ class DataController: ObservableObject {
 
     // Cache of non-existent user IDs to prevent repeated fetch attempts
     private var nonExistentUserIds: Set<String> = []
+    private var projectTeamMemberSyncsInFlight: Set<String> = []
 
     /// New sync engine (offline-first) — initialized in setModelContext,
     /// configured in initializeSyncManager. Safe to call methods before
@@ -1913,6 +1914,29 @@ class DataController: ObservableObject {
     }
     
     /// Ensures project team members are properly synchronized between IDs and User objects
+    static func projectTeamMemberIdsNeedingRelationshipSync(
+        storedIds: [String],
+        relationshipIds: [String]
+    ) -> [String] {
+        let existing = Set(relationshipIds)
+        var seen = Set<String>()
+        return storedIds.compactMap { rawId in
+            let id = rawId.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty,
+                  !existing.contains(id),
+                  seen.insert(id).inserted else { return nil }
+            return id
+        }
+    }
+
+    private func projectTeamMemberIdsNeedingRelationshipSync(_ project: Project) -> [String] {
+        Self.projectTeamMemberIdsNeedingRelationshipSync(
+            storedIds: project.getTeamMemberIds(),
+            relationshipIds: project.teamMembers.map(\.id)
+        )
+    }
+
+    /// Ensures project team members are properly synchronized between IDs and User objects
     @MainActor
     func syncProjectTeamMembers(_ project: Project) async {
         guard let context = modelContext else { return }
@@ -1928,7 +1952,10 @@ class DataController: ObservableObject {
         let existingMemberIds = Set(project.teamMembers.map { $0.id })
         
         // Find members that need to be added to project.teamMembers
-        let missingMemberIds = teamMemberIds.filter { !existingMemberIds.contains($0) }
+        let missingMemberIds = Self.projectTeamMemberIdsNeedingRelationshipSync(
+            storedIds: teamMemberIds,
+            relationshipIds: Array(existingMemberIds)
+        )
         
         if missingMemberIds.isEmpty {
             return
@@ -3205,13 +3232,22 @@ class DataController: ObservableObject {
             let projects = try context.fetch(descriptor)
 
             if let project = projects.first {
+                guard !projectTeamMemberIdsNeedingRelationshipSync(project).isEmpty else {
+                    return project
+                }
+
                 // Don't pass the model to a background task - use the ID instead
                 let projectId = project.id
                 Task { @MainActor in
-                    // Fetch fresh project in the task to avoid invalidation
-                    if let freshProject = self.getProjectWithoutSync(id: projectId) {
-                        await self.syncProjectTeamMembers(freshProject)
+                    guard self.projectTeamMemberSyncsInFlight.insert(projectId).inserted else {
+                        return
                     }
+                    defer { self.projectTeamMemberSyncsInFlight.remove(projectId) }
+
+                    // Fetch fresh project in the task to avoid invalidation
+                    guard let freshProject = self.getProjectWithoutSync(id: projectId),
+                          !self.projectTeamMemberIdsNeedingRelationshipSync(freshProject).isEmpty else { return }
+                    await self.syncProjectTeamMembers(freshProject)
                 }
                 return project
             }

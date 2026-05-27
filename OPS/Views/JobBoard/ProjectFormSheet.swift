@@ -296,14 +296,11 @@ struct ProjectFormSheet: View {
     }
 
     private var matchingClients: [Client] {
-        // In tutorial mode, show all demo clients when text is empty for easy selection
-        if tutorialMode && clientSearchText.isEmpty {
-            return availableClients
-        }
-        guard !clientSearchText.isEmpty else { return [] }
-        return availableClients.filter {
-            $0.name.localizedCaseInsensitiveContains(clientSearchText)
-        }
+        ProjectFormClientSearch.matchingClients(
+            from: availableClients,
+            query: clientSearchText,
+            tutorialMode: tutorialMode
+        )
     }
 
     private var selectedClient: Client? {

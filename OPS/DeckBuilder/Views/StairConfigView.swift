@@ -9,6 +9,7 @@ struct StairConfigView: View {
     @State private var widthText: String = "48"
     @State private var risePerStep: Double = 7.5
     @State private var runPerTread: Double = 10.0
+    @State private var treadCountText: String = ""
     @State private var addRailing: Bool = false
     @State private var railingType: RailingType = .parapetWall
     @State private var inlineHeightText: String = ""
@@ -85,8 +86,15 @@ struct StairConfigView: View {
             totalRise: totalRise,
             width: width,
             risePerStep: risePerStep,
-            runPerTread: runPerTread
+            runPerTread: runPerTread,
+            treadCountOverride: manualTreadCount
         )
+    }
+
+    private var manualTreadCount: Int? {
+        let trimmed = treadCountText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let value = Int(trimmed), value > 0 else { return nil }
+        return value
     }
 
     var body: some View {
@@ -152,6 +160,9 @@ struct StairConfigView: View {
                 widthText = String(format: "%.0f", existing.width)
                 risePerStep = existing.risePerStep
                 runPerTread = existing.runPerTread
+                if let treadCount = existing.treadCount, treadCount > 0 {
+                    treadCountText = "\(treadCount)"
+                }
                 alignment = existing.alignment
                 offsetText = String(format: "%.0f", existing.offset)
                 flipDirection = existing.flipDirection
@@ -455,6 +466,30 @@ struct StairConfigView: View {
             }
 
             HStack {
+                Text("Tread count")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Spacer()
+                TextField("AUTO", text: $treadCountText)
+                    .font(OPSStyle.Typography.monoValue)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 64)
+                Button {
+                    treadCountText = ""
+                } label: {
+                    Text("AUTO")
+                        .font(OPSStyle.Typography.microLabel)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
+                        .background(OPSStyle.Colors.background)
+                        .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+                }
+            }
+
+            HStack {
                 Text("Run per tread")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -477,7 +512,7 @@ struct StairConfigView: View {
     @ViewBuilder
     private func calculatedValues(spec: StairCalculator.StairSpec) -> some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text("Auto-Calculated")
+            Text(manualTreadCount == nil ? "Auto-Calculated" : "Manual Count")
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
 

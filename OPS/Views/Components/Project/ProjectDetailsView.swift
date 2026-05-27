@@ -32,7 +32,7 @@ struct ProjectDetailsView: View {
     @State private var editingExpense: ExpenseDTO? = nil
     @State private var showNewExpenseSheet = false
     @State private var showingStatusPicker = false
-    @State private var showingCameraBatch = false
+    @State private var showingNativeCamera = false
     @State private var showingMeasureCapture = false
     @State private var showingDeckCreationPicker = false
     @State private var deckDesignToOpen: DeckDesign?
@@ -86,19 +86,8 @@ struct ProjectDetailsView: View {
                     .sheet(isPresented: $viewModel.showingImagePicker) {
                         imagePickerContent
                     }
-                    .fullScreenCover(isPresented: $showingCameraBatch) {
-                        CameraBatchView { capturedImages in
-                            viewModel.selectedImages = capturedImages
-                            if !capturedImages.isEmpty {
-                                viewModel.addPhotosToProject(tutorialMode: tutorialMode)
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    NotificationCenter.default.post(
-                                        name: Notification.Name("WizardPhotoCaptured"),
-                                        object: nil
-                                    )
-                                }
-                            }
-                        }
+                    .fullScreenCover(isPresented: $showingNativeCamera) {
+                        nativeCameraContent
                     }
                     .fullScreenCover(isPresented: $showingMeasureCapture) {
                         // LiDAR Dimensioned Photo Capture (spec §3.1) — same
@@ -429,7 +418,10 @@ struct ProjectDetailsView: View {
                         hasClientContact: viewModel.hasClientContact,
                         canEdit: viewModel.canEditProject,
                         isMentionOnly: viewModel.isMentionOnlyAccess,
-                        onPhoto: { showingCameraBatch = true },
+                        onPhoto: {
+                            viewModel.selectedImages = []
+                            showingNativeCamera = true
+                        },
                         onNote: {
                             viewModel.selectedTab = .activity
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -771,6 +763,27 @@ struct ProjectDetailsView: View {
                 if !viewModel.selectedImages.isEmpty {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         viewModel.addPhotosToProject(tutorialMode: tutorialMode)
+                    }
+                }
+            }
+        )
+    }
+
+    private var nativeCameraContent: some View {
+        ImagePicker(
+            images: $viewModel.selectedImages,
+            allowsEditing: false,
+            sourceType: .camera,
+            selectionLimit: 1,
+            onSelectionComplete: {
+                showingNativeCamera = false
+                if !viewModel.selectedImages.isEmpty {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        viewModel.addPhotosToProject(tutorialMode: tutorialMode)
+                        NotificationCenter.default.post(
+                            name: Notification.Name("WizardPhotoCaptured"),
+                            object: nil
+                        )
                     }
                 }
             }

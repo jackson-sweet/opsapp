@@ -423,11 +423,6 @@ struct DeckTab2DView: View {
         start: CGPoint,
         end: CGPoint
     ) {
-        let dx = end.x - start.x, dy = end.y - start.y
-        let edgeLen = sqrt(dx * dx + dy * dy)
-        guard edgeLen > 0 else { return }
-        let edgeNx = dx / edgeLen, edgeNy = dy / edgeLen
-
         // Polygon for outward-perpendicular lookup (use the level matching
         // the edge's vertex ids, falling back to the single-level polygon).
         let polygon: [CGPoint]
@@ -443,78 +438,66 @@ struct DeckTab2DView: View {
             polygon = drawingData.orderedPositions
         }
 
-        let outward = PolygonMath.outwardPerpendicular(
+        guard let plan = DeckStairRenderPlanner.plan(
             edgeStart: start,
             edgeEnd: end,
-            polygonVertices: polygon
-        )
-        let perpX = config.flipDirection ? -outward.x : outward.x
-        let perpY = config.flipDirection ? -outward.y : outward.y
-
-        // Width / depth canvas math uses the drawing's effective scale so
-        // stairs render at a proportional canvas size even before the user
-        // calibrates a scaleFactor. Bug DECK-NEW-5 — using 1.0 made stairs
-        // render at the wrong (much smaller) width on uncalibrated drawings,
-        // since every other element on the canvas falls back to 2.0 pt/inch.
-        let scale = drawingData.effectiveScaleFactor
-        let stairWidthCanvas = min(CGFloat(config.width) * CGFloat(scale), edgeLen)
-        let totalRunInches = Double(treadCount) * config.runPerTread
-        let stairDepthCanvas = CGFloat(totalRunInches) * CGFloat(scale)
-
-        // Position along edge (alignment + offset)
-        let offsetCanvas = CGFloat(config.offset) * CGFloat(scale)
-        let gapTotal = edgeLen - stairWidthCanvas
-        let stairStartT: CGFloat
-        switch config.alignment {
-        case .left:   stairStartT = offsetCanvas / edgeLen
-        case .center: stairStartT = (gapTotal / 2 + offsetCanvas) / edgeLen
-        case .right:  stairStartT = (gapTotal - offsetCanvas) / edgeLen
-        }
-
-        let perpCGX = CGFloat(perpX), perpCGY = CGFloat(perpY)
-        let baseStart = CGPoint(
-            x: start.x + edgeNx * edgeLen * stairStartT,
-            y: start.y + edgeNy * edgeLen * stairStartT
-        )
-        let baseEnd = CGPoint(
-            x: baseStart.x + edgeNx * stairWidthCanvas,
-            y: baseStart.y + edgeNy * stairWidthCanvas
-        )
-        let farStart = CGPoint(
-            x: baseStart.x + perpCGX * stairDepthCanvas,
-            y: baseStart.y + perpCGY * stairDepthCanvas
-        )
-        let farEnd = CGPoint(
-            x: baseEnd.x + perpCGX * stairDepthCanvas,
-            y: baseEnd.y + perpCGY * stairDepthCanvas
-        )
+            polygonVertices: polygon,
+            config: config,
+            treadCount: treadCount,
+            scaleFactor: drawingData.effectiveScaleFactor,
+            measurementSystem: drawingData.config.measurementSystem
+        ) else { return }
 
         var rectPath = Path()
-        rectPath.move(to: baseStart)
-        rectPath.addLine(to: baseEnd)
-        rectPath.addLine(to: farEnd)
-        rectPath.addLine(to: farStart)
+        rectPath.move(to: plan.baseStart)
+        rectPath.addLine(to: plan.baseEnd)
+        rectPath.addLine(to: plan.farEnd)
+        rectPath.addLine(to: plan.farStart)
         rectPath.closeSubpath()
 
-        context.fill(rectPath, with: .color(OPSStyle.Colors.warningStatus.opacity(0.08)))
-        context.stroke(rectPath, with: .color(OPSStyle.Colors.warningStatus.opacity(0.5)), lineWidth: 1.2)
+        context.fill(rectPath, with: .color(OPSStyle.Colors.tanSoft))
+        context.stroke(rectPath, with: .color(OPSStyle.Colors.tanLine), lineWidth: OPSStyle.Layout.Border.standard)
 
         // Tread lines
-        for i in 1..<min(treadCount, 30) {
-            let t = CGFloat(i) / CGFloat(treadCount)
-            let tBase = CGPoint(
-                x: baseStart.x + perpCGX * stairDepthCanvas * t,
-                y: baseStart.y + perpCGY * stairDepthCanvas * t
-            )
-            let tEnd = CGPoint(
-                x: baseEnd.x + perpCGX * stairDepthCanvas * t,
-                y: baseEnd.y + perpCGY * stairDepthCanvas * t
-            )
+        for line in plan.treadLines {
             var tp = Path()
-            tp.move(to: tBase)
-            tp.addLine(to: tEnd)
-            context.stroke(tp, with: .color(OPSStyle.Colors.warningStatus.opacity(0.3)), lineWidth: 0.8)
+            tp.move(to: line.start)
+            tp.addLine(to: line.end)
+            context.stroke(tp, with: .color(OPSStyle.Colors.tanLine.opacity(0.75)), lineWidth: OPSStyle.Layout.Border.standard)
         }
+
+        for label in plan.dimensionLabels {
+            drawStairDimensionLabel(context: context, label: label)
+        }
+    }
+
+    private func drawStairDimensionLabel(
+        context: GraphicsContext,
+        label: DeckStairDimensionLabel
+    ) {
+        let resolved = context.resolve(Text(label.text)
+            .font(OPSStyle.Typography.microLabel)
+            .foregroundColor(OPSStyle.Colors.text))
+
+        let textSize = resolved.measure(in: CGSize(width: 220, height: 50))
+        let padH = CGFloat(OPSStyle.Layout.spacing1)
+        let padV = CGFloat(OPSStyle.Layout.spacing1) / 2
+        let bgRect = CGRect(
+            x: label.position.x - textSize.width / 2 - padH,
+            y: label.position.y - textSize.height / 2 - padV,
+            width: textSize.width + padH * 2,
+            height: textSize.height + padV * 2
+        )
+        context.fill(
+            Path(roundedRect: bgRect, cornerRadius: CGFloat(OPSStyle.Layout.chipRadius)),
+            with: .color(OPSStyle.Colors.glassDenseApprox)
+        )
+        context.stroke(
+            Path(roundedRect: bgRect, cornerRadius: CGFloat(OPSStyle.Layout.chipRadius)),
+            with: .color(OPSStyle.Colors.line),
+            lineWidth: OPSStyle.Layout.Border.standard
+        )
+        context.draw(resolved, at: label.position, anchor: .center)
     }
 
     private func drawVertex(context: GraphicsContext, vertex: DeckVertex) {

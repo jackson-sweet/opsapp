@@ -1114,33 +1114,31 @@ private struct VinylCutPreview: View {
         origin: CGPoint,
         scale: CGFloat
     ) {
-        guard plan.settings.edgeWrapInches > 0 else { return }
-        let wrapCanvas = CGFloat(plan.settings.edgeWrapInches * surfaceScale(surface))
+        let annotationPlan = VinylPreviewAnnotationPlanner.plan(
+            surface: surface,
+            settings: plan.settings,
+            viewportScale: scale
+        )
 
-        for layout in edgeLayouts(for: surface) {
-            let start = map(layout.edge.start, bounds: bounds, origin: origin, scale: scale)
-            let end = map(layout.edge.end, bounds: bounds, origin: origin, scale: scale)
-            let outerStartSource = offset(layout.edge.start, normal: layout.outwardNormal, distance: wrapCanvas)
-            let outerEndSource = offset(layout.edge.end, normal: layout.outwardNormal, distance: wrapCanvas)
-            let outerStart = map(outerStartSource, bounds: bounds, origin: origin, scale: scale)
-            let outerEnd = map(outerEndSource, bounds: bounds, origin: origin, scale: scale)
-
-            var band = Path()
-            band.move(to: start)
-            band.addLine(to: end)
-            band.addLine(to: outerEnd)
-            band.addLine(to: outerStart)
-            band.closeSubpath()
-            context.fill(band, with: .color(overlapFill(for: layout.edge.edgeType)))
-
-            var outerLine = Path()
-            outerLine.move(to: outerStart)
-            outerLine.addLine(to: outerEnd)
+        for band in annotationPlan.bands {
+            let bandPath = path(for: band.polygon, bounds: bounds, origin: origin, scale: scale)
+            context.fill(bandPath, with: .color(overlapFill(for: band.tone)))
             context.stroke(
-                outerLine,
-                with: .color(overlapStroke(for: layout.edge.edgeType)),
+                bandPath,
+                with: .color(overlapStroke(for: band.tone)),
                 style: StrokeStyle(lineWidth: OPSStyle.Layout.Border.standard, dash: [4, 3])
             )
+
+            for hatch in band.hatchLines {
+                var hatchPath = Path()
+                hatchPath.move(to: map(hatch.start, bounds: bounds, origin: origin, scale: scale))
+                hatchPath.addLine(to: map(hatch.end, bounds: bounds, origin: origin, scale: scale))
+                context.stroke(
+                    hatchPath,
+                    with: .color(OPSStyle.Colors.textMute.opacity(0.58)),
+                    lineWidth: OPSStyle.Layout.Border.standard
+                )
+            }
         }
     }
 
@@ -1151,13 +1149,19 @@ private struct VinylCutPreview: View {
         origin: CGPoint,
         scale: CGFloat
     ) {
-        for layout in edgeLayouts(for: surface) where layout.edge.edgeType == .houseEdge {
-            let midpoint = midpoint(layout.edge.start, layout.edge.end)
-            let insideSource = offset(midpoint, normal: layout.outwardNormal, distance: -CGFloat(OPSStyle.Layout.spacing2) / max(scale, 0.001))
-            let label = Text("HOUSE EDGE")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tan)
-            context.draw(label, at: map(insideSource, bounds: bounds, origin: origin, scale: scale), anchor: .center)
+        let annotationPlan = VinylPreviewAnnotationPlanner.plan(
+            surface: surface,
+            settings: plan.settings,
+            viewportScale: scale
+        )
+        for label in annotationPlan.houseLabels {
+            context.draw(
+                Text(label.text)
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(annotationColor(for: label.tone)),
+                at: map(label.point, bounds: bounds, origin: origin, scale: scale),
+                anchor: .center
+            )
         }
     }
 
@@ -1168,62 +1172,27 @@ private struct VinylCutPreview: View {
         origin: CGPoint,
         scale: CGFloat
     ) {
-        guard plan.settings.edgeWrapInches > 0 else { return }
-        let layouts = edgeLayouts(for: surface)
-
-        if let deckLayout = representativeLayout(in: layouts, type: .deckEdge) {
-            drawOverlapLeader(
-                "DECK LAP \(formatOverlapInches(plan.settings.edgeWrapInches))",
-                layout: deckLayout,
-                color: OPSStyle.Colors.secondaryText,
-                in: &context,
-                bounds: bounds,
-                origin: origin,
-                scale: scale
-            )
-        }
-
-        if let houseLayout = representativeLayout(in: layouts, type: .houseEdge) {
-            drawOverlapLeader(
-                "HOUSE LAP \(formatOverlapInches(plan.settings.edgeWrapInches))",
-                layout: houseLayout,
-                color: OPSStyle.Colors.tan,
-                in: &context,
-                bounds: bounds,
-                origin: origin,
-                scale: scale
-            )
-        }
-    }
-
-    private func drawOverlapLeader(
-        _ label: String,
-        layout: VinylPreviewEdgeLayout,
-        color: Color,
-        in context: inout GraphicsContext,
-        bounds: CGRect,
-        origin: CGPoint,
-        scale: CGFloat
-    ) {
-        let wrapCanvas = CGFloat(plan.settings.edgeWrapInches * surfaceScale(layout.surface))
-        let edgeMidpoint = midpoint(layout.edge.start, layout.edge.end)
-        let anchorSource = offset(edgeMidpoint, normal: layout.outwardNormal, distance: wrapCanvas)
-        let labelSource = offset(edgeMidpoint, normal: layout.outwardNormal, distance: wrapCanvas + (CGFloat(OPSStyle.Layout.spacing3) / max(scale, 0.001)))
-        let anchor = map(anchorSource, bounds: bounds, origin: origin, scale: scale)
-        let labelPoint = map(labelSource, bounds: bounds, origin: origin, scale: scale)
-
-        var leader = Path()
-        leader.move(to: anchor)
-        leader.addLine(to: labelPoint)
-        context.stroke(leader, with: .color(color.opacity(0.82)), lineWidth: OPSStyle.Layout.Border.standard)
-
-        context.draw(
-            Text(label)
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(color),
-            at: labelPoint,
-            anchor: .center
+        let annotationPlan = VinylPreviewAnnotationPlanner.plan(
+            surface: surface,
+            settings: plan.settings,
+            viewportScale: scale
         )
+
+        for leader in annotationPlan.leaders {
+            let color = annotationColor(for: leader.tone)
+            var line = Path()
+            line.move(to: map(leader.lineStart, bounds: bounds, origin: origin, scale: scale))
+            line.addLine(to: map(leader.lineEnd, bounds: bounds, origin: origin, scale: scale))
+            context.stroke(line, with: .color(color.opacity(0.82)), lineWidth: OPSStyle.Layout.Border.standard)
+
+            context.draw(
+                Text(leader.label)
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(color),
+                at: map(leader.labelPoint, bounds: bounds, origin: origin, scale: scale),
+                anchor: .center
+            )
+        }
     }
 
     private func drawCuts(
@@ -1403,21 +1372,46 @@ private struct VinylCutPreview: View {
             .max { $0.length < $1.length }
     }
 
-    private func overlapFill(for edgeType: EdgeType) -> Color {
-        switch edgeType {
-        case .houseEdge:
-            return OPSStyle.Colors.tanSoft.opacity(0.86)
-        case .deckEdge:
+    private func path(
+        for points: [CGPoint],
+        bounds: CGRect,
+        origin: CGPoint,
+        scale: CGFloat
+    ) -> Path {
+        var path = Path()
+        guard let first = points.first else { return path }
+        path.move(to: map(first, bounds: bounds, origin: origin, scale: scale))
+        for point in points.dropFirst() {
+            path.addLine(to: map(point, bounds: bounds, origin: origin, scale: scale))
+        }
+        path.closeSubpath()
+        return path
+    }
+
+    private func overlapFill(for tone: VinylPreviewAnnotationTone) -> Color {
+        switch tone {
+        case .neutral:
+            return OPSStyle.Colors.fillNeutralDim.opacity(0.86)
+        case .deck:
             return OPSStyle.Colors.surfaceActive.opacity(0.72)
         }
     }
 
-    private func overlapStroke(for edgeType: EdgeType) -> Color {
-        switch edgeType {
-        case .houseEdge:
-            return OPSStyle.Colors.tan.opacity(0.82)
-        case .deckEdge:
+    private func overlapStroke(for tone: VinylPreviewAnnotationTone) -> Color {
+        switch tone {
+        case .neutral:
+            return OPSStyle.Colors.textMute.opacity(0.70)
+        case .deck:
             return OPSStyle.Colors.secondaryText.opacity(0.64)
+        }
+    }
+
+    private func annotationColor(for tone: VinylPreviewAnnotationTone) -> Color {
+        switch tone {
+        case .neutral:
+            return OPSStyle.Colors.text2
+        case .deck:
+            return OPSStyle.Colors.secondaryText
         }
     }
 

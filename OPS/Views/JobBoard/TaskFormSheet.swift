@@ -1897,118 +1897,138 @@ struct TeamMemberPickerSheet: View {
     }
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                OPSStyle.Colors.background
-                    .ignoresSafeArea()
+        VStack(spacing: 0) {
+            HStack(spacing: CGFloat(OPSStyle.Layout.spacing3)) {
+                Text("SELECT TEAM MEMBERS")
+                    .font(OPSStyle.Typography.panelTitle)
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
 
-                ScrollView {
-                    VStack(spacing: 1) {
-                        ForEach(Array(allTeamMembers.enumerated()), id: \.element.id) { index, member in
-                            let isRecent = recentMemberIds.contains(member.id)
-                            let nextIsRecent = (index + 1) < allTeamMembers.count
-                                ? recentMemberIds.contains(allTeamMembers[index + 1].id)
-                                : false
-                            let isLastRecentRow = isRecent && !nextIsRecent && !recentMemberIds.isEmpty
+                Spacer()
 
-                            Button(action: {
-                                let wasEmpty = activeSelectionIds.isEmpty
-
-                                if usesExplicitConfirmation {
-                                    selectionDraft.toggle(member.id)
-                                } else {
-                                    if selectedTeamMemberIds.contains(member.id) {
-                                        selectedTeamMemberIds.remove(member.id)
-                                    } else {
-                                        selectedTeamMemberIds.insert(member.id)
-                                    }
-                                }
-
-                                // Tutorial mode: notify crew assigned
-                                if wasEmpty && !activeSelectionIds.isEmpty && isTutorialMode {
-                                    NotificationCenter.default.post(
-                                        name: Notification.Name("TutorialCrewAssigned"),
-                                        object: nil
-                                    )
-                                }
-                            }) {
-                                HStack(spacing: 12) {
-                                    // Checkbox
-                                    Image(systemName: activeSelectionIds.contains(member.id) ? "checkmark.circle.fill" : "circle")
-                                        .foregroundColor(activeSelectionIds.contains(member.id) ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                                        .font(.system(size: OPSStyle.Layout.IconSize.md))
-
-                                    // Avatar
-                                    UserAvatar(user: member, size: 40)
-
-                                    // Name and role
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(member.fullName)
-                                            .font(OPSStyle.Typography.bodyBold)
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
-
-                                        Text(member.role.displayName)
-                                            .font(OPSStyle.Typography.caption)
-                                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                    }
-
-                                    Spacer()
-
-                                    // RECENT tag for members who've been
-                                    // assigned to this task type before.
-                                    if isRecent {
-                                        Text("RECENT")
-                                            .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 4)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                                    .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
-                                            )
-                                    }
-                                }
-                                .padding()
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-
-                            // Tier separator after the last "recent" row.
-                            if isLastRecentRow {
-                                Rectangle()
-                                    .fill(OPSStyle.Colors.cardBorder)
-                                    .frame(height: 2)
-                                    .padding(.vertical, 4)
-                            }
-                        }
-                    }
-                    .padding()
+                Button(action: confirmSelection) {
+                    Text("DONE")
+                        .font(OPSStyle.Typography.buttonLabel)
+                        .foregroundColor(OPSStyle.Colors.opsAccent)
+                        .padding(.horizontal, CGFloat(OPSStyle.Layout.spacing3))
+                        .frame(minHeight: CGFloat(OPSStyle.Layout.touchTargetMin))
+                        .background(
+                            RoundedRectangle(cornerRadius: CGFloat(OPSStyle.Layout.buttonRadius))
+                                .fill(OPSStyle.Colors.surfaceActive)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: CGFloat(OPSStyle.Layout.buttonRadius))
+                                .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+                        )
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text("SELECT TEAM MEMBERS")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
+            .padding(.horizontal, CGFloat(OPSStyle.Layout.spacing3))
+            .padding(.top, CGFloat(OPSStyle.Layout.spacing3))
+            .padding(.bottom, CGFloat(OPSStyle.Layout.spacing2))
+            .background(OPSStyle.Colors.background)
 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("DONE") {
-                        if usesExplicitConfirmation {
-                            selectedTeamMemberIds = selectionDraft.confirmedIds()
-                        }
-                        onConfirm?()
-                        dismiss()
+            Rectangle()
+                .fill(OPSStyle.Colors.line)
+                .frame(height: OPSStyle.Layout.Border.standard)
+
+            ScrollView {
+                VStack(spacing: OPSStyle.Layout.Border.standard) {
+                    ForEach(Array(allTeamMembers.enumerated()), id: \.element.id) { index, member in
+                        teamMemberRow(member: member, index: index)
                     }
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
+                .padding(CGFloat(OPSStyle.Layout.spacing3))
             }
         }
+        .background(OPSStyle.Colors.background.ignoresSafeArea())
         .onAppear {
             selectionDraft = TeamMemberSelectionDraft(committedIds: selectedTeamMemberIds)
         }
+    }
+
+    private func teamMemberRow(member: User, index: Int) -> some View {
+        let isRecent = recentMemberIds.contains(member.id)
+        let nextIsRecent = (index + 1) < allTeamMembers.count
+            ? recentMemberIds.contains(allTeamMembers[index + 1].id)
+            : false
+        let isLastRecentRow = isRecent && !nextIsRecent && !recentMemberIds.isEmpty
+
+        return VStack(spacing: 0) {
+            Button(action: { toggle(member.id) }) {
+                HStack(spacing: CGFloat(OPSStyle.Layout.spacing2_5)) {
+                    Image(systemName: activeSelectionIds.contains(member.id) ? "checkmark.circle.fill" : "circle")
+                        .foregroundColor(activeSelectionIds.contains(member.id) ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.text3)
+                        .font(.system(size: OPSStyle.Layout.IconSize.md))
+
+                    UserAvatar(user: member, size: 40)
+
+                    VStack(alignment: .leading, spacing: CGFloat(OPSStyle.Layout.spacing1)) {
+                        Text(member.fullName)
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.text)
+
+                        Text(member.role.displayName)
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(OPSStyle.Colors.text3)
+                    }
+
+                    Spacer()
+
+                    if isRecent {
+                        Text("RECENT")
+                            .font(OPSStyle.Typography.badgeCake)
+                            .foregroundColor(OPSStyle.Colors.opsAccent)
+                            .padding(.horizontal, CGFloat(OPSStyle.Layout.spacing2))
+                            .padding(.vertical, CGFloat(OPSStyle.Layout.spacing1))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: CGFloat(OPSStyle.Layout.chipRadius))
+                                    .stroke(OPSStyle.Colors.opsAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                            )
+                    }
+                }
+                .padding(CGFloat(OPSStyle.Layout.spacing3))
+                .background(OPSStyle.Colors.surfaceHover)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            if isLastRecentRow {
+                Rectangle()
+                    .fill(OPSStyle.Colors.line)
+                    .frame(height: OPSStyle.Layout.Border.thick)
+                    .padding(.vertical, CGFloat(OPSStyle.Layout.spacing1))
+            }
+        }
+    }
+
+    private func toggle(_ memberId: String) {
+        let wasEmpty = activeSelectionIds.isEmpty
+
+        if usesExplicitConfirmation {
+            selectionDraft.toggle(memberId)
+        } else {
+            if selectedTeamMemberIds.contains(memberId) {
+                selectedTeamMemberIds.remove(memberId)
+            } else {
+                selectedTeamMemberIds.insert(memberId)
+            }
+        }
+
+        if wasEmpty && !activeSelectionIds.isEmpty && isTutorialMode {
+            NotificationCenter.default.post(
+                name: Notification.Name("TutorialCrewAssigned"),
+                object: nil
+            )
+        }
+    }
+
+    private func confirmSelection() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        if usesExplicitConfirmation {
+            selectedTeamMemberIds = selectionDraft.confirmedIds()
+        }
+        onConfirm?()
+        dismiss()
     }
 }
 

@@ -448,6 +448,8 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
     private weak var shutterButton: UIButton?
     private weak var shutterInnerCircle: UIView?
     private weak var flashView: UIView?
+    private weak var lensSelectorStack: UIStackView?
+    private var lensOptions: [CameraLensOption] = []
 
     /// Bug 423073b4 — handle to the active capture device so the
     /// pinch-to-zoom gesture can mutate `videoZoomFactor` directly.
@@ -473,6 +475,7 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
         view.backgroundColor = .black
         setupCamera()
         setupShutter()
+        setupLensSelector()
         setupFlashView()
         setupZoomGesture()
     }
@@ -496,7 +499,7 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
     private func setupCamera() {
         session.sessionPreset = .photo
 
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+        guard let device = preferredBackCamera(),
               let input = try? AVCaptureDeviceInput(device: device) else {
             return
         }
@@ -530,6 +533,92 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
         previewLayer = preview
     }
 
+    private func preferredBackCamera() -> AVCaptureDevice? {
+        let fallback = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+        if #available(iOS 13.0, *) {
+            let discovery = AVCaptureDevice.DiscoverySession(
+                deviceTypes: [
+                    .builtInTripleCamera,
+                    .builtInDualWideCamera,
+                    .builtInDualCamera,
+                    .builtInUltraWideCamera,
+                    .builtInWideAngleCamera
+                ],
+                mediaType: .video,
+                position: .back
+            )
+            return discovery.devices.first ?? fallback
+        }
+        let discovery = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInDualCamera, .builtInWideAngleCamera],
+            mediaType: .video,
+            position: .back
+        )
+        return discovery.devices.first ?? fallback
+    }
+
+    private func setupLensSelector() {
+        guard let device = captureDevice, let shutterButton else { return }
+
+        let switchOvers = device.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat(truncating: $0) }
+        lensOptions = CameraLensOptionPlanner.options(
+            minZoom: device.minAvailableVideoZoomFactor,
+            maxZoom: min(device.activeFormat.videoMaxZoomFactor, CGFloat(8)),
+            switchOverZoomFactors: switchOvers
+        )
+        guard lensOptions.count > 1 else { return }
+
+        let stack = UIStackView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .horizontal
+        stack.alignment = .center
+        stack.distribution = .equalSpacing
+        stack.spacing = CGFloat(OPSStyle.Layout.spacing1)
+        stack.backgroundColor = UIColor.black.withAlphaComponent(0.42)
+        stack.layer.cornerRadius = CGFloat(OPSStyle.Layout.buttonRadius)
+        stack.layer.borderColor = UIColor(OPSStyle.Colors.line).cgColor
+        stack.layer.borderWidth = OPSStyle.Layout.Border.standard
+        stack.layoutMargins = UIEdgeInsets(
+            top: CGFloat(OPSStyle.Layout.spacing1),
+            left: CGFloat(OPSStyle.Layout.spacing1),
+            bottom: CGFloat(OPSStyle.Layout.spacing1),
+            right: CGFloat(OPSStyle.Layout.spacing1)
+        )
+        stack.isLayoutMarginsRelativeArrangement = true
+
+        for (index, option) in lensOptions.enumerated() {
+            let button = UIButton(type: .system)
+            button.tag = index
+            button.setTitle(option.label, for: .normal)
+            button.titleLabel?.font = UIFont.monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+            button.layer.cornerRadius = CGFloat(OPSStyle.Layout.buttonRadius)
+            button.contentEdgeInsets = UIEdgeInsets(
+                top: CGFloat(OPSStyle.Layout.spacing1),
+                left: CGFloat(OPSStyle.Layout.spacing2),
+                bottom: CGFloat(OPSStyle.Layout.spacing1),
+                right: CGFloat(OPSStyle.Layout.spacing2)
+            )
+            button.addTarget(self, action: #selector(lensOptionTapped(_:)), for: .touchUpInside)
+            button.accessibilityLabel = "\(option.label) camera lens"
+            stack.addArrangedSubview(button)
+        }
+
+        view.addSubview(stack)
+        lensSelectorStack = stack
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            stack.bottomAnchor.constraint(equalTo: shutterButton.topAnchor, constant: -CGFloat(OPSStyle.Layout.spacing3)),
+            stack.heightAnchor.constraint(greaterThanOrEqualToConstant: CGFloat(OPSStyle.Layout.touchTargetMin))
+        ])
+        updateLensSelector(for: device.videoZoomFactor)
+    }
+
+    @objc private func lensOptionTapped(_ sender: UIButton) {
+        guard lensOptions.indices.contains(sender.tag) else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        applyZoomFactor(lensOptions[sender.tag].zoomFactor, animated: true)
+    }
+
     /// Bug 423073b4 — pinch gesture drives `device.videoZoomFactor` so
     /// the user has the same zoom affordance as the native iOS Camera
     /// app. Clamps to the device's reported min/max, accumulates across
@@ -547,20 +636,59 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
         case .began:
             baseZoomFactor = device.videoZoomFactor
         case .changed:
-            let minZoom: CGFloat = 1.0
-            let maxZoom = min(device.activeFormat.videoMaxZoomFactor, 8.0)
+            let minZoom = device.minAvailableVideoZoomFactor
+            let maxZoom = min(device.activeFormat.videoMaxZoomFactor, CGFloat(8))
             let target = max(minZoom, min(baseZoomFactor * gesture.scale, maxZoom))
-            do {
-                try device.lockForConfiguration()
-                device.ramp(toVideoZoomFactor: target, withRate: 4.0)
-                device.unlockForConfiguration()
-            } catch {
-                print("[CameraBatch] Zoom lock failed: \(error)")
-            }
+            applyZoomFactor(target, animated: true)
         case .ended, .cancelled:
             baseZoomFactor = device.videoZoomFactor
+            updateLensSelector(for: device.videoZoomFactor)
         default:
             break
+        }
+    }
+
+    private func applyZoomFactor(_ zoomFactor: CGFloat, animated: Bool) {
+        guard let device = captureDevice else { return }
+        let target = CameraLensOptionPlanner.clamped(
+            zoomFactor,
+            minZoom: device.minAvailableVideoZoomFactor,
+            maxZoom: min(device.activeFormat.videoMaxZoomFactor, CGFloat(8))
+        )
+        do {
+            try device.lockForConfiguration()
+            if animated {
+                device.ramp(toVideoZoomFactor: target, withRate: 4.0)
+            } else {
+                device.videoZoomFactor = target
+            }
+            device.unlockForConfiguration()
+            baseZoomFactor = target
+            updateLensSelector(for: target)
+        } catch {
+            print("[CameraBatch] Zoom lock failed: \(error)")
+        }
+    }
+
+    private func updateLensSelector(for zoomFactor: CGFloat) {
+        guard let stack = lensSelectorStack, !lensOptions.isEmpty else { return }
+        let selectedIndex = lensOptions
+            .enumerated()
+            .min { lhs, rhs in
+                abs(lhs.element.zoomFactor - zoomFactor) < abs(rhs.element.zoomFactor - zoomFactor)
+            }?
+            .offset
+
+        for view in stack.arrangedSubviews {
+            guard let button = view as? UIButton else { continue }
+            let selected = button.tag == selectedIndex
+            button.backgroundColor = selected
+                ? UIColor(OPSStyle.Colors.opsAccent)
+                : UIColor.clear
+            button.setTitleColor(
+                selected ? UIColor.black : UIColor(OPSStyle.Colors.text),
+                for: .normal
+            )
         }
     }
 

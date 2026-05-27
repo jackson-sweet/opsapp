@@ -46,6 +46,7 @@ struct DeckSceneBuilder {
 
         // Calculate scene center for camera targeting
         var allPositions: [CGPoint] = []
+        var cameraFrameCenter: CGPoint?
 
         if drawingData.isMultiLevel {
             // Bug ee787f29 / bc9109ef — the multi-level scene must share ONE
@@ -60,9 +61,17 @@ struct DeckSceneBuilder {
                 globalUnion.append(contentsOf: level.orderedPositions)
                 globalUnion.append(contentsOf: level.detectedSurfaces.flatMap { $0.positions })
                 globalUnion.append(contentsOf: level.vertices.map { $0.position })
+                globalUnion.append(contentsOf: stairFramePositions(
+                    edges: level.edges,
+                    vertices: level.vertices,
+                    polygonVertices: level.orderedPositions,
+                    scaleFactor: scaleFactor,
+                    measurementSystem: drawingData.config.measurementSystem
+                ))
             }
             let sharedBounds = DeckMeshGenerator.boundingRect(for: globalUnion)
             let sharedCenter = CGPoint(x: sharedBounds.midX, y: sharedBounds.midY)
+            cameraFrameCenter = sharedCenter
 
             for (levelIndex, level) in drawingData.levels.enumerated() {
                 // DECK-NEW-1 — render every detected closed face on this level
@@ -93,6 +102,13 @@ struct DeckSceneBuilder {
                 )
                 allPositions.append(contentsOf: detected.flatMap { $0.positions })
                 if detected.isEmpty { allPositions.append(contentsOf: level.orderedPositions) }
+                allPositions.append(contentsOf: stairFramePositions(
+                    edges: level.edges,
+                    vertices: level.vertices,
+                    polygonVertices: level.orderedPositions,
+                    scaleFactor: scaleFactor,
+                    measurementSystem: drawingData.config.measurementSystem
+                ))
                 let elevationFeet = drawingData.renderElevationFeet(for: level, levelIndex: levelIndex)
                 let elevationM = Float(elevationFeet) * feetToMeters
                 let vertexPositions = vertexPositionMap(
@@ -136,8 +152,16 @@ struct DeckSceneBuilder {
             var union: [CGPoint] = drawingData.orderedPositions
             union.append(contentsOf: detected.flatMap { $0.positions })
             union.append(contentsOf: drawingData.vertices.map { $0.position })
+            union.append(contentsOf: stairFramePositions(
+                edges: drawingData.edges,
+                vertices: drawingData.vertices,
+                polygonVertices: drawingData.orderedPositions,
+                scaleFactor: scaleFactor,
+                measurementSystem: drawingData.config.measurementSystem
+            ))
             let bounds = DeckMeshGenerator.boundingRect(for: union)
             let sharedCenter = CGPoint(x: bounds.midX, y: bounds.midY)
+            cameraFrameCenter = sharedCenter
 
             let surfacesIn3D: [SurfaceMesh3D]? = detected.isEmpty ? nil : detected.map { face in
                 let metersPositions = convertToMeters(
@@ -160,6 +184,13 @@ struct DeckSceneBuilder {
                 center: sharedCenter
             )
             allPositions = detected.isEmpty ? drawingData.orderedPositions : detected.flatMap { $0.positions }
+            allPositions.append(contentsOf: stairFramePositions(
+                edges: drawingData.edges,
+                vertices: drawingData.vertices,
+                polygonVertices: drawingData.orderedPositions,
+                scaleFactor: scaleFactor,
+                measurementSystem: drawingData.config.measurementSystem
+            ))
             let elevationFeet = drawingData.renderElevationFeetSingleLevel
             let elevationM = Float(elevationFeet) * feetToMeters
             let vertexPositions = vertexPositionMap(
@@ -181,7 +212,13 @@ struct DeckSceneBuilder {
 
         addGroundPlane(to: scene)
         addLighting(to: scene)
-        addCamera(to: scene, fitting: allPositions, scaleFactor: scaleFactor, drawingData: drawingData)
+        addCamera(
+            to: scene,
+            fitting: allPositions,
+            scaleFactor: scaleFactor,
+            drawingData: drawingData,
+            center: cameraFrameCenter
+        )
 
         return scene
     }
@@ -320,6 +357,9 @@ struct DeckSceneBuilder {
                 boardMaterial: "composite"
             )
         ]
+        let visibleRimJoistEdgeIds = surfacesIn3D.map {
+            DeckSurfaceEdgeResolver.visibleRimJoistEdgeIds(edges: edges, surfaces: $0)
+        }
         // Multi-level designs tint each surface with its level's display
         // color so the levels read as visually distinct (bug 8f9c0280).
         let levelTint: UIColor? = level.map { lvl in
@@ -341,10 +381,13 @@ struct DeckSceneBuilder {
             let startPos3D = SCNVector3(Float(startPt.x), elevationM, Float(startPt.y))
             let endPos3D = SCNVector3(Float(endPt.x), elevationM, Float(endPt.y))
 
-            // Rim joist beneath the deck surface along every perimeter edge
-            // (bug 313aad41) — the calibrated path previously drew no edge
-            // framing, leaving the surface reading as a floating slab.
-            buildRimJoist(parent: deckGroup, start: startPos3D, end: endPos3D, deckElevationM: elevationM)
+            // Rim joists belong on detected-surface boundaries only. Drawing
+            // every graph edge made shared interior and stray construction
+            // edges read as deck perimeter lines outside the surface.
+            if visibleRimJoistEdgeIds?.contains(edge.id) ?? true ||
+                DeckSurfaceEdgeResolver.carriesVisible3DFeature(edge) {
+                buildRimJoist(parent: deckGroup, start: startPos3D, end: endPos3D, deckElevationM: elevationM)
+            }
 
             // Edge length in inches for post count
             let edgeLengthInches = edge.dimension ?? {
@@ -1118,7 +1161,8 @@ struct DeckSceneBuilder {
         to scene: SCNScene,
         fitting positions: [CGPoint],
         scaleFactor: Double,
-        drawingData: DeckDrawingData
+        drawingData: DeckDrawingData,
+        center: CGPoint? = nil
     ) {
         let camera = SCNCamera()
         camera.automaticallyAdjustsZRange = true
@@ -1129,7 +1173,12 @@ struct DeckSceneBuilder {
         cameraNode.name = "camera"
 
         // Calculate bounding box center in meters
-        let metersPositions = convertToMeters(vertices: positions, scaleFactor: scaleFactor)
+        let metersPositions: [CGPoint]
+        if let center {
+            metersPositions = convertToMeters(vertices: positions, scaleFactor: scaleFactor, center: center)
+        } else {
+            metersPositions = convertToMeters(vertices: positions, scaleFactor: scaleFactor)
+        }
         let bounds = DeckMeshGenerator.boundingRect(for: metersPositions)
         let centerX = Float(bounds.midX)
         let centerZ = Float(bounds.midY)
@@ -1163,6 +1212,44 @@ struct DeckSceneBuilder {
         cameraNode.look(at: lookAt)
 
         scene.rootNode.addChildNode(cameraNode)
+    }
+
+    // MARK: - Stair Camera Bounds
+
+    private static func stairFramePositions(
+        edges: [DeckEdge],
+        vertices: [DeckVertex],
+        polygonVertices: [CGPoint],
+        scaleFactor: Double,
+        measurementSystem: MeasurementSystem
+    ) -> [CGPoint] {
+        guard scaleFactor > 0 else { return [] }
+        let verticesById = Dictionary(uniqueKeysWithValues: vertices.map { ($0.id, $0.position) })
+
+        return edges.flatMap { edge -> [CGPoint] in
+            guard let config = edge.stairConfig,
+                  let start = verticesById[edge.startVertexId],
+                  let end = verticesById[edge.endVertexId] else {
+                return []
+            }
+            let treadCount = config.treadCount ?? StairConfig.calculateTreadCount(
+                totalRise: config.totalRiseInches ?? 30,
+                risePerStep: config.risePerStep
+            )
+            guard treadCount > 0,
+                  let plan = DeckStairRenderPlanner.plan(
+                    edgeStart: start,
+                    edgeEnd: end,
+                    polygonVertices: polygonVertices,
+                    config: config,
+                    treadCount: treadCount,
+                    scaleFactor: scaleFactor,
+                    measurementSystem: measurementSystem
+                  ) else {
+                return []
+            }
+            return plan.framePoints
+        }
     }
 
     // MARK: - Materials

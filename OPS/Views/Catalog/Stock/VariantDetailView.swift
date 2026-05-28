@@ -531,17 +531,13 @@ struct VariantDetailView: View {
         defer { isSaving = false }
         errorMessage = nil
 
-        let trimmedSku = skuText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let parsedWarning = Double(warningText.trimmingCharacters(in: .whitespacesAndNewlines))
-        let parsedCritical = Double(criticalText.trimmingCharacters(in: .whitespacesAndNewlines))
-
-        let update = UpdateCatalogVariantDTO(
-            sku: trimmedSku.isEmpty ? nil : trimmedSku,
+        let update = CatalogVariantFormPayload.update(
+            skuText: skuText,
             quantity: localQuantity,
             priceOverride: row.variant.priceOverride,
             unitCostOverride: row.variant.unitCostOverride,
-            warningThreshold: parsedWarning,
-            criticalThreshold: parsedCritical,
+            warningThresholdText: warningText,
+            criticalThresholdText: criticalText,
             unitId: row.variant.unitId
         )
 

@@ -1841,16 +1841,26 @@ struct ColorOption: View {
                     Circle()
                         .fill(color)
                         .opacity(isInUse && !isSelected ? 0.35 : 1.0)
-                        .frame(width: 32, height: 32)
+                        .frame(width: isSelected ? 38 : 32, height: isSelected ? 38 : 32)
                         .overlay(
                             Circle()
-                                .stroke(OPSStyle.Colors.primaryText, lineWidth: isSelected ? 2 : 0)
+                                .stroke(OPSStyle.Colors.primaryText, lineWidth: isSelected ? 3 : 0)
                         )
                         .overlay(
                             Circle()
-                                .stroke(color.opacity(0.5), lineWidth: isSelected ? 4 : 0)
+                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: isSelected ? 1.5 : 0)
+                                .padding(-5)
                         )
                         .scaleEffect(isSelected ? 1.1 : 1.0)
+
+                    if isSelected {
+                        Circle()
+                            .fill(OPSStyle.Colors.background.opacity(0.82))
+                            .frame(width: 18, height: 18)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
 
                     // Diagonal line for in-use colors
                     if isInUse && !isSelected {
@@ -1874,8 +1884,16 @@ struct ColorOption: View {
                         .frame(width: 48)
                         .transition(.opacity.combined(with: .scale(scale: 0.8)))
                 }
+
+                if isSelected {
+                    Text("SELECTED")
+                        .font(OPSStyle.Typography.microLabel)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(width: 64)
+                }
             }
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(isSelected ? "Selected color" : "Color option")
     }
 }

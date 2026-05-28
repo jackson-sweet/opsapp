@@ -419,8 +419,7 @@ struct ProjectDetailsView: View {
                         canEdit: viewModel.canEditProject,
                         isMentionOnly: viewModel.isMentionOnlyAccess,
                         onPhoto: {
-                            viewModel.selectedImages = []
-                            showingNativeCamera = true
+                            openProjectPhotoCapture()
                         },
                         onNote: {
                             viewModel.selectedTab = .activity
@@ -788,6 +787,17 @@ struct ProjectDetailsView: View {
                 }
             }
         )
+    }
+
+    private func openProjectPhotoCapture() {
+        viewModel.selectedImages = []
+
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            viewModel.showingImagePicker = true
+            return
+        }
+
+        showingNativeCamera = true
     }
 
     private var noteImagePickerContent: some View {

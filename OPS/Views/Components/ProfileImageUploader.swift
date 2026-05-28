@@ -456,11 +456,16 @@ struct SimpleImagePicker: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()
-        picker.sourceType = sourceType
+        let resolvedSourceType: UIImagePickerController.SourceType = {
+            guard sourceType == .camera else { return sourceType }
+            return UIImagePickerController.isSourceTypeAvailable(.camera) ? .camera : .photoLibrary
+        }()
+
+        picker.sourceType = resolvedSourceType
         picker.delegate = context.coordinator
         picker.allowsEditing = true
 
-        if sourceType == .camera {
+        if resolvedSourceType == .camera {
             picker.cameraCaptureMode = .photo
             picker.cameraDevice = .rear
         }

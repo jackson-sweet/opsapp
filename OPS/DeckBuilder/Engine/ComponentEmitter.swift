@@ -54,7 +54,7 @@ enum ComponentEmitter {
                 isClosed: data.isClosed,
                 orderedPositions: data.orderedPositions,
                 detectedSurfaces: data.detectedSurfaces,
-                scaleFactor: data.scaleFactor,
+                scaleFactor: data.effectiveScaleFactor,
                 levelId: nil
             ))
         }
@@ -79,7 +79,7 @@ enum ComponentEmitter {
             isClosed: level.isClosed,
             orderedPositions: level.orderedPositions,
             detectedSurfaces: level.detectedSurfaces,
-            scaleFactor: data.scaleFactor,
+            scaleFactor: data.effectiveScaleFactor,
             levelId: level.id
         ))
         return rows
@@ -87,8 +87,9 @@ enum ComponentEmitter {
 
     // MARK: - Edge components
 
-    /// Emits all components attached to a single edge: railing + post_set
-    /// (paired), stair_set, and gate (one per `isGate`-flagged item).
+    /// Emits all components attached to a single edge: railing, post_set
+    /// (for post-supported railings), stair_set, and gate (one per
+    /// `isGate`-flagged item).
     /// `linear_feet` on the railing is the edge length minus any stair
     /// span and minus all gate widths, mirroring the legacy estimate's
     /// stair-subtraction rule and extending it for gates.
@@ -104,8 +105,11 @@ enum ComponentEmitter {
         let totalGateInches = Double(gateItems.count) * defaultGateWidthInches
         let stairInches = edge.stairConfig?.width ?? 0
 
-        // Railing component (with paired post_set)
-        if let railing = edge.railingConfig {
+        // Railing component. House edges are wall/cladding boundaries, not
+        // deck railing targets. Parapet walls intentionally do not emit a
+        // post_set because they are continuous low walls, not post-supported
+        // rail systems.
+        if let railing = edge.railingConfig, edge.edgeType == .deckEdge {
             let netLengthInches = max(0, edgeInches - totalGateInches - stairInches)
             let linearFt = round((netLengthInches / 12.0) * 100) / 100
 
@@ -121,23 +125,27 @@ enum ComponentEmitter {
                 "mount_surface": AnyCodable(railing.mountSurface),
                 "edge_id": AnyCodable(edge.id),
             ]
+            if railing.railingType == .parapetWall {
+                meta["wall_material"] = AnyCodable(railing.wallMaterial.rawValue)
+            }
             if let levelId = levelId { meta["level_id"] = AnyCodable(levelId) }
             rows.append(DesignComponentRow(componentType: "railing", metadata: meta))
 
-            // Post set — emit alongside every railing.
-            let postCount = DimensionEngine.postCount(
-                edgeLengthInches: edgeInches,
-                maxSpacing: railing.maxPostSpacing
-            )
-            var postMeta: [String: AnyCodable] = [
-                "count": AnyCodable(postCount),
-                "height": AnyCodable(railing.postHeight),
-                "color": AnyCodable(railing.color),
-                "mount_type": AnyCodable(railing.mountType),
-                "edge_id": AnyCodable(edge.id),
-            ]
-            if let levelId = levelId { postMeta["level_id"] = AnyCodable(levelId) }
-            rows.append(DesignComponentRow(componentType: "post_set", metadata: postMeta))
+            if railing.railingType != .parapetWall {
+                let postCount = DimensionEngine.postCount(
+                    edgeLengthInches: edgeInches,
+                    maxSpacing: railing.maxPostSpacing
+                )
+                var postMeta: [String: AnyCodable] = [
+                    "count": AnyCodable(postCount),
+                    "height": AnyCodable(railing.postHeight),
+                    "color": AnyCodable(railing.color),
+                    "mount_type": AnyCodable(railing.mountType),
+                    "edge_id": AnyCodable(edge.id),
+                ]
+                if let levelId = levelId { postMeta["level_id"] = AnyCodable(levelId) }
+                rows.append(DesignComponentRow(componentType: "post_set", metadata: postMeta))
+            }
         }
 
         // Stair set (per-edge stairs — distinct from level connection stairs)
@@ -205,11 +213,10 @@ enum ComponentEmitter {
         isClosed: Bool,
         orderedPositions: [CGPoint],
         detectedSurfaces: [DetectedSurface],
-        scaleFactor: Double?,
+        scaleFactor: Double,
         levelId: String?
     ) -> [DesignComponentRow] {
         var rows: [DesignComponentRow] = []
-        guard let scale = scaleFactor, scale > 0 else { return rows }
 
         if !surfaces.isEmpty {
             for surface in surfaces {
@@ -227,7 +234,7 @@ enum ComponentEmitter {
                       face.positions.count >= 3,
                       !PolygonMath.isSelfIntersecting(vertices: face.positions) else { continue }
 
-                let areaSqFt = PolygonMath.realWorldArea(vertices: face.positions, scaleFactor: scale) / 144.0
+                let areaSqFt = PolygonMath.realWorldArea(vertices: face.positions, scaleFactor: scaleFactor) / 144.0
                 guard areaSqFt > 0 else { continue }
 
                 var meta: [String: AnyCodable] = [
@@ -251,7 +258,7 @@ enum ComponentEmitter {
               !PolygonMath.isSelfIntersecting(vertices: orderedPositions) else {
             return rows
         }
-        let areaSqFt = PolygonMath.realWorldArea(vertices: orderedPositions, scaleFactor: scale) / 144.0
+        let areaSqFt = PolygonMath.realWorldArea(vertices: orderedPositions, scaleFactor: scaleFactor) / 144.0
         guard areaSqFt > 0 else { return rows }
 
         // Default vocabulary when the footprint carries no items — the

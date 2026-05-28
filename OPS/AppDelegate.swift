@@ -248,7 +248,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                     NotificationCenter.default.post(name: Notification.Name("OpenCatalog"), object: nil)
                     let segmentRaw: String = {
                         switch tabValue?.lowercased() {
-                        case "draft": return "DRAFT"
+                        case "draft", "drafts": return "DRAFT"
                         case "sent": return "SENT"
                         default: return "SUGGESTED"
                         }

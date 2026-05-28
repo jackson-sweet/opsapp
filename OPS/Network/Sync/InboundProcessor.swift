@@ -848,7 +848,10 @@ final class InboundProcessor {
                     "address", "latitude", "longitude",
                     "start_date", "end_date", "duration",
                     "notes", "description", "all_day",
-                    "team_member_ids", "project_images", "deleted_at"
+                    "team_member_ids", "project_images", "deleted_at",
+                    ProjectVinylOrderFields.status,
+                    ProjectVinylOrderFields.orderedAt,
+                    ProjectVinylOrderFields.orderedBy
                 ],
                 context: context
             )
@@ -883,6 +886,7 @@ final class InboundProcessor {
                 existing.projectImagesString = (dto.projectImages ?? []).joined(separator: ",")
             }
             if accept.contains("deleted_at") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
+            try upsertProjectVinylOrderMarker(dto: dto, acceptedFields: accept, context: context)
 
             existing.lastSyncedAt = Date()
             // Only clear needsSync if there are no pending SyncOperations for this entity
@@ -916,6 +920,7 @@ final class InboundProcessor {
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)
+            context.insert(dto.toVinylOrderMarkerModel())
             // Bug c9b9dd44 — wire the SwiftData relationship inline on
             // first insert too. `dto.toModel()` only sets `clientId`
             // (the scalar foreign key); without the relationship the
@@ -930,6 +935,35 @@ final class InboundProcessor {
         }
 
         try context.save()
+    }
+
+    private func upsertProjectVinylOrderMarker(
+        dto: SupabaseProjectDTO,
+        acceptedFields: Set<String>,
+        context: ModelContext
+    ) throws {
+        let projectId = dto.id
+        let descriptor = FetchDescriptor<ProjectVinylOrderMarker>(
+            predicate: #Predicate { $0.id == projectId }
+        )
+
+        if let existing = try context.fetch(descriptor).first {
+            if acceptedFields.contains(ProjectVinylOrderFields.status) {
+                existing.status = dto.resolvedVinylOrderStatus
+            }
+            if acceptedFields.contains(ProjectVinylOrderFields.orderedAt) {
+                existing.orderedAt = dto.vinylOrderedAt.flatMap { SupabaseDate.parse($0) }
+            }
+            if acceptedFields.contains(ProjectVinylOrderFields.orderedBy) {
+                existing.orderedBy = dto.vinylOrderedBy
+            }
+            existing.sourceProjectUpdatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) }
+            existing.lastSyncedAt = Date()
+        } else {
+            let marker = dto.toVinylOrderMarkerModel()
+            marker.lastSyncedAt = Date()
+            context.insert(marker)
+        }
     }
 
     /// Bug c9b9dd44 — set `project.client` from `clientId` against the

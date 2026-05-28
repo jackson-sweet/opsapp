@@ -228,27 +228,42 @@ struct DeckBuilderView: View {
                         // the reporter's request — the drawing finger sits on
                         // the right edge of the canvas, so the live-dim
                         // readout works harder on the opposite side.
-                        if PermissionStore.shared.can("deck_builder.edit"),
-                           viewModel.liveDimensionLabel == nil {
-                            HStack(spacing: 0) {
+                        // Controls row — the level metrics badge (sq ft +
+                        // lin ft) and the undo/redo/import edit cluster sit
+                        // on a single horizontal axis (metrics leading,
+                        // cluster trailing) so they read as one chrome
+                        // strip below the header card. Previously on two
+                        // separate rows.
+                        //
+                        // During a draw the transient live-dimension pill
+                        // takes the leading slot in place of the metrics —
+                        // matches the reporter's "live-dim works harder on
+                        // the opposite side from the drawing finger" callout
+                        // and lets the row keep a single fixed vertical
+                        // position whether or not a draw is in flight.
+                        let canEditDeck = PermissionStore.shared.can("deck_builder.edit")
+                        let showEditCluster = canEditDeck && viewModel.liveDimensionLabel == nil
+                        let showMetrics = viewModel.isClosed && viewModel.totalArea != nil
+                        let hasLeadingPill = viewModel.liveDimensionLabel != nil || showMetrics
+                        if hasLeadingPill || showEditCluster {
+                            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
+                                if let liveLabel = viewModel.liveDimensionLabel {
+                                    liveDimensionPill(label: liveLabel)
+                                } else if showMetrics, let area = viewModel.totalArea {
+                                    metricsContent(area: area)
+                                }
                                 Spacer(minLength: 0)
-                                editCluster2D
+                                if showEditCluster {
+                                    editCluster2D
+                                }
                             }
-                        }
-                        if let liveLabel = viewModel.liveDimensionLabel {
-                            HStack(spacing: 0) {
-                                liveDimensionPill(label: liveLabel)
-                                Spacer(minLength: 0)
-                            }
-                            .transition(.opacity)
                             .animation(OPSStyle.Animation.fast, value: viewModel.liveDimensionLabel)
                         }
 
-                        // Combined metrics + AR row — when both apply they
-                        // share a single horizontal row instead of stacking
-                        // as two rows. Lives outside the card so the card
-                        // stays compact and the metrics float on the canvas.
-                        metricsAndARRow
+                        // AR-derived dimensions banner — its own row beneath
+                        // the controls. The level metrics badge that used to
+                        // share this row now lives on the controls row.
+                        arBannerRow
 
                         Spacer(minLength: 0)
                     }
@@ -297,6 +312,13 @@ struct DeckBuilderView: View {
         }
         .sheet(isPresented: $viewModel.showingMaterialPicker) {
             MaterialPickerSheet(viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.showingVinylOrderSheet) {
+            VinylOrderSheet(
+                viewModel: viewModel,
+                projectId: projectId,
+                companyId: companyId
+            )
         }
         .sheet(isPresented: $viewModel.showingPropertySheet) {
             PropertySheetView(viewModel: viewModel)
@@ -828,27 +850,17 @@ struct DeckBuilderView: View {
         )
     }
 
-    // MARK: - Combined metrics + AR row
+    // MARK: - AR banner row
 
-    /// Renders metrics and AR banner on a single horizontal row when both
-    /// apply, or just one of them when the other is absent. Replaces the
-    /// previous two stacked rows so the floating header is shorter.
+    /// AR-derived dimensions banner — own row beneath the controls row.
+    /// The level metrics badge that used to share this row moved up to
+    /// the controls row alongside the edit cluster (bug — they were on
+    /// different horizontal axes).
     @ViewBuilder
-    private var metricsAndARRow: some View {
-        let showMetrics = viewModel.isClosed && viewModel.totalArea != nil
+    private var arBannerRow: some View {
         let arState = arBannerState
-        let showAR = arState != .none
-
-        if showMetrics || showAR {
-            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
-                if showMetrics, let area = viewModel.totalArea {
-                    metricsContent(area: area)
-                }
-                if showAR {
-                    arBannerContent(state: arState)
-                        .frame(maxWidth: .infinity)
-                }
-            }
+        if arState != .none {
+            arBannerContent(state: arState)
         }
     }
 
@@ -963,4 +975,3 @@ struct DeckBuilderView: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 }
-

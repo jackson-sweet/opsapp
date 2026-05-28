@@ -149,6 +149,80 @@ final class DeckDesignSyncTests: XCTestCase {
         XCTAssertTrue(restoredServerDesign.isAttached(toProjectId: uppercasedProjectId))
     }
 
+    func test_SupabaseDeckDesignDTO_decodesLegacyDrawingDataMissingSurfaces() throws {
+        let payload = """
+        {
+          "id": "ad67d5c4-ab64-4c29-b01f-2e426dc53992",
+          "company_id": "a612edc0-5c18-4c4d-af97-55b9410dd077",
+          "project_id": "fd7a25b0-3349-4c8c-8f83-92fc59985420",
+          "title": "L3 Deck",
+          "drawing_data": {
+            "vertices": [
+              { "id": "v1", "position": [0, 0], "elevationSource": "manual" },
+              { "id": "v2", "position": [120, 0], "elevationSource": "manual" },
+              { "id": "v3", "position": [120, 120], "elevationSource": "manual" },
+              { "id": "v4", "position": [0, 120], "elevationSource": "manual" }
+            ],
+            "edges": [
+              { "id": "e1", "startVertexId": "v1", "endVertexId": "v2", "edgeType": "deck_edge", "dimensionSource": "manual", "assignedItems": [], "dimensionStale": false },
+              { "id": "e2", "startVertexId": "v2", "endVertexId": "v3", "edgeType": "deck_edge", "dimensionSource": "manual", "assignedItems": [], "dimensionStale": false },
+              { "id": "e3", "startVertexId": "v3", "endVertexId": "v4", "edgeType": "deck_edge", "dimensionSource": "manual", "assignedItems": [], "dimensionStale": false },
+              { "id": "e4", "startVertexId": "v4", "endVertexId": "v1", "edgeType": "deck_edge", "dimensionSource": "manual", "assignedItems": [], "dimensionStale": false }
+            ],
+            "footprint": { "assignedItems": [], "isClosed": 1 },
+            "config": {
+              "measurementSystem": "imperial",
+              "angleSnapIncrement": 15,
+              "lengthSnapIncrement": 6,
+              "snappingEnabled": true,
+              "endpointSnapRadius": 20,
+              "gridVisible": true
+            },
+            "levels": [],
+            "levelConnections": [],
+            "scaleFactor": 1
+          },
+          "thumbnail_url": null,
+          "version": 1,
+          "created_by": null,
+          "created_at": "2026-05-04T21:27:13Z",
+          "updated_at": "2026-05-13T00:16:41.407879Z",
+          "deleted_at": null
+        }
+        """
+
+        let dto = try JSONDecoder().decode(SupabaseDeckDesignDTO.self, from: Data(payload.utf8))
+
+        XCTAssertEqual(dto.id, "ad67d5c4-ab64-4c29-b01f-2e426dc53992")
+        XCTAssertEqual(dto.drawingData.vertices.count, 4)
+        XCTAssertEqual(dto.drawingData.edges.count, 4)
+        XCTAssertTrue(dto.drawingData.footprint.isClosed)
+        XCTAssertEqual(dto.drawingData.surfaces.count, 0)
+        XCTAssertFalse(dto.drawingData.vertices.isEmpty)
+    }
+
+    func test_DeckFootprint_decodesLegacyNumericClosedState() throws {
+        let openPayload = #"{"assignedItems":[],"isClosed":0}"#
+        let closedPayload = #"{"assignedItems":[],"isClosed":1}"#
+
+        let open = try JSONDecoder().decode(DeckFootprint.self, from: Data(openPayload.utf8))
+        let closed = try JSONDecoder().decode(DeckFootprint.self, from: Data(closedPayload.utf8))
+
+        XCTAssertFalse(open.isClosed)
+        XCTAssertTrue(closed.isClosed)
+    }
+
+    func test_DeckNestedModels_decodeLegacyNumericBooleans() throws {
+        let stairPayload = #"{"width":48,"flipDirection":1}"#
+        let itemPayload = #"{"id":"item-1","name":"Gate","unitType":"each","isGate":1}"#
+
+        let stair = try JSONDecoder().decode(StairConfig.self, from: Data(stairPayload.utf8))
+        let item = try JSONDecoder().decode(AssignedItem.self, from: Data(itemPayload.utf8))
+
+        XCTAssertTrue(stair.flipDirection)
+        XCTAssertTrue(item.isGate)
+    }
+
     private func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema([DeckDesign.self, SyncOperation.self])
         let configuration = ModelConfiguration(

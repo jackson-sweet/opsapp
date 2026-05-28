@@ -361,8 +361,9 @@ struct ProjectTeamView: View {
                 print("[TEAM_UPDATE] Updating project team members...")
                 print("[TEAM_UPDATE] Selected member IDs: \(Array(selectedMemberIds))")
 
-                // Update team members via Supabase
-                try await dataController.updateProjectTeamMembers(
+                // Persist team members through task assignments; the project
+                // team list is a server-derived cache.
+                try await dataController.replaceProjectTeamMembersViaServerAssignments(
                     project: project,
                     memberIds: Array(selectedMemberIds)
                 )

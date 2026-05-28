@@ -338,6 +338,11 @@ struct TaskDetailPopupSheet: View {
 
     private var teamMemberList: some View {
         VStack(spacing: 0) {
+            // Bug 53552d03 — keep the explicit commit controls immediately
+            // below the TEAM header. The operator must not have to scroll
+            // through the crew roster before DONE is visible.
+            teamCommitRow
+
             ForEach(allTeamMembers, id: \.id) { member in
                 let isSelected = draftTeamMemberIds.contains(member.id)
 
@@ -380,12 +385,6 @@ struct TaskDetailPopupSheet: View {
                 }
                 .buttonStyle(PlainButtonStyle())
             }
-
-            // Explicit commit row — DONE applies the draft to the
-            // task team binding and fires `onCommitTeam`. CANCEL discards
-            // the draft. Drag-to-dismiss the parent sheet OR collapsing
-            // the section via the chevron both count as discard.
-            teamCommitRow
         }
         .padding(.bottom, 4)
         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -413,6 +412,7 @@ struct TaskDetailPopupSheet: View {
                     )
             }
             .buttonStyle(PlainButtonStyle())
+            .accessibilityIdentifier("taskDetailTeamCancelButton")
 
             Button(action: {
                 let committed = draftTeamMemberIds
@@ -442,6 +442,7 @@ struct TaskDetailPopupSheet: View {
             }
             .buttonStyle(PlainButtonStyle())
             .disabled(!teamDraftIsDirty)
+            .accessibilityIdentifier("taskDetailTeamDoneButton")
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
@@ -540,4 +541,3 @@ struct TaskDetailPopupSheet: View {
         }
     }
 }
-

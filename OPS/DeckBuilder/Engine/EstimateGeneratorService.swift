@@ -165,7 +165,7 @@ struct EstimateGeneratorService {
         let perSurfaceItems = perSurfaceLineItems(
             persistedSurfaces: persistedSurfaces,
             detectedSurfaces: detectedSurfaces,
-            scaleFactor: drawingData.scaleFactor,
+            scaleFactor: drawingData.effectiveScaleFactor,
             prefix: prefix,
             startingSortOrder: sortOrder
         )
@@ -179,11 +179,10 @@ struct EstimateGeneratorService {
             for item in footprint.assignedItems {
                 let areaSqFt: Double
                 if levelPrefix != nil {
-                    guard let scale = drawingData.scaleFactor, scale > 0,
-                          isPolygonClosed,
+                    guard isPolygonClosed,
                           orderedPositions.count >= 3,
                           !PolygonMath.isSelfIntersecting(vertices: orderedPositions) else { continue }
-                    areaSqFt = PolygonMath.realWorldArea(vertices: orderedPositions, scaleFactor: scale) / 144.0
+                    areaSqFt = PolygonMath.realWorldArea(vertices: orderedPositions, scaleFactor: drawingData.effectiveScaleFactor) / 144.0
                 } else {
                     areaSqFt = calculateAreaSqFt(drawingData: drawingData)
                 }
@@ -230,7 +229,8 @@ struct EstimateGeneratorService {
 
         // 3. Railing (from edge railing configs)
         for edge in edges {
-            guard let railing = edge.railingConfig,
+            guard edge.edgeType == .deckEdge,
+                  let railing = edge.railingConfig,
                   let dimension = edge.dimension else { continue }
 
             let linearFt = round(dimension / 12.0 * 100) / 100
@@ -510,12 +510,11 @@ struct EstimateGeneratorService {
     private static func perSurfaceLineItems(
         persistedSurfaces: [DeckSurface],
         detectedSurfaces: [DetectedSurface],
-        scaleFactor: Double?,
+        scaleFactor: Double,
         prefix: String,
         startingSortOrder: Int
     ) -> (items: [GeneratedLineItem], nextSortOrder: Int) {
-        guard !persistedSurfaces.isEmpty,
-              let scale = scaleFactor, scale > 0 else {
+        guard !persistedSurfaces.isEmpty else {
             return (items: [], nextSortOrder: startingSortOrder)
         }
 
@@ -538,7 +537,7 @@ struct EstimateGeneratorService {
                   face.positions.count >= 3,
                   !PolygonMath.isSelfIntersecting(vertices: face.positions) else { continue }
 
-            let areaSqFt = PolygonMath.realWorldArea(vertices: face.positions, scaleFactor: scale) / 144.0
+            let areaSqFt = PolygonMath.realWorldArea(vertices: face.positions, scaleFactor: scaleFactor) / 144.0
             let surfaceLabel: String? = {
                 if let l = surface.label?.trimmingCharacters(in: .whitespacesAndNewlines), !l.isEmpty { return l }
                 return nil
@@ -574,7 +573,7 @@ struct EstimateGeneratorService {
     // MARK: - Geometry Helpers
 
     static func calculateAreaSqFt(drawingData: DeckDrawingData) -> Double {
-        guard let scale = drawingData.scaleFactor, scale > 0 else { return 0 }
+        let scale = drawingData.effectiveScaleFactor
         if drawingData.isMultiLevel {
             return drawingData.levels.reduce(0) { total, level in
                 let positions = level.orderedPositions
@@ -593,12 +592,11 @@ struct EstimateGeneratorService {
     }
 
     static func calculatePerimeterFt(drawingData: DeckDrawingData) -> Double {
-        // Without a scale factor, edge.dimension values are canvas-point
-        // lengths (the pre-scale fallback). Returning their sum would print
-        // "84 lin ft" when the underlying numbers are pixels — silently wrong
-        // on the share preview / material summary. Refuse until scale exists.
-        guard let scaleFactor = drawingData.scaleFactor, scaleFactor > 0 else { return 0 }
-        _ = scaleFactor // edge.dimension is already real-world inches once scale is set
+        // Every edge stores its length as real-world inches — committed
+        // against the calibrated scaleFactor once set, or the prescale
+        // fallback before that (see DeckBuilderViewModel.endLine /
+        // recalculateEdgeDimensions). So the perimeter is just the sum of
+        // edge dimensions; no canvas-points-to-inches conversion is needed.
         let edges = drawingData.isMultiLevel ? drawingData.allEdges : drawingData.edges
         let totalInches = edges.reduce(0.0) { $0 + ($1.dimension ?? 0) }
         return totalInches / 12.0

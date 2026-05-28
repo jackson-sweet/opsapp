@@ -10,7 +10,7 @@ struct StairConfigView: View {
     @State private var risePerStep: Double = 7.5
     @State private var runPerTread: Double = 10.0
     @State private var addRailing: Bool = false
-    @State private var railingType: RailingType = .picket
+    @State private var railingType: RailingType = .parapetWall
     @State private var inlineHeightText: String = ""
     @State private var alignment: StairAlignment = .center
     @State private var offsetText: String = "0"
@@ -519,7 +519,7 @@ struct StairConfigView: View {
 
             if addRailing {
                 Picker("Railing Type", selection: $railingType) {
-                    ForEach(RailingType.allCases, id: \.self) { type in
+                    ForEach(RailingType.assignableDefaultTypes, id: \.self) { type in
                         Text(type.displayName).tag(type)
                     }
                 }

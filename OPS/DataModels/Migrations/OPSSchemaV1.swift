@@ -19,7 +19,7 @@ enum OPSSchemaV1: VersionedSchema {
     static var versionIdentifier: Schema.Version { Schema.Version(1, 0, 0) }
 
     static var models: [any PersistentModel.Type] {
-        OPSSchemaCommon.unchangedModels + [WizardState.self]
+        OPSSchemaCommon.unchangedModels + [OPSSchemaV1.WizardState.self]
     }
 
     /// Legacy WizardState shape — identical to the original commit

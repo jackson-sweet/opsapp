@@ -10,6 +10,7 @@ import SwiftUI
 import SwiftData
 import MapKit
 import CoreLocation
+import Supabase
 
 /// Tab options for the redesigned project details view
 enum ProjectDetailTab: String, CaseIterable {
@@ -69,6 +70,7 @@ class ProjectDetailsViewModel: ObservableObject {
     @Published var editedAddress = ""
     @Published var isGeocodingAddress = false
     @Published var isDeleting = false
+    @Published var isUpdatingVinylOrderMarker = false
 
     // MARK: - Photo State
 
@@ -162,6 +164,12 @@ class ProjectDetailsViewModel: ObservableObject {
         // Mention-only users cannot edit any project field (Bug G9, Rule 1+2).
         if isMentionOnlyAccess { return false }
         return PermissionStore.shared.can("projects.edit")
+    }
+
+    var canEditVinylOrderMarker: Bool {
+        canEditProject
+            && PermissionStore.shared.isFeatureEnabled("deck_builder")
+            && PermissionStore.shared.can("deck_builder.view", requiredScope: "assigned")
     }
 
     var hasClientContact: Bool {
@@ -427,6 +435,51 @@ class ProjectDetailsViewModel: ObservableObject {
         Task {
             try? dataController?.modelContext?.save()
             project.needsSync = true
+        }
+    }
+
+    func setVinylOrdered(_ ordered: Bool) {
+        guard canEditVinylOrderMarker,
+              let dataController,
+              let userId = dataController.currentUser?.id
+                    ?? SupabaseService.shared.currentUserId
+                    ?? UserDefaults.standard.string(forKey: "currentUserId"),
+              !isUpdatingVinylOrderMarker else {
+            return
+        }
+
+        let now = Date()
+        let fields: [String: AnyJSON]
+        if ordered {
+            fields = [
+                ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
+                ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(now)),
+                ProjectVinylOrderFields.orderedBy: .string(userId)
+            ]
+        } else {
+            fields = [
+                ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.notOrdered.rawValue),
+                ProjectVinylOrderFields.orderedAt: .null,
+                ProjectVinylOrderFields.orderedBy: .null
+            ]
+        }
+
+        isUpdatingVinylOrderMarker = true
+        Task {
+            do {
+                try await dataController.updateProjectFields(projectId: project.id, fields: fields)
+                await MainActor.run {
+                    isUpdatingVinylOrderMarker = false
+                    showSaveNotification()
+                }
+            } catch {
+                await MainActor.run {
+                    isUpdatingVinylOrderMarker = false
+                    networkErrorMessage = "VINYL STATUS FAILED"
+                    showingNetworkError = true
+                }
+                print("[PROJECT_DETAILS] Failed to update vinyl marker: \(error)")
+            }
         }
     }
 

@@ -682,6 +682,8 @@ struct NotificationListView: View {
                 return ("shippingbox.fill", OPSStyle.Colors.errorStatus)
             case "threshold_alert":
                 return ("exclamationmark.triangle.fill", OPSStyle.Colors.warningStatus)
+            case "catalog_order_drafted":
+                return ("shippingbox.fill", OPSStyle.Colors.successStatus)
             case "time_off_requested":
                 return ("calendar.badge.clock", OPSStyle.Colors.warningStatus)
             case "time_off_approved":
@@ -973,7 +975,7 @@ struct NotificationListView: View {
         }
         switch tab.lowercased() {
         case "suggested": return "SUGGESTED"
-        case "draft":     return "DRAFT"
+        case "draft", "drafts": return "DRAFT"
         case "sent":      return "SENT"
         default:          return nil
         }

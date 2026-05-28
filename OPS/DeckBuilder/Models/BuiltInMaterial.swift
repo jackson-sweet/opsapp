@@ -4,8 +4,8 @@
 //
 //  Industry-standard material defaults surfaced in MaterialPickerSheet's
 //  "// STANDARDS" section. Lets a fresh-install company spec a real
-//  material without having to populate Products first — they pick "Glass
-//  Railing" or "Composite Decking" and the assignment is created with a
+//  material without having to populate Products first — they pick "Parapet
+//  Wall" or "Composite Decking" and the assignment is created with a
 //  nil productId. Estimate flow already handles nil productId (the
 //  operator fills in the price at quote time) and the cut list emits a
 //  generic line. Bug ee787f29.
@@ -27,16 +27,13 @@ struct BuiltInMaterial: Identifiable, Equatable {
     /// Standards offered when the picker is in linear mode (railings,
     /// edge-mounted materials).
     static let linearStandards: [BuiltInMaterial] = [
-        BuiltInMaterial(id: "std.railing.glass",      name: "Glass Railing",      subtitle: "Tempered panel between posts",       icon: "rectangle.split.3x1"),
-        BuiltInMaterial(id: "std.railing.picket",     name: "Picket Railing",     subtitle: "Aluminum or wood balusters",         icon: "line.3.horizontal"),
-        BuiltInMaterial(id: "std.railing.cable",      name: "Cable Railing",      subtitle: "Stainless cable infill",             icon: "cable.connector.horizontal"),
-        BuiltInMaterial(id: "std.railing.horizontal", name: "Horizontal Rail",    subtitle: "Wide slat or metal bar",             icon: "rectangle.split.1x2"),
-        BuiltInMaterial(id: "std.railing.wood",       name: "Wood Railing",       subtitle: "Cedar or pressure-treated balusters", icon: "square.grid.2x2"),
         BuiltInMaterial(id: "std.wall.parapet",       name: "Parapet Wall",       subtitle: "Low capped masonry wall",            icon: "rectangle.bottomhalf.filled"),
         BuiltInMaterial(id: "std.cladding.stucco",    name: "Stucco Wall",        subtitle: "House edge cladding",                icon: "house"),
         BuiltInMaterial(id: "std.cladding.hardie",    name: "Hardie Plank",       subtitle: "Fiber cement house siding",          icon: "house"),
+        BuiltInMaterial(id: "std.cladding.woodVertical", name: "Wood Vertical",    subtitle: "Vertical house siding",              icon: "house"),
         BuiltInMaterial(id: "std.cladding.brick",     name: "Brick Veneer",       subtitle: "House edge masonry",                 icon: "house"),
         BuiltInMaterial(id: "std.cladding.stone",     name: "Stone Veneer",       subtitle: "House edge stone cladding",          icon: "house"),
+        BuiltInMaterial(id: "std.cladding.vinyl",     name: "Vinyl Siding",       subtitle: "House edge siding",                  icon: "house"),
         BuiltInMaterial(id: "std.gate.standard",      name: "Gate Section",       subtitle: "Single-leaf hinged opening",         icon: "door.left.hand.open")
     ]
 

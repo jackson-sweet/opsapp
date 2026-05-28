@@ -28,22 +28,52 @@ struct DeckToolbar: View {
                 multiSelectHeader
             }
 
-            // Context-sensitive action bar — changes based on what's selected.
-            // In multi-select the bulk action bar takes priority over single-kind bars so
-            // mixed selections (edges + vertices + surface) can be acted on in one place.
-            if canEdit, viewModel.activeTool == .tapSelect, !viewModel.selection.isEmpty {
-                multiSelectBulkTools
-            } else if canEdit, viewModel.selection.hasVertices {
-                vertexTools
-            } else if canEdit, viewModel.selection.hasEdges {
-                edgeTools
-            } else if canEdit, viewModel.selection.selectedFootprint {
-                footprintTools
+            // Context-sensitive action bar — one shell, action set varies by
+            // selected data type. Mixed selections keep the bulk bar.
+            if canEdit, !viewModel.selection.isEmpty {
+                selectedContextTools
             } else {
                 defaultTools
             }
         }
         .background(OPSStyle.Colors.cardBackground)
+    }
+
+    private enum SelectionContext {
+        case vertex
+        case edge
+        case stair
+        case surface
+        case mixed
+    }
+
+    @ViewBuilder
+    private var selectedContextTools: some View {
+        switch selectionContext {
+        case .vertex:
+            vertexTools
+        case .edge:
+            edgeTools
+        case .stair:
+            stairTools
+        case .surface:
+            surfaceTools
+        case .mixed:
+            multiSelectBulkTools
+        }
+    }
+
+    private var selectionContext: SelectionContext {
+        let hasVertices = viewModel.selection.hasVertices
+        let hasEdges = viewModel.selection.hasEdges
+        let hasSurfaces = viewModel.selection.hasSurfaces
+        let kindCount = (hasVertices ? 1 : 0) + (hasEdges ? 1 : 0) + (hasSurfaces ? 1 : 0)
+
+        guard kindCount == 1 else { return .mixed }
+        if hasVertices { return .vertex }
+        if hasSurfaces { return .surface }
+        if selectedEdgesAreOnlyStairs { return .stair }
+        return .edge
     }
 
     // MARK: - Multi-Select Header
@@ -157,34 +187,42 @@ struct DeckToolbar: View {
             && (viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3)
         _ = vertexCount  // silence unused-warning while we keep the readable line above
 
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                contextLabel("Selection")
+        return contextToolBar {
+            contextLabel("Selection")
 
-                toolDivider
+            toolDivider
 
-                selectOnlyMenuIfUseful(includeKindSection: true)
+            selectOnlyMenuIfUseful(includeKindSection: true)
 
-                if canAssignMaterial {
-                    actionButton(icon: "square.grid.3x3", label: "Material") {
-                        viewModel.showingMaterialPicker = true
-                    }
+            if canAssignMaterial {
+                actionButton(icon: "square.grid.3x3", label: "Material") {
+                    viewModel.showingMaterialPicker = true
                 }
-
-                if canMoveToLevel {
-                    moveToLevelMenu
-                }
-
-                Spacer()
-
-                actionButton(icon: OPSStyle.Icons.trash, label: "Delete", tint: OPSStyle.Colors.errorStatus) {
-                    viewModel.deleteSelection()
-                }
-
-                clearSelectionButton
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
+
+            if surfaceSelected {
+                actionButton(icon: "shippingbox", label: "Order Vinyl") {
+                    viewModel.vinylOrderSurfaceScope = .selectedSurfaces
+                    viewModel.showingVinylOrderSheet = true
+                }
+            }
+
+            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY",
+                         isActive: viewModel.isSelectionMoveArmed) {
+                viewModel.toggleSelectionMove()
+            }
+
+            if canMoveToLevel {
+                moveToLevelMenu
+            }
+
+            Spacer()
+
+            actionButton(icon: OPSStyle.Icons.trash, label: "Delete", tint: OPSStyle.Colors.errorStatus) {
+                viewModel.deleteSelection()
+            }
+
+            clearSelectionButton
         }
     }
 
@@ -381,13 +419,18 @@ struct DeckToolbar: View {
     // MARK: - Vertex Tools (vertex selected)
 
     private var vertexTools: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
+        contextToolBar {
             contextLabel("Vertex")
 
             toolDivider
 
             actionButton(icon: "arrow.up.and.down.circle", label: "Elevation") {
                 viewModel.showingElevationInput = true
+            }
+
+            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY",
+                         isActive: viewModel.isSelectionMoveArmed) {
+                viewModel.toggleSelectionMove()
             }
 
             Spacer()
@@ -398,76 +441,134 @@ struct DeckToolbar: View {
 
             clearSelectionButton
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
     // MARK: - Edge Tools (edge selected)
 
     private var edgeTools: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                contextLabel("Edge")
+        contextToolBar {
+            contextLabel("Edge")
 
-                toolDivider
+            toolDivider
 
-                selectOnlyMenuIfUseful(includeKindSection: false)
+            selectOnlyMenuIfUseful(includeKindSection: false)
 
-                actionButton(icon: "ruler", label: "Dimension") {
-                    viewModel.showingDimensionInput = true
-                }
-
-                actionButton(icon: "stairs", label: "Stairs") {
-                    viewModel.showingStairConfig = true
-                }
-
-                // Material entry removed from edge toolbar — the floating
-                // assignment wheel (center-right of the canvas) is the
-                // canonical material-pick path for edge selections. Bug
-                // 6d1c0a2a — reporter saw two material buttons (toolbar +
-                // wheel) and didn't know which to use. Surface selections
-                // keep the toolbar Material button below because the wheel
-                // is hidden in surface-only mode.
-
-                // Move-to-level — edges + bounding vertices migrate; any
-                // source-level surface whose perimeter the move breaks gets
-                // dropped from level.surfaces (the operator's reshaped graph
-                // is what now defines closure). Capped at 3 levels.
-                if viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3 {
-                    moveToLevelMenu
-                }
-
-                // Properties — opens PropertySheetView for edge type, house
-                // cladding, railing config, stair metadata, labels. Previously
-                // orphaned with no entry point so cladding/labels were
-                // unreachable. Bug ee787f29.
-                actionButton(icon: "slider.horizontal.3", label: "Properties") {
-                    viewModel.showingPropertySheet = true
-                }
-
-                Spacer()
-
-                actionButton(icon: "trash", label: "Delete", tint: OPSStyle.Colors.errorStatus) {
-                    viewModel.deleteSelectedEdges()
-                }
-
-                clearSelectionButton
+            actionButton(icon: "ruler", label: "Dimension") {
+                viewModel.showingDimensionInput = true
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
+
+            actionButton(icon: "stairs", label: "Stairs") {
+                viewModel.showingStairConfig = true
+            }
+
+            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY",
+                         isActive: viewModel.isSelectionMoveArmed) {
+                viewModel.toggleSelectionMove()
+            }
+
+            // Material entry removed from edge toolbar — the floating
+            // assignment wheel (center-right of the canvas) is the
+            // canonical material-pick path for edge selections. Bug
+            // 6d1c0a2a — reporter saw two material buttons (toolbar +
+            // wheel) and didn't know which to use. Surface selections
+            // keep the toolbar Material button below because the wheel
+            // is hidden in surface-only mode.
+
+            // Move-to-level — edges + bounding vertices migrate; any
+            // source-level surface whose perimeter the move breaks gets
+            // dropped from level.surfaces (the operator's reshaped graph
+            // is what now defines closure). Capped at 3 levels.
+            if viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3 {
+                moveToLevelMenu
+            }
+
+            // Properties — opens PropertySheetView for edge type, house
+            // cladding, railing config, stair metadata, labels. Previously
+            // orphaned with no entry point so cladding/labels were
+            // unreachable. Bug ee787f29.
+            actionButton(icon: "slider.horizontal.3", label: "Properties") {
+                viewModel.showingPropertySheet = true
+            }
+
+            Spacer()
+
+            actionButton(icon: "trash", label: "Delete", tint: OPSStyle.Colors.errorStatus) {
+                viewModel.deleteSelectedEdges()
+            }
+
+            clearSelectionButton
         }
     }
 
-    // MARK: - Footprint Tools (area selected)
+    // MARK: - Stair Tools (stair selected)
 
-    private var footprintTools: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
+    private var stairTools: some View {
+        contextToolBar {
+            contextLabel("Stair")
+
+            toolDivider
+
+            selectOnlyMenuIfUseful(includeKindSection: false)
+
+            actionButton(icon: "stairs", label: "Edit") {
+                viewModel.showingStairConfig = true
+            }
+
+            actionButton(icon: "shippingbox", label: "Material") {
+                viewModel.showingMaterialPicker = true
+            }
+
+            actionButton(icon: "ruler", label: "Dimension") {
+                viewModel.showingDimensionInput = true
+            }
+
+            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY",
+                         isActive: viewModel.isSelectionMoveArmed) {
+                viewModel.toggleSelectionMove()
+            }
+
+            if viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3 {
+                moveToLevelMenu
+            }
+
+            actionButton(icon: "slider.horizontal.3", label: "Properties") {
+                viewModel.showingPropertySheet = true
+            }
+
+            Spacer()
+
+            actionButton(icon: "trash", label: "Delete", tint: OPSStyle.Colors.errorStatus) {
+                viewModel.deleteSelectedEdges()
+            }
+
+            clearSelectionButton
+        }
+    }
+
+    // MARK: - Surface Tools (surface selected)
+
+    private var surfaceTools: some View {
+        contextToolBar {
             contextLabel("Surface")
 
             toolDivider
 
             actionButton(icon: "square.grid.3x3", label: "Material") {
                 viewModel.showingMaterialPicker = true
+            }
+
+            actionButton(icon: "shippingbox", label: "Order Vinyl") {
+                viewModel.vinylOrderSurfaceScope = .selectedSurfaces
+                viewModel.showingVinylOrderSheet = true
+            }
+
+            if viewModel.isMultiLevel || viewModel.drawingData.levels.count < 3 {
+                moveToLevelMenu
+            }
+
+            actionButton(icon: "arrow.up.left.and.arrow.down.right", label: "Move XY",
+                         isActive: viewModel.isSelectionMoveArmed) {
+                viewModel.toggleSelectionMove()
             }
 
             actionButton(icon: "arrow.up.and.down.circle", label: "Elevation") {
@@ -482,8 +583,26 @@ struct DeckToolbar: View {
 
             clearSelectionButton
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing2)
+    }
+
+    private var selectedEdgesAreOnlyStairs: Bool {
+        let selectedIds = viewModel.selection.selectedEdgeIds
+        guard !selectedIds.isEmpty else { return false }
+        let selectedEdges = viewModel.drawingData.allEdges.filter { selectedIds.contains($0.id) }
+        return selectedEdges.count == selectedIds.count
+            && selectedEdges.allSatisfy { $0.stairConfig != nil }
+    }
+
+    private func contextToolBar<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                content()
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+        }
     }
 
     // MARK: - Context Label
@@ -541,9 +660,16 @@ struct DeckToolbar: View {
 
     // MARK: - Context Action Button
 
+    /// `isActive` mirrors `toolButton`'s active treatment for sticky-toggle
+    /// modes (currently only Move-XY) — color + weight + accent background
+    /// signal the toggled-on state so the user knows further canvas drags
+    /// will operate in that mode without re-tapping. Color is paired with
+    /// weight + background so the state is legible without relying on
+    /// color alone.
     private func actionButton(
         icon: String, label: String,
         tint: Color = Color.white,
+        isActive: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: {
@@ -552,16 +678,18 @@ struct DeckToolbar: View {
         }) {
             VStack(spacing: 3) {
                 Image(systemName: icon)
-                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
-                    .foregroundColor(tint)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: isActive ? .bold : .medium))
+                    .foregroundColor(isActive ? OPSStyle.Colors.primaryAccent : tint)
                 Text(label)
                     .font(OPSStyle.Typography.miniLabel)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .foregroundColor(isActive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.secondaryText)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing1)
             .frame(minWidth: OPSStyle.Layout.touchTargetStandard, minHeight: OPSStyle.Layout.touchTargetStandard)
+            .background(isActive ? OPSStyle.Colors.primaryAccent.opacity(0.12) : Color.clear)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
         }
     }
 
@@ -771,6 +899,7 @@ struct DeckToolbar: View {
     /// doesn't ship deck-specific icons.
     private func railingIcon(for type: RailingType) -> String {
         switch type {
+        case .parapetWall: return "rectangle.bottomhalf.filled"
         case .glass:      return "rectangle.split.3x1"
         case .picket:     return "line.3.horizontal"
         case .cable:      return "cable.connector.horizontal"

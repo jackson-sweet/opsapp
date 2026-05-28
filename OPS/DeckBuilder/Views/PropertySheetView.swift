@@ -108,10 +108,14 @@ struct PropertySheetView: View {
                         // Bug 4a03f507.
                         edgeLabelField(edgeId: edgeId, edge: edge)
 
-                        Divider().background(OPSStyle.Colors.separator)
+                        if edge.edgeType == .deckEdge {
+                            Divider().background(OPSStyle.Colors.separator)
 
-                        // Railing
-                        railingSection(edgeId: edgeId, edge: edge)
+                            // Railing / parapet. House edges cannot carry
+                            // railing configuration; switching to house edge
+                            // clears any legacy railing state in the view model.
+                            railingSection(edgeId: edgeId, edge: edge)
+                        }
 
                         Divider().background(OPSStyle.Colors.separator)
 
@@ -148,64 +152,68 @@ struct PropertySheetView: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
 
-                // Post spacing
-                HStack {
-                    Text("Max post spacing")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Spacer()
-                    Text(DimensionEngine.formatImperial(railing.maxPostSpacing))
-                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-
-                // Post count
-                if let dim = edge.dimension {
-                    let posts = DimensionEngine.postCount(edgeLengthInches: dim, maxSpacing: railing.maxPostSpacing)
+                if railing.railingType == .parapetWall {
+                    parapetFinishPicker(edgeId: edgeId, railing: railing)
+                } else {
+                    // Post spacing
                     HStack {
-                        Text("Posts needed")
+                        Text("Max post spacing")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Spacer()
-                        Text("\(posts)")
-                            .font(OPSStyle.Typography.bodyBold)
+                        Text(DimensionEngine.formatImperial(railing.maxPostSpacing))
+                            .font(.system(size: 14, weight: .semibold, design: .monospaced))
                             .foregroundColor(OPSStyle.Colors.primaryText)
                     }
-                }
 
-                // Catalog metadata vocabulary — what the adapter reads off
-                // the design when generating estimates. Pickers when the
-                // company default Product exposes the matching axis;
-                // free-text fallback otherwise.
-                metadataPicker(
-                    label: "Color",
-                    value: railing.color,
-                    sourceKey: "color",
-                    componentType: .railing,
-                    onChange: { viewModel.setRailingMetadata(edgeId: edgeId, color: $0) }
-                )
-                metadataPicker(
-                    label: "Mount type",
-                    value: railing.mountType,
-                    sourceKey: "mount_type",
-                    componentType: .railing,
-                    onChange: { viewModel.setRailingMetadata(edgeId: edgeId, mountType: $0) }
-                )
-                metadataPicker(
-                    label: "Mount surface",
-                    value: railing.mountSurface,
-                    sourceKey: "mount_surface",
-                    componentType: .railing,
-                    onChange: { viewModel.setRailingMetadata(edgeId: edgeId, mountSurface: $0) }
-                )
-                postHeightStepper(
-                    edgeId: edgeId,
-                    current: railing.postHeight
-                )
+                    // Post count
+                    if let dim = edge.dimension {
+                        let posts = DimensionEngine.postCount(edgeLengthInches: dim, maxSpacing: railing.maxPostSpacing)
+                        HStack {
+                            Text("Posts needed")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            Spacer()
+                            Text("\(posts)")
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                    }
+
+                    // Catalog metadata vocabulary — what the adapter reads off
+                    // the design when generating estimates. Pickers when the
+                    // company default Product exposes the matching axis;
+                    // free-text fallback otherwise.
+                    metadataPicker(
+                        label: "Color",
+                        value: railing.color,
+                        sourceKey: "color",
+                        componentType: .railing,
+                        onChange: { viewModel.setRailingMetadata(edgeId: edgeId, color: $0) }
+                    )
+                    metadataPicker(
+                        label: "Mount type",
+                        value: railing.mountType,
+                        sourceKey: "mount_type",
+                        componentType: .railing,
+                        onChange: { viewModel.setRailingMetadata(edgeId: edgeId, mountType: $0) }
+                    )
+                    metadataPicker(
+                        label: "Mount surface",
+                        value: railing.mountSurface,
+                        sourceKey: "mount_surface",
+                        componentType: .railing,
+                        onChange: { viewModel.setRailingMetadata(edgeId: edgeId, mountSurface: $0) }
+                    )
+                    postHeightStepper(
+                        edgeId: edgeId,
+                        current: railing.postHeight
+                    )
+                }
             } else {
                 // Railing type picker
                 HStack(spacing: OPSStyle.Layout.spacing2) {
-                    ForEach(RailingType.allCases, id: \.self) { type in
+                    ForEach(RailingType.assignableDefaultTypes, id: \.self) { type in
                         Button {
                             let config = RailingConfig(
                                 railingType: type,
@@ -311,12 +319,53 @@ struct PropertySheetView: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 
+    @ViewBuilder
+    private func parapetFinishPicker(edgeId: String, railing: RailingConfig) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("Finish")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                ForEach(HouseEdgeMaterial.allCases, id: \.self) { material in
+                    Button {
+                        viewModel.setRailingWallMaterial(edgeId, material: material)
+                    } label: {
+                        VStack(spacing: 4) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color(hex: material.fillHex) ?? .gray)
+                                .frame(height: 28)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(
+                                            railing.wallMaterial == material
+                                                ? OPSStyle.Colors.primaryAccent
+                                                : Color.white.opacity(0.15),
+                                            lineWidth: railing.wallMaterial == material ? 2 : 1
+                                        )
+                                )
+                            Text(material.displayName)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(
+                                    railing.wallMaterial == material
+                                        ? OPSStyle.Colors.primaryText
+                                        : OPSStyle.Colors.secondaryText
+                                )
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - House Cladding (bug 3d72ce0b)
 
-    /// Cladding picker shown on house edges. Three preset materials —
-    /// stucco, hardie, wood-vertical — drive the 2D hatch color, the 3D
-    /// wall fill, and the floating "HOUSE" label tone. None means "no
-    /// material picked yet" and renders the neutral fallback wall.
+    /// Cladding picker shown on house edges. House siding drives the 2D
+    /// hatch color, the 3D wall fill, and the floating "HOUSE" label tone.
+    /// None means "no material picked yet" and renders the neutral fallback.
     @ViewBuilder
     private func houseCladdingPicker(edgeId: String, edge: DeckEdge) -> some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {

@@ -42,18 +42,29 @@
 //  renderedPhotoURL, commit 6b62f40) lands on a live @Model class referenced
 //  by every historical schema.
 //
+//  V6 → V7 stage: lightweight additive — ProjectVinylOrderMarker, a local
+//  projection of the project-level vinyl order marker fields.
+//
 
 import Foundation
 import SwiftData
 
 enum OPSMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [OPSSchemaV1.self, OPSSchemaV2.self, OPSSchemaV3.self, OPSSchemaV4.self, OPSSchemaV5.self, OPSSchemaV6.self]
+        [OPSSchemaV1.self, OPSSchemaV2.self, OPSSchemaV3.self, OPSSchemaV4.self, OPSSchemaV5.self, OPSSchemaV6.self, OPSSchemaV7.self]
     }
 
     static var stages: [MigrationStage] {
-        [migrateWizardStateIdV1toV2, migrateInventoryToCatalogV2toV3, migrateAddTaskRemindersV3toV4, addCalendarMirrorMapV4toV5, addForecastModelsV5toV6]
+        [migrateWizardStateIdV1toV2, migrateInventoryToCatalogV2toV3, migrateAddTaskRemindersV3toV4, addCalendarMirrorMapV4toV5, addForecastModelsV5toV6, addVinylOrderMarkerV6toV7]
     }
+
+    /// V6 → V7: purely additive — `ProjectVinylOrderMarker` is a local
+    /// projection of server columns on `projects`, with no rows to transform
+    /// before the next project sync hydrates it.
+    static let addVinylOrderMarkerV6toV7 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV6.self,
+        toVersion: OPSSchemaV7.self
+    )
 
     /// V5 → V6: purely additive — `PaymentMilestone` and `RecurringExpense` are
     /// new models with no pre-existing rows to transform. SwiftData lightweight

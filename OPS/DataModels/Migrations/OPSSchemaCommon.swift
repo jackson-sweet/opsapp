@@ -81,6 +81,13 @@ enum OPSSchemaCommon {
         RecurringExpense.self
     ]
 
+    /// V7 vinyl-order marker projection. The server fields live on
+    /// `projects`; this local model keeps the marker offline-readable without
+    /// changing the historical `Project` model shape.
+    static let v7VinylOrderModels: [any PersistentModel.Type] = [
+        ProjectVinylOrderMarker.self
+    ]
+
     /// V3-only models: catalog & variant model + configurable Products +
     /// the company-defaults adapter map. Replaces the V2 inventory entities.
     static let v3CatalogModels: [any PersistentModel.Type] = [

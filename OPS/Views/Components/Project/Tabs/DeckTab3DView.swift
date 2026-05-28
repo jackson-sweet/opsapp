@@ -31,6 +31,8 @@ struct DeckTab3DView: View {
 
 private struct DeckTab3DSceneView: UIViewRepresentable {
     let drawingData: DeckDrawingData
+    private let feetToMeters: Float = 0.3048
+    private let inchesToMeters: Float = 1.0 / 39.3701
 
     func makeUIView(context: Context) -> SCNView {
         let scnView = SCNView()
@@ -109,32 +111,29 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
             return (x, z)
         }
 
-        let deckHeight: Float = 0.5
-        let postHeight: Float = 1.5
-
-        // Render every level — surfaces + edges + posts. Without this loop,
+        // Render every level — surfaces + explicit edge features. Without this loop,
         // multi-level designs only ever showed level 1 in the viewer.
-        let levelsToRender: [(positions: [CGPoint], edges: [DeckEdge], vertices: [DeckVertex], isClosed: Bool, levelOffset: Float)]
+        let levelsToRender: [(positions: [CGPoint], edges: [DeckEdge], vertices: [DeckVertex], isClosed: Bool, deckHeight: Float, displayColor: LevelColor?, houseWallCapM: Float?)]
         if drawingData.isMultiLevel {
             levelsToRender = drawingData.levels.enumerated().map { idx, level in
-                // Stack additional levels visually — each level above 0 sits
-                // a small offset higher so they're distinguishable.
-                let stackOffset = Float(idx) * (deckHeight * 1.5)
-                return (level.orderedPositions, level.edges, level.vertices, level.isClosed, stackOffset)
+                let deckHeight = Float(drawingData.renderElevationFeet(for: level, levelIndex: idx)) * feetToMeters
+                let capM = drawingData.heightToNextLevelFeet(aboveLevelAt: idx).map { Float($0) * feetToMeters }
+                return (level.orderedPositions, level.edges, level.vertices, level.isClosed, deckHeight, level.displayColor, capM)
             }
         } else {
-            levelsToRender = [(drawingData.orderedPositions, drawingData.edges, drawingData.vertices, drawingData.isClosed, 0)]
+            let deckHeight = Float(drawingData.renderElevationFeetSingleLevel) * feetToMeters
+            levelsToRender = [(drawingData.orderedPositions, drawingData.edges, drawingData.vertices, drawingData.isClosed, deckHeight, nil, nil)]
         }
 
         for level in levelsToRender {
-            let levelDeckY = deckHeight + level.levelOffset
             renderFallbackLevel(
                 positions: level.positions,
                 edges: level.edges,
                 vertices: level.vertices,
                 isClosed: level.isClosed,
-                levelDeckY: levelDeckY,
-                postHeight: postHeight,
+                levelDeckY: level.deckHeight,
+                displayColor: level.displayColor,
+                houseWallCapM: level.houseWallCapM,
                 toScene: toScene,
                 scene: scene
             )
@@ -142,7 +141,8 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
 
         addGroundPlane(scene: scene, targetSize: targetSize)
         addLighting(scene: scene)
-        addCamera(scene: scene, targetSize: targetSize, deckHeight: deckHeight)
+        let cameraHeight = levelsToRender.map(\.deckHeight).max() ?? (2.5 * feetToMeters)
+        addCamera(scene: scene, targetSize: targetSize, deckHeight: cameraHeight)
 
         return scene
     }
@@ -153,7 +153,8 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         vertices: [DeckVertex],
         isClosed: Bool,
         levelDeckY: Float,
-        postHeight: Float,
+        displayColor: LevelColor?,
+        houseWallCapM: Float?,
         toScene: (CGPoint) -> (x: Float, z: Float),
         scene: SCNScene
     ) {
@@ -168,7 +169,14 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
             }
             if let surfaceGeo = DeckMeshGenerator.createPolygonGeometry(vertices: scenePoints, yHeight: levelDeckY) {
                 let surfaceMat = SCNMaterial()
-                surfaceMat.diffuse.contents = UIColor(red: 196/255, green: 149/255, blue: 106/255, alpha: 1)
+                // Multi-level designs color-code the surface by the level's
+                // display color so levels stay visually distinct (bug 8f9c0280).
+                if let displayColor {
+                    let c = displayColor.fillColor
+                    surfaceMat.diffuse.contents = UIColor(red: CGFloat(c.r), green: CGFloat(c.g), blue: CGFloat(c.b), alpha: 1)
+                } else {
+                    surfaceMat.diffuse.contents = UIColor(red: 196/255, green: 149/255, blue: 106/255, alpha: 1)
+                }
                 surfaceMat.isDoubleSided = true
                 surfaceGeo.materials = [surfaceMat]
                 scene.rootNode.addChildNode(SCNNode(geometry: surfaceGeo))
@@ -205,22 +213,78 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
                 : UIColor(red: 170/255, green: 130/255, blue: 90/255, alpha: 1)
             beamGeo.materials = [beamMat]
             let beamNode = SCNNode(geometry: beamGeo)
-            beamNode.position = SCNVector3(midX, levelDeckY + beamHeight / 2, midZ)
-            beamNode.eulerAngles.y = -angle
+            // Seat the edge beam BENEATH the deck surface — top of the beam
+            // flush with the surface — so it reads as a rim joist under the
+            // deck boards rather than a curb standing proud of them (bug
+            // 313aad41).
+            beamNode.position = SCNVector3(midX, levelDeckY - beamHeight / 2, midZ)
+            // SCNBox length runs along local +Z. Rotating eulerAngles.y by
+            // atan2(dx, dz) aims +Z down the edge; negating it mirrors the box
+            // across Z. That mirror is invisible on axis-aligned edges (a box
+            // is symmetric) but points the beam the wrong way on any diagonal
+            // edge — the source of the broken non-right-angle borders. Matches
+            // DeckSceneBuilder.buildSpanningBox.
+            beamNode.eulerAngles.y = angle
             scene.rootNode.addChildNode(beamNode)
+
+            if edge.edgeType == .houseEdge {
+                // 8' house wall, capped at the bottom of the next level up on
+                // multi-level designs so it doesn't pierce the deck above
+                // (bug fb007839 — supersedes a40556a7, which set it to 9').
+                let houseWallHeight = houseWallCapM.map { min(8.0 * feetToMeters, $0) }
+                    ?? (8.0 * feetToMeters)
+                addWall(
+                    scene: scene,
+                    midX: midX,
+                    midZ: midZ,
+                    angle: angle,
+                    length: length,
+                    bottomY: levelDeckY,
+                    height: houseWallHeight,
+                    thickness: 0.05,
+                    color: edge.houseEdgeMaterial.map { UIColor(hex: $0.fillHex) }
+                        ?? UIColor(red: 136/255, green: 136/255, blue: 136/255, alpha: 0.8)
+                )
+            } else if let railing = edge.railingConfig, railing.railingType == .parapetWall {
+                let wallHeight = Float(max(24.0, min(48.0, railing.postHeight))) * inchesToMeters
+                addWall(
+                    scene: scene,
+                    midX: midX,
+                    midZ: midZ,
+                    angle: angle,
+                    length: length,
+                    bottomY: levelDeckY,
+                    height: wallHeight,
+                    thickness: 0.10,
+                    color: UIColor(hex: railing.wallMaterial.fillHex)
+                )
+            }
         }
 
-        // Posts at every vertex
-        for vertex in vertices {
-            let s = toScene(vertex.position)
-            let postGeo = SCNBox(width: 0.1, height: CGFloat(postHeight), length: 0.1, chamferRadius: 0)
-            let postMat = SCNMaterial()
-            postMat.diffuse.contents = UIColor(red: 139/255, green: 108/255, blue: 74/255, alpha: 1)
-            postGeo.materials = [postMat]
-            let postNode = SCNNode(geometry: postGeo)
-            postNode.position = SCNVector3(s.x, levelDeckY - postHeight / 2, s.z)
-            scene.rootNode.addChildNode(postNode)
-        }
+    }
+
+    private func addWall(
+        scene: SCNScene,
+        midX: Float,
+        midZ: Float,
+        angle: Float,
+        length: Float,
+        bottomY: Float,
+        height: Float,
+        thickness: Float,
+        color: UIColor
+    ) {
+        guard height > 0, length > 0 else { return }
+        let wallGeo = SCNBox(width: CGFloat(thickness), height: CGFloat(height), length: CGFloat(length), chamferRadius: 0)
+        let wallMat = SCNMaterial()
+        wallMat.diffuse.contents = color
+        wallGeo.materials = [wallMat]
+        let wallNode = SCNNode(geometry: wallGeo)
+        wallNode.position = SCNVector3(midX, bottomY + height / 2, midZ)
+        // +angle, not -angle: the box length axis must aim down the edge.
+        // See the beam-orientation note in renderFallbackLevel.
+        wallNode.eulerAngles.y = angle
+        scene.rootNode.addChildNode(wallNode)
     }
 
     private func addGroundPlane(scene: SCNScene, targetSize: Float) {

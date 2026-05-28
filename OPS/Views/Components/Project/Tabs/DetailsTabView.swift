@@ -32,6 +32,7 @@ struct DetailsTabView: View {
     /// in a separate batch, or `linkAllRelationships` may not have run yet
     /// for a freshly-inserted local row).
     @Query private var allUsers: [User]
+    @Query private var vinylOrderMarkers: [ProjectVinylOrderMarker]
 
     private var userById: [String: User] {
         Dictionary(allUsers.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -44,6 +45,10 @@ struct DetailsTabView: View {
         let ids = project.getTeamMemberIds()
         guard !ids.isEmpty else { return [] }
         return ids.compactMap { userById[$0] }
+    }
+
+    private var vinylOrderMarker: ProjectVinylOrderMarker? {
+        vinylOrderMarkers.first { $0.projectId == project.id }
     }
 
     var body: some View {
@@ -74,6 +79,16 @@ struct DetailsTabView: View {
                     viewModel.saveAddress()
                 }
             )
+
+            if PermissionStore.shared.isFeatureEnabled("deck_builder")
+                && PermissionStore.shared.can("deck_builder.view", requiredScope: "assigned") {
+                VinylOrderMarkerSection(
+                    marker: vinylOrderMarker,
+                    canEdit: viewModel.canEditVinylOrderMarker,
+                    isUpdating: viewModel.isUpdatingVinylOrderMarker,
+                    onToggle: { ordered in viewModel.setVinylOrdered(ordered) }
+                )
+            }
 
             // TASKS
             TaskListSection(
@@ -370,6 +385,76 @@ struct ClientSection: View {
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
         )
         .padding(.horizontal, 16)
+    }
+}
+
+// MARK: - Vinyl Order Marker
+
+private struct VinylOrderMarkerSection: View {
+    let marker: ProjectVinylOrderMarker?
+    let canEdit: Bool
+    let isUpdating: Bool
+    let onToggle: (Bool) -> Void
+
+    private var status: ProjectVinylOrderStatus {
+        marker?.status ?? .notOrdered
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("VINYL")
+
+            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("ORDER STATUS")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text(status.displayLabel)
+                        .font(OPSStyle.Typography.dataValue)
+                        .foregroundColor(status == .ordered ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryText)
+                    if let orderedAt = marker?.orderedAt, status == .ordered {
+                        Text("ORDERED \(DateHelper.simpleDateString(from: orderedAt).uppercased())")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    onToggle(status != .ordered)
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        if isUpdating {
+                            ProgressView()
+                                .tint(OPSStyle.Colors.primaryText)
+                        }
+                        Text(status == .ordered ? "CLEAR ORDERED" : "MARK ORDERED")
+                            .font(OPSStyle.Typography.buttonLabel)
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .background(OPSStyle.Colors.surfaceHover)
+                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                            .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(!canEdit || isUpdating)
+                .opacity(canEdit ? 1 : 0.45)
+            }
+            .padding(14)
+            .background(OPSStyle.Colors.cardBackgroundDark)
+            .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+            )
+            .padding(.horizontal, 16)
+        }
     }
 }
 

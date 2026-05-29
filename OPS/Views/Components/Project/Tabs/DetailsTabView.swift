@@ -23,6 +23,10 @@ struct DetailsTabView: View {
     var onCancelTask: ((ProjectTask) -> Void)? = nil
     var onDeleteTask: ((ProjectTask) -> Void)? = nil
     var onClientLongPress: (() -> Void)? = nil
+    /// Opens the existing `ProjectStatusChangeSheet` (wired in
+    /// ProjectDetailsView via `showingStatusPicker`). Bug f3a300f7 — the
+    /// Details surface previously had no affordance to reach that sheet.
+    var onChangeStatus: (() -> Void)? = nil
 
     /// All Users in the store. Used to resolve team member avatars from the
     /// authoritative `teamMemberIdsString` CSV on both Project and ProjectTask.
@@ -53,6 +57,15 @@ struct DetailsTabView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
+            // STATUS — current project status + manual change control.
+            // Bug f3a300f7 — opens the existing ProjectStatusChangeSheet
+            // through the parent's `showingStatusPicker` hook.
+            StatusSection(
+                status: project.status,
+                canEdit: viewModel.canEditProject,
+                onChangeStatus: onChangeStatus
+            )
+
             // PROJECT TIMELINE — dates + task progress
             if project.hasTasks {
                 ProjectTimelineSection(project: project)
@@ -240,6 +253,76 @@ private struct ProjectTimelineSection: View {
             }
         }
         .padding(.horizontal, 16)
+    }
+}
+
+// MARK: - Status Section
+
+/// Project status row — shows the current status as the app's standard
+/// job-status badge and, for users with edit permission, opens the existing
+/// `ProjectStatusChangeSheet` picker. Mirrors the Details-tab card pattern
+/// (section label outside, `cardBackgroundDark` card with `cardBorder`).
+///
+/// Bug f3a300f7 — the status picker sheet and its `showingStatusPicker`
+/// hook already existed in ProjectDetailsView but nothing on the Details
+/// surface ever triggered it. This section is that trigger.
+private struct StatusSection: View {
+    let status: Status
+    let canEdit: Bool
+    var onChangeStatus: (() -> Void)? = nil
+
+    private var card: some View {
+        HStack(spacing: 12) {
+            // Canonical job-status badge — same pill used across the app
+            // (Job Board, search) for project status. Color + label come
+            // straight from the Status enum, so this stays in lockstep
+            // with the picker sheet's own current-status readout.
+            StatusBadge.forJobStatus(status, size: .large)
+
+            Spacer()
+
+            // Edit affordance — mirrors the empty client card's "ASSIGN":
+            // UPPERCASE accent label + chevron. Hidden for users who can't
+            // edit, leaving a clean static readout.
+            if canEdit {
+                Text("CHANGE")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+        }
+        .padding(14)
+        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("STATUS")
+
+            if canEdit, let onChangeStatus {
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onChangeStatus()
+                }) {
+                    card
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.horizontal, 16)
+            } else {
+                card
+                    .padding(.horizontal, 16)
+            }
+        }
     }
 }
 

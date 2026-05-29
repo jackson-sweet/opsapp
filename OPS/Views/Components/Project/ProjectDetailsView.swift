@@ -717,7 +717,8 @@ struct ProjectDetailsView: View {
                     viewModel.selectedTask = task
                     viewModel.showingTaskDeleteConfirmation = true
                 },
-                onClientLongPress: { showingClientPicker = true }
+                onClientLongPress: { showingClientPicker = true },
+                onChangeStatus: { showingStatusPicker = true }
             )
 
         case .expenses:

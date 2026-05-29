@@ -5882,8 +5882,10 @@ class DataController: ObservableObject {
             throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
 
-        // Generate ID locally
-        let subClientId = UUID().uuidString
+        // Generate ID locally. Lowercase to match Postgres uuid storage and the Client/Project
+        // create paths — an uppercase id makes the realtime echo + inbound sync case-sensitive
+        // id lookups miss this local row and insert a duplicate SubClient (bug c9ca72e7).
+        let subClientId = UUID().uuidString.lowercased()
 
         // Create local model
         let subClient = SubClient(id: subClientId, name: name)

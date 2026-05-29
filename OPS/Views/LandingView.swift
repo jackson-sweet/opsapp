@@ -21,6 +21,12 @@ struct LandingView: View {
     @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var variantManager: OnboardingVariantManager
 
+    /// Fired the instant a returning login establishes authentication, so the
+    /// parent (ContentView) can arm the workspace preload gate before the app is
+    /// revealed (bug 95bf7c82). Optional + nil-default so other call sites are
+    /// unaffected.
+    var onAuthenticated: (() -> Void)? = nil
+
     // Login states
     @State private var username = ""
     @State private var password = ""
@@ -404,6 +410,9 @@ struct LandingView: View {
                     isLoggingIn = false
 
                     if success {
+                        // Returning login established — arm the workspace preload
+                        // gate so initial data loads behind it (bug 95bf7c82).
+                        onAuthenticated?()
                         showLoginSuccess = true
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 
@@ -505,6 +514,7 @@ struct LandingView: View {
                             showOnboarding = true
                         }
                     } else {
+                        onAuthenticated?()
                         dataController.isAuthenticated = true
                     }
                 }
@@ -555,6 +565,7 @@ struct LandingView: View {
                             showOnboarding = true
                         }
                     } else {
+                        onAuthenticated?()
                         dataController.isAuthenticated = true
                     }
                 }

@@ -44,13 +44,41 @@ class ProductBundleItemRepository {
     }
 
     func create(_ dto: CreateProductBundleItemDTO) async throws -> ProductBundleItemDTO {
-        try await client.from("product_bundle_items")
-            .insert(dto).select().single().execute().value
+        if CatalogSchemaCapabilityGate.current.productBundleRelationshipFields {
+            do {
+                return try await client.from("product_bundle_items")
+                    .insert(dto).select().single().execute().value
+            } catch {
+                CatalogSchemaCapabilityGate.recordProductBundleRelationshipFieldsUnavailable()
+                guard dto.canDegradeToLegacyRequiredRow else {
+                    throw CatalogSchemaCapabilityError.unavailable("product_bundle_items relationship fields")
+                }
+                return try await createLegacy(dto)
+            }
+        }
+        guard dto.canDegradeToLegacyRequiredRow else {
+            throw CatalogSchemaCapabilityError.unavailable("product_bundle_items relationship fields")
+        }
+        return try await createLegacy(dto)
     }
 
     func update(_ id: String, fields: UpdateProductBundleItemDTO) async throws -> ProductBundleItemDTO {
-        try await client.from("product_bundle_items")
-            .update(fields).eq("id", value: id).select().single().execute().value
+        if CatalogSchemaCapabilityGate.current.productBundleRelationshipFields {
+            do {
+                return try await client.from("product_bundle_items")
+                    .update(fields).eq("id", value: id).select().single().execute().value
+            } catch {
+                CatalogSchemaCapabilityGate.recordProductBundleRelationshipFieldsUnavailable()
+                guard !fields.includesRelationshipMetadata else {
+                    throw CatalogSchemaCapabilityError.unavailable("product_bundle_items relationship fields")
+                }
+                return try await updateLegacy(id, fields: fields)
+            }
+        }
+        guard !fields.includesRelationshipMetadata else {
+            throw CatalogSchemaCapabilityError.unavailable("product_bundle_items relationship fields")
+        }
+        return try await updateLegacy(id, fields: fields)
     }
 
     func softDelete(_ id: String) async throws {
@@ -59,5 +87,72 @@ class ProductBundleItemRepository {
         try await client.from("product_bundle_items")
             .update(SoftDelete(deleted_at: now, updated_at: now))
             .eq("id", value: id).execute()
+    }
+
+    private func createLegacy(_ dto: CreateProductBundleItemDTO) async throws -> ProductBundleItemDTO {
+        try await client.from("product_bundle_items")
+            .insert(LegacyCreateProductBundleItemDTO(dto))
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    private func updateLegacy(_ id: String, fields: UpdateProductBundleItemDTO) async throws -> ProductBundleItemDTO {
+        try await client.from("product_bundle_items")
+            .update(LegacyUpdateProductBundleItemDTO(fields))
+            .eq("id", value: id)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+}
+
+private struct LegacyCreateProductBundleItemDTO: Codable {
+    let id: String
+    let companyId: String
+    let bundleProductId: String
+    let childProductId: String
+    let quantity: Double
+    let displayOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case companyId       = "company_id"
+        case bundleProductId = "bundle_product_id"
+        case childProductId  = "child_product_id"
+        case quantity
+        case displayOrder    = "display_order"
+    }
+
+    init(_ dto: CreateProductBundleItemDTO) {
+        self.id = dto.id
+        self.companyId = dto.companyId
+        self.bundleProductId = dto.bundleProductId
+        self.childProductId = dto.childProductId
+        self.quantity = dto.quantity
+        self.displayOrder = dto.displayOrder
+    }
+}
+
+private struct LegacyUpdateProductBundleItemDTO: Codable {
+    var quantity: Double?
+    var displayOrder: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case quantity
+        case displayOrder = "display_order"
+    }
+
+    init(_ fields: UpdateProductBundleItemDTO) {
+        self.quantity = fields.quantity
+        self.displayOrder = fields.displayOrder
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(quantity, forKey: .quantity)
+        try c.encodeIfPresent(displayOrder, forKey: .displayOrder)
     }
 }

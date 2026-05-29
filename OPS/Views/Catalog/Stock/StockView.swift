@@ -41,6 +41,32 @@ enum ThresholdFilter: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+// MARK: - Stock sort
+
+enum StockSortMode: String, CaseIterable, Identifiable {
+    case category = "CATEGORY"
+    case family = "FAMILY"
+    case lowStock = "LOW STOCK"
+    case quantity = "QUANTITY"
+
+    var id: String { rawValue }
+}
+
+// MARK: - Option filters
+
+struct StockOptionFilterValue: Identifiable, Hashable {
+    let key: String
+    let display: String
+    var id: String { key }
+}
+
+struct StockOptionFilterAxis: Identifiable, Hashable {
+    let key: String
+    let display: String
+    let values: [StockOptionFilterValue]
+    var id: String { key }
+}
+
 // MARK: - Enriched row
 
 /// A single variant joined with everything the view modes need to render
@@ -64,6 +90,14 @@ struct EnrichedVariantRow: Identifiable, Hashable {
         optionPairs.map(\.value.value).joined(separator: " · ")
     }
 
+    /// Full field-facing identity. SKU stays available as metadata, but the
+    /// primary name is family + option values because live catalog schema
+    /// has no variant-name column.
+    var variantDisplayName: String {
+        guard !variantLabel.isEmpty else { return family.name }
+        return "\(family.name) · \(variantLabel)"
+    }
+
     /// Effective thresholds: variant override → family default → category default.
     var effectiveWarning: Double? {
         variant.warningThreshold ?? family.defaultWarningThreshold ?? category?.defaultWarningThreshold
@@ -77,6 +111,40 @@ struct EnrichedVariantRow: Identifiable, Hashable {
         if let critical = effectiveCritical, variant.quantity <= critical { return .critical }
         if let warning = effectiveWarning, variant.quantity <= warning { return .warning }
         return .normal
+    }
+
+    /// Primary reference for stock proximity. Warning is preferred because it
+    /// represents the reorder line; critical is the fallback when only the
+    /// emergency line is configured.
+    var thresholdReference: Double? {
+        if let warning = effectiveWarning, warning > 0 { return warning }
+        if let critical = effectiveCritical, critical > 0 { return critical }
+        return nil
+    }
+
+    var thresholdRatio: Double? {
+        guard let reference = thresholdReference, reference > 0 else { return nil }
+        return variant.quantity / reference
+    }
+
+    var thresholdPercentText: String {
+        guard let ratio = thresholdRatio else { return "—" }
+        return "\(Int((ratio * 100).rounded()))%"
+    }
+
+    var thresholdDeltaText: String {
+        guard let reference = thresholdReference else { return "—" }
+        let delta = variant.quantity - reference
+        let formatted = StockNumberFormatter.quantity(abs(delta))
+        if delta == 0 { return "0" }
+        return delta > 0 ? "+\(formatted)" : "-\(formatted)"
+    }
+
+    var searchText: String {
+        ([family.name, family.itemDescription, category?.name, variant.sku, unit?.display, unit?.abbreviation, variantLabel, variantDisplayName]
+            + optionPairs.flatMap { [$0.option.name, $0.value.value] })
+            .compactMap { $0 }
+            .joined(separator: " ")
     }
 
     static func == (lhs: EnrichedVariantRow, rhs: EnrichedVariantRow) -> Bool {
@@ -95,10 +163,12 @@ struct StockView: View {
     @Environment(\.modelContext) private var modelContext
 
     @AppStorage("catalog.stock.viewMode") private var viewModeRaw: String = StockViewMode.list.rawValue
+    @AppStorage("catalog.stock.sortMode") private var sortModeRaw: String = StockSortMode.family.rawValue
 
     @State private var selectedCategoryId: String? = nil
     @State private var selectedTagId: String? = nil
     @State private var thresholdFilter: ThresholdFilter = .all
+    @State private var selectedOptionValueKeys: [String: String] = [:]
     @State private var selectedRow: EnrichedVariantRow? = nil
 
     @Query private var allVariants: [CatalogVariant]
@@ -121,6 +191,14 @@ struct StockView: View {
 
     private func setViewMode(_ mode: StockViewMode) {
         viewModeRaw = mode.rawValue
+    }
+
+    private var sortMode: StockSortMode {
+        StockSortMode(rawValue: sortModeRaw) ?? .family
+    }
+
+    private func setSortMode(_ mode: StockSortMode) {
+        sortModeRaw = mode.rawValue
     }
 
     // MARK: - Filter source data
@@ -153,7 +231,6 @@ struct StockView: View {
 
         let optionsByItemId = Dictionary(grouping: allOptions, by: \.catalogItemId)
         let optionValuesById = Dictionary(uniqueKeysWithValues: allOptionValues.map { ($0.id, $0) })
-        let optionsById = Dictionary(uniqueKeysWithValues: allOptions.map { ($0.id, $0) })
 
         let variantOptionValuesByVariantId = Dictionary(grouping: allVariantOptionValues, by: \.variantId)
         let tagIdsByItemId = Dictionary(grouping: allItemTags, by: \.catalogItemId)
@@ -181,7 +258,6 @@ struct StockView: View {
                     .first(where: { $0.optionId == option.id }) {
                     optionPairs.append((option: option, value: pair))
                 }
-                _ = optionsById // silence unused warning when family has 0 options
             }
 
             return EnrichedVariantRow(
@@ -196,11 +272,15 @@ struct StockView: View {
 
         guard applyFilters else { return rows }
 
-        return rows.filter { row in
+        let filtered = rows.filter { row in
             // Category filter — variant matches if family's category matches.
             if let cid = selectedCategoryId, row.category?.id != cid { return false }
             // Tag filter — variant matches if family carries the tag.
             if let tid = selectedTagId, !row.tagIds.contains(tid) { return false }
+            // Attribute filters — variant matches if each selected option axis
+            // has a value with the same normalized text. Option/value ids are
+            // family-scoped, so text is the cross-family source of truth here.
+            if !StockAttributeFiltering.matches(row, selectedValueKeys: selectedOptionValueKeys) { return false }
             // Threshold filter.
             switch thresholdFilter {
             case .all: break
@@ -209,6 +289,8 @@ struct StockView: View {
             }
             return true
         }
+
+        return StockRowOrdering.sorted(filtered, mode: sortMode)
     }
 
     private var hasBelowThreshold: Bool {
@@ -217,6 +299,10 @@ struct StockView: View {
 
     private var totalVariantCount: Int {
         enrichedVariants(applyFilters: false).count
+    }
+
+    private var optionFilterAxes: [StockOptionFilterAxis] {
+        StockAttributeFiltering.axes(from: enrichedVariants(applyFilters: false))
     }
 
     // MARK: - Body
@@ -308,13 +394,30 @@ struct StockView: View {
                     selectedId: $selectedTagId,
                     tags: companyTags
                 )
+                ForEach(optionFilterAxes) { axis in
+                    OptionValueFilterMenu(
+                        axis: axis,
+                        selectedValueKey: Binding(
+                            get: { selectedOptionValueKeys[axis.key] },
+                            set: { newValue in
+                                if let newValue {
+                                    selectedOptionValueKeys[axis.key] = newValue
+                                } else {
+                                    selectedOptionValueKeys.removeValue(forKey: axis.key)
+                                }
+                            }
+                        )
+                    )
+                }
                 ThresholdFilterMenu(
                     selected: $thresholdFilter
                 )
-                if selectedCategoryId != nil || selectedTagId != nil || thresholdFilter != .all {
+                StockSortMenu(selected: sortMode, onSelect: setSortMode)
+                if selectedCategoryId != nil || selectedTagId != nil || !selectedOptionValueKeys.isEmpty || thresholdFilter != .all {
                     Button {
                         selectedCategoryId = nil
                         selectedTagId = nil
+                        selectedOptionValueKeys.removeAll()
                         thresholdFilter = .all
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
@@ -351,6 +454,7 @@ struct StockView: View {
             case .table:
                 StockTableView(
                     rows: rows,
+                    categories: companyCategories,
                     allOptions: allOptions,
                     allOptionValues: allOptionValues,
                     allVariantOptionValues: allVariantOptionValues,
@@ -473,6 +577,61 @@ struct ThresholdFilterMenu: View {
     }
 }
 
+struct OptionValueFilterMenu: View {
+    let axis: StockOptionFilterAxis
+    @Binding var selectedValueKey: String?
+
+    private var label: String {
+        guard let selectedValueKey,
+              let match = axis.values.first(where: { $0.key == selectedValueKey })
+        else { return axis.display.uppercased() }
+        return "\(axis.display): \(match.display)".uppercased()
+    }
+
+    var body: some View {
+        Menu {
+            Button {
+                selectedValueKey = nil
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Label("All", systemImage: selectedValueKey == nil ? "checkmark" : "")
+            }
+            ForEach(axis.values) { value in
+                Button {
+                    selectedValueKey = value.key
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Label(value.display, systemImage: selectedValueKey == value.key ? "checkmark" : "")
+                }
+            }
+        } label: {
+            ChipLabel(text: label, isActive: selectedValueKey != nil)
+        }
+        .accessibilityLabel("\(axis.display) filter")
+    }
+}
+
+struct StockSortMenu: View {
+    let selected: StockSortMode
+    let onSelect: (StockSortMode) -> Void
+
+    var body: some View {
+        Menu {
+            ForEach(StockSortMode.allCases) { mode in
+                Button {
+                    onSelect(mode)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Label(mode.rawValue, systemImage: selected == mode ? "checkmark" : "")
+                }
+            }
+        } label: {
+            ChipLabel(text: "SORT: \(selected.rawValue)", isActive: selected != .family)
+        }
+        .accessibilityLabel("Stock sort")
+    }
+}
+
 // MARK: - Chip label
 
 struct ChipLabel: View {
@@ -501,6 +660,163 @@ struct ChipLabel: View {
                     lineWidth: OPSStyle.Layout.Border.standard
                 )
         )
+    }
+}
+
+// MARK: - Stock helpers
+
+enum StockTextKey {
+    static func normalize(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
+enum StockNumberFormatter {
+    static func quantity(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? "0"
+    }
+}
+
+enum StockAttributeFiltering {
+    static func matches(_ row: EnrichedVariantRow, selectedValueKeys: [String: String]) -> Bool {
+        for (optionKey, valueKey) in selectedValueKeys {
+            let hasMatch = row.optionPairs.contains { pair in
+                StockTextKey.normalize(pair.option.name) == optionKey &&
+                StockTextKey.normalize(pair.value.value) == valueKey
+            }
+            if !hasMatch { return false }
+        }
+        return true
+    }
+
+    static func axes(from rows: [EnrichedVariantRow]) -> [StockOptionFilterAxis] {
+        var axisDisplayByKey: [String: String] = [:]
+        var valuesByAxis: [String: [String: String]] = [:]
+
+        for row in rows {
+            for pair in row.optionPairs {
+                let optionKey = StockTextKey.normalize(pair.option.name)
+                let valueKey = StockTextKey.normalize(pair.value.value)
+                guard !optionKey.isEmpty, !valueKey.isEmpty else { continue }
+                axisDisplayByKey[optionKey] = pair.option.name
+                valuesByAxis[optionKey, default: [:]][valueKey] = pair.value.value
+            }
+        }
+
+        return axisDisplayByKey.keys.sorted { lhs, rhs in
+            (axisDisplayByKey[lhs] ?? lhs).localizedCaseInsensitiveCompare(axisDisplayByKey[rhs] ?? rhs) == .orderedAscending
+        }.compactMap { key in
+            let values = (valuesByAxis[key] ?? [:])
+                .map { StockOptionFilterValue(key: $0.key, display: $0.value) }
+                .sorted { $0.display.localizedCaseInsensitiveCompare($1.display) == .orderedAscending }
+            guard !values.isEmpty else { return nil }
+            return StockOptionFilterAxis(key: key, display: axisDisplayByKey[key] ?? key, values: values)
+        }
+    }
+}
+
+enum StockQuantityAdjustment {
+    static let presetDeltas: [Double] = [-100, -50, -10, -5, 5, 10, 50, 100]
+
+    static func targetQuantity(current: Double, delta: Double) -> Double? {
+        let next = current + delta
+        guard next >= 0, next != current else { return nil }
+        return next
+    }
+
+    static func exactQuantity(from text: String, current: Double) -> Double? {
+        guard let parsed = parseQuantity(text), parsed >= 0, parsed != current else { return nil }
+        return parsed
+    }
+
+    static func customTargetQuantity(from text: String, sign: Double, current: Double) -> Double? {
+        guard sign == 1 || sign == -1,
+              let parsed = parseQuantity(text),
+              abs(parsed) > 0
+        else { return nil }
+        return targetQuantity(current: current, delta: abs(parsed) * sign)
+    }
+
+    private static func parseQuantity(_ text: String) -> Double? {
+        let trimmed = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: "")
+        guard !trimmed.isEmpty else { return nil }
+        return Double(trimmed)
+    }
+}
+
+enum StockRowOrdering {
+    static func sorted(_ rows: [EnrichedVariantRow], mode: StockSortMode) -> [EnrichedVariantRow] {
+        rows.sorted { lhs, rhs in
+            switch mode {
+            case .category:
+                return compareCategory(lhs, rhs)
+            case .family:
+                return compareFamily(lhs, rhs)
+            case .quantity:
+                if lhs.variant.quantity != rhs.variant.quantity {
+                    return lhs.variant.quantity < rhs.variant.quantity
+                }
+                return compareFamily(lhs, rhs)
+            case .lowStock:
+                return compareLowStock(lhs, rhs)
+            }
+        }
+    }
+
+    private static func compareCategory(_ lhs: EnrichedVariantRow, _ rhs: EnrichedVariantRow) -> Bool {
+        switch (lhs.category, rhs.category) {
+        case let (lhsCategory?, rhsCategory?):
+            if lhsCategory.sortOrder != rhsCategory.sortOrder {
+                return lhsCategory.sortOrder < rhsCategory.sortOrder
+            }
+            let categoryCompare = lhsCategory.name.localizedCaseInsensitiveCompare(rhsCategory.name)
+            if categoryCompare != .orderedSame { return categoryCompare == .orderedAscending }
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        case (nil, nil):
+            break
+        }
+        return compareFamily(lhs, rhs)
+    }
+
+    private static func compareLowStock(_ lhs: EnrichedVariantRow, _ rhs: EnrichedVariantRow) -> Bool {
+        let lhsRank = thresholdRank(lhs)
+        let rhsRank = thresholdRank(rhs)
+        if lhsRank != rhsRank { return lhsRank < rhsRank }
+
+        switch (lhs.thresholdRatio, rhs.thresholdRatio) {
+        case let (l?, r?) where l != r:
+            return l < r
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        default:
+            return compareFamily(lhs, rhs)
+        }
+    }
+
+    private static func thresholdRank(_ row: EnrichedVariantRow) -> Int {
+        switch row.thresholdStatus {
+        case .critical: return 0
+        case .warning:  return 1
+        case .normal:   return row.thresholdRatio == nil ? 3 : 2
+        }
+    }
+
+    private static func compareFamily(_ lhs: EnrichedVariantRow, _ rhs: EnrichedVariantRow) -> Bool {
+        let familyCompare = lhs.family.name.localizedCaseInsensitiveCompare(rhs.family.name)
+        if familyCompare != .orderedSame { return familyCompare == .orderedAscending }
+        let lhsLabel = lhs.variantLabel.isEmpty ? lhs.variant.sku ?? "" : lhs.variantLabel
+        let rhsLabel = rhs.variantLabel.isEmpty ? rhs.variant.sku ?? "" : rhs.variantLabel
+        return lhsLabel.localizedCaseInsensitiveCompare(rhsLabel) == .orderedAscending
     }
 }
 
@@ -562,4 +878,3 @@ struct ThresholdBanner: View {
         .accessibilityLabel("\(criticalCount) critical, \(warningCount) warning. Filter to view.")
     }
 }
-

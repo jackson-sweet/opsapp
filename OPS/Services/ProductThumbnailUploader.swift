@@ -18,6 +18,14 @@
 import Foundation
 import UIKit
 
+enum ProductThumbnailStoragePath {
+    static let bucket = "product-thumbnails"
+
+    static func objectPath(companyId: String, ownerId: String, objectName: String) -> String {
+        "\(companyId)/\(ownerId)/\(objectName)"
+    }
+}
+
 /// Errors specific to the product-thumbnail upload pipeline. Surfaced to
 /// the caller so the UI can give the user a real reason ("ENCODE FAILED",
 /// "UPLOAD FAILED — TAP TO RETRY") instead of swallowing into a generic
@@ -42,11 +50,6 @@ enum ProductThumbnailUploadError: LocalizedError {
 final class ProductThumbnailUploader {
     static let shared = ProductThumbnailUploader()
 
-    /// Bucket name. Lifted to a constant so any future rename touches one
-    /// line; matches the bucket created in
-    /// `2026-05-08-product-thumbnails-storage-policy.sql`.
-    private let bucket = "product-thumbnails"
-
     /// Max long-edge in pixels. We resize before encoding so a 12MP camera
     /// roll original doesn't become a multi-megabyte object on the wire —
     /// thumbnails get rendered at 40-300pt, so 1024px is plenty.
@@ -68,6 +71,18 @@ final class ProductThumbnailUploader {
     /// the helper is testable and there's no implicit assumption that the
     /// upload happens on the user's "current" company.
     func upload(_ image: UIImage, productId: String, companyId: String) async throws -> URL {
+        try await upload(image, ownerId: productId, companyId: companyId)
+    }
+
+    /// Upload an image for a catalog item/family. Catalog items persist the
+    /// returned URL in `catalog_items.image_url`; the object still lives in
+    /// the existing public `product-thumbnails` bucket and verified
+    /// `{companyId}/{ownerId}/{uuid}.jpg` path layout.
+    func uploadCatalogItemImage(_ image: UIImage, catalogItemId: String, companyId: String) async throws -> URL {
+        try await upload(image, ownerId: catalogItemId, companyId: companyId)
+    }
+
+    private func upload(_ image: UIImage, ownerId: String, companyId: String) async throws -> URL {
         let resized = resized(image, maxLongEdge: maxLongEdge)
         guard let data = resized.jpegData(compressionQuality: jpegQuality) else {
             throw ProductThumbnailUploadError.encodeFailed
@@ -79,9 +94,13 @@ final class ProductThumbnailUploader {
         // GC of orphaned objects is out of scope; if it becomes an issue
         // we can sweep against `products.thumbnail_url` server-side.
         let objectName = "\(UUID().uuidString).jpg"
-        let path = "\(companyId)/\(productId)/\(objectName)"
+        let path = ProductThumbnailStoragePath.objectPath(
+            companyId: companyId,
+            ownerId: ownerId,
+            objectName: objectName
+        )
 
-        let storage = SupabaseService.shared.client.storage.from(bucket)
+        let storage = SupabaseService.shared.client.storage.from(ProductThumbnailStoragePath.bucket)
 
         // upsert: true so a retry against the same path is safe — though
         // the UUID rotation above means we'd only collide on a retry of

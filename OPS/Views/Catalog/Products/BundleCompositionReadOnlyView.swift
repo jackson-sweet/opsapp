@@ -15,9 +15,13 @@ struct BundleCompositionReadOnlyView: View {
     let bundleItems: [ProductBundleItem]
     let childProductsById: [String: Product]
 
+    private var groupedItems: ProductBundleCompositionGroups {
+        ProductBundleCompositionGrouping.group(bundleItems)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            if bundleItems.isEmpty {
+            if groupedItems.required.isEmpty && groupedItems.suggested.isEmpty {
                 Text("// NO CHILDREN YET — TAP EDIT TO BUILD THE BUNDLE")
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -29,14 +33,29 @@ struct BundleCompositionReadOnlyView: View {
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                             .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                     )
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("No bundle children")
+                    .accessibilityValue("Tap edit to build the bundle.")
             } else {
                 VStack(spacing: OPSStyle.Layout.spacing2) {
-                    ForEach(bundleItems) { item in
-                        row(item: item)
+                    if !groupedItems.required.isEmpty {
+                        groupLabel("// REQUIRED")
+                        ForEach(groupedItems.required) { item in
+                            row(item: item, participatesInPrice: true)
+                        }
+                        rolledRow
+                        if bundleProduct.bundlePricingMode == BundlePricingMode.override.rawValue {
+                            overrideRow
+                        }
                     }
-                    rolledRow
-                    if bundleProduct.bundlePricingMode == BundlePricingMode.override.rawValue {
-                        overrideRow
+                    if !groupedItems.suggested.isEmpty {
+                        if !groupedItems.required.isEmpty {
+                            Divider().background(OPSStyle.Colors.separator)
+                        }
+                        groupLabel("// SUGGESTED ADD-ONS")
+                        ForEach(groupedItems.suggested) { item in
+                            row(item: item, participatesInPrice: false)
+                        }
                     }
                 }
                 .padding(OPSStyle.Layout.spacing3)
@@ -51,7 +70,17 @@ struct BundleCompositionReadOnlyView: View {
         }
     }
 
-    private func row(item: ProductBundleItem) -> some View {
+    private func groupLabel(_ text: String) -> some View {
+        HStack {
+            Text(text)
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Spacer()
+        }
+        .padding(.top, OPSStyle.Layout.spacing1)
+    }
+
+    private func row(item: ProductBundleItem, participatesInPrice: Bool) -> some View {
         let child = childProductsById[item.childProductId]
         let unitPrice = child?.basePrice ?? 0
         let lineTotal = unitPrice * item.quantity
@@ -64,25 +93,32 @@ struct BundleCompositionReadOnlyView: View {
                 Text(child?.name ?? "—")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .lineLimit(1)
+                    .lineLimit(2)
                 Text("× \(Int(item.quantity)) · \(formattedPrice(unitPrice)) ea")
                     .font(OPSStyle.Typography.metadata)
                     .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             Spacer()
-            Text(formattedPrice(lineTotal))
+            Text(participatesInPrice ? formattedPrice(lineTotal) : "+ \(formattedPrice(lineTotal))")
                 .font(OPSStyle.Typography.metadata)
                 .monospacedDigit()
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .foregroundColor(participatesInPrice
+                                 ? OPSStyle.Colors.primaryText
+                                 : OPSStyle.Colors.tertiaryText)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(child?.name ?? "Bundle child")
+        .accessibilityValue(
+            "\(participatesInPrice ? "Required" : "Suggested add-on"), quantity \(Int(item.quantity)), unit \(formattedPrice(unitPrice)), total \(formattedPrice(lineTotal))"
+        )
     }
 
     private var rolledTotal: Double {
-        bundleItems.reduce(0) { acc, item in
-            let unit = childProductsById[item.childProductId]?.basePrice ?? 0
-            return acc + unit * item.quantity
-        }
+        ProductBundleCompositionGrouping.requiredRollupTotal(
+            bundleItems,
+            productsById: childProductsById
+        )
     }
 
     private var rolledRow: some View {
@@ -97,6 +133,9 @@ struct BundleCompositionReadOnlyView: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
         .padding(.top, OPSStyle.Layout.spacing1)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Rolled total")
+        .accessibilityValue(formattedPrice(rolledTotal))
     }
 
     @ViewBuilder
@@ -124,6 +163,11 @@ struct BundleCompositionReadOnlyView: View {
                                      : OPSStyle.Colors.errorText)
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Override price")
+        .accessibilityValue(
+            margin.map { "\(formattedPrice(price)), margin \(Int($0.rounded())) percent" } ?? formattedPrice(price)
+        )
     }
 
     private func formattedPrice(_ value: Double) -> String {

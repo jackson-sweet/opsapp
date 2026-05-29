@@ -107,6 +107,12 @@ class DataController: ObservableObject {
         // This prevents the "attempting to store >= 4194304 bytes" error
         ImageFileManager.shared.migrateAllImages()
 
+        #if DEBUG
+        if CatalogSetupQARuntime.isEnabled() {
+            return
+        }
+        #endif
+
         // Check for existing authentication - plain Task for async work
         Task {
             await checkExistingAuth()
@@ -3472,11 +3478,18 @@ class DataController: ObservableObject {
         try? modelContext?.save()
 
         // Record for async sync
+        var changedFields: [String: Any] = ["status": newStatus.rawValue]
+        if newStatus == .completed {
+            changedFields[TaskCompletionSync.idempotencyKeyPayloadKey] =
+                TaskCompletionSync.stableCompletionIdempotencyKey(taskId: task.id)
+            changedFields[TaskCompletionSync.materialAdjustmentsPayloadKey] = [String: Any]()
+        }
+
         syncEngine.recordOperation(
             entityType: .projectTask,
             entityId: task.id,
             operationType: "update",
-            changedFields: ["status": newStatus.rawValue]
+            changedFields: changedFields
         )
 
         // Cascade cancel to paired tasks (one-way — uncancelling does NOT
@@ -5039,6 +5052,11 @@ class DataController: ObservableObject {
         var changedFields: [String: Any] = [
             "status": task.status.rawValue
         ]
+        if task.status == .completed {
+            changedFields[TaskCompletionSync.idempotencyKeyPayloadKey] =
+                TaskCompletionSync.stableCompletionIdempotencyKey(taskId: task.id)
+            changedFields[TaskCompletionSync.materialAdjustmentsPayloadKey] = [String: Any]()
+        }
         if let notes = task.taskNotes {
             changedFields["task_notes"] = notes
         }

@@ -12,7 +12,18 @@
 import Foundation
 import Supabase
 
-class TaskRepository {
+protocol ProjectTaskSyncing: AnyObject {
+    func create(_ dto: SupabaseProjectTaskDTO) async throws -> SupabaseProjectTaskDTO
+    func updateFields(_ taskId: String, fields: [String: AnyJSON]) async throws
+    func softDelete(_ taskId: String) async throws
+    func completeProjectTask(
+        taskId: String,
+        idempotencyKey: String,
+        materialAdjustments: [String: AnyJSON]
+    ) async throws -> CompleteProjectTaskResponseDTO
+}
+
+class TaskRepository: ProjectTaskSyncing {
     private let client: SupabaseClient
     private let companyId: String
 
@@ -116,13 +127,25 @@ class TaskRepository {
     // MARK: - Create
 
     func create(_ dto: SupabaseProjectTaskDTO) async throws -> SupabaseProjectTaskDTO {
-        try await client
+        let shouldComplete = dto.status == TaskStatus.completed.rawValue
+        let createDTO = shouldComplete ? dto.replacingStatus(TaskStatus.active.rawValue) : dto
+        let created: SupabaseProjectTaskDTO = try await client
             .from("project_tasks")
-            .insert(dto)
+            .insert(createDTO)
             .select()
             .single()
             .execute()
             .value
+
+        if shouldComplete {
+            _ = try await completeProjectTask(
+                taskId: dto.id,
+                idempotencyKey: TaskCompletionSync.stableCompletionIdempotencyKey(taskId: dto.id),
+                materialAdjustments: [:]
+            )
+        }
+
+        return created
     }
 
     // MARK: - Upsert
@@ -137,6 +160,15 @@ class TaskRepository {
     // MARK: - Update
 
     func updateStatus(_ taskId: String, status: String) async throws {
+        if status == TaskStatus.completed.rawValue {
+            _ = try await completeProjectTask(
+                taskId: taskId,
+                idempotencyKey: TaskCompletionSync.stableCompletionIdempotencyKey(taskId: taskId),
+                materialAdjustments: [:]
+            )
+            return
+        }
+
         struct StatusUpdate: Codable {
             let status: String
             let updated_at: String
@@ -165,12 +197,45 @@ class TaskRepository {
 
     func updateFields(_ taskId: String, fields: [String: AnyJSON]) async throws {
         var payload = fields
-        payload["updated_at"] = .string(isoNow())
-        try await client
-            .from("project_tasks")
-            .update(payload)
-            .eq("id", value: taskId)
+        let shouldComplete = TaskCompletionSync.isCompletionStatus(payload["status"])
+        if shouldComplete {
+            payload.removeValue(forKey: "status")
+        }
+
+        if !payload.isEmpty {
+            payload["updated_at"] = .string(isoNow())
+            try await client
+                .from("project_tasks")
+                .update(payload)
+                .eq("id", value: taskId)
+                .execute()
+        }
+
+        if shouldComplete {
+            _ = try await completeProjectTask(
+                taskId: taskId,
+                idempotencyKey: TaskCompletionSync.stableCompletionIdempotencyKey(taskId: taskId),
+                materialAdjustments: [:]
+            )
+        }
+    }
+
+    // MARK: - Completion RPC
+
+    func completeProjectTask(
+        taskId: String,
+        idempotencyKey: String,
+        materialAdjustments: [String: AnyJSON] = [:]
+    ) async throws -> CompleteProjectTaskResponseDTO {
+        let params = CompleteProjectTaskRPCParams(
+            p_task_id: taskId,
+            p_idempotency_key: idempotencyKey,
+            p_material_adjustments: materialAdjustments
+        )
+        return try await client
+            .rpc("complete_project_task", params: params)
             .execute()
+            .value
     }
 
     func updateTeamMembers(_ taskId: String, memberIds: [String]) async throws {

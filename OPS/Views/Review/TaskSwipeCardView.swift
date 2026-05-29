@@ -100,7 +100,13 @@ struct TaskSwipeCardView: View {
         .clipped()
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
-        .onAppear { loadHeroImages() }
+        // Reload whenever the underlying task identity changes. The card stack
+        // recycles a fixed set of slot views as it advances, so .onAppear would
+        // not re-fire when a slot is reassigned to a new task — leaving the
+        // previous task's photo under the new task's labels. Keying the load on
+        // task.id reloads on every reassignment, and SwiftUI cancels the prior
+        // in-flight load so a slow fetch can't land on the wrong card.
+        .task(id: task.id) { await loadHeroImages() }
     }
 
     // MARK: - Date Badge
@@ -186,7 +192,15 @@ struct TaskSwipeCardView: View {
 
     // MARK: - Image Loading
 
-    private func loadHeroImages() {
+    @MainActor
+    private func loadHeroImages() async {
+        // Reset slot state up front: a recycled card slot still holds the prior
+        // task's images, so clear them and show the loading state until the new
+        // task's photos resolve — otherwise the old photo flashes under the new
+        // labels.
+        heroImages = []
+        isLoadingImage = true
+
         guard let project = task.project else {
             isLoadingImage = false
             return
@@ -200,18 +214,19 @@ struct TaskSwipeCardView: View {
 
         let recentPhotos = Array(photos.suffix(3))
 
-        Task {
-            var loaded: [UIImage] = []
-            for photoKey in recentPhotos {
-                if let img = await loadSingleImage(photoKey) {
-                    loaded.append(img)
-                }
-            }
-            await MainActor.run {
-                heroImages = loaded
-                isLoadingImage = false
+        var loaded: [UIImage] = []
+        for photoKey in recentPhotos {
+            if Task.isCancelled { return }
+            if let img = await loadSingleImage(photoKey) {
+                loaded.append(img)
             }
         }
+
+        // A reassigned slot cancels this task; bail before publishing so a stale
+        // load never overwrites the current task's images.
+        if Task.isCancelled { return }
+        heroImages = loaded
+        isLoadingImage = false
     }
 
     private func loadSingleImage(_ photoKey: String) async -> UIImage? {

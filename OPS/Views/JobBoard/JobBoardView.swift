@@ -554,7 +554,8 @@ func visibleSections(for user: User?) -> [JobBoardSection] {
 /// Returns the default landing section based on permissions
 func defaultSection(for user: User?) -> JobBoardSection {
     guard user != nil else { return .projects }
-    return PermissionStore.shared.can("job_board.manage_sections") ? .projects : .myTasks
+    // Users who can see the kanban board land on it by default; everyone else keeps My Tasks.
+    return PermissionStore.shared.can("job_board.manage_sections") ? .kanban : .myTasks
 }
 
 // MARK: - Section Selector

@@ -82,7 +82,7 @@ struct DataActorBenchmarkView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
 
             Text("Flag is read once in DataController.setModelContext. Flip + relaunch to swap sync paths.")
                 .font(OPSStyle.Typography.caption)

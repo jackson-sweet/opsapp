@@ -425,7 +425,7 @@ struct StairConfigView: View {
                         .lineLimit(2)
                 }
             }
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
         }
         .padding(OPSStyle.Layout.spacing3)
         .background(OPSStyle.Colors.cardBackground)
@@ -515,7 +515,7 @@ struct StairConfigView: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
 
             if addRailing {
                 Picker("Railing Type", selection: $railingType) {

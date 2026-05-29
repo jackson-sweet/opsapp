@@ -80,7 +80,7 @@ struct AdvanceNoticePreferences: View {
                 
                 Toggle("", isOn: $notifyProjectAdvance)
                     .labelsHidden()
-                    .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+                    .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
             }
             
             if notifyProjectAdvance {
@@ -172,7 +172,7 @@ struct NotificationToggleItem: View {
             
             Toggle("", isOn: $isOn)
                 .labelsHidden()
-                .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+                .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
         }
     }
 }

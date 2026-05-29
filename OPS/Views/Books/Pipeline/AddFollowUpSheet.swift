@@ -64,7 +64,7 @@ struct AddFollowUpSheet: View {
                         Toggle("REMINDER", isOn: $reminderEnabled)
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
-                            .tint(OPSStyle.Colors.primaryAccent)
+                            .tint(OPSStyle.Colors.text)
 
                         if reminderEnabled {
                             DatePicker("", selection: $reminderAt, in: Date()...dueAt, displayedComponents: [.date, .hourAndMinute])

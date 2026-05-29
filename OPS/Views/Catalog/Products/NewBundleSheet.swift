@@ -633,7 +633,7 @@ struct NewBundleSheet: View {
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
-        .tint(OPSStyle.Colors.primaryAccent)
+        .tint(OPSStyle.Colors.text)
         .onChange(of: taxable) { _, _ in
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }

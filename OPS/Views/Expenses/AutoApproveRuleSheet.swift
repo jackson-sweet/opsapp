@@ -152,7 +152,7 @@ struct AutoApproveRuleSheet: View {
                 Spacer()
                 Toggle("", isOn: $appliesToAll)
                     .labelsHidden()
-                    .tint(OPSStyle.Colors.primaryAccent)
+                    .tint(OPSStyle.Colors.text)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .frame(minHeight: OPSStyle.Layout.touchTargetStandard)

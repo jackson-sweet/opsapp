@@ -424,7 +424,7 @@ struct AllPhotosGalleryView: View {
 
                 Toggle("", isOn: $groupByProject)
                     .labelsHidden()
-                    .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+                    .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
             }
 
             // "Keep All Photos Downloaded" toggle removed — photo caching is

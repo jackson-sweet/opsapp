@@ -124,7 +124,7 @@ public struct UnitCycleChip: View {
                     .tracking(1)
                     .foregroundColor(OPSStyle.Colors.text2)
             }
-            .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.opsAccent))
+            .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }

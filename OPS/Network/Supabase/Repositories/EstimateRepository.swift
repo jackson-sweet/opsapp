@@ -8,7 +8,14 @@
 import Foundation
 import Supabase
 
-class EstimateRepository {
+protocol EstimateAcceptanceClient {
+    func acceptEstimateToJob(
+        estimateId: String,
+        idempotencyKey: String
+    ) async throws -> AcceptEstimateToJobResponseDTO
+}
+
+class EstimateRepository: EstimateAcceptanceClient {
     private let client: SupabaseClient
     private let companyId: String
 
@@ -116,6 +123,28 @@ class EstimateRepository {
             .eq("id", value: estimateId)
             .select("*, line_items(*)")
             .single()
+            .execute()
+            .value
+    }
+
+    /// Accept estimate and let Supabase atomically create the job, projected demand, and mapping notifications.
+    func acceptEstimateToJob(
+        estimateId: String,
+        idempotencyKey: String
+    ) async throws -> AcceptEstimateToJobResponseDTO {
+        struct Params: Encodable {
+            let p_estimate_id: String
+            let p_idempotency_key: String
+        }
+
+        return try await client
+            .rpc(
+                "accept_estimate_to_job",
+                params: Params(
+                    p_estimate_id: estimateId,
+                    p_idempotency_key: idempotencyKey
+                )
+            )
             .execute()
             .value
     }

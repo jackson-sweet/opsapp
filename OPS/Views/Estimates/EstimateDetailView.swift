@@ -44,6 +44,7 @@ struct EstimateDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     headerSection
+                    approvalStateBanner
                     lineItemsSection
                     totalsSection
                 }
@@ -71,8 +72,12 @@ struct EstimateDetailView: View {
                 }
             }
             if estimate.status == .sent || estimate.status == .viewed {
-                Button("Mark Approved") {
-                    Task { await viewModel.markApproved(estimate) }
+                if viewModel.approvalState(for: estimate.id).isSubmitting {
+                    Button("Accepting") {}
+                } else {
+                    Button("Mark Approved") {
+                        Task { await viewModel.markApproved(estimate) }
+                    }
                 }
             }
             if estimate.status == .approved {
@@ -119,6 +124,122 @@ struct EstimateDetailView: View {
         } message: {
             Text(viewModel.error ?? "")
         }
+    }
+
+    @ViewBuilder
+    private var approvalStateBanner: some View {
+        switch viewModel.approvalState(for: estimate.id) {
+        case .idle:
+            EmptyView()
+        case .submitting:
+            approvalBanner(
+                title: "SYS :: ACCEPTING",
+                message: "Server is booking the job.",
+                color: OPSStyle.Colors.primaryAccent
+            )
+        case .accepted(
+            _,
+            let inventoryMode,
+            let warningCount,
+            let missingMappingCount,
+            let overrunCount,
+            let overrunDetails,
+            let idempotentReplay
+        ):
+            // Booked-job material signals (stock overrun, missing stock
+            // mappings, held material warnings) only exist for companies that
+            // actually track inventory. For off-mode companies the server skips
+            // all material work, so the banner stays a plain acceptance — never
+            // surface overrun/mapping language they can't act on.
+            let isTracked = inventoryMode == "tracked"
+            let effectiveWarningCount = isTracked ? warningCount : 0
+            let effectiveMissingMappingCount = isTracked ? missingMappingCount : 0
+            let effectiveOverrunCount = isTracked ? overrunCount : 0
+            let effectiveOverrunDetails = isTracked ? overrunDetails : []
+            let hasOverruns = effectiveOverrunCount > 0
+            let hasMappings = effectiveMissingMappingCount > 0
+            let message = acceptedApprovalMessage(
+                warningCount: effectiveWarningCount,
+                missingMappingCount: effectiveMissingMappingCount,
+                overrunCount: effectiveOverrunCount,
+                overrunDetails: effectiveOverrunDetails,
+                idempotentReplay: idempotentReplay
+            )
+            approvalBanner(
+                title: hasOverruns
+                    ? "WARN :: STOCK OVERRUN"
+                    : hasMappings ? "WARN :: STOCK MAPPING" : "SYS :: ACCEPTED",
+                message: message,
+                color: hasOverruns || hasMappings
+                    ? OPSStyle.Colors.warningStatus
+                    : OPSStyle.Colors.successStatus
+            )
+        case .failed(let message):
+            approvalBanner(
+                title: "SYS :: ACCEPT FAILED",
+                message: message,
+                color: OPSStyle.Colors.errorStatus
+            )
+        }
+    }
+
+    private func approvalBanner(title: String, message: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            Text(title)
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(color)
+            Text(message)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(OPSStyle.Layout.spacing2_5)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(color.opacity(0.35), lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.top, OPSStyle.Layout.spacing2)
+    }
+
+    private func acceptedApprovalMessage(
+        warningCount: Int,
+        missingMappingCount: Int,
+        overrunCount: Int,
+        overrunDetails: [EstimateAcceptanceOverrunDetail],
+        idempotentReplay: Bool
+    ) -> String {
+        if overrunCount > 0 {
+            var parts = [
+                "\(overrunCount) stock overrun\(overrunCount == 1 ? "" : "s") projected"
+            ]
+            if let shortQuantity = overrunDetails.compactMap(\.projectedOverrunQuantity).first {
+                parts.append("Short \(formatQuantity(shortQuantity)) at booking")
+            }
+            if missingMappingCount > 0 {
+                parts.append(mappingMessage(count: missingMappingCount))
+            }
+            return parts.joined(separator: ". ") + "."
+        }
+
+        if missingMappingCount > 0 {
+            return mappingMessage(count: missingMappingCount) + "."
+        }
+
+        if warningCount > 0 {
+            let noun = warningCount == 1 ? "warning" : "warnings"
+            return "\(warningCount) inventory \(noun) held for review."
+        }
+
+        return idempotentReplay ? "Project link replayed." : "Project linked."
+    }
+
+    private func mappingMessage(count: Int) -> String {
+        let noun = count == 1 ? "fix" : "fixes"
+        return "\(count) mapping \(noun) queued in notifications"
     }
 
     // MARK: - Header
@@ -362,14 +483,17 @@ struct EstimateDetailView: View {
                     .opsPrimaryButtonStyle()
 
                 case .sent, .viewed:
+                    let isSubmittingApproval = viewModel.approvalState(for: estimate.id).isSubmitting
                     Button("RESEND") {
                         Task { await viewModel.sendEstimate(estimate) }
                     }
                     .opsSecondaryButtonStyle()
-                    Button("MARK APPROVED") {
+                    .disabled(isSubmittingApproval)
+                    Button(isSubmittingApproval ? "ACCEPTING" : "MARK APPROVED") {
                         Task { await viewModel.markApproved(estimate) }
                     }
                     .opsPrimaryButtonStyle()
+                    .disabled(isSubmittingApproval)
 
                 case .approved:
                     Button("CONVERT TO INVOICE") { showConvertOptions = true }

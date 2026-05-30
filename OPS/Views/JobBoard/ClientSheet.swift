@@ -669,10 +669,10 @@ struct ClientSheet: View {
         }
     }
     
-    /// Result of the create-client flow. The lead may not be created if the
-    /// client itself fell back to a pure-local insert (no SyncEngine) or if
-    /// the opportunity insert failed for any reason — the client save is
-    /// still considered successful and the user is told the lead is pending.
+    /// Result of the create-client flow. The lead may not be created only when
+    /// the client itself fell back to a pure-local insert (no SyncEngine).
+    /// Opportunity insert failures are surfaced to the user instead of being
+    /// reported as a successful save.
     private struct CreateClientResult {
         let client: Client
         let leadCreated: Bool
@@ -758,53 +758,36 @@ struct ClientSheet: View {
             dataController.triggerBackgroundSync()
             // Skip lead creation when the client itself didn't reach Supabase —
             // the foreign key would 404 and create a noisy failure. The
-            // background sync will pick the client up; if Jackson wants the
-            // lead created retroactively we can wire a follow-up sync later.
+            // background sync will pick the client up before pipeline linking.
             return CreateClientResult(client: tempClient, leadCreated: false, opportunityId: nil)
         }
 
         // Bug 321e65c8 — every new client is automatically tracked in the
         // pipeline as a "New Lead" so the user can move it through quoting,
         // follow-up, and won/lost without a separate lead-creation step.
-        // Failure here is non-fatal: the client is still saved, and the user
-        // is told the pipeline link is pending.
-        let opportunityId = await createMatchingLead(for: savedClient, companyId: companyId)
+        let opportunityId = try await createMatchingLead(for: savedClient, companyId: companyId)
         return CreateClientResult(
             client: savedClient,
-            leadCreated: opportunityId != nil,
+            leadCreated: true,
             opportunityId: opportunityId
         )
     }
 
     /// Creates a Pipeline Opportunity tied to a freshly-saved client.
-    /// Returns the new opportunity id on success, or nil if creation failed
-    /// (offline, network error, RLS denial). The caller treats nil as a
-    /// "lead pending" state — the client is still considered saved.
+    /// Returns the new opportunity id on success. Create failures throw so the
+    /// UI does not report a saved client as fully complete when the pipeline
+    /// lead is missing.
     ///
     /// We create the opportunity via Supabase directly (mirrors
     /// LogActivityViewModel.save()). Opportunities are NOT registered as a
     /// SyncEntityType, so there's no SyncEngine route — direct API is the
     /// canonical pattern. Local SwiftData is updated in the same step so the
     /// pipeline view reflects the new lead immediately.
-    private func createMatchingLead(for client: Client, companyId: String) async -> String? {
-        let trimmedName = client.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else {
+    private func createMatchingLead(for client: Client, companyId: String) async throws -> String {
+        guard let dto = ClientLeadAutocreate.makeOpportunityDTO(for: client, companyId: companyId) else {
             print("[LEAD_AUTOCREATE] Skipping — client has empty name")
-            return nil
+            throw ClientLeadAutocreateError.missingClientName
         }
-
-        let dto = CreateOpportunityDTO(
-            companyId: companyId,
-            title: "\(trimmedName) — lead",
-            contactName: trimmedName,
-            contactEmail: client.email,
-            contactPhone: client.phoneNumber,
-            description: nil,
-            estimatedValue: nil,
-            source: "client_created",
-            quoteDeliveryMethod: nil,
-            clientId: client.id
-        )
 
         let repository = OpportunityRepository(companyId: companyId)
         do {
@@ -832,7 +815,7 @@ struct ClientSheet: View {
             return created.id
         } catch {
             print("[LEAD_AUTOCREATE] ⚠️ Failed to create lead for client \(client.id): \(error)")
-            return nil
+            throw ClientLeadAutocreateError.creationFailed
         }
     }
     

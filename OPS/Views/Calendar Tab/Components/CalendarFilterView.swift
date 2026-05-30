@@ -598,7 +598,7 @@ private struct DropdownSection<Content: View>: View {
                         .foregroundColor(summary == "All" ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
                         .lineLimit(1)
 
-                    Image("ops.chevron-down")
+                    Image(OPSStyle.Icons.chevronDown)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))

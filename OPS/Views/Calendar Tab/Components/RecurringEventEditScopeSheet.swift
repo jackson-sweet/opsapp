@@ -184,7 +184,7 @@ struct RecurringEventEditScopeSheet: View {
 
                 Spacer()
 
-                Image("ops.chevron-right")
+                Image(OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(titleColor(isDestructive: isDestructive, isPrimary: isPrimary).opacity(0.6))
             }

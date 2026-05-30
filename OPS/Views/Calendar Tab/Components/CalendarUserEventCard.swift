@@ -58,11 +58,11 @@ struct CalendarUserEventCard: View {
         .contextMenu {
             if onEdit != nil {
                 Button { onEdit?() } label: {
-                    Label("Edit", image: "ops.edit")
+                    Label("Edit", image: OPSStyle.Icons.pencilCircleFill)
                 }
             }
             Button(role: .destructive) { onDelete() } label: {
-                Label("Delete", image: "ops.delete")
+                Label("Delete", image: OPSStyle.Icons.trashFill)
             }
         }
     }

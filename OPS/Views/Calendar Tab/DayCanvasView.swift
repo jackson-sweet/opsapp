@@ -483,7 +483,7 @@ struct DayPageView: View {
                 .background(alignment: .leading) {
                     if (swipeOffset[task.id] ?? 0) > 10 {
                         HStack(spacing: 4) {
-                            Image("ops.arrow-right")
+                            Image(OPSStyle.Icons.arrowRight)
                             Text("+1")
                         }
                         .font(OPSStyle.Typography.button)
@@ -516,16 +516,16 @@ struct DayPageView: View {
                 .contextMenu {
                     Section("Push") {
                         Button(action: { pushTask(task, days: 1) }) {
-                            Label("+1 Day", image: "ops.arrow-right")
+                            Label("+1 Day", image: OPSStyle.Icons.arrowRight)
                         }
                         Button(action: { pushTask(task, days: 2) }) {
-                            Label("+2 Days", image: "ops.arrow-right")
+                            Label("+2 Days", image: OPSStyle.Icons.arrowRight)
                         }
                         Button(action: { pushTask(task, days: 3) }) {
-                            Label("+3 Days", image: "ops.arrow-right")
+                            Label("+3 Days", image: OPSStyle.Icons.arrowRight)
                         }
                         Button(action: { pushTask(task, days: 7) }) {
-                            Label("+1 Week", image: "ops.arrow-right")
+                            Label("+1 Week", image: OPSStyle.Icons.arrowRight)
                         }
                     }
 
@@ -546,10 +546,10 @@ struct DayPageView: View {
 
                     Section("Cascade") {
                         Button(action: { pushTaskWithCascade(task, days: 1) }) {
-                            Label("+1 Day (+ dependents)", image: "ops.dependency")
+                            Label("+1 Day (+ dependents)", image: OPSStyle.Icons.dependency)
                         }
                         Button(action: { pushTaskWithCascade(task, days: 2) }) {
-                            Label("+2 Days (+ dependents)", image: "ops.dependency")
+                            Label("+2 Days (+ dependents)", image: OPSStyle.Icons.dependency)
                         }
                     }
 
@@ -562,13 +562,13 @@ struct DayPageView: View {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             contextMenuRescheduleTask = task
                         }) {
-                            Label("Reschedule...", image: "ops.date")
+                            Label("Reschedule...", image: OPSStyle.Icons.calendarFill)
                         }
                         Button(action: {
                             enterSelectMode()
                             selectedTaskIds.insert(task.id)
                         }) {
-                            Label("Select", image: "ops.checkmark")
+                            Label("Select", image: OPSStyle.Icons.checkmarkCircle)
                         }
                     }
                 }
@@ -702,7 +702,7 @@ struct DayPageView: View {
 
                         Spacer()
 
-                        Image("ops.arrow-right")
+                        Image(OPSStyle.Icons.arrowRight)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                             .foregroundColor(OPSStyle.Colors.buttonText)
                     }

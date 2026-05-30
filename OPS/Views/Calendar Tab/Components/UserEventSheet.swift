@@ -367,7 +367,7 @@ struct UserEventSheet: View {
     /// "future" or "all" in the scope sheet — so SAVE is never a surprise.
     private var editScopeBanner: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image("ops.dependency")
+            Image(OPSStyle.Icons.dependency)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.primaryAccent)
 
@@ -392,7 +392,7 @@ struct UserEventSheet: View {
 
     private var timeOffBanner: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image("ops.warning")
+            Image(OPSStyle.Icons.stale)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.warningStatus)
 
@@ -556,7 +556,7 @@ struct UserEventSheet: View {
 
                     Spacer()
 
-                    Image("ops.chevron-right")
+                    Image(OPSStyle.Icons.chevronRight)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
@@ -595,7 +595,7 @@ struct UserEventSheet: View {
                         }
                     } label: {
                         if recurrence == option {
-                            Label(option.label, image: "ops.checkmark")
+                            Label(option.label, image: OPSStyle.Icons.checkmarkCircle)
                         } else {
                             Text(option.label)
                         }
@@ -609,7 +609,7 @@ struct UserEventSheet: View {
 
                     Spacer()
 
-                    Image("ops.sort")
+                    Image(OPSStyle.Icons.sort)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm))
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
@@ -728,7 +728,7 @@ struct UserEventSheet: View {
             // Month navigation
             HStack {
                 Button(action: previousMonth) {
-                    Image("ops.chevron-left")
+                    Image(OPSStyle.Icons.chevronLeft)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .frame(width: 44, height: 44)
@@ -743,7 +743,7 @@ struct UserEventSheet: View {
                 Spacer()
 
                 Button(action: nextMonth) {
-                    Image("ops.chevron-right")
+                    Image(OPSStyle.Icons.chevronRight)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .frame(width: 44, height: 44)
@@ -804,7 +804,7 @@ struct UserEventSheet: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Image("ops.arrow-right")
+            Image(OPSStyle.Icons.arrowRight)
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(hasDateRange ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                 .padding(.horizontal, OPSStyle.Layout.spacing2)

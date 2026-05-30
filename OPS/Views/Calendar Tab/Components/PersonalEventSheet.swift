@@ -120,7 +120,7 @@ struct PersonalEventSheet: View {
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                 }
                                 Spacer()
-                                Image("ops.chevron-right")
+                                Image(OPSStyle.Icons.chevronRight)
                                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                             }

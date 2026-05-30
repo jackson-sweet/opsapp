@@ -384,7 +384,7 @@ struct TaskTypeReminderEditorSheet: View {
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
             }
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
             .padding(OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.cardBackgroundDark)
             .cornerRadius(OPSStyle.Layout.cornerRadius)

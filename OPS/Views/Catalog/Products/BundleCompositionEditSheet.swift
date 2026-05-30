@@ -18,6 +18,8 @@ struct BundleCompositionEditSheet: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @Query private var allBundleItems: [ProductBundleItem]
     @Query private var allProducts: [Product]
@@ -38,10 +40,22 @@ struct BundleCompositionEditSheet: View {
         dataController.currentUser?.companyId ?? ""
     }
 
-    private var persistedItems: [ProductBundleItem] {
-        allBundleItems
+    private var persistedGroups: ProductBundleCompositionGroups {
+        let rows = allBundleItems
             .filter { $0.bundleProductId == product.id && $0.deletedAt == nil }
-            .sorted { $0.displayOrder < $1.displayOrder }
+        return ProductBundleCompositionGrouping.group(rows)
+    }
+
+    private var persistedRequiredItems: [ProductBundleItem] {
+        persistedGroups.required
+    }
+
+    private var persistedSuggestedItems: [ProductBundleItem] {
+        persistedGroups.suggested
+    }
+
+    private var persistedSuggestedChildIds: Set<String> {
+        Set(persistedSuggestedItems.map(\.childProductId))
     }
 
     private var productById: [String: Product] {
@@ -54,6 +68,7 @@ struct BundleCompositionEditSheet: View {
                 && p.isActive
                 && p.kind != .package
                 && p.id != product.id
+                && !persistedSuggestedChildIds.contains(p.id)
         }
     }
 
@@ -111,6 +126,7 @@ struct BundleCompositionEditSheet: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             childrenSection
+                            suggestedAddOnsSection
                             pricingSection
                             errorRow
                         }
@@ -137,7 +153,7 @@ struct BundleCompositionEditSheet: View {
     private func hydrateIfNeeded() {
         guard !didHydrate else { return }
         didHydrate = true
-        workingChildren = persistedItems.map { item in
+        workingChildren = persistedRequiredItems.map { item in
             BundleChildDraft(id: item.childProductId,
                              quantity: item.quantity,
                              displayOrder: item.displayOrder)
@@ -195,7 +211,7 @@ struct BundleCompositionEditSheet: View {
     private var addChildButton: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.easeInOut(duration: 0.18)) {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
                 drawerOpen.toggle()
             }
         } label: {
@@ -221,6 +237,8 @@ struct BundleCompositionEditSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(drawerOpen ? "Close child picker" : "Open child picker")
+        .accessibilityHint(drawerOpen ? "Hides product search." : "Shows product search.")
+        .accessibilityValue(drawerOpen ? "Open" : "Closed")
     }
 
     @ViewBuilder
@@ -235,11 +253,15 @@ struct BundleCompositionEditSheet: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
+                    .accessibilityLabel("Search products")
                 if !drawerSearch.isEmpty {
                     Button { drawerSearch = "" } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                     }
+                    .accessibilityLabel("Clear product search")
+                    .accessibilityHint("Clears the search field.")
                 }
             }
             .padding(OPSStyle.Layout.spacing2)
@@ -303,6 +325,8 @@ struct BundleCompositionEditSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Add \(childProduct.name)")
+        .accessibilityValue(formattedPrice(childProduct.basePrice))
+        .accessibilityHint("Adds this product as a required bundle child.")
     }
 
     private func addOrIncrement(product childProduct: Product) {
@@ -315,32 +339,65 @@ struct BundleCompositionEditSheet: View {
         }
     }
 
+    @ViewBuilder
     private func selectedChildRow(draft: BundleChildDraft) -> some View {
         let child = productById[draft.id]
         let unitPrice = child?.basePrice ?? 0
         let lineTotal = unitPrice * draft.quantity
-        return HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: child?.category3Way.iconName ?? "questionmark.circle")
-                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .frame(width: 24)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(child?.name ?? "—")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .lineLimit(1)
-                Text(formattedPrice(unitPrice) + " ea")
-                    .font(OPSStyle.Typography.metadata)
-                    .monospacedDigit()
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+        Group {
+            if horizontalSizeClass == .compact {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Image(systemName: child?.category3Way.iconName ?? "questionmark.circle")
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(child?.name ?? "—")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .lineLimit(2)
+                            Text(formattedPrice(unitPrice) + " ea")
+                                .font(OPSStyle.Typography.metadata)
+                                .monospacedDigit()
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
+                        Spacer()
+                    }
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        qtyStepper(for: draft)
+                        Spacer()
+                        Text(formattedPrice(lineTotal))
+                            .font(OPSStyle.Typography.metadata)
+                            .monospacedDigit()
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                }
+            } else {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Image(systemName: child?.category3Way.iconName ?? "questionmark.circle")
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(child?.name ?? "—")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .lineLimit(1)
+                        Text(formattedPrice(unitPrice) + " ea")
+                            .font(OPSStyle.Typography.metadata)
+                            .monospacedDigit()
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+                    Spacer()
+                    qtyStepper(for: draft)
+                    Text(formattedPrice(lineTotal))
+                        .font(OPSStyle.Typography.metadata)
+                        .monospacedDigit()
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(minWidth: 70, alignment: .trailing)
+                }
             }
-            Spacer()
-            qtyStepper(for: draft)
-            Text(formattedPrice(lineTotal))
-                .font(OPSStyle.Typography.metadata)
-                .monospacedDigit()
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(minWidth: 70, alignment: .trailing)
         }
         .padding(OPSStyle.Layout.spacing2)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -356,6 +413,12 @@ struct BundleCompositionEditSheet: View {
             } label: {
                 Label("Remove", systemImage: "trash")
             }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(child?.name ?? "Bundle child")
+        .accessibilityValue("Quantity \(Int(draft.quantity)), unit \(formattedPrice(unitPrice)), total \(formattedPrice(lineTotal))")
+        .accessibilityAction(named: "Remove") {
+            removeChild(draft)
         }
     }
 
@@ -373,7 +436,7 @@ struct BundleCompositionEditSheet: View {
                 Image(systemName: "minus")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .frame(width: 36, height: 36)
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
@@ -382,6 +445,7 @@ struct BundleCompositionEditSheet: View {
                     )
             }
             .accessibilityLabel("Decrease quantity")
+            .accessibilityHint(draft.quantity > 1 ? "Subtracts one from this bundle child." : "Removes this bundle child.")
             Text("× \(Int(draft.quantity))")
                 .font(OPSStyle.Typography.metadata)
                 .monospacedDigit()
@@ -395,7 +459,7 @@ struct BundleCompositionEditSheet: View {
                 Image(systemName: "plus")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .frame(width: 36, height: 36)
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
                     .background(OPSStyle.Colors.cardBackgroundDark)
                     .cornerRadius(OPSStyle.Layout.cornerRadius)
                     .overlay(
@@ -404,12 +468,66 @@ struct BundleCompositionEditSheet: View {
                     )
             }
             .accessibilityLabel("Increase quantity")
+            .accessibilityHint("Adds one to this bundle child.")
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityValue("Quantity \(Int(draft.quantity))")
     }
 
     private func removeChild(_ draft: BundleChildDraft) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         workingChildren.removeAll { $0.id == draft.id }
+    }
+
+    @ViewBuilder
+    private var suggestedAddOnsSection: some View {
+        if !persistedSuggestedItems.isEmpty {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                CatalogSectionHeader("SUGGESTED ADD-ONS")
+                ForEach(persistedSuggestedItems) { item in
+                    suggestedChildRow(item: item)
+                }
+            }
+        }
+    }
+
+    private func suggestedChildRow(item: ProductBundleItem) -> some View {
+        let child = productById[item.childProductId]
+        let unitPrice = child?.basePrice ?? 0
+        let lineTotal = unitPrice * item.quantity
+        return HStack(spacing: OPSStyle.Layout.spacing2) {
+            Image(systemName: child?.category3Way.iconName ?? "questionmark.circle")
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(child?.name ?? "—")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .lineLimit(1)
+                Text("× \(Int(item.quantity)) · \(formattedPrice(unitPrice)) ea")
+                    .font(OPSStyle.Typography.metadata)
+                    .monospacedDigit()
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            Spacer()
+            Text("+ \(formattedPrice(lineTotal))")
+                .font(OPSStyle.Typography.metadata)
+                .monospacedDigit()
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .frame(minWidth: 70, alignment: .trailing)
+        }
+        .padding(OPSStyle.Layout.spacing2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OPSStyle.Colors.cardBackgroundDark)
+        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(child?.name ?? "Suggested add-on")
+        .accessibilityValue("Quantity \(Int(item.quantity)), unit \(formattedPrice(unitPrice)), add-on total \(formattedPrice(lineTotal))")
     }
 
     // MARK: - Pricing
@@ -454,6 +572,8 @@ struct BundleCompositionEditSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Pricing mode \(mode.displayLabel.lowercased())")
+        .accessibilityHint("Sets how the required bundle children determine price.")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -561,6 +681,9 @@ struct BundleCompositionEditSheet: View {
                 )
             }
             .disabled(!canSave)
+            .accessibilityLabel("Save bundle")
+            .accessibilityHint(canSave ? "Saves required child quantities and bundle pricing." : "Add required children and fix price fields first.")
+            .accessibilityValue(isSaving ? "Saving" : (canSave ? "Ready" : "Locked"))
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing3)
         }
@@ -584,21 +707,21 @@ struct BundleCompositionEditSheet: View {
         defer { isSaving = false }
         errorMessage = nil
 
-        let persistedByChildId: [String: ProductBundleItem] = Dictionary(
-            uniqueKeysWithValues: persistedItems.map { ($0.childProductId, $0) }
+        let persistedRequiredByChildId: [String: ProductBundleItem] = Dictionary(
+            uniqueKeysWithValues: persistedRequiredItems.map { ($0.childProductId, $0) }
         )
         let workingByChildId: [String: BundleChildDraft] = Dictionary(
             uniqueKeysWithValues: workingChildren.map { ($0.id, $0) }
         )
 
         let toCreate: [BundleChildDraft] = workingChildren.filter {
-            persistedByChildId[$0.id] == nil
+            persistedRequiredByChildId[$0.id] == nil
         }
-        let toDelete: [ProductBundleItem] = persistedItems.filter {
+        let toDelete: [ProductBundleItem] = persistedRequiredItems.filter {
             workingByChildId[$0.childProductId] == nil
         }
         let toUpdate: [(ProductBundleItem, BundleChildDraft)] = workingChildren.compactMap { draft in
-            guard let existing = persistedByChildId[draft.id] else { return nil }
+            guard let existing = persistedRequiredByChildId[draft.id] else { return nil }
             if existing.quantity != draft.quantity || existing.displayOrder != draft.displayOrder {
                 return (existing, draft)
             }

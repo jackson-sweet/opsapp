@@ -291,11 +291,22 @@ struct MainTabView: View {
             Image(systemName: "magnifyingglass")
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(width: 44, height: 44)
+                .frame(
+                    width: OPSStyle.Layout.touchTargetMin,
+                    height: OPSStyle.Layout.touchTargetMin
+                )
                 .background(OPSStyle.Colors.cardBackground)
                 .clipShape(Circle())
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel("Search")
+    }
+
+    /// Catalog owns the top-trailing menu lane, so Search shifts left by one
+    /// minimum target plus spacing to keep hit and accessibility frames separate.
+    private var persistentSearchTrailingInset: CGFloat {
+        guard let catalogTabIndex = catalogTabIndex, selectedTab == catalogTabIndex else { return 0 }
+        return OPSStyle.Layout.touchTargetMin + OPSStyle.Layout.spacing2
     }
 
     private var slideTransition: AnyTransition {
@@ -419,6 +430,7 @@ struct MainTabView: View {
                     Spacer()
                     if selectedTab != 0 {
                         persistentSearchButton
+                            .padding(.trailing, persistentSearchTrailingInset)
                     }
                 }
                 .padding(.horizontal, 20)

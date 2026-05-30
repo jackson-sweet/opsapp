@@ -120,6 +120,7 @@ struct FloatingActionMenu: View {
 
     @State private var showingCatalogAddVariant = false
     @State private var showingCatalogAddFamily = false
+    @State private var showingCatalogSetupFlow = false
     @State private var showingCatalogImport = false
     @State private var showingProductKindPicker = false
     @State private var showingNewServiceSheet = false
@@ -451,6 +452,17 @@ struct FloatingActionMenu: View {
             var catalogItems: [FABMenuItem] = []
             if isCatalogTab && segment == .stock {
                 catalogItems = [
+                    FABMenuItem(
+                        id: "catalog-stock-setup",
+                        icon: "square.grid.3x3",
+                        label: "Stock Setup",
+                        permission: "catalog.manage",
+                        disabledInTutorial: true,
+                        action: {
+                            showCreateMenu = false
+                            showingCatalogSetupFlow = true
+                        }
+                    ),
                     FABMenuItem(
                         id: "catalog-add-variant",
                         icon: "plus.app",
@@ -796,6 +808,10 @@ struct FloatingActionMenu: View {
         }
         .sheet(isPresented: $showingCatalogAddFamily) {
             AddFamilySheet()
+                .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingCatalogSetupFlow) {
+            CatalogSetupFlowSheet()
                 .environmentObject(dataController)
         }
         .sheet(isPresented: $showingCatalogImport) {

@@ -66,7 +66,7 @@ struct WizardTestingView: View {
                     }
                 }
             ))
-                .tint(OPSStyle.Colors.primaryAccent)
+                .tint(OPSStyle.Colors.text)
         }
         .padding(16)
         .background(OPSStyle.Colors.cardBackgroundDark)

@@ -222,6 +222,10 @@ struct SettingsView: View {
                                             action: { activeDestination = .inventorySettings }
                                         )
                                     }
+                                    // Inventory tracking on/off now lives inside the
+                                    // Inventory screen (top "TRACKING" section) and
+                                    // the Catalog Setup review step — both gated to
+                                    // catalog.manage. No separate top-level row.
                                 }
                                 .padding(.horizontal, 20)
                             }

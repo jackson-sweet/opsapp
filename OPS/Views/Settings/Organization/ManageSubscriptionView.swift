@@ -742,7 +742,7 @@ struct ManageSubscriptionView: View {
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
                                     }
                                 }
-                                .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.errorStatus))
+                                .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
                             }
                             .padding(.horizontal, 20)
                         }

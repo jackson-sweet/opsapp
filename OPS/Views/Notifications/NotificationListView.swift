@@ -7,6 +7,85 @@
 
 import SwiftUI
 
+struct CatalogSetupNotificationRoute: Equatable {
+    let missingMappingKey: String?
+    let actionLabel: String
+    let refreshesNotificationRailAfterCommit: Bool
+    let notificationName = Notification.Name("OpenCatalogSetup")
+
+    init(
+        missingMappingKey: String?,
+        actionLabel: String,
+        refreshesNotificationRailAfterCommit: Bool = true
+    ) {
+        self.missingMappingKey = missingMappingKey
+        self.actionLabel = actionLabel
+        self.refreshesNotificationRailAfterCommit = refreshesNotificationRailAfterCommit
+    }
+
+    static func route(
+        type: String,
+        deepLinkType: String?,
+        actionUrl: String?,
+        actionLabel: String?,
+        dedupeKey: String?
+    ) -> CatalogSetupNotificationRoute? {
+        let normalizedDeepLink = (deepLinkType ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedType = type.trimmingCharacters(in: .whitespacesAndNewlines)
+        let urlCarriesCatalogSetup = isCatalogSetupURL(actionUrl)
+        let isCatalogSetup = normalizedDeepLink == "catalogSetup"
+            || normalizedDeepLink == "catalog_setup"
+            || normalizedType == "catalog_mapping_needed"
+            || urlCarriesCatalogSetup
+
+        guard isCatalogSetup else { return nil }
+
+        let missingMappingKey = missingMappingFromActionURL(actionUrl)
+            ?? nonEmpty(dedupeKey)
+
+        return CatalogSetupNotificationRoute(
+            missingMappingKey: missingMappingKey,
+            actionLabel: nonEmpty(actionLabel) ?? "FIX MAPPING",
+            refreshesNotificationRailAfterCommit: true
+        )
+    }
+
+    static func route(for notification: NotificationDTO) -> CatalogSetupNotificationRoute? {
+        route(
+            type: notification.type,
+            deepLinkType: notification.deepLinkType,
+            actionUrl: notification.actionUrl,
+            actionLabel: notification.actionLabel,
+            dedupeKey: notification.dedupeKey
+        )
+    }
+
+    private static func isCatalogSetupURL(_ actionUrl: String?) -> Bool {
+        guard let actionUrl,
+              let components = URLComponents(string: actionUrl),
+              components.scheme == "ops" else {
+            return false
+        }
+        return components.host == "catalog" && components.path == "/setup"
+    }
+
+    private static func missingMappingFromActionURL(_ actionUrl: String?) -> String? {
+        guard let actionUrl,
+              let components = URLComponents(string: actionUrl) else {
+            return nil
+        }
+        return components.queryItems?
+            .first(where: { $0.name == "missingMapping" })?
+            .value
+            .flatMap(nonEmpty)
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
 struct NotificationListView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
@@ -549,16 +628,20 @@ struct NotificationListView: View {
                     // notifications with no explicit deep_link_type still
                     // route by `notification.type` (Bug bb63c37e fallback)
                     // so we surface the button for those legacy rows too.
+                    let catalogSetupRoute = CatalogSetupNotificationRoute.route(for: notification)
                     let typeImpliesDeepLink: Bool = {
                         switch notification.type {
                         case "expense_submitted", "expense_approved", "expense_rejected",
-                             "invoice_approved", "invoice_revisions", "invoice_overdue":
+                             "invoice_approved", "invoice_revisions", "invoice_overdue",
+                             "billable_this_week",
+                             "catalog_mapping_needed":
                             return true
                         default: return false
                         }
                     }()
                     let hasDeepLink = (notification.projectId != nil && !(notification.projectId?.isEmpty ?? true))
                         || (notification.deepLinkType != nil && !(notification.deepLinkType?.isEmpty ?? true))
+                        || catalogSetupRoute != nil
                         || typeImpliesDeepLink
                     if hasDeepLink {
                         let actionLabel: String = {
@@ -576,6 +659,8 @@ struct NotificationListView: View {
                                     return "VIEW EXPENSES"
                                 case "invoice_approved", "invoice_revisions", "invoice_overdue":
                                     return "VIEW INVOICES"
+                                case "catalog_mapping_needed":
+                                    return catalogSetupRoute?.actionLabel ?? "FIX MAPPING"
                                 default:
                                     return "OPEN"
                                 }
@@ -587,10 +672,12 @@ struct NotificationListView: View {
                             case "unscheduledReview":              return "REVIEW SCHEDULE"
                             case "photoStorage":                   return "MANAGE PHOTOS"
                             case "catalogOrders":                  return notification.actionLabel ?? "REVIEW"
+                            case "catalogSetup", "catalog_setup":  return catalogSetupRoute?.actionLabel ?? "FIX MAPPING"
                             case "expense", "expenses",
                                  "expenseReview", "invoice_detail": return "VIEW EXPENSES"
                             case "invoice", "invoices":            return "VIEW INVOICES"
                             case "projectsNeedingTasks":           return "PLAN THE WORK"
+                            case "billableThisWeek":               return notification.actionLabel ?? "OPEN HOME"
                             case "inbox", "email_sync_complete":   return "VIEW DETAILS"
                             case "cashflow":                       return notification.actionLabel ?? "REVIEW FORECAST"
                             default:                               return notification.actionLabel ?? "OPEN"
@@ -684,6 +771,8 @@ struct NotificationListView: View {
                 return ("exclamationmark.triangle.fill", OPSStyle.Colors.warningStatus)
             case "catalog_order_drafted":
                 return ("shippingbox.fill", OPSStyle.Colors.successStatus)
+            case "catalog_mapping_needed":
+                return ("square.grid.3x3", OPSStyle.Colors.warningStatus)
             case "time_off_requested":
                 return ("calendar.badge.clock", OPSStyle.Colors.warningStatus)
             case "time_off_approved":
@@ -702,6 +791,8 @@ struct NotificationListView: View {
                 return ("externaldrive.fill.badge.exclamationmark", OPSStyle.Colors.warningStatus)
             case "projects_needing_tasks":
                 return ("folder.badge.plus", OPSStyle.Colors.warningStatus)
+            case "billable_this_week":
+                return ("dollarsign.circle", OPSStyle.Colors.finRevenue)
             case "email_sync_complete":
                 return ("envelope.badge", OPSStyle.Colors.primaryAccent)
             case "stale_estimate_review":
@@ -778,6 +869,10 @@ struct NotificationListView: View {
 
         // Route by deep link type
         let deepLink = notification.deepLinkType ?? ""
+        if let catalogSetupRoute = CatalogSetupNotificationRoute.route(for: notification) {
+            openCatalogSetup(route: catalogSetupRoute)
+            return
+        }
 
         switch deepLink {
         case "subscription", "trial_expiry":
@@ -837,6 +932,13 @@ struct NotificationListView: View {
                     )
                 }
             }
+        case "catalogSetup", "catalog_setup":
+            openCatalogSetup(
+                route: CatalogSetupNotificationRoute(
+                    missingMappingKey: notification.dedupeKey,
+                    actionLabel: notification.actionLabel ?? "FIX MAPPING"
+                )
+            )
         case "expense", "expenses", "expenseReview":
             // Bug 8ed0d2ed — expense notifications previously fell through to
             // `default` which only handled projectId, leaving the deep link
@@ -859,6 +961,11 @@ struct NotificationListView: View {
             dismiss()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 appState.showProjectsNeedingTasksReview = true
+            }
+        case "billableThisWeek":
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("NavigateToMap"), object: nil)
             }
         case "inbox", "email_sync_complete":
             // Email-sync notifications come from the web sync engine. iOS
@@ -917,6 +1024,18 @@ struct NotificationListView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     NotificationCenter.default.post(name: Notification.Name("OpenInvoices"), object: nil)
                 }
+            case "billable_this_week":
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    NotificationCenter.default.post(name: Notification.Name("NavigateToMap"), object: nil)
+                }
+            case "catalog_mapping_needed":
+                openCatalogSetup(
+                    route: CatalogSetupNotificationRoute(
+                        missingMappingKey: notification.dedupeKey,
+                        actionLabel: notification.actionLabel ?? "FIX MAPPING"
+                    )
+                )
             default:
                 // Final fallback — deep link to project if available.
                 if let projectId = notification.projectId, !projectId.isEmpty {
@@ -925,6 +1044,24 @@ struct NotificationListView: View {
                         appState.viewProjectDetailsById(projectId)
                     }
                 }
+            }
+        }
+    }
+
+    private func openCatalogSetup(route: CatalogSetupNotificationRoute) {
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            NotificationCenter.default.post(name: Notification.Name("OpenCatalog"), object: nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                var userInfo: [String: Any] = [:]
+                if let missingMappingKey = route.missingMappingKey {
+                    userInfo["missingMapping"] = missingMappingKey
+                }
+                NotificationCenter.default.post(
+                    name: route.notificationName,
+                    object: nil,
+                    userInfo: userInfo
+                )
             }
         }
     }

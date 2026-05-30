@@ -72,10 +72,7 @@ struct VariantFormSheet: View {
     }
 
     private var familyOptions: [CatalogOption] {
-        guard let id = selectedFamilyId else { return [] }
-        return allOptions
-            .filter { $0.catalogItemId == id }
-            .sorted { $0.sortOrder < $1.sortOrder }
+        optionsForFamily(selectedFamilyId)
     }
 
     private var visibleFamilyOptions: [CatalogOption] {
@@ -138,6 +135,15 @@ struct VariantFormSheet: View {
                 }
             }
             .onAppear { loadInitial() }
+            .onChange(of: selectedFamilyId) { oldValue, newValue in
+                guard oldValue != newValue else { return }
+                optionSelections = VariantOptionSelectionState.validSelections(
+                    optionSelections,
+                    familyOptions: optionsForFamily(newValue),
+                    optionValues: allOptionValues
+                )
+                errorMessage = nil
+            }
         }
     }
 
@@ -326,17 +332,12 @@ struct VariantFormSheet: View {
         criticalText = variant.criticalThreshold.map { String($0) } ?? ""
         selectedUnitId = variant.unitId
 
-        // Pre-fill option selections from existing joins.
-        let existingJoins = allVariantOptionValues
-            .filter { $0.variantId == variant.id }
-        let valueIdSet = Set(existingJoins.map(\.optionValueId))
-        for option in visibleFamilyOptions {
-            if let pair = allOptionValues.first(where: {
-                valueIdSet.contains($0.id) && $0.optionId == option.id
-            }) {
-                optionSelections[option.id] = pair.id
-            }
-        }
+        optionSelections = VariantOptionSelectionState.selections(
+            variantId: variant.id,
+            familyOptions: optionsForFamily(variant.catalogItemId),
+            optionValues: allOptionValues,
+            variantOptionValues: allVariantOptionValues
+        )
     }
 
     @MainActor
@@ -363,6 +364,8 @@ struct VariantFormSheet: View {
                     unitId: selectedUnitId
                 )
                 dto = try await repo.updateVariant(existing.id, fields: update)
+                let optionValueIds = familyOptions.compactMap { optionSelections[$0.id] }.filter { !$0.isEmpty }
+                try await repo.replaceVariantOptionValues(variantId: existing.id, optionValueIds: optionValueIds)
             } else {
                 let parsedWarning = Double(warningText.trimmingCharacters(in: .whitespacesAndNewlines))
                 let parsedCritical = Double(criticalText.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -543,9 +546,14 @@ struct VariantFormSheet: View {
             modelContext.insert(model)
         }
 
-        let existingJoins = allVariantOptionValues.filter { $0.variantId == dto.id }
-        for join in existingJoins {
-            modelContext.delete(join)
+        let variantId = dto.id
+        let existingJoinDescriptor = FetchDescriptor<CatalogVariantOptionValue>(
+            predicate: #Predicate { $0.variantId == variantId }
+        )
+        if let existingJoins = try? modelContext.fetch(existingJoinDescriptor) {
+            for join in existingJoins {
+                modelContext.delete(join)
+            }
         }
         for (_, valueId) in joinSelections where !valueId.isEmpty {
             let join = CatalogVariantOptionValue(variantId: dto.id, optionValueId: valueId)
@@ -553,5 +561,51 @@ struct VariantFormSheet: View {
             modelContext.insert(join)
         }
         try? modelContext.save()
+    }
+
+    private func optionsForFamily(_ familyId: String?) -> [CatalogOption] {
+        guard let familyId else { return [] }
+        return allOptions
+            .filter { $0.catalogItemId == familyId }
+            .sorted { $0.sortOrder < $1.sortOrder }
+    }
+}
+
+enum VariantOptionSelectionState {
+    static func selections(
+        variantId: String,
+        familyOptions: [CatalogOption],
+        optionValues: [CatalogOptionValue],
+        variantOptionValues: [CatalogVariantOptionValue]
+    ) -> [String: String] {
+        let selectedValueIds = Set(variantOptionValues
+            .filter { $0.variantId == variantId }
+            .map(\.optionValueId))
+        let seed = Dictionary<String, String>(uniqueKeysWithValues: familyOptions.compactMap { option in
+            guard let value = optionValues.first(where: {
+                selectedValueIds.contains($0.id) && $0.optionId == option.id
+            }) else { return nil }
+            return (option.id, value.id)
+        })
+        return validSelections(seed, familyOptions: familyOptions, optionValues: optionValues)
+    }
+
+    static func validSelections(
+        _ selections: [String: String],
+        familyOptions: [CatalogOption],
+        optionValues: [CatalogOptionValue]
+    ) -> [String: String] {
+        var cleaned: [String: String] = [:]
+        let valuesById = Dictionary(uniqueKeysWithValues: optionValues.map { ($0.id, $0) })
+
+        for option in familyOptions {
+            guard let selectedValueId = selections[option.id],
+                  let value = valuesById[selectedValueId],
+                  value.optionId == option.id
+            else { continue }
+            cleaned[option.id] = selectedValueId
+        }
+
+        return cleaned
     }
 }

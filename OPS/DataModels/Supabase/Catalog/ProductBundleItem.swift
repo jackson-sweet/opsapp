@@ -11,6 +11,11 @@
 import Foundation
 import SwiftData
 
+enum ProductBundleRelationshipKind: String, CaseIterable, Codable {
+    case required
+    case suggested
+}
+
 @Model
 final class ProductBundleItem: Identifiable {
     @Attribute(.unique) var id: String
@@ -18,6 +23,9 @@ final class ProductBundleItem: Identifiable {
     var bundleProductId: String
     var childProductId: String
     var quantity: Double
+    var relationshipKind: ProductBundleRelationshipKind = ProductBundleRelationshipKind.required
+    var suggestionReason: String?
+    var compatibilitySelectorJSON: String?
     var displayOrder: Int
     var createdAt: Date
     var updatedAt: Date
@@ -38,6 +46,9 @@ final class ProductBundleItem: Identifiable {
         bundleProductId: String,
         childProductId: String,
         quantity: Double = 1,
+        relationshipKind: ProductBundleRelationshipKind = .required,
+        suggestionReason: String? = nil,
+        compatibilitySelectorJSON: String? = nil,
         displayOrder: Int = 0,
         createdAt: Date = Date()
     ) {
@@ -46,6 +57,9 @@ final class ProductBundleItem: Identifiable {
         self.bundleProductId = bundleProductId
         self.childProductId = childProductId
         self.quantity = quantity
+        self.relationshipKind = relationshipKind
+        self.suggestionReason = suggestionReason
+        self.compatibilitySelectorJSON = compatibilitySelectorJSON
         self.displayOrder = displayOrder
         self.createdAt = createdAt
         self.updatedAt = createdAt

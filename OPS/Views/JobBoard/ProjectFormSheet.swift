@@ -116,7 +116,6 @@ struct ProjectFormSheet: View {
     /// creation form only offered the photo library.
     @State private var showingPhotoSourceChooser = false
     @State private var showingCameraBatch = false
-    @State private var showingScheduler = false
     @State private var showingCopyFromProject = false
     @State private var showingTaskForm = false
     @State private var editingTaskIndex: Int?
@@ -773,28 +772,6 @@ struct ProjectFormSheet: View {
             ClientSheet(mode: .create, prefilledName: clientSearchText) { newClient in
                 selectedClientId = newClient.id
                 clientSearchText = newClient.name
-            }
-        }
-        .sheet(isPresented: $showingScheduler) {
-            if let start = startDate, let end = endDate {
-                CalendarSchedulerSheet(
-                    isPresented: $showingScheduler,
-                    itemType: .project(Project(id: UUID().uuidString, title: "Temp", status: .rfq)),
-                    currentStartDate: start,
-                    currentEndDate: end,
-                    onScheduleUpdate: { newStart, newEnd in
-                        startDate = newStart
-                        endDate = newEnd
-                    },
-                    onClearDates: {
-                        // Bug f3604d52 — Clear in the form-sheet resets the
-                        // in-memory dates so the form reflects the reset
-                        // immediately without needing a server round-trip.
-                        startDate = nil
-                        endDate = nil
-                    }
-                )
-                .environmentObject(dataController)
             }
         }
         .sheet(isPresented: $showingTaskForm) {
@@ -2614,20 +2591,20 @@ struct ProjectFormSheet: View {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             #endif
 
-            // Pipeline lead is non-blocking (matches ClientSheet).
-            Task {
-                _ = await createPipelineLeadForClient(savedClient, companyId: companyId)
-            }
+            let opportunityId = try await createPipelineLeadForClient(savedClient, companyId: companyId)
+
+            var userInfo: [String: Any] = [
+                "clientName": savedClient.name,
+                "clientId": savedClient.id,
+                "leadCreated": true
+            ]
+            userInfo["opportunityId"] = opportunityId
 
             // Match the success-toast wiring used by `ClientSheet`.
             NotificationCenter.default.post(
                 name: Notification.Name("ClientCreatedSuccess"),
                 object: nil,
-                userInfo: [
-                    "clientName": savedClient.name,
-                    "clientId": savedClient.id,
-                    "leadCreated": false
-                ]
+                userInfo: userInfo
             )
 
             // Wizard system sees the import as equivalent to manual create.
@@ -2673,23 +2650,12 @@ struct ProjectFormSheet: View {
     /// Best-effort matching pipeline lead for a freshly imported client.
     /// Mirrors `ClientSheet.createMatchingLead` so an imported client
     /// surfaces in the sales pipeline exactly like a manually-created
-    /// one. Failures are non-fatal — the client is already saved.
-    private func createPipelineLeadForClient(_ client: Client, companyId: String) async -> String? {
-        let trimmedName = client.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else { return nil }
-
-        let dto = CreateOpportunityDTO(
-            companyId: companyId,
-            title: "\(trimmedName) — lead",
-            contactName: trimmedName,
-            contactEmail: client.email,
-            contactPhone: client.phoneNumber,
-            description: nil,
-            estimatedValue: nil,
-            source: "client_created",
-            quoteDeliveryMethod: nil,
-            clientId: client.id
-        )
+    /// one. Failures throw so the import UI does not report a complete save
+    /// when the pipeline lead is missing.
+    private func createPipelineLeadForClient(_ client: Client, companyId: String) async throws -> String {
+        guard let dto = ClientLeadAutocreate.makeOpportunityDTO(for: client, companyId: companyId) else {
+            throw ClientLeadAutocreateError.missingClientName
+        }
 
         let repository = OpportunityRepository(companyId: companyId)
         do {
@@ -2711,7 +2677,7 @@ struct ProjectFormSheet: View {
             return created.id
         } catch {
             print("[CONTACT_IMPORT] ⚠️ Failed to create matching lead for client \(client.id): \(error)")
-            return nil
+            throw ClientLeadAutocreateError.creationFailed
         }
     }
 

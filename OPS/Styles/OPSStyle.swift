@@ -735,6 +735,7 @@ enum OPSStyle {
         static let dealLost         = "xmark.seal.fill"
         static let accountingChart  = "chart.bar.fill"
         static let productTag       = "tag.fill"
+        static let inventoryTracking = "shippingbox.circle.fill" // Inventory tracking on/off (stock state) — NOT the sync glyph
         static let stale            = "exclamationmark.triangle.fill"
         static let expense          = "dollarsign.circle"
         static let banknoteFill     = "banknote.fill"

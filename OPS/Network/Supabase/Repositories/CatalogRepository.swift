@@ -17,6 +17,20 @@ class CatalogRepository {
         self.companyId = companyId
     }
 
+    // MARK: - Catalog setup RPC
+
+    func saveCatalogSetup(
+        idempotencyKey: String,
+        payload: CatalogSetupSavePayload
+    ) async throws -> CatalogSetupSaveResponse {
+        let params = CatalogSetupSaveRPCParams(
+            p_company_id: companyId,
+            p_idempotency_key: idempotencyKey,
+            p_payload: payload
+        )
+        return try await client.rpc("catalog_setup_save", params: params).execute().value
+    }
+
     // MARK: - Categories
 
     func fetchCategoriesForSync(since: Date? = nil) async throws -> [CatalogCategoryDTO] {
@@ -202,6 +216,13 @@ class CatalogRepository {
             .delete().eq("variant_id", value: variantId).execute()
     }
 
+    func replaceVariantOptionValues(variantId: String, optionValueIds: [String]) async throws {
+        try await deleteVariantOptionValues(variantId: variantId)
+        for optionValueId in optionValueIds {
+            try await createVariantOptionValue(variantId: variantId, optionValueId: optionValueId)
+        }
+    }
+
     // MARK: - Inventory deduction audit log
 
     /// Records a row in `inventory_deductions` for a manual variant
@@ -351,6 +372,25 @@ class CatalogRepository {
         return rows.map { CatalogItemTagDTO(id: $0.id, catalogItemId: $0.catalogItemId, tagId: $0.tagId) }
     }
 
+    func replaceFamilyTags(catalogItemId: String, tagIds: Set<String>) async throws -> [CatalogItemTagDTO] {
+        try await client.from("catalog_item_tags")
+            .delete()
+            .eq("catalog_item_id", value: catalogItemId)
+            .execute()
+
+        let uniqueTagIds = tagIds.sorted()
+        guard !uniqueTagIds.isEmpty else { return [] }
+
+        let rows = uniqueTagIds.map {
+            CreateCatalogItemTagDTO(catalogItemId: catalogItemId, tagId: $0)
+        }
+        return try await client.from("catalog_item_tags")
+            .insert(rows)
+            .select()
+            .execute()
+            .value
+    }
+
     // MARK: - Units
 
     func fetchUnitsForSync(since: Date? = nil) async throws -> [CatalogUnitDTO] {
@@ -395,4 +435,10 @@ class CatalogRepository {
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: date)
     }
+}
+
+private struct CatalogSetupSaveRPCParams: Encodable {
+    let p_company_id: String
+    let p_idempotency_key: String
+    let p_payload: CatalogSetupSavePayload
 }

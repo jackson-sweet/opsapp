@@ -1473,24 +1473,19 @@ struct ContactDetailView: View {
 
     private var relevantProjects: [Project] {
         if let client = client {
-            // For clients, show their non-deleted projects
-            return client.activeProjects.sorted {
-                ($0.startDate ?? Date.distantPast) > ($1.startDate ?? Date.distantPast)
-            }
+            return ProjectListOrdering.activeFirst(client.projects)
         } else if let user = user {
             // For team members, show projects they're assigned to
-            return dataController.getAllProjects().filter { project in
+            let projects = dataController.getAllProjects().filter { project in
                 project.teamMembers.contains(where: { $0.id == user.id })
-            }.sorted {
-                ($0.startDate ?? Date.distantPast) > ($1.startDate ?? Date.distantPast)
             }
+            return ProjectListOrdering.activeFirst(projects)
         } else if let teamMember = teamMember {
             // For legacy team members (without User object), check by ID
-            return dataController.getAllProjects().filter { project in
+            let projects = dataController.getAllProjects().filter { project in
                 project.getTeamMemberIds().contains(teamMember.id)
-            }.sorted {
-                ($0.startDate ?? Date.distantPast) > ($1.startDate ?? Date.distantPast)
             }
+            return ProjectListOrdering.activeFirst(projects)
         } else {
             return []
         }

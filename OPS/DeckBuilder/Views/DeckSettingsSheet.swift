@@ -62,7 +62,7 @@ struct DeckSettingsSheet: View {
                     }
 
                     Toggle("Snapping", isOn: $viewModel.drawingData.config.snappingEnabled)
-                        .tint(OPSStyle.Colors.primaryAccent)
+                        .tint(OPSStyle.Colors.text)
 
                     if viewModel.drawingData.config.snappingEnabled {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
@@ -157,7 +157,7 @@ struct DeckSettingsSheet: View {
 
                 Section {
                     Toggle("Grid", isOn: $viewModel.drawingData.config.gridVisible)
-                        .tint(OPSStyle.Colors.primaryAccent)
+                        .tint(OPSStyle.Colors.text)
                 } header: {
                     Text("DISPLAY")
                 }
@@ -197,7 +197,7 @@ struct DeckSettingsSheet: View {
                         get: { viewModel.autosaveEnabled },
                         set: { viewModel.setAutosavePreference($0) }
                     ))
-                    .tint(OPSStyle.Colors.primaryAccent)
+                    .tint(OPSStyle.Colors.text)
                 } header: {
                     Text("AUTOSAVE")
                 } footer: {

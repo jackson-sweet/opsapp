@@ -171,6 +171,7 @@ enum SyncEntityType: String, CaseIterable {
     case catalogTag
     case catalogItem
     case catalogVariant
+    case catalogStockUnit
     case catalogOption
     case catalogOptionValue
     case catalogVariantOptionValue
@@ -180,6 +181,7 @@ enum SyncEntityType: String, CaseIterable {
     case catalogOrder
     case catalogOrderItem
     case companyDefaultProduct
+    case product
     case productOption
     case productOptionValue
     case productPricingModifier
@@ -187,6 +189,7 @@ enum SyncEntityType: String, CaseIterable {
     /// Bundle composition rows — a bundle product (kind='package') with its
     /// children + quantities. See product_bundle_items table.
     case productBundleItem
+    case catalogProductOptionMapping
     case timeEntry
     case signatureCapture
     case formSubmission
@@ -230,6 +233,7 @@ enum SyncEntityType: String, CaseIterable {
         case .catalogTag:                   return "catalog_tags"
         case .catalogItem:                  return "catalog_items"
         case .catalogVariant:               return "catalog_variants"
+        case .catalogStockUnit:             return "catalog_stock_units"
         case .catalogOption:                return "catalog_options"
         case .catalogOptionValue:           return "catalog_option_values"
         case .catalogVariantOptionValue:    return "catalog_variant_option_values"
@@ -239,11 +243,13 @@ enum SyncEntityType: String, CaseIterable {
         case .catalogOrder:                 return "catalog_orders"
         case .catalogOrderItem:             return "catalog_order_items"
         case .companyDefaultProduct:        return "company_default_products"
+        case .product:                      return "products"
         case .productOption:                return "product_options"
         case .productOptionValue:           return "product_option_values"
         case .productPricingModifier:       return "product_pricing_modifiers"
         case .productMaterial:              return "product_materials"
         case .productBundleItem:            return "product_bundle_items"
+        case .catalogProductOptionMapping:  return "catalog_product_option_mappings"
         case .timeEntry:             return "time_entries"
         case .signatureCapture:      return "signature_captures"
         case .formSubmission:        return "form_submissions"
@@ -281,10 +287,13 @@ enum SyncEntityType: String, CaseIterable {
         case .catalogOption, .catalogOptionValue,
              .catalogVariant, .catalogVariantOptionValue,
              .catalogItemTag:                               return 11
-        case .catalogSnapshot, .catalogSnapshotItem:        return 12
-        case .productOption, .productOptionValue,
+        case .catalogStockUnit,
+             .catalogSnapshot, .catalogSnapshotItem:        return 12
+        case .product,
+             .productOption, .productOptionValue,
              .productPricingModifier, .productMaterial,
-             .productBundleItem:                            return 13
+             .productBundleItem,
+             .catalogProductOptionMapping:                  return 13
         case .companyDefaultProduct,
              .catalogOrder, .catalogOrderItem:              return 14
         case .timeEntry, .signatureCapture,

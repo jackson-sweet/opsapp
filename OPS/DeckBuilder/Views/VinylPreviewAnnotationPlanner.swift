@@ -53,7 +53,77 @@ struct VinylPreviewLeader: Equatable {
     }
 }
 
+struct VinylPreviewLeaderPlacement: Equatable {
+    let leaderStart: CGPoint
+    let leaderEnd: CGPoint
+    let labelCenter: CGPoint
+}
+
 enum VinylPreviewAnnotationPlanner {
+    static let houseEdgeTone: VinylPreviewAnnotationTone = .neutral
+    static let houseEdgeLabelFontSize: CGFloat = 7
+    static let overlapLabelFontSize: CGFloat = 8
+    static let houseEdgeLabelInsetPoints: CGFloat = 12
+    static let leaderPadding: CGFloat = 4
+
+    static func houseEdgeLabelSourcePoint(
+        edgeMidpoint: CGPoint,
+        outwardNormal: CGVector,
+        previewScale: CGFloat
+    ) -> CGPoint {
+        let sourceInset = houseEdgeLabelInsetPoints / max(previewScale, 0.001)
+        return CGPoint(
+            x: edgeMidpoint.x - (outwardNormal.dx * sourceInset),
+            y: edgeMidpoint.y - (outwardNormal.dy * sourceInset)
+        )
+    }
+
+    static func overlapLeaderPlacement(
+        anchor: CGPoint,
+        labelCenter: CGPoint,
+        labelSize: CGSize,
+        padding: CGFloat = leaderPadding
+    ) -> VinylPreviewLeaderPlacement {
+        let dx = anchor.x - labelCenter.x
+        let dy = anchor.y - labelCenter.y
+        let length = sqrt((dx * dx) + (dy * dy))
+        guard length > 0 else {
+            return VinylPreviewLeaderPlacement(
+                leaderStart: anchor,
+                leaderEnd: anchor,
+                labelCenter: labelCenter
+            )
+        }
+
+        let unit = CGVector(dx: dx / length, dy: dy / length)
+        let protectedDistance = (abs(unit.dx) * labelSize.width / 2)
+            + (abs(unit.dy) * labelSize.height / 2)
+            + padding
+        let unclampedEnd = CGPoint(
+            x: labelCenter.x + (unit.dx * protectedDistance),
+            y: labelCenter.y + (unit.dy * protectedDistance)
+        )
+
+        if distanceSquared(anchor, unclampedEnd) > distanceSquared(anchor, labelCenter) {
+            return VinylPreviewLeaderPlacement(
+                leaderStart: anchor,
+                leaderEnd: anchor,
+                labelCenter: labelCenter
+            )
+        }
+
+        return VinylPreviewLeaderPlacement(
+            leaderStart: anchor,
+            leaderEnd: unclampedEnd,
+            labelCenter: labelCenter
+        )
+    }
+
+    private static func distanceSquared(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        let dx = a.x - b.x
+        let dy = a.y - b.y
+        return (dx * dx) + (dy * dy)
+    }
 
     static func plan(
         surface: VinylSurfaceCutPlan,

@@ -16,16 +16,7 @@ struct DirectionalDragModifier: ViewModifier {
 
     // @State so the axis decision survives into onEnded
     // (@GestureState resets BEFORE onEnded fires — cannot be used for axis tracking)
-    @State private var resolvedAxis: DragAxis = .undecided
-
-    /// Minimum movement before we commit to an axis direction
-    private let axisThreshold: CGFloat = 12
-
-    enum DragAxis: Equatable {
-        case undecided
-        case horizontal
-        case vertical
-    }
+    @State private var resolvedAxis: DirectionalDragAxis = .undecided
 
     func body(content: Content) -> some View {
         if isEnabled {
@@ -42,12 +33,10 @@ struct DirectionalDragModifier: ViewModifier {
                 let t = value.translation
                 switch resolvedAxis {
                 case .undecided:
-                    let absW = abs(t.width)
-                    let absH = abs(t.height)
-                    // Wait until movement exceeds threshold before deciding
-                    guard absW > axisThreshold || absH > axisThreshold else { return }
-                    // Require horizontal to be clearly dominant (3× vertical)
-                    if absW > absH * 3 {
+                    let axis = DirectionalDragClassifier.axis(forTranslation: t)
+                    guard axis != .undecided else { return }
+
+                    if axis == .horizontal {
                         resolvedAxis = .horizontal
                         onChanged?(t.width)
                     } else {

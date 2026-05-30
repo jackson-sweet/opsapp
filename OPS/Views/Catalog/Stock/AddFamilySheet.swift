@@ -19,11 +19,13 @@ struct AddFamilySheet: View {
 
     @Query private var allCategories: [CatalogCategory]
     @Query private var allUnits: [CatalogUnit]
+    @Query private var allTags: [CatalogTag]
 
     @State private var name: String = ""
     @State private var description: String = ""
     @State private var selectedCategoryId: String? = nil
     @State private var selectedUnitId: String? = nil
+    @State private var selectedTagIds: Set<String> = []
     @State private var warningText: String = ""
     @State private var criticalText: String = ""
     @State private var createSingleVariant: Bool = true
@@ -46,6 +48,12 @@ struct AddFamilySheet: View {
             .sorted { ($0.sortOrder, $0.display) < ($1.sortOrder, $1.display) }
     }
 
+    private var companyTags: [CatalogTag] {
+        allTags
+            .filter { $0.companyId == companyId && $0.deletedAt == nil }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -57,6 +65,9 @@ struct AddFamilySheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         detailsSection
+                        if !companyTags.isEmpty {
+                            tagsSection
+                        }
                         thresholdsSection
                         variantSection
                         if let errorMessage = errorMessage {
@@ -144,6 +155,37 @@ struct AddFamilySheet: View {
     }
 
     @ViewBuilder
+    private var tagsSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            CatalogSectionHeader("TAGS")
+            ForEach(companyTags) { tag in
+                Button {
+                    if selectedTagIds.contains(tag.id) {
+                        selectedTagIds.remove(tag.id)
+                    } else {
+                        selectedTagIds.insert(tag.id)
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Image(systemName: selectedTagIds.contains(tag.id) ? "checkmark.square.fill" : "square")
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
+                            .foregroundColor(selectedTagIds.contains(tag.id)
+                                             ? OPSStyle.Colors.primaryAccent
+                                             : OPSStyle.Colors.tertiaryText)
+                        Text(tag.name.uppercased())
+                            .font(OPSStyle.Typography.metadata)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                        Spacer()
+                    }
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder
     private var thresholdsSection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             CatalogSectionHeader("DEFAULT THRESHOLDS")
@@ -176,7 +218,7 @@ struct AddFamilySheet: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
             }
-            .tint(OPSStyle.Colors.primaryAccent)
+            .tint(OPSStyle.Colors.text)
         }
     }
 
@@ -209,6 +251,14 @@ struct AddFamilySheet: View {
             )
             let familyDto = try await repo.createFamily(create)
             applyFamilyDTO(familyDto)
+
+            if !selectedTagIds.isEmpty {
+                let itemTags = try await repo.replaceFamilyTags(
+                    catalogItemId: familyDto.id,
+                    tagIds: selectedTagIds
+                )
+                applyFamilyTagDTOs(itemTags)
+            }
 
             if createSingleVariant {
                 // Single-variant family: add a placeholder variant with no
@@ -252,6 +302,15 @@ struct AddFamilySheet: View {
             existing.isActive = dto.isActive
             existing.lastSyncedAt = Date()
         } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            modelContext.insert(model)
+        }
+        try? modelContext.save()
+    }
+
+    private func applyFamilyTagDTOs(_ dtos: [CatalogItemTagDTO]) {
+        for dto in dtos {
             let model = dto.toModel()
             model.lastSyncedAt = Date()
             modelContext.insert(model)

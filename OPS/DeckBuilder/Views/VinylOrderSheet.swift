@@ -1195,6 +1195,44 @@ private struct VinylCutPreview: View {
         }
     }
 
+    private func drawHouseEdgeBandHatching(
+        _ layout: VinylPreviewEdgeLayout,
+        wrapCanvas: CGFloat,
+        in context: inout GraphicsContext,
+        bounds: CGRect,
+        origin: CGPoint,
+        scale: CGFloat
+    ) {
+        guard wrapCanvas > 0, layout.length > 0 else { return }
+
+        let dx = layout.edge.end.x - layout.edge.start.x
+        let dy = layout.edge.end.y - layout.edge.start.y
+        let tangent = CGVector(dx: dx / layout.length, dy: dy / layout.length)
+        let stride = max(6 / max(scale, 0.001), wrapCanvas * 0.9)
+        let count = max(2, Int(ceil(layout.length / stride)))
+
+        var hatch = Path()
+        for index in 0...count {
+            let t = CGFloat(index) / CGFloat(count)
+            let edgePoint = CGPoint(
+                x: layout.edge.start.x + (dx * t),
+                y: layout.edge.start.y + (dy * t)
+            )
+            let start = offset(edgePoint, normal: layout.outwardNormal, distance: wrapCanvas * 0.18)
+            let outer = offset(edgePoint, normal: layout.outwardNormal, distance: wrapCanvas * 0.82)
+            let end = offset(outer, normal: tangent, distance: stride * 0.42)
+
+            hatch.move(to: map(start, bounds: bounds, origin: origin, scale: scale))
+            hatch.addLine(to: map(end, bounds: bounds, origin: origin, scale: scale))
+        }
+
+        context.stroke(
+            hatch,
+            with: .color(OPSStyle.Colors.secondaryText.opacity(0.32)),
+            lineWidth: 0.8
+        )
+    }
+
     private func drawCuts(
         _ surface: VinylSurfaceCutPlan,
         clippedTo clipPath: Path,

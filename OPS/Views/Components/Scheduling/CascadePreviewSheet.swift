@@ -101,7 +101,7 @@ struct CascadePreviewSheet: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
             }
-            .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.primaryAccent))
+            .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
 

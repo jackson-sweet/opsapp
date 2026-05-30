@@ -50,6 +50,8 @@ struct UniversalJobBoardCard: View {
     @State private var showingNoTasksAlert = false
     @State private var customAlert: CustomAlertConfig?
     @State private var showingWrongSwipeHint = false
+    private let menuLongPressDuration: Double = 0.55
+    private let menuLongPressMaximumDistance: CGFloat = 12
 
     private var isFieldCrew: Bool {
         !permissionStore.hasFullAccess("projects.view")
@@ -96,7 +98,7 @@ struct UniversalJobBoardCard: View {
             }
             showingDetails = true
         }
-        .onLongPressGesture(minimumDuration: 0.3) {
+        .onLongPressGesture(minimumDuration: menuLongPressDuration, maximumDistance: menuLongPressMaximumDistance) {
             // Block long press during projectListSwipe tutorial phase
             if tutorialMode && tutorialPhase == .projectListSwipe {
                 NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
@@ -107,7 +109,7 @@ struct UniversalJobBoardCard: View {
             if pressing {
                 isLongPressing = true
                 hasTriggeredLongPressHaptic = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + menuLongPressDuration) {
                     if isLongPressing && !hasTriggeredLongPressHaptic {
                         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                         impactFeedback.impactOccurred()
@@ -313,7 +315,7 @@ struct UniversalJobBoardCard: View {
             }
             showingDetails = true
         }
-        .onLongPressGesture(minimumDuration: 0.3) {
+        .onLongPressGesture(minimumDuration: menuLongPressDuration, maximumDistance: menuLongPressMaximumDistance) {
             // Block long press during projectListSwipe tutorial phase
             if tutorialMode && tutorialPhase == .projectListSwipe {
                 NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
@@ -324,7 +326,7 @@ struct UniversalJobBoardCard: View {
             if pressing {
                 isLongPressing = true
                 hasTriggeredLongPressHaptic = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + menuLongPressDuration) {
                     if isLongPressing && !hasTriggeredLongPressHaptic {
                         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                         impactFeedback.impactOccurred()
@@ -793,7 +795,7 @@ struct UniversalJobBoardCard: View {
             }
             showingDetails = true
         }
-        .onLongPressGesture(minimumDuration: 0.3) {
+        .onLongPressGesture(minimumDuration: menuLongPressDuration, maximumDistance: menuLongPressMaximumDistance) {
             // Block long press during projectListSwipe tutorial phase
             if tutorialMode && tutorialPhase == .projectListSwipe {
                 NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
@@ -804,7 +806,7 @@ struct UniversalJobBoardCard: View {
             if pressing {
                 isLongPressing = true
                 hasTriggeredLongPressHaptic = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + menuLongPressDuration) {
                     if isLongPressing && !hasTriggeredLongPressHaptic {
                         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                         impactFeedback.impactOccurred()
@@ -1052,8 +1054,11 @@ struct UniversalJobBoardCard: View {
                     showingTaskForm = true
                 }
 
-                Button("Reschedule") {
-                    handleRescheduleForProject()
+                if case .project(let project) = cardType,
+                   UniversalSearchScheduleTargeting.target(forProject: project) != .unavailable {
+                    Button("Reschedule") {
+                        handleRescheduleForProject()
+                    }
                 }
             }
 
@@ -1158,7 +1163,7 @@ struct UniversalJobBoardCard: View {
     @ViewBuilder
     private var schedulerSheet: some View {
         switch cardType {
-        case .project(let project):
+        case .project:
             // If a specific task was selected, schedule it instead of the project
             if let selectedTask = selectedTaskForScheduling {
                 CalendarSchedulerSheet(
@@ -1229,40 +1234,8 @@ struct UniversalJobBoardCard: View {
                     selectedTaskForScheduling = nil
                 }
             } else {
-                // No specific task selected - schedule the project itself
-                CalendarSchedulerSheet(
-                    isPresented: $showingScheduler,
-                    itemType: .project(project),
-                    currentStartDate: project.startDate,
-                    currentEndDate: project.endDate,
-                onScheduleUpdate: { startDate, endDate in
-                    // Projects without tasks can be scheduled directly
-                    Task {
-                        do {
-                            try await dataController.updateProjectDates(project: project, startDate: startDate, endDate: endDate)
-                        } catch {
-                            print("❌ Failed to sync project schedule to server: \(error)")
-                        }
-                    }
-
-                },
-                onClearDates: {
-                    // Task-only scheduling migration: Clear project dates only
-                    Task {
-                        do {
-                            print("🗑️ [JOB_BOARD] Clearing project dates")
-
-                            // Clear project dates using centralized function
-                            try await dataController.updateProjectDates(project: project, startDate: nil, endDate: nil, clearDates: true)
-
-                            print("✅ [JOB_BOARD] Project dates cleared and synced")
-                        } catch {
-                            print("❌ [JOB_BOARD] Failed to clear project dates: \(error)")
-                        }
-                    }
-                }
-            )
-            .environmentObject(dataController)
+                Color.clear
+                    .onAppear { showingScheduler = false }
             }
         case .task(let task):
             CalendarSchedulerSheet(
@@ -1357,8 +1330,7 @@ struct UniversalJobBoardCard: View {
     private func handleRescheduleForProject() {
         guard case .project(let project) = cardType else { return }
 
-        // Filter out deleted tasks
-        let activeTasks = project.tasks.filter { $0.deletedAt == nil }
+        let activeTasks = UniversalSearchScheduleTargeting.schedulableTasks(forProject: project)
 
         if activeTasks.isEmpty {
             // No tasks - show alert with option to create one
@@ -1381,7 +1353,7 @@ struct UniversalJobBoardCard: View {
                     .edgesIgnoringSafeArea(.all)
 
                 if case .project(let project) = cardType {
-                    let activeTasks = project.tasks.filter { $0.deletedAt == nil }
+                    let activeTasks = UniversalSearchScheduleTargeting.schedulableTasks(forProject: project)
 
                     ScrollView {
                         VStack(spacing: 12) {
@@ -1392,25 +1364,20 @@ struct UniversalJobBoardCard: View {
                                     showingScheduler = true
                                 }) {
                                     HStack {
-                                        // Task type icon and color
-                                        if let taskType = task.taskType {
-                                            Circle()
-                                                .fill(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
-                                                .frame(width: 12, height: 12)
+                                        Circle()
+                                            .fill(Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent)
+                                            .frame(width: 12, height: 12)
 
+                                        if let taskType = task.taskType {
                                             if let icon = taskType.icon {
                                                 Image(systemName: icon)
-                                                    .foregroundColor(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
+                                                    .foregroundColor(Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent)
                                             }
-
-                                            Text(taskType.display)
-                                                .font(OPSStyle.Typography.bodyBold)
-                                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                        } else {
-                                            Text("Task")
-                                                .font(OPSStyle.Typography.bodyBold)
-                                                .foregroundColor(OPSStyle.Colors.primaryText)
                                         }
+
+                                        Text(task.displayTitle.uppercased())
+                                            .font(OPSStyle.Typography.bodyBold)
+                                            .foregroundColor(OPSStyle.Colors.primaryText)
 
                                         Spacer()
 
@@ -1425,7 +1392,7 @@ struct UniversalJobBoardCard: View {
                                             }
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
                                         } else {
-                                            Text("Not scheduled")
+                                            Text("NOT SCHEDULED")
                                                 .font(OPSStyle.Typography.smallCaption)
                                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                                         }
@@ -1444,11 +1411,11 @@ struct UniversalJobBoardCard: View {
                     }
                 }
             }
-            .navigationTitle("Select Task to Reschedule")
+            .navigationTitle("SELECT TASK")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
+                    Button("CANCEL") {
                         showingTaskPicker = false
                     }
                     .foregroundColor(OPSStyle.Colors.primaryText)

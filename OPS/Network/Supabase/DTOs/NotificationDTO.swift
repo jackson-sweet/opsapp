@@ -21,6 +21,11 @@ struct NotificationDTO: Codable, Identifiable {
     let deepLinkType: String?
     let actionUrl: String?
     let actionLabel: String?
+    let persistent: Bool?
+    let dedupeKey: String?
+    let resolvedAt: String?
+    let resolvedBy: String?
+    let resolutionReason: String?
     var isRead: Bool
     let createdAt: String
 
@@ -38,6 +43,11 @@ struct NotificationDTO: Codable, Identifiable {
         case deepLinkType = "deep_link_type"
         case actionUrl   = "action_url"
         case actionLabel = "action_label"
+        case persistent
+        case dedupeKey   = "dedupe_key"
+        case resolvedAt  = "resolved_at"
+        case resolvedBy  = "resolved_by"
+        case resolutionReason = "resolution_reason"
         case isRead      = "is_read"
         case createdAt   = "created_at"
     }

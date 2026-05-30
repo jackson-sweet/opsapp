@@ -127,7 +127,7 @@ struct ProjectRulesView: View {
 
                                 Toggle("", isOn: $matchInvoiceTerms)
                                     .labelsHidden()
-                                    .tint(OPSStyle.Colors.primaryAccent)
+                                    .tint(OPSStyle.Colors.text)
                                     .disabled(!permissionStore.can("finances.view"))
                                     .onChange(of: matchInvoiceTerms) { _, newValue in
                                         saveReviewSetting(\.matchInvoicePaymentTerms, value: newValue)

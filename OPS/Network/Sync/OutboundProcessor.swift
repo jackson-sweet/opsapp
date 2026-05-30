@@ -18,6 +18,11 @@ final class OutboundProcessor {
 
     /// Maximum retry count before an operation is marked as permanently failed.
     private let maxRetries = 20
+    private let projectTaskSyncingFactory: (String) -> ProjectTaskSyncing
+
+    init(projectTaskSyncingFactory: @escaping (String) -> ProjectTaskSyncing = { TaskRepository(companyId: $0) }) {
+        self.projectTaskSyncingFactory = projectTaskSyncingFactory
+    }
 
     // MARK: - Main Entry Point
 
@@ -164,22 +169,20 @@ final class OutboundProcessor {
             if let createOp = ops.first(where: { $0.operationType == "create" }) {
                 // Merge all subsequent updates into the create
                 var allChangedFields = Set(createOp.getChangedFields())
-                var latestPayload = createOp.payload
+                var mergedPayload = createOp.payload
 
                 for op in ops where op.id != createOp.id {
                     let fields = op.getChangedFields()
                     allChangedFields.formUnion(fields)
-                    // Keep the latest payload (ops are sorted by createdAt)
-                    latestPayload = op.payload
+                    if let encoded = mergePayloads(base: mergedPayload, overlay: op.payload) {
+                        mergedPayload = encoded
+                    }
                     // Mark the update as completed (superseded)
                     op.status = "completed"
                     op.completedAt = Date()
                 }
 
-                // Merge the latest payload into the create's payload
-                if let mergedPayload = mergePayloads(base: createOp.payload, overlay: latestPayload) {
-                    createOp.payload = mergedPayload
-                }
+                createOp.payload = mergedPayload
                 createOp.changedFields = Array(allChangedFields).joined(separator: ",")
                 result.append(createOp)
                 continue
@@ -411,7 +414,7 @@ final class OutboundProcessor {
         "id", "bubble_id", "company_id", "project_id", "task_type_id",
         "custom_title", "task_notes", "status", "task_color", "display_order",
         "team_member_ids", "source_line_item_id", "source_estimate_id",
-        "start_date", "end_date", "duration", "dependency_overrides",
+        "start_date", "end_date", "duration", "schedule_locked", "dependency_overrides",
         "start_time", "end_time", "deleted_at", "created_at", "updated_at"
     ]
 
@@ -466,21 +469,47 @@ final class OutboundProcessor {
     ]
 
     private func handleProjectTask(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
-        let repo = TaskRepository(companyId: companyId)
+        let repo = projectTaskSyncingFactory(companyId)
 
         // Filter payload to only include valid Supabase columns, stripping
         // local-only SwiftData properties like task_index or needs_sync
         let sanitizedPayload = Self.sanitizedProjectTaskPayloadForSync(payload)
+        let shouldComplete = TaskCompletionSync.isCompletionPayload(payload)
 
         switch operationType {
         case "create":
-            let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
+            var createPayload = sanitizedPayload
+            if shouldComplete {
+                createPayload["status"] = TaskStatus.active.rawValue
+            }
+            let jsonData = try JSONSerialization.data(withJSONObject: createPayload)
             let dto = try JSONDecoder().decode(SupabaseProjectTaskDTO.self, from: jsonData)
             _ = try await repo.create(dto)
+            if shouldComplete {
+                _ = try await repo.completeProjectTask(
+                    taskId: entityId,
+                    idempotencyKey: TaskCompletionSync.idempotencyKey(from: payload, taskId: entityId),
+                    materialAdjustments: TaskCompletionSync.materialAdjustments(from: payload)
+                )
+            }
 
         case "update":
-            let fields = payloadToAnyJSON(sanitizedPayload)
-            try await repo.updateFields(entityId, fields: fields)
+            if shouldComplete {
+                var updatePayload = sanitizedPayload
+                updatePayload.removeValue(forKey: "status")
+                let fields = payloadToAnyJSON(updatePayload)
+                if !fields.isEmpty {
+                    try await repo.updateFields(entityId, fields: fields)
+                }
+                _ = try await repo.completeProjectTask(
+                    taskId: entityId,
+                    idempotencyKey: TaskCompletionSync.idempotencyKey(from: payload, taskId: entityId),
+                    materialAdjustments: TaskCompletionSync.materialAdjustments(from: payload)
+                )
+            } else {
+                let fields = payloadToAnyJSON(sanitizedPayload)
+                try await repo.updateFields(entityId, fields: fields)
+            }
 
         case "delete":
             try await repo.softDelete(entityId)

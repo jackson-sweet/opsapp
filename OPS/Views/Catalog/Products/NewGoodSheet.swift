@@ -241,7 +241,7 @@ struct NewGoodSheet: View {
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
-                .tint(OPSStyle.Colors.primaryAccent)
+                .tint(OPSStyle.Colors.text)
                 .onChange(of: taxable) { _, _ in
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
@@ -359,7 +359,7 @@ struct NewGoodSheet: View {
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
-        .tint(OPSStyle.Colors.primaryAccent)
+        .tint(OPSStyle.Colors.text)
         .onChange(of: saveAndAddAnother) { _, _ in
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }

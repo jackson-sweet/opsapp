@@ -31,7 +31,7 @@ enum TutorialData {
 
     static let taskCards: [TaskCard] = [
         TaskCard(name: "Sand & Prep",      crew: "Pete Mitchell", color: Color(hex: "#8195B5") ?? OPSStyle.Colors.primaryAccent),
-        TaskCard(name: "Stain & Seal",     crew: "Nick Bradshaw", color: Color(hex: "#9DB582") ?? OPSStyle.Colors.successStatus),
+        TaskCard(name: "Stain & Seal",     crew: "Nick Bradshaw", color: OPSStyle.Colors.olive),
         TaskCard(name: "Railing Touch-Up", crew: "Pete Mitchell", color: Color(hex: "#B5A381") ?? OPSStyle.Colors.warningStatus),
     ]
 
@@ -71,7 +71,7 @@ enum TutorialData {
         ),
         ReviewCard(
             task: "Final Walkthrough", project: "Henley Reno", client: "Lisa Park",
-            daysAgo: 2, color: Color(hex: "#B58289") ?? OPSStyle.Colors.errorStatus,
+            daysAgo: 2, color: OPSStyle.Colors.rose,
             projectTasks: [
                 ReviewProjectTask(name: "Tile Install", alreadyComplete: true),
                 ReviewProjectTask(name: "Grout Sealing", alreadyComplete: true),
@@ -85,7 +85,7 @@ enum TutorialData {
 
     static let crewMembers: [CrewMember] = [
         CrewMember(name: "Pete Mitchell", color: Color(hex: "#8195B5") ?? OPSStyle.Colors.primaryAccent),
-        CrewMember(name: "Nick Bradshaw", color: Color(hex: "#9DB582") ?? OPSStyle.Colors.successStatus),
+        CrewMember(name: "Nick Bradshaw", color: OPSStyle.Colors.olive),
     ]
 
     // MARK: - Formatting
@@ -164,7 +164,7 @@ enum TutorialData {
             color: Color(hex: "#8195B5") ?? OPSStyle.Colors.primaryAccent,
             startDay: 0, endDay: 1, row: 0, completesOnDay: 1, reviewCardIndex: nil, isDeckTask: true),
         CalendarScheduleTask(id: "cal_stain", name: "Stain & Seal", projectName: "Deck Resurfacing",
-            color: Color(hex: "#9DB582") ?? OPSStyle.Colors.successStatus,
+            color: OPSStyle.Colors.olive,
             startDay: 1, endDay: 2, row: 1, completesOnDay: 2, reviewCardIndex: nil, isDeckTask: true),
         CalendarScheduleTask(id: "cal_rail", name: "Rail Touch-Up", projectName: "Deck Resurfacing",
             color: Color(hex: "#B5A381") ?? OPSStyle.Colors.warningStatus,
@@ -188,13 +188,13 @@ enum TutorialData {
 
         // Henley Reno tasks
         CalendarScheduleTask(id: "cal_fascia", name: "Fascia Rep.", projectName: "Henley Reno",
-            color: Color(hex: "#B58289") ?? OPSStyle.Colors.errorStatus,
+            color: OPSStyle.Colors.rose,
             startDay: 2, endDay: 3, row: 0, completesOnDay: 3, reviewCardIndex: nil, isDeckTask: false),
         CalendarScheduleTask(id: "cal_tile", name: "Tile Install", projectName: "Henley Reno",
-            color: Color(hex: "#B58289") ?? OPSStyle.Colors.errorStatus,
+            color: OPSStyle.Colors.rose,
             startDay: 3, endDay: 4, row: 1, completesOnDay: 4, reviewCardIndex: nil, isDeckTask: false),
         CalendarScheduleTask(id: "cal_final", name: "Final Walk", projectName: "Henley Reno",
-            color: Color(hex: "#B58289") ?? OPSStyle.Colors.errorStatus,
+            color: OPSStyle.Colors.rose,
             startDay: 3, endDay: 4, row: 3, completesOnDay: nil, reviewCardIndex: 3, isDeckTask: false),
     ]
 

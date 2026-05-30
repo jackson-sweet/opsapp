@@ -36,11 +36,11 @@ struct CertificationsSettingsView: View {
         var statusColor: Color {
             switch status {
             case .valid:
-                return Color.green
+                return OPSStyle.Colors.olive
             case .expired:
-                return Color.red
+                return OPSStyle.Colors.rose
             case .pendingReview:
-                return Color.orange
+                return OPSStyle.Colors.tan
             }
         }
     }
@@ -278,7 +278,7 @@ struct CertificationsSettingsView: View {
                         Text(formatDate(expiryDate))
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(
-                                expiryDate < Date() ? Color.red : OPSStyle.Colors.primaryText
+                                expiryDate < Date() ? OPSStyle.Colors.rose : OPSStyle.Colors.primaryText
                             )
                     }
                 }

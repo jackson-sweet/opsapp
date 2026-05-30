@@ -64,9 +64,9 @@ struct DeveloperDashboard: View {
             case .taskTest: return OPSStyle.Colors.primaryAccent
             case .taskList: return OPSStyle.Colors.successStatus
             case .scheduledTasks: return OPSStyle.Colors.warningStatus
-            case .relinkTasksToProjects: return Color.green
+            case .relinkTasksToProjects: return OPSStyle.Colors.olive
             case .clearData: return OPSStyle.Colors.errorStatus
-            case .taskTypes: return Color.orange
+            case .taskTypes: return OPSStyle.Colors.tan
             case .inventoryUnits: return Color.teal
             case .wizardTesting: return Color.purple
             case .dataActorBenchmark: return Color.cyan
